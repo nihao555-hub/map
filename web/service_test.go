@@ -74,6 +74,25 @@ func TestFormatElapsed(t *testing.T) {
 	}
 }
 
+func TestParsePlacesHandlesMultiValueAndMissingColumns(t *testing.T) {
+	input := `title,category,emails,images,review_rating
+Cafe,"[""coffee"",""cafe""]","[""a@example.com"",""b@example.com""]","[{""image"":""https://example.com/a.jpg""}]",4.5
+Minimal,,,,`
+
+	places, err := parsePlaces(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("parsePlaces: %v", err)
+	}
+
+	if places[0].Category != "coffee, cafe" || places[0].Email != "a@example.com, b@example.com" {
+		t.Fatalf("multi-value fields = %#v", places[0])
+	}
+
+	if places[0].Images != "https://example.com/a.jpg" || places[1].Website != "" {
+		t.Fatalf("image or missing-column parsing = %#v", places)
+	}
+}
+
 func writeCSV(t *testing.T, dir, id, content string) {
 	t.Helper()
 

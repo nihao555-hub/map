@@ -61,6 +61,8 @@
                     </div>
                 </div>
 
+                <div id="batch-preview" class="batch-preview" aria-live="polite"></div>
+
                 <fieldset class="quantity-picker">
                     <legend>抓取数量</legend>
                     <div class="segmented-control">
@@ -78,7 +80,7 @@
                             <input id="advanced-lang" type="text" placeholder="自动识别（en 或 zh）">
                         </div>
                         <div class="form-group checkbox-group">
-                            <label><input id="advanced-email" type="checkbox"> 抓取邮箱</label>
+                            <label><input id="advanced-email" type="checkbox" checked> 抓取邮箱</label>
                             <small>会访问商家官网找邮箱，速度会更慢</small>
                         </div>
                         <div class="form-group checkbox-group">
@@ -146,7 +148,7 @@
     const manualKeywords = document.getElementById('manual-keywords');
 
     function splitTypes(value) {
-        return value.split(/[,，、;；]|\s+-\s+/).map(function (item) {
+        return value.split(/[,，、;；\n]+|\s+-\s+/).map(function (item) {
             return item.trim();
         }).filter(Boolean);
     }
@@ -163,15 +165,34 @@
         if (manualKeywords.value.trim()) {
             return manualKeywords.value.trim();
         }
-        const place = location.value.trim();
-        return splitTypes(businessType.value).map(function (type) {
-            return place ? type + ' in ' + place : type;
+        const places = splitTypes(location.value);
+        const types = splitTypes(businessType.value);
+        return types.flatMap(function (type) {
+            return places.length ? places.map(function (place) {
+                return type + ' in ' + place;
+            }) : [type];
         }).join('\n');
+    }
+
+    function previewBatch() {
+        const queries = composeKeywords().split('\n').filter(Boolean);
+        const preview = document.getElementById('batch-preview');
+        if (!queries.length) {
+            preview.textContent = '';
+            return;
+        }
+        preview.innerHTML = '<strong>将创建 ' + queries.length + ' 个搜索词</strong><br>' +
+            queries.slice(0, 4).join(' · ') + (queries.length > 4 ? ' · …' : '');
     }
 
     window.configureScrape = function (event) {
         const depth = document.querySelector('input[data-depth]:checked').dataset.depth;
         delete event.detail.parameters.quantity;
+        const queryCount = composeKeywords().split('\n').filter(Boolean).length;
+        if (queryCount > 50 && !window.confirm('本次将创建 ' + queryCount + ' 个搜索词，可能耗时较长。确定继续吗？')) {
+            event.preventDefault();
+            return;
+        }
         const title = businessType.value.trim() + (location.value.trim() ? ' · ' + location.value.trim() : '');
         event.detail.parameters.name = title;
         event.detail.parameters.keywords = composeKeywords();
@@ -203,15 +224,22 @@
         }
     };
 
-    businessType.addEventListener('input', setSubmitState);
+    [businessType, location].forEach(function (input) {
+        input.addEventListener('input', function () {
+            setSubmitState();
+            previewBatch();
+        });
+    });
     document.querySelectorAll('.chip').forEach(function (chip) {
         chip.addEventListener('click', function () {
             businessType.value = chip.dataset.value;
             businessType.focus();
             setSubmitState();
+            previewBatch();
         });
     });
     setSubmitState();
+    previewBatch();
 })();
 </script>
 </body>

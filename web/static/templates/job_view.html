@@ -16,34 +16,50 @@
                        aria-label="筛选名称或地址"
                        autocomplete="off">
             </div>
+            <button id="toggle-all-columns" type="button" class="button button-secondary">显示全部列</button>
             <a class="button button-secondary results-download" href="#" onclick="return downloadVisibleResults()">下载 CSV</a>
         </div>
         <div class="results-table-wrap">
             <table class="results-table">
                 <thead>
                     <tr>
-                        <th>名称</th>
-                        <th>分类</th>
-                        <th>地址</th>
-                        <th>电话</th>
-                        <th>网站</th>
+                        <th class="sticky-name">名称</th><th>分类</th><th>地址</th><th>电话</th><th>邮箱</th><th>网站</th>
                         <th class="numeric">评分</th>
-                        <th class="numeric">评论数</th>
+                        <th class="numeric">评论数</th><th>营业时间</th><th>Google Maps 链接</th>
+                        <th class="extra-column">完整地址</th><th class="extra-column">价格区间</th><th class="extra-column">简介</th>
+                        <th class="extra-column">缩略图</th><th class="extra-column">时区</th><th class="extra-column">Plus Code</th>
+                        <th class="extra-column">纬度</th><th class="extra-column">经度</th><th class="extra-column">评分分布</th>
+                        <th class="extra-column">预订</th><th class="extra-column">在线下单</th><th class="extra-column">菜单</th>
                     </tr>
                 </thead>
                 <tbody id="results-body">
                     {{range .}}
                     <tr class="result-row" data-search="{{.Title}} {{.Address}}">
-                        <td title="{{.Title}}">{{.Title}}</td>
-                        <td title="{{.Category}}">{{.Category}}</td>
-                        <td title="{{.Address}}">{{.Address}}</td>
-                        <td>{{if .Phone}}<a href="tel:{{.Phone}}">{{.Phone}}</a>{{end}}</td>
-                        <td class="website-cell">{{if .Website}}<a href="{{.Website}}" target="_blank" rel="noopener noreferrer" title="{{.Website}}">{{.Website}}</a>{{end}}</td>
-                        <td class="numeric">{{if .ReviewRating}}{{printf "%.1f" .ReviewRating}}{{end}}</td>
-                        <td class="numeric">{{.ReviewCount}}</td>
+                        <td class="sticky-name" title="{{.Title}}">{{if .Title}}{{.Title}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td title="{{.Category}}">{{if .Category}}{{.Category}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td title="{{.Address}}">{{if .Address}}{{.Address}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td>{{if .Phone}}<a href="tel:{{.Phone}}">{{.Phone}}</a>{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td title="{{.Email}}">{{if .Email}}{{.Email}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="website-cell">{{if .Website}}<a href="{{.Website}}" target="_blank" rel="noopener noreferrer" title="{{.Website}}">{{.Website}}</a>{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="numeric">{{if .ReviewRating}}{{printf "%.1f" .ReviewRating}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="numeric">{{if .ReviewCount}}{{.ReviewCount}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td title="{{.OpenHours}}">{{if .OpenHours}}{{.OpenHours}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td>{{if .Link}}<a href="{{.Link}}" target="_blank" rel="noopener noreferrer">打开</a>{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column" title="{{.CompleteAddress}}">{{if .CompleteAddress}}{{.CompleteAddress}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column">{{if .PriceRange}}{{.PriceRange}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column" title="{{.Descriptions}}">{{if .Descriptions}}{{.Descriptions}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column">{{if .Thumbnail}}<img class="result-thumbnail" src="{{.Thumbnail}}" alt="" loading="lazy">{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column">{{if .Timezone}}{{.Timezone}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column">{{if .PlusCode}}{{.PlusCode}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column">{{if .Latitude}}{{.Latitude}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column">{{if .Longitude}}{{.Longitude}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column">{{if .ReviewsPerRating}}{{.ReviewsPerRating}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column">{{if .Reservations}}{{.Reservations}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column">{{if .OrderOnline}}{{.OrderOnline}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
+                        <td class="extra-column">{{if .Menu}}{{.Menu}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
                     </tr>
                     {{else}}
-                    <tr><td colspan="7" class="empty-state">没有找到结果。</td></tr>
+                    <tr><td colspan="22" class="empty-state">没有找到结果。</td></tr>
                     {{end}}
                 </tbody>
             </table>
@@ -56,8 +72,13 @@
         var filter = document.getElementById('results-filter');
         var rows = Array.prototype.slice.call(document.querySelectorAll('.result-row'));
         var loadMore = document.getElementById('load-more-results');
+        var toggleAll = document.getElementById('toggle-all-columns');
         var pageSize = 50;
         var shown = pageSize;
+        toggleAll.addEventListener('click', function () {
+            var expanded = document.body.classList.toggle('show-all-columns');
+            toggleAll.textContent = expanded ? '收起全部列' : '显示全部列';
+        });
 
         function updateRows() {
             var query = (filter.value || '').trim().toLowerCase();

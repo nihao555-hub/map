@@ -785,6 +785,37 @@ footer {
     min-width: 850px;
 }
 
+.results-table .extra-column {
+    display: none;
+}
+
+.show-all-columns .results-table .extra-column {
+    display: table-cell;
+}
+
+.results-table .sticky-name {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--surface);
+}
+
+.results-table thead .sticky-name {
+    z-index: 3;
+}
+
+.empty-cell {
+    color: var(--muted);
+}
+
+.result-thumbnail {
+    width: 48px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    vertical-align: middle;
+}
+
 .results-table thead th {
     position: sticky;
     z-index: 1;
@@ -809,6 +840,10 @@ footer {
 .load-more-button {
     display: block;
     margin: var(--space-4) auto;
+}
+
+.load-more-button[hidden] {
+    display: none !important;
 }
 
 .active-jobs,

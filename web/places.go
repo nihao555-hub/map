@@ -3,12 +3,14 @@ package web
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // ErrPlacesNotFound is returned by GetPlaces when the job's CSV output does not
@@ -17,13 +19,29 @@ var ErrPlacesNotFound = errors.New("places not found")
 
 // Place is a single result extracted from a job's CSV output.
 type Place struct {
-	Title        string  `json:"title"`
-	Address      string  `json:"address"`
-	Category     string  `json:"category"`
-	Phone        string  `json:"phone"`
-	Website      string  `json:"website"`
-	ReviewRating float64 `json:"review_rating"`
-	ReviewCount  int     `json:"review_count"`
+	Title            string  `json:"title"`
+	Link             string  `json:"link"`
+	Address          string  `json:"address"`
+	Category         string  `json:"category"`
+	Phone            string  `json:"phone"`
+	Email            string  `json:"email"`
+	Website          string  `json:"website"`
+	OpenHours        string  `json:"open_hours"`
+	CompleteAddress  string  `json:"complete_address"`
+	PriceRange       string  `json:"price_range"`
+	Descriptions     string  `json:"descriptions"`
+	Thumbnail        string  `json:"thumbnail"`
+	Timezone         string  `json:"timezone"`
+	PlusCode         string  `json:"plus_code"`
+	ReviewsPerRating string  `json:"reviews_per_rating"`
+	Latitude         string  `json:"latitude"`
+	Longitude        string  `json:"longitude"`
+	Images           string  `json:"images"`
+	Reservations     string  `json:"reservations"`
+	OrderOnline      string  `json:"order_online"`
+	Menu             string  `json:"menu"`
+	ReviewRating     float64 `json:"review_rating"`
+	ReviewCount      int     `json:"review_count"`
 }
 
 // GetPlaces locates the job's CSV output and parses it into places.
@@ -98,17 +116,90 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 		}
 
 		places = append(places, Place{
-			Title:        get(row, "title"),
-			Address:      get(row, "address"),
-			Category:     get(row, "category"),
-			Phone:        get(row, "phone"),
-			Website:      get(row, "website"),
-			ReviewRating: rating,
-			ReviewCount:  parseInt(get(row, "review_count")),
+			Title:            get(row, "title"),
+			Link:             get(row, "link"),
+			Address:          get(row, "address"),
+			Category:         parseMultiValue(get(row, "category")),
+			Phone:            get(row, "phone"),
+			Email:            parseMultiValue(get(row, "emails")),
+			Website:          get(row, "website"),
+			OpenHours:        parseDisplayValue(get(row, "open_hours")),
+			CompleteAddress:  parseDisplayValue(get(row, "complete_address")),
+			PriceRange:       get(row, "price_range"),
+			Descriptions:     firstDisplayValue(get(row, "descriptions"), get(row, "about")),
+			Thumbnail:        get(row, "thumbnail"),
+			Timezone:         get(row, "timezone"),
+			PlusCode:         get(row, "plus_code"),
+			ReviewsPerRating: get(row, "reviews_per_rating"),
+			Latitude:         get(row, "latitude"),
+			Longitude:        get(row, "longitude"),
+			Images:           parseImages(get(row, "images")),
+			Reservations:     get(row, "reservations"),
+			OrderOnline:      get(row, "order_online"),
+			Menu:             get(row, "menu"),
+			ReviewRating:     rating,
+			ReviewCount:      parseInt(get(row, "review_count")),
 		})
 	}
 
 	return places, nil
+}
+
+func parseMultiValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	var values []string
+	if json.Unmarshal([]byte(value), &values) == nil {
+		return strings.Join(values, ", ")
+	}
+
+	return strings.Join(strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '|'
+	}), ", ")
+}
+
+func parseDisplayValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "null" {
+		return ""
+	}
+
+	var values any
+	if json.Unmarshal([]byte(value), &values) == nil {
+		encoded, _ := json.Marshal(values)
+		return string(encoded)
+	}
+
+	return value
+}
+
+func firstDisplayValue(values ...string) string {
+	for _, value := range values {
+		if parsed := parseDisplayValue(value); parsed != "" {
+			return parsed
+		}
+	}
+
+	return ""
+}
+
+func parseImages(value string) string {
+	var images []struct {
+		Image string `json:"image"`
+	}
+
+	if json.Unmarshal([]byte(value), &images) == nil {
+		for _, image := range images {
+			if image.Image != "" {
+				return image.Image
+			}
+		}
+	}
+
+	return parseMultiValue(value)
 }
 
 func parseInt(value string) int {
