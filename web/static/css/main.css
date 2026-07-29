@@ -150,6 +150,21 @@ h2 {
     gap: 18px;
 }
 
+.batch-preview {
+    min-height: 1.25rem;
+    margin: var(--space-3) 0 0;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.batch-preview strong {
+    color: var(--text);
+}
+
+.batch-preview br + * {
+    display: inline;
+}
+
 .form-group {
     display: flex;
     flex-direction: column;
