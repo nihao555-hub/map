@@ -205,6 +205,7 @@ func (s *Service) cachedCSVCount(id string) (int, error) {
 	if os.IsNotExist(err) {
 		return 0, nil
 	}
+
 	if err != nil {
 		return 0, err
 	}
@@ -212,6 +213,7 @@ func (s *Service) cachedCSVCount(id string) (int, error) {
 	s.progressMu.RLock()
 	cached, ok := s.counts[id]
 	s.progressMu.RUnlock()
+
 	if ok && cached.size == info.Size() && cached.modTime.Equal(info.ModTime()) {
 		return cached.count, nil
 	}
@@ -220,8 +222,10 @@ func (s *Service) cachedCSVCount(id string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer file.Close()
+
 	count, _, countErr := countCSVResults(file)
-	_ = file.Close()
+
 	if countErr != nil {
 		return 0, countErr
 	}
@@ -241,22 +245,30 @@ func (s *Service) Stats(ctx context.Context) (UsageStats, error) {
 
 	today := time.Now().In(time.Local).Format("2006-01-02")
 	stats := UsageStats{TotalJobs: len(jobs)}
-	for _, job := range jobs {
+
+	for i := range jobs {
+		job := &jobs[i]
+
 		if job.Date.In(time.Local).Format("2006-01-02") == today {
 			stats.JobsToday++
 		}
+
 		if job.Status == StatusPending || job.Status == StatusWorking {
 			stats.RunningJobs++
 		}
+
 		if job.Status == StatusFailed {
 			stats.FailedJobs++
 		}
 
 		count, countErr := s.cachedCSVCount(job.ID)
+
 		if countErr != nil {
 			return UsageStats{}, countErr
 		}
+
 		stats.TotalRecords += count
+
 		if job.Date.In(time.Local).Format("2006-01-02") == today {
 			stats.RecordsToday += count
 		}

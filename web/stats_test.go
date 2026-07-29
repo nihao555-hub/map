@@ -1,4 +1,4 @@
-package web
+package web_test
 
 import (
 	"context"
@@ -6,78 +6,104 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/gosom/google-maps-scraper/web"
 )
 
 type statsRepository struct {
-	jobs []Job
+	jobs []web.Job
 }
 
-func (r *statsRepository) Get(_ context.Context, id string) (Job, error) {
-	for _, job := range r.jobs {
-		if job.ID == id {
-			return job, nil
+func (r *statsRepository) Get(_ context.Context, id string) (web.Job, error) {
+	for i := range r.jobs {
+		if r.jobs[i].ID == id {
+			return r.jobs[i], nil
 		}
 	}
 
-	return Job{}, os.ErrNotExist
+	return web.Job{}, os.ErrNotExist
 }
 
-func (r *statsRepository) Create(_ context.Context, job *Job) error {
+func (r *statsRepository) Create(_ context.Context, job *web.Job) error {
 	r.jobs = append(r.jobs, *job)
 
 	return nil
 }
 
 func (r *statsRepository) Delete(_ context.Context, _ string) error { return nil }
-func (r *statsRepository) Update(_ context.Context, _ *Job) error   { return nil }
-func (r *statsRepository) Select(_ context.Context, _ SelectParams) ([]Job, error) {
+func (r *statsRepository) Update(_ context.Context, _ *web.Job) error {
+	return nil
+}
+func (r *statsRepository) Select(_ context.Context, _ web.SelectParams) ([]web.Job, error) {
 	return r.jobs, nil
 }
 
-func TestCachedCSVCountInvalidatesOnFileChange(t *testing.T) {
+func TestStatsCacheInvalidatesOnFileChange(t *testing.T) {
 	dir := t.TempDir()
-	svc := NewService(&statsRepository{}, dir)
+	now := time.Now()
+	repo := &statsRepository{jobs: []web.Job{{ID: "job", Date: now, Status: web.StatusOK}}}
+	svc := web.NewService(repo, dir)
 	path := filepath.Join(dir, "job.csv")
 
 	cases := []struct {
 		name    string
 		content string
+		update  bool
 		want    int
 	}{
 		{name: "initial", content: "title\none\n", want: 1},
-		{name: "changed", content: "title\none\ntwo\n", want: 2},
+		{name: "cached", content: "title\ntwo\n", want: 1},
+		{name: "changed", content: "title\none\ntwo\n", update: true, want: 2},
 	}
 
-	for i, tc := range cases {
+	var originalModTime time.Time
+
+	for _, tc := range cases {
 		if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if i > 0 {
-			now := time.Now().Add(time.Duration(i) * time.Second)
-			if err := os.Chtimes(path, now, now); err != nil {
+
+		if originalModTime.IsZero() {
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			originalModTime = info.ModTime()
+		}
+
+		if !tc.update {
+			if err := os.Chtimes(path, originalModTime, originalModTime); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			changed := originalModTime.Add(time.Second)
+			if err := os.Chtimes(path, changed, changed); err != nil {
 				t.Fatal(err)
 			}
 		}
 
-		got, err := svc.cachedCSVCount("job")
+		stats, err := svc.Stats(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got != tc.want {
-			t.Fatalf("%s: got %d, want %d", tc.name, got, tc.want)
+
+		if stats.TotalRecords != tc.want {
+			t.Fatalf("%s: got %d, want %d", tc.name, stats.TotalRecords, tc.want)
 		}
 	}
 }
 
 func TestStatsAggregatesJobsAndRecords(t *testing.T) {
 	now := time.Now()
-	repo := &statsRepository{jobs: []Job{
-		{ID: "today-ok", Date: now, Status: StatusOK},
-		{ID: "today-running", Date: now, Status: StatusWorking},
-		{ID: "today-failed", Date: now, Status: StatusFailed},
-		{ID: "old-ok", Date: now.AddDate(0, 0, -1), Status: StatusOK},
+	repo := &statsRepository{jobs: []web.Job{
+		{ID: "today-ok", Date: now, Status: web.StatusOK},
+		{ID: "today-running", Date: now, Status: web.StatusWorking},
+		{ID: "today-failed", Date: now, Status: web.StatusFailed},
+		{ID: "old-ok", Date: now.AddDate(0, 0, -1), Status: web.StatusOK},
 	}}
-	svc := NewService(repo, t.TempDir())
+	dir := t.TempDir()
+	svc := web.NewService(repo, dir)
 
 	for id, content := range map[string]string{
 		"today-ok":      "title\na\nb\n",
@@ -85,25 +111,22 @@ func TestStatsAggregatesJobsAndRecords(t *testing.T) {
 		"today-failed":  "title\n",
 		"old-ok":        "title\nd\ne\nf\n",
 	} {
-		if err := os.WriteFile(filepath.Join(svc.dataFolder, id+".csv"), []byte(content), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, id+".csv"), []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	got, err := svc.Stats(context.Background())
+	stats, err := svc.Stats(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	want := UsageStats{
-		TotalJobs:    4,
-		TotalRecords: 6,
-		JobsToday:    3,
-		RecordsToday: 3,
-		RunningJobs:  1,
-		FailedJobs:   1,
-	}
-	if got != want {
-		t.Fatalf("got %+v, want %+v", got, want)
+	want := struct {
+		totalJobs, totalRecords, jobsToday, recordsToday, runningJobs, failedJobs int
+	}{4, 6, 3, 3, 1, 1}
+	if stats.TotalJobs != want.totalJobs || stats.TotalRecords != want.totalRecords ||
+		stats.JobsToday != want.jobsToday || stats.RecordsToday != want.recordsToday ||
+		stats.RunningJobs != want.runningJobs || stats.FailedJobs != want.failedJobs {
+		t.Fatalf("got %+v, want %+v", stats, want)
 	}
 }
