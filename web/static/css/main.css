@@ -726,10 +726,15 @@ footer {
 .results-modal-header,
 .results-toolbar {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     gap: var(--space-3);
     padding: 18px 22px;
+}
+
+.results-modal-header {
+    position: relative;
+    padding-right: 64px;
 }
 
 .results-modal-header h2 {
@@ -737,14 +742,32 @@ footer {
 }
 
 .modal-close {
+    position: absolute;
+    top: 14px;
+    right: 18px;
     border: 0;
     color: var(--muted);
     background: transparent;
     font-size: 1.8rem;
+    line-height: 1;
+}
+
+.results-toolbar {
+    padding-top: 0;
+}
+
+.results-toolbar strong {
+    white-space: nowrap;
 }
 
 .results-search {
     flex: 1;
+    min-width: 180px;
+}
+
+.results-download {
+    flex: 0 0 auto;
+    width: auto;
 }
 
 .results-search input {
@@ -909,6 +932,11 @@ footer {
     .results-toolbar {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .results-download {
+        width: auto;
+        align-self: flex-start;
     }
 
     .history-item,
