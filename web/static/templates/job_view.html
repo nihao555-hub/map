@@ -9,10 +9,13 @@
         </div>
         <div class="results-toolbar">
             <strong>共 {{len .}} 条</strong>
-            <label class="results-search">
-                <span class="sr-only">筛选结果</span>
-                <input id="results-filter" type="search" placeholder="筛选名称或地址…" autocomplete="off">
-            </label>
+            <div class="results-search">
+                <input id="results-filter"
+                       type="search"
+                       placeholder="筛选名称或地址…"
+                       aria-label="筛选名称或地址"
+                       autocomplete="off">
+            </div>
             <a class="button button-secondary results-download" href="#" onclick="return downloadVisibleResults()">下载 CSV</a>
         </div>
         <div class="results-table-wrap">

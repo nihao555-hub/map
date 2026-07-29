@@ -754,6 +754,7 @@ footer {
 
 .results-toolbar {
     padding-top: 0;
+    align-items: center;
 }
 
 .results-toolbar strong {
@@ -858,7 +859,8 @@ footer {
 }
 
 .history-name {
-    max-width: 32%;
+    flex: 1 1 auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
