@@ -324,16 +324,28 @@ scrape data:
 docker compose -f docker-compose.deploy.yaml up -d
 ```
 
-Tune web-mode capacity with environment variables before starting:
+Tune web-mode capacity with environment variables before starting. The deploy
+compose defaults are suitable for a modest VPS:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GMS_WEB_CONCURRENCY` | `1` | Maximum active scrape concurrency |
-| `GMS_WEB_BROWSER_POOL_SIZE` | `1` | Browser contexts in the pool |
-| `GMS_WEB_PAGES_PER_BROWSER` | `1` | Pages per browser context |
+| `GMS_WEB_CONCURRENCY` | `4` | Maximum active scrape concurrency |
+| `GMS_WEB_BROWSER_POOL_SIZE` | `2` | Browser contexts in the pool |
+| `GMS_WEB_PAGES_PER_BROWSER` | `4` | Pages per browser context |
 
 Jobs beyond the active concurrency remain queued. This deployment intentionally
 has no login; usage statistics are available from `/api/v1/stats`.
+
+Recommended starting points:
+
+| VM size | Concurrency | Browser pool | Pages/browser | Memory |
+|---------|-------------|--------------|---------------|--------|
+| 2C4G | 2 | 1 | 2 | 2 GiB |
+| 4C8G | 4 | 2 | 4 | 4 GiB |
+| 8C16G | 8 | 4 | 4 | 8 GiB |
+
+邮箱抓取会访问每个商家网站，非 fast mode 会采集更多数据；这两种设置
+都会明显增加 CPU、网络和内存消耗。请先从较低配置开始观察实际负载。
 
 > **Note:** Results take at least 3 minutes to appear (minimum configured runtime).
 > 

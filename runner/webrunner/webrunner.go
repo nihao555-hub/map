@@ -68,6 +68,13 @@ func New(cfg *runner.Config) (runner.Runner, error) {
 		setupMate: defaultSetupMate(cfg),
 	}
 
+	log.Printf(
+		"web capacity: concurrency=%d browser_pool_size=%d pages_per_browser=%d",
+		cfg.Concurrency,
+		cfg.BrowserPoolSize,
+		cfg.MaxPagesPerBrowser,
+	)
+
 	return &ans, nil
 }
 
