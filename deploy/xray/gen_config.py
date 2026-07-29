@@ -17,6 +17,8 @@ SUB_URL = os.environ.get("SUB_URL", "")
 NODE = os.environ.get("NODE", "")
 SOCKS_PORT = int(os.environ.get("SOCKS_PORT", "1080"))
 HTTP_PORT = int(os.environ.get("HTTP_PORT", "1081"))
+SOCKS_USER = os.environ.get("SOCKS_USER", "")
+SOCKS_PASS = os.environ.get("SOCKS_PASS", "")
 
 
 def fetch_nodes(url):
@@ -52,6 +54,24 @@ def pick(nodes, name):
     return nodes[0]
 
 
+def socks_settings():
+    if SOCKS_USER and SOCKS_PASS:
+        return {
+            "udp": True,
+            "auth": "password",
+            "accounts": [{"user": SOCKS_USER, "pass": SOCKS_PASS}],
+        }
+
+    return {"udp": True, "auth": "noauth"}
+
+
+def http_settings():
+    if SOCKS_USER and SOCKS_PASS:
+        return {"accounts": [{"user": SOCKS_USER, "pass": SOCKS_PASS}]}
+
+    return {}
+
+
 def build(node):
     return {
         "log": {"loglevel": "warning"},
@@ -61,14 +81,14 @@ def build(node):
                 "listen": "0.0.0.0",
                 "port": SOCKS_PORT,
                 "protocol": "socks",
-                "settings": {"udp": True, "auth": "noauth"},
+                "settings": socks_settings(),
             },
             {
                 "tag": "http",
                 "listen": "0.0.0.0",
                 "port": HTTP_PORT,
                 "protocol": "http",
-                "settings": {},
+                "settings": http_settings(),
             },
         ],
         "outbounds": [
