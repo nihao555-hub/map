@@ -4,6 +4,10 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 ENV PLAYWRIGHT_DRIVER_PATH=/opt/ms-playwright-go
 ARG TARGETARCH
 ARG PLAYWRIGHT_GO_VERSION=v0.6100.0
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG PLAYWRIGHT_DOWNLOAD_HOST=
+ENV GOPROXY=${GOPROXY}
+ENV PLAYWRIGHT_DOWNLOAD_HOST=${PLAYWRIGHT_DOWNLOAD_HOST}
 
 RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
     && apt-get update \
@@ -24,6 +28,8 @@ RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
 
 # Build stage
 FROM golang:1.26.5-trixie AS builder
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download

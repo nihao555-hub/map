@@ -1,6 +1,10 @@
 services:
   scraper:
-    build: .
+    build:
+      context: .
+      args:
+        GOPROXY: "${GOPROXY:-https://proxy.golang.org,direct}"
+        PLAYWRIGHT_DOWNLOAD_HOST: "${PLAYWRIGHT_DOWNLOAD_HOST:-}"
     command:
       - "-web"
       - "-addr"
