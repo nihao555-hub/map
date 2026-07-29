@@ -196,6 +196,10 @@
         const title = businessType.value.trim() + (location.value.trim() ? ' · ' + location.value.trim() : '');
         event.detail.parameters.name = title;
         event.detail.parameters.keywords = composeKeywords();
+        if (!manualKeywords.value.trim()) {
+            event.detail.parameters.business_types = businessType.value;
+            event.detail.parameters.locations = location.value;
+        }
         event.detail.parameters.lang = document.getElementById('advanced-lang').value.trim() || inferredLanguage();
         event.detail.parameters.zoom = document.getElementById('advanced-zoom').value || '15';
         event.detail.parameters.latitude = document.getElementById('advanced-latitude').value || '0';

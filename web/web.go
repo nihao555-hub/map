@@ -332,7 +332,21 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	keywords := strings.Split(keywordsStr[0], "\n")
+	var keywords []string
+
+	types := r.Form.Get("business_types")
+
+	if types != "" {
+		locations := []string{}
+		if location := r.Form.Get("locations"); location != "" {
+			locations = []string{location}
+		}
+
+		keywords = ExpandBatchKeywords([]string{types}, locations)
+	} else {
+		keywords = strings.Split(keywordsStr[0], "\n")
+	}
+
 	for _, k := range keywords {
 		k = strings.TrimSpace(k)
 		if k == "" {

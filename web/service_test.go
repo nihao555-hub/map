@@ -3,6 +3,7 @@ package web
 
 import (
 	"context"
+	"encoding/csv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,6 +91,69 @@ Minimal,,,,`
 
 	if places[0].Images != "https://example.com/a.jpg" || places[1].Website != "" {
 		t.Fatalf("image or missing-column parsing = %#v", places)
+	}
+}
+
+func TestParsePlacesFormatsJSONFields(t *testing.T) {
+	tests := []struct {
+		name      string
+		hours     string
+		address   string
+		ratings   string
+		about     string
+		menu      string
+		wantHours string
+		wantAddr  string
+		wantStars string
+		wantAbout string
+		wantMenu  string
+	}{
+		{
+			name:      "ordered hours and formatted address",
+			hours:     `{"星期三":["10:00–22:00"],"星期一":["08:00–20:00"]}`,
+			address:   `{"borough":"福田区","street":"CN 广东省 深圳市 福田区 深南大道 6005号","city":"深圳市","postal_code":"518042","state":"","country":"CN"}`,
+			ratings:   `{"1":0,"2":3,"3":0,"4":3,"5":20}`,
+			about:     `[{"name":"服务","options":[{"name":"堂食","enabled":true},{"name":"外带","enabled":false}]}]`,
+			menu:      `{"link":"https://example.com/menu","source":"google"}`,
+			wantHours: "星期三 10:00–22:00 · 星期一 08:00–20:00",
+			wantAddr:  "CN 广东省 深圳市 福田区 深南大道 6005号",
+			wantStars: "5★ 20 · 4★ 3 · 2★ 3",
+			wantAbout: "服务: 堂食",
+			wantMenu:  "https://example.com/menu",
+		},
+		{
+			name:     "zero ratings and blank menu",
+			hours:    `{}`,
+			address:  `{"borough":"福田区","city":"深圳市","country":"CN"}`,
+			wantAddr: "福田区 深圳市",
+			ratings:  `{"1":0,"2":0,"3":0,"4":0,"5":0}`,
+			about:    `null`,
+			menu:     `{"link":"","source":""}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var builder strings.Builder
+			writer := csv.NewWriter(&builder)
+			_ = writer.Write([]string{"title", "open_hours", "complete_address", "reviews_per_rating", "about", "menu"})
+			_ = writer.Write([]string{"place", tt.hours, tt.address, tt.ratings, tt.about, tt.menu})
+			writer.Flush()
+
+			input := builder.String()
+			places, err := parsePlaces(strings.NewReader(input))
+
+			if err != nil {
+				t.Fatalf("parsePlaces: %v", err)
+			}
+
+			place := places[0]
+			if place.OpenHours != tt.wantHours || place.CompleteAddress != tt.wantAddr ||
+				place.ReviewsPerRating != tt.wantStars || place.Descriptions != tt.wantAbout ||
+				place.Menu != tt.wantMenu {
+				t.Fatalf("formatted place = %#v", place)
+			}
+		})
 	}
 }
 

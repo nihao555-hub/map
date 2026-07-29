@@ -123,20 +123,20 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 			Phone:            get(row, "phone"),
 			Email:            parseMultiValue(get(row, "emails")),
 			Website:          get(row, "website"),
-			OpenHours:        parseDisplayValue(get(row, "open_hours")),
-			CompleteAddress:  parseDisplayValue(get(row, "complete_address")),
+			OpenHours:        formatOpenHours(get(row, "open_hours")),
+			CompleteAddress:  formatCompleteAddress(get(row, "complete_address")),
 			PriceRange:       get(row, "price_range"),
-			Descriptions:     firstDisplayValue(get(row, "descriptions"), get(row, "about")),
+			Descriptions:     formatDescription(get(row, "descriptions"), get(row, "about")),
 			Thumbnail:        get(row, "thumbnail"),
 			Timezone:         get(row, "timezone"),
 			PlusCode:         get(row, "plus_code"),
-			ReviewsPerRating: get(row, "reviews_per_rating"),
+			ReviewsPerRating: formatReviewDistribution(get(row, "reviews_per_rating")),
 			Latitude:         get(row, "latitude"),
 			Longitude:        get(row, "longitude"),
 			Images:           parseImages(get(row, "images")),
-			Reservations:     get(row, "reservations"),
-			OrderOnline:      get(row, "order_online"),
-			Menu:             get(row, "menu"),
+			Reservations:     formatLinkValue(get(row, "reservations")),
+			OrderOnline:      formatLinkValue(get(row, "order_online")),
+			Menu:             formatLinkValue(get(row, "menu")),
 			ReviewRating:     rating,
 			ReviewCount:      parseInt(get(row, "review_count")),
 		})
@@ -167,23 +167,19 @@ func parseDisplayValue(value string) string {
 		return ""
 	}
 
-	var values any
-	if json.Unmarshal([]byte(value), &values) == nil {
-		encoded, _ := json.Marshal(values)
-		return string(encoded)
+	if json.Valid([]byte(value)) {
+		return ""
 	}
 
 	return value
 }
 
-func firstDisplayValue(values ...string) string {
-	for _, value := range values {
-		if parsed := parseDisplayValue(value); parsed != "" {
-			return parsed
-		}
+func formatDescription(descriptions, about string) string {
+	if parsed := parseDisplayValue(descriptions); parsed != "" {
+		return parsed
 	}
 
-	return ""
+	return formatAbout(about)
 }
 
 func parseImages(value string) string {
@@ -200,6 +196,141 @@ func parseImages(value string) string {
 	}
 
 	return parseMultiValue(value)
+}
+
+func formatOpenHours(value string) string {
+	decoder := json.NewDecoder(strings.NewReader(value))
+
+	token, err := decoder.Token()
+	if err != nil {
+		return ""
+	}
+
+	if delimiter, ok := token.(json.Delim); !ok || delimiter != '{' {
+		return ""
+	}
+
+	var entries []string
+
+	for decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			return ""
+		}
+
+		var periods []string
+		if err := decoder.Decode(&periods); err != nil {
+			return ""
+		}
+
+		keyString, ok := key.(string)
+		if !ok {
+			return ""
+		}
+
+		if len(periods) > 0 {
+			entries = append(entries, keyString+" "+strings.Join(periods, " / "))
+		}
+	}
+
+	return strings.Join(entries, " · ")
+}
+
+func formatCompleteAddress(value string) string {
+	var parts map[string]string
+	if json.Unmarshal([]byte(value), &parts) != nil {
+		return ""
+	}
+
+	street := strings.TrimSpace(parts["street"])
+	if street != "" {
+		return street
+	}
+
+	ordered := []string{"borough", "city", "state", "postal_code", "country"}
+	result := make([]string, 0, len(ordered))
+
+	for _, key := range ordered {
+		part := strings.TrimSpace(parts[key])
+		if part == "" || part == "CN" || containsPart(result, part) {
+			continue
+		}
+
+		result = append(result, part)
+	}
+
+	return strings.Join(result, " ")
+}
+
+func containsPart(parts []string, value string) bool {
+	for _, part := range parts {
+		if strings.Contains(part, value) || strings.Contains(value, part) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func formatReviewDistribution(value string) string {
+	var ratings map[string]int
+	if json.Unmarshal([]byte(value), &ratings) != nil {
+		return ""
+	}
+
+	result := make([]string, 0, 5)
+
+	for rating := 5; rating >= 1; rating-- {
+		if count := ratings[strconv.Itoa(rating)]; count > 0 {
+			result = append(result, fmt.Sprintf("%d★ %d", rating, count))
+		}
+	}
+
+	return strings.Join(result, " · ")
+}
+
+func formatAbout(value string) string {
+	var groups []struct {
+		Name    string `json:"name"`
+		Options []struct {
+			Name    string `json:"name"`
+			Enabled bool   `json:"enabled"`
+		} `json:"options"`
+	}
+
+	if json.Unmarshal([]byte(value), &groups) != nil {
+		return ""
+	}
+
+	var result []string
+
+	for _, group := range groups {
+		var options []string
+
+		for _, option := range group.Options {
+			if option.Enabled && option.Name != "" {
+				options = append(options, option.Name)
+			}
+		}
+
+		if group.Name != "" && len(options) > 0 {
+			result = append(result, group.Name+": "+strings.Join(options, "/"))
+		}
+	}
+
+	return strings.Join(result, " · ")
+}
+
+func formatLinkValue(value string) string {
+	var link struct {
+		Link string `json:"link"`
+	}
+
+	if json.Unmarshal([]byte(value), &link) != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(link.Link)
 }
 
 func parseInt(value string) int {
