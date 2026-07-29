@@ -1,12 +1,42 @@
 <div id="map-modal" class="map-modal" role="dialog" aria-modal="true" aria-labelledby="map-modal-title" onclick="if(event.target===this)closeJobMap()">
     <div class="map-modal-content">
         <div class="map-modal-header">
-            <h2 id="map-modal-title">Places</h2>
-            <button type="button" class="map-modal-close" aria-label="Close" onclick="closeJobMap()">&times;</button>
+            <h2 id="map-modal-title">抓取结果</h2>
+            <button type="button" class="map-modal-close" aria-label="关闭" onclick="closeJobMap()">&times;</button>
         </div>
         <div class="map-modal-body">
             <div id="job-map"></div>
             <div id="job-places-list"></div>
+        </div>
+        <div class="results-table-wrap">
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>名称</th>
+                        <th>分类</th>
+                        <th>地址</th>
+                        <th>电话</th>
+                        <th>网站</th>
+                        <th>评分</th>
+                        <th>评论数</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .}}
+                    <tr>
+                        <td>{{.Title}}</td>
+                        <td>{{.Category}}</td>
+                        <td>{{.Address}}</td>
+                        <td>{{.Phone}}</td>
+                        <td>{{if .Website}}<a href="{{.Website}}" target="_blank" rel="noopener noreferrer">{{.Website}}</a>{{end}}</td>
+                        <td>{{.ReviewRating}}</td>
+                        <td>{{.ReviewCount}}</td>
+                    </tr>
+                    {{else}}
+                    <tr><td colspan="7" class="empty-state">没有找到带坐标的结果。</td></tr>
+                    {{end}}
+                </tbody>
+            </table>
         </div>
     </div>
     <script>
@@ -70,7 +100,7 @@
                 parts.push(escapeHtml(place.address));
             }
             if (place.link && /^https?:\/\//i.test(place.link)) {
-                parts.push('<a href="' + encodeURI(place.link) + '" target="_blank" rel="noopener noreferrer">View on Google Maps</a>');
+                parts.push('<a href="' + encodeURI(place.link) + '" target="_blank" rel="noopener noreferrer">在 Google Maps 中查看</a>');
             }
             return parts.join('<br>');
         }
@@ -103,7 +133,7 @@
         }
 
         function showEmptyState(map, listEl) {
-            listEl.innerHTML = '<p class="map-empty">No places with coordinates were found for this job.</p>';
+            listEl.innerHTML = '<p class="map-empty">没有找到带坐标的结果。</p>';
             map.setView([0, 0], 2);
         }
 

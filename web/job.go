@@ -84,7 +84,7 @@ func (d *JobData) Validate() error {
 		return errors.New("missing lang")
 	}
 
-	if len(d.Lang) != 2 {
+	if len(d.Lang) != 2 && d.Lang != "zh-CN" {
 		return errors.New("invalid lang")
 	}
 

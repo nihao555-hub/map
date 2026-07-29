@@ -26,6 +26,7 @@ type Place struct {
 	Phone        string  `json:"phone"`
 	Website      string  `json:"website"`
 	ReviewRating float64 `json:"review_rating"`
+	ReviewCount  int     `json:"review_count"`
 }
 
 // GetPlaces locates the job's CSV output and parses it into mappable places.
@@ -129,6 +130,7 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 			Phone:        get(row, "phone"),
 			Website:      get(row, "website"),
 			ReviewRating: rating,
+			ReviewCount:  parseInt(get(row, "review_count")),
 		})
 	}
 
@@ -138,4 +140,10 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 // finite reports whether f is a usable, real number (not NaN or ±Inf).
 func finite(f float64) bool {
 	return !math.IsNaN(f) && !math.IsInf(f, 0)
+}
+
+func parseInt(value string) int {
+	parsed, _ := strconv.Atoi(value)
+
+	return parsed
 }
