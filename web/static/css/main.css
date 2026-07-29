@@ -321,6 +321,10 @@ textarea {
     transition: background .15s, transform .15s;
 }
 
+.primary-button:not(:disabled) {
+    box-shadow: 0 10px 20px rgba(37, 99, 235, .28);
+}
+
 .primary-button:hover:not(:disabled) {
     background: var(--accent-dark);
     transform: translateY(-1px);
@@ -328,7 +332,10 @@ textarea {
 
 .primary-button:disabled {
     cursor: not-allowed;
-    opacity: .45;
+    color: #94a3b8;
+    background: #e2e8f0;
+    box-shadow: none;
+    opacity: 1;
 }
 
 .spinner {
@@ -495,6 +502,67 @@ textarea {
     padding: clamp(22px, 4vw, 34px);
 }
 
+.job-list {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.job-card {
+    display: grid;
+    gap: var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+}
+
+.job-card-header,
+.job-card-meta,
+.job-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.job-heading {
+    min-width: 0;
+}
+
+.job-label {
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.job-name {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    font-size: var(--text-lg);
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.job-card-meta {
+    justify-content: flex-start;
+    color: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.job-card-meta span {
+    font-size: var(--text-xs);
+}
+
+.job-card-actions {
+    justify-content: flex-start;
+    border-top: 1px solid var(--line);
+    padding-top: var(--space-3);
+}
+
 .section-heading {
     display: flex;
     justify-content: space-between;
@@ -581,6 +649,19 @@ th {
     font-weight: 700;
 }
 
+.button:hover {
+    filter: brightness(.97);
+}
+
+.button:active {
+    transform: translateY(1px);
+}
+
+.button:disabled {
+    cursor: not-allowed;
+    opacity: .55;
+}
+
 .button-secondary {
     border-color: #bfdbfe;
     color: var(--accent-dark);
@@ -594,6 +675,8 @@ th {
 }
 
 .empty-state {
+    border: 1px dashed var(--line);
+    border-radius: var(--radius-md);
     padding: 28px 10px;
     color: var(--muted);
     text-align: center;
@@ -734,6 +817,11 @@ footer {
     }
 
     .section-heading {
+        align-items: start;
+        flex-direction: column;
+    }
+
+    .job-card-header {
         align-items: start;
         flex-direction: column;
     }

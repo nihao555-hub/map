@@ -21,7 +21,7 @@
 
             <form id="scrape-form"
                   hx-post="/scrape"
-                  hx-target="#job-table tbody"
+                  hx-target="#job-list"
                   hx-swap="afterbegin"
                   hx-indicator="#spinner"
                   hx-on::config-request="configureScrape(event)"
@@ -130,21 +130,9 @@
                     <span class="eyebrow">任务记录</span>
                     <h2>我的抓取任务</h2>
                 </div>
-                <span class="polling-note">每 5 秒自动更新</span>
+                <span class="polling-note">任务列表每 15 秒更新，进度实时刷新</span>
             </div>
-            <div class="table-scroll">
-                <table id="job-table">
-                    <thead>
-                        <tr>
-                            <th>任务名称</th>
-                            <th>创建时间</th>
-                            <th>状态</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody hx-get="/jobs" hx-trigger="load, every 5s"></tbody>
-                </table>
-            </div>
+            <div id="job-list" class="job-list" hx-get="/jobs" hx-trigger="load, every 15s" hx-swap="innerHTML"></div>
         </section>
 
         <footer>

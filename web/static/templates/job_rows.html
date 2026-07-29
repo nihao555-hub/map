@@ -1,15 +1,24 @@
 {{range .}}
-<tr>
-    <td class="job-name" title="{{.Name}}">{{.Name}}</td>
-    <td class="job-date">{{.Date.Format "2006-01-02 15:04"}}</td>
-    <td><span class="status-badge status-{{.Status}}">{{if eq .Status "working"}}进行中{{else if eq .Status "ok"}}已完成{{else if eq .Status "failed"}}失败{{else}}排队中{{end}}</span></td>
-    <td class="actions">
-        <div class="job-actions">{{if eq .Status "ok"}}<button type="button" class="button button-secondary" hx-get="/view?id={{.ID}}" hx-target="#map-modal-container" hx-swap="innerHTML">查看结果</button><a href="/download?id={{.ID}}" download class="button button-secondary">下载 CSV</a>{{end}}
-        <button hx-delete="/delete?id={{.ID}}" hx-target="closest tr" hx-swap="outerHTML" hx-confirm="确定要删除这个任务吗？" class="button button-danger">删除</button>
+<article class="job-card" id="job-card-{{.ID}}">
+    <div class="job-card-header">
+        <div class="job-heading">
+            <span class="job-label">任务名称</span>
+            <strong class="job-name" title="{{.Name}}">{{.Name}}</strong>
         </div>
-        <div id="progress-{{.ID}}" class="progress-card progress-loading" hx-get="/progress?id={{.ID}}" hx-trigger="load" hx-swap="outerHTML">正在加载实时进度…</div>
-    </td>
-</tr>
+        <span class="status-badge status-{{.Status}}">{{if eq .Status "working"}}进行中{{else if eq .Status "ok"}}已完成{{else if eq .Status "failed"}}失败{{else}}排队中{{end}}</span>
+    </div>
+    <div class="job-card-meta">
+        <span>创建时间</span>
+        <time datetime="{{.Date.Format "2006-01-02T15:04:05Z07:00"}}">{{.Date.Format "2006-01-02 15:04"}}</time>
+    </div>
+    <div id="progress-{{.ID}}" class="progress-card progress-loading" hx-get="/progress?id={{.ID}}" hx-trigger="load" hx-swap="outerHTML">正在加载实时进度…</div>
+    <div class="job-card-actions">
+        <div class="job-actions">
+            {{if eq .Status "ok"}}<button type="button" class="button button-secondary" hx-get="/view?id={{.ID}}" hx-target="#map-modal-container" hx-swap="innerHTML">查看结果</button><a href="/download?id={{.ID}}" download class="button button-secondary">下载 CSV</a>{{end}}
+            <button hx-delete="/delete?id={{.ID}}" hx-target="closest .job-card" hx-swap="outerHTML" hx-confirm="确定要删除这个任务吗？" class="button button-danger">删除</button>
+        </div>
+    </div>
+</article>
 {{else}}
-<tr><td colspan="4" class="empty-state">还没有抓取任务，先创建一个吧。</td></tr>
+<div class="empty-state">还没有抓取任务，先创建一个吧。</div>
 {{end}}
