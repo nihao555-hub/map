@@ -1,0 +1,14 @@
+services:
+  xray:
+    image: teddysun/xray:latest
+    volumes:
+      - ./deploy/xray/config.json:/etc/xray/config.json:ro
+    expose:
+      - "1080"
+      - "1081"
+    mem_limit: 256m
+    restart: unless-stopped
+
+  scraper:
+    depends_on:
+      - xray

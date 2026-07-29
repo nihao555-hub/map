@@ -314,6 +314,61 @@ Then open http://localhost:8080 in your browser.
 
 Or download the [binary release](https://github.com/gosom/google-maps-scraper/releases) for your platform.
 
+For a code-specific visual handoff covering the HTML fragments, HTMX contracts,
+CSS tokens, responsive behavior, and safe redesign boundaries, see
+[docs/frontend.md](docs/frontend.md).
+
+#### Public deployment
+
+For a small VPS, the included deployment stack adds Nginx gzip, long-running
+proxy timeouts, per-IP rate limiting on job creation, a 1.5 GiB container limit, and persistent
+scrape data:
+
+```bash
+docker compose -f docker-compose.deploy.yaml up -d
+```
+
+The compose file builds the image from this repository, so it includes the
+current Chinese frontend rather than the upstream published image. Nginx
+publishes the application on port `8080` because some target servers already
+use port 80. Allow TCP 8080 in the cloud security group before testing:
+
+```bash
+docker compose -f docker-compose.deploy.yaml build
+docker compose -f docker-compose.deploy.yaml up -d
+curl http://127.0.0.1:8080/
+```
+
+The application intentionally has no authentication. Anyone who can reach the
+port can view and download all jobs and results. Put it behind an existing
+authenticated gateway or firewall if the endpoint is not meant to be public.
+The Nginx rate limit applies to expensive `POST /scrape` and
+`POST /api/v1/jobs` creation requests only; normal UI polling, static assets,
+results viewing, and downloads are not subject to that strict limit.
+
+Tune web-mode capacity with environment variables before starting. The deploy
+compose defaults are suitable for a modest VPS:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GMS_WEB_CONCURRENCY` | `2` | Maximum active scrape concurrency |
+| `GMS_WEB_BROWSER_POOL_SIZE` | `1` | Browser contexts in the pool |
+| `GMS_WEB_PAGES_PER_BROWSER` | `2` | Pages per browser context |
+
+Jobs beyond the active concurrency remain queued. This deployment intentionally
+has no login; usage statistics are available from `/api/v1/stats`.
+
+Recommended starting points:
+
+| VM size | Concurrency | Browser pool | Pages/browser | Memory |
+|---------|-------------|--------------|---------------|--------|
+| 2C4G | 2 | 1 | 2 | 1.5 GiB |
+| 4C8G | 4 | 2 | 4 | 4 GiB |
+| 8C16G | 8 | 4 | 4 | 8 GiB |
+
+邮箱抓取会访问每个商家网站，非 fast mode 会采集更多数据；这两种设置
+都会明显增加 CPU、网络和内存消耗。请先从较低配置开始观察实际负载。
+
 > **Note:** Results take at least 3 minutes to appear (minimum configured runtime).
 > 
 > **macOS Users:** Docker command may not work. See [MacOS Instructions](MacOS%20instructions.md).

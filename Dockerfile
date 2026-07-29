@@ -4,6 +4,10 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 ENV PLAYWRIGHT_DRIVER_PATH=/opt/ms-playwright-go
 ARG TARGETARCH
 ARG PLAYWRIGHT_GO_VERSION=v0.6100.0
+ARG GOPROXY=https://proxy.golang.org,direct
+ARG PLAYWRIGHT_DOWNLOAD_HOST=
+ENV GOPROXY=${GOPROXY}
+ENV PLAYWRIGHT_DOWNLOAD_HOST=${PLAYWRIGHT_DOWNLOAD_HOST}
 
 RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
     && apt-get update \
@@ -24,6 +28,8 @@ RUN export PATH=$PATH:/usr/local/go/bin:/root/go/bin \
 
 # Build stage
 FROM golang:1.26.5-trixie AS builder
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -32,11 +38,16 @@ RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /usr/bin/google-maps-scraper
 
 # Final stage
 FROM debian:trixie-slim
+ARG APT_MIRROR=
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 ENV PLAYWRIGHT_DRIVER_PATH=/opt/ms-playwright-go
 
 # Install only the necessary dependencies in a single layer
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|http://deb.debian.org|http://$APT_MIRROR|g; s|http://security.debian.org|http://$APT_MIRROR|g" \
+        /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+    fi \
+    && apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libnss3 \
     libnspr4 \

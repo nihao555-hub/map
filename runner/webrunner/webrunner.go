@@ -7,13 +7,17 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gosom/google-maps-scraper/deduper"
 	"github.com/gosom/google-maps-scraper/exiter"
+	"github.com/gosom/google-maps-scraper/geocode"
+	"github.com/gosom/google-maps-scraper/grid"
 	"github.com/gosom/google-maps-scraper/runner"
 	"github.com/gosom/google-maps-scraper/tlmt"
 	"github.com/gosom/google-maps-scraper/web"
@@ -22,6 +26,12 @@ import (
 	"github.com/gosom/scrapemate/adapters/writers/csvwriter"
 	"github.com/gosom/scrapemate/scrapemateapp"
 	"golang.org/x/sync/errgroup"
+)
+
+const (
+	kmPerDegreeLat              = 111.32
+	minCosLatitude              = 1e-6
+	defaultCoverageRadiusMeters = 10000.0
 )
 
 type webrunner struct {
@@ -67,6 +77,13 @@ func New(cfg *runner.Config) (runner.Runner, error) {
 		cfg:       cfg,
 		setupMate: defaultSetupMate(cfg),
 	}
+
+	log.Printf(
+		"web capacity: concurrency=%d browser_pool_size=%d pages_per_browser=%d",
+		cfg.Concurrency,
+		cfg.BrowserPoolSize,
+		cfg.MaxPagesPerBrowser,
+	)
 
 	return &ans, nil
 }
@@ -145,6 +162,12 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		return err
 	}
 
+	w.svc.MarkStarted(job.ID, time.Now().UTC())
+
+	defer func() {
+		w.svc.MarkFinished(job.ID, time.Now().UTC())
+	}()
+
 	if len(job.Data.Keywords) == 0 {
 		job.Status = web.StatusFailed
 
@@ -189,26 +212,57 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 	dedup := deduper.New()
 	exitMonitor := exiter.New()
 
-	seedJobs, err := runner.CreateSeedJobs(
-		job.Data.FastMode,
-		job.Data.Lang,
-		strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
-		job.Data.Depth,
-		job.Data.Email,
-		coords,
-		job.Data.Zoom,
-		func() float64 {
-			if job.Data.Radius <= 0 {
-				return 10000 // 10 km
+	var seedJobs []scrapemate.IJob
+
+	if job.Data.FullCoverage {
+		bbox, bboxErr := coverageBoundingBox(ctx, job)
+		if bboxErr != nil {
+			job.Status = web.StatusFailed
+
+			if err2 := w.svc.Update(ctx, job); err2 != nil {
+				log.Printf("failed to update job status: %v", err2)
 			}
 
-			return float64(job.Data.Radius)
-		}(),
-		dedup,
-		exitMonitor,
-		w.cfg.ExtraReviews || job.Data.ExtraReviews,
-	)
+			return bboxErr
+		}
+
+		seedJobs, err = runner.CreateGridSeedJobs(
+			job.Data.Lang,
+			strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
+			job.Data.Depth,
+			job.Data.Email,
+			bbox,
+			job.Data.GridCell,
+			job.Data.Zoom,
+			dedup,
+			exitMonitor,
+			w.cfg.ExtraReviews || job.Data.ExtraReviews,
+		)
+	} else {
+		seedJobs, err = runner.CreateSeedJobs(
+			job.Data.FastMode,
+			job.Data.Lang,
+			strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
+			job.Data.Depth,
+			job.Data.Email,
+			coords,
+			job.Data.Zoom,
+			func() float64 {
+				if job.Data.Radius <= 0 {
+					return 10000 // 10 km
+				}
+
+				return float64(job.Data.Radius)
+			}(),
+			dedup,
+			exitMonitor,
+			w.cfg.ExtraReviews || job.Data.ExtraReviews,
+		)
+	}
+
 	if err != nil {
+		job.Status = web.StatusFailed
+
 		err2 := w.svc.Update(ctx, job)
 		if err2 != nil {
 			log.Printf("failed to update job status: %v", err2)
@@ -243,6 +297,8 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 			cancel()
 
+			job.Status = web.StatusFailed
+
 			err2 := w.svc.Update(ctx, job)
 			if err2 != nil {
 				log.Printf("failed to update job status: %v", err2)
@@ -257,6 +313,72 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 	job.Status = web.StatusOK
 
 	return w.svc.Update(ctx, job)
+}
+
+func hasCoordinates(lat, lon string) bool {
+	lat = strings.TrimSpace(lat)
+	lon = strings.TrimSpace(lon)
+
+	if lat == "" || lon == "" {
+		return false
+	}
+
+	return lat != "0" || lon != "0"
+}
+
+// coverageBoundingBox resolves the area a full coverage job should sweep. An
+// explicit bounding box wins; otherwise a square is derived from the job
+// coordinates and its radius (metres).
+func coverageBoundingBox(ctx context.Context, job *web.Job) (grid.BoundingBox, error) {
+	if job.Data.GridBBox != "" {
+		return grid.ParseBoundingBox(job.Data.GridBBox)
+	}
+
+	if !hasCoordinates(job.Data.Lat, job.Data.Lon) {
+		if job.Data.Location == "" {
+			return grid.BoundingBox{}, fmt.Errorf("full coverage needs a location, coordinates or a bounding box")
+		}
+
+		bbox, err := geocode.New().BoundingBox(ctx, job.Data.Location)
+		if err != nil {
+			return grid.BoundingBox{}, fmt.Errorf("could not resolve %q: %w", job.Data.Location, err)
+		}
+
+		return bbox, nil
+	}
+
+	lat, err := strconv.ParseFloat(strings.TrimSpace(job.Data.Lat), 64)
+	if err != nil {
+		return grid.BoundingBox{}, fmt.Errorf("invalid latitude %q: %w", job.Data.Lat, err)
+	}
+
+	lon, err := strconv.ParseFloat(strings.TrimSpace(job.Data.Lon), 64)
+	if err != nil {
+		return grid.BoundingBox{}, fmt.Errorf("invalid longitude %q: %w", job.Data.Lon, err)
+	}
+
+	radiusMeters := float64(job.Data.Radius)
+	if radiusMeters <= 0 {
+		radiusMeters = defaultCoverageRadiusMeters
+	}
+
+	const metersPerKm = 1000.0
+
+	latDelta := (radiusMeters / metersPerKm) / kmPerDegreeLat
+
+	cosLat := math.Cos(lat * math.Pi / 180)
+	if math.Abs(cosLat) < minCosLatitude {
+		cosLat = minCosLatitude
+	}
+
+	lonDelta := (radiusMeters / metersPerKm) / (kmPerDegreeLat * math.Abs(cosLat))
+
+	return grid.BoundingBox{
+		MinLat: math.Max(lat-latDelta, -90),
+		MinLon: math.Max(lon-lonDelta, -180),
+		MaxLat: math.Min(lat+latDelta, 90),
+		MaxLon: math.Min(lon+lonDelta, 180),
+	}, nil
 }
 
 func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.Job) (mateRunner, error) {
