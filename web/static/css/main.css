@@ -96,7 +96,7 @@ summary:focus-visible {
 
 .workspace {
     display: grid;
-    grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+    grid-template-columns: minmax(380px, 420px) minmax(0, 1fr);
     align-items: start;
     gap: clamp(24px, 4vw, 48px);
 }
@@ -117,7 +117,7 @@ summary:focus-visible {
 
 .hero-card {
     margin: 0;
-    padding: clamp(28px, 5vw, 54px);
+    padding: 28px;
 }
 
 .results-column {
@@ -127,7 +127,7 @@ summary:focus-visible {
 #job-list {
     display: grid;
     gap: var(--space-5);
-    margin-top: var(--space-5);
+    margin-top: 0;
 }
 
 #results-container {
@@ -135,7 +135,7 @@ summary:focus-visible {
 }
 
 .hero-copy {
-    margin-bottom: 34px;
+    margin-bottom: 22px;
     text-align: center;
 }
 
@@ -154,8 +154,8 @@ p {
 }
 
 h1 {
-    margin-bottom: 10px;
-    font-size: var(--text-display);
+    margin-bottom: 8px;
+    font-size: clamp(1.9rem, 3vw, 2.35rem);
     letter-spacing: -.045em;
     line-height: 1.1;
 }
@@ -172,8 +172,8 @@ h2 {
 
 .primary-fields {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 18px;
+    grid-template-columns: 1fr;
+    gap: 14px;
 }
 
 .batch-preview {
@@ -237,12 +237,12 @@ textarea {
 
 .chip {
     border: 1px solid #dbe4f0;
-    min-height: 36px;
+    min-height: 30px;
     border-radius: 999px;
-    padding: 5px 10px;
+    padding: 4px 8px;
     color: #475569;
     background: #f8fafc;
-    font-size: .78rem;
+    font-size: .75rem;
 }
 
 .chip:hover {
@@ -806,13 +806,28 @@ footer {
 }
 
 .workspace-empty {
-    margin: var(--space-5) 0 0;
+    display: grid;
+    min-height: 360px;
+    align-content: center;
+    justify-items: center;
+    gap: var(--space-2);
+    margin: 0;
     padding: var(--space-5);
     border: 1px dashed var(--line-strong);
     border-radius: var(--radius-lg);
     color: var(--muted);
     background: var(--surface);
     text-align: center;
+}
+
+.workspace-empty strong {
+    color: var(--ink);
+    font-size: 1.1rem;
+}
+
+.workspace-empty span {
+    color: var(--muted);
+    font-size: var(--text-sm);
 }
 
 .results-table .extra-column {

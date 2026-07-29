@@ -63,5 +63,8 @@
     </div>
 </section>
 {{else}}
-<p class="workspace-empty">{{if $hasJobs}}暂无历史任务{{else}}右侧会实时显示抓取进度和结果{{end}}</p>
+<p class="workspace-empty">
+    <strong>{{if $hasJobs}}暂无历史任务{{else}}右侧会实时显示抓取进度和结果{{end}}</strong>
+    <span>提交搜索后，进度、历史任务和结果表都会出现在这里。</span>
+</p>
 {{end}}
