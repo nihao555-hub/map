@@ -1,10 +1,9 @@
 <div id="progress-{{.ID}}" class="progress-card progress-{{.Status}}" {{if or (eq .Status "pending") (eq .Status "working")}}hx-get="/progress?id={{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
     <div class="progress-card-header">
         <div>
-            <span class="progress-kicker">实时进度</span>
+            <span class="progress-kicker">抓取进度</span>
             <strong>{{if eq .Status "ok"}}已完成，共 {{.Count}} 条{{else if eq .Status "failed"}}抓取失败{{else}}正在抓取{{end}}</strong>
         </div>
-        <span class="status-badge status-{{.Status}}">{{if eq .Status "working"}}进行中{{else if eq .Status "ok"}}已完成{{else if eq .Status "failed"}}失败{{else}}排队中{{end}}</span>
     </div>
     {{if or (eq .Status "pending") (eq .Status "working")}}
     <div class="progress-track" aria-label="抓取进行中"><span></span></div>

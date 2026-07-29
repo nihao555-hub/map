@@ -2,13 +2,12 @@
 <article class="job-card" id="job-card-{{.ID}}">
     <div class="job-card-header">
         <div class="job-heading">
-            <span class="job-label">任务名称</span>
             <strong class="job-name" title="{{.Name}}">{{.Name}}</strong>
         </div>
         <span class="status-badge status-{{.Status}}">{{if eq .Status "working"}}进行中{{else if eq .Status "ok"}}已完成{{else if eq .Status "failed"}}失败{{else}}排队中{{end}}</span>
     </div>
     <div class="job-card-meta">
-        <span>创建时间</span>
+        <span class="meta-label">创建时间</span>
         <time datetime="{{.Date.Format "2006-01-02T15:04:05Z07:00"}}">{{.Date.Format "2006-01-02 15:04"}}</time>
     </div>
     <div id="progress-{{.ID}}" class="progress-card progress-loading" hx-get="/progress?id={{.ID}}" hx-trigger="load" hx-swap="outerHTML">正在加载实时进度…</div>

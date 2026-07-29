@@ -157,6 +157,22 @@
         return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(businessType.value + location.value) ? 'zh' : 'en';
     }
 
+    function formatJobTimestamp(date) {
+        const parts = new Intl.DateTimeFormat('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        }).formatToParts(date).reduce(function (values, part) {
+            values[part.type] = part.value;
+            return values;
+        }, {});
+
+        return parts.year + '-' + parts.month + '-' + parts.day + ' ' + parts.hour + ':' + parts.minute;
+    }
+
     function setSubmitState() {
         submitButton.disabled = !businessType.value.trim();
     }
@@ -175,7 +191,7 @@
         const depth = document.querySelector('input[data-depth]:checked').dataset.depth;
         delete event.detail.parameters.quantity;
         const title = businessType.value.trim() + (location.value.trim() ? ' · ' + location.value.trim() : '');
-        event.detail.parameters.name = title + ' · ' + new Date().toLocaleString();
+        event.detail.parameters.name = title + ' · ' + formatJobTimestamp(new Date());
         event.detail.parameters.keywords = composeKeywords();
         event.detail.parameters.lang = document.getElementById('advanced-lang').value.trim() || inferredLanguage();
         event.detail.parameters.zoom = document.getElementById('advanced-zoom').value || '15';
