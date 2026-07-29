@@ -24,7 +24,7 @@
                   hx-target="#job-table tbody"
                   hx-swap="afterbegin"
                   hx-indicator="#spinner"
-                  hx-on::before-request="prepareScrape(event)"
+                  hx-on::config-request="configureScrape(event)"
                   hx-on::after-request="finishScrape(event)">
                 <div class="primary-fields">
                     <div class="form-group">
@@ -64,9 +64,9 @@
                 <fieldset class="quantity-picker">
                     <legend>抓取数量</legend>
                     <div class="segmented-control">
-                        <label><input type="radio" name="quantity" value="1" checked><span>少量（快）<small>约 1 分钟</small></span></label>
-                        <label><input type="radio" name="quantity" value="5"><span>中等<small>约 1–3 分钟</small></span></label>
-                        <label><input type="radio" name="quantity" value="10"><span>大量（慢）<small>约 3–5 分钟</small></span></label>
+                        <label><input type="radio" name="quantity" data-depth="1" checked><span>少量（快）<small>约 1 分钟</small></span></label>
+                        <label><input type="radio" name="quantity" data-depth="5"><span>中等<small>约 1–3 分钟</small></span></label>
+                        <label><input type="radio" name="quantity" data-depth="10"><span>大量（慢）<small>约 3–5 分钟</small></span></label>
                     </div>
                 </fieldset>
 
@@ -75,7 +75,7 @@
                     <div class="advanced-grid">
                         <div class="form-group">
                             <label for="advanced-lang">语言代码</label>
-                            <input id="advanced-lang" type="text" placeholder="自动识别（en 或 zh-CN）">
+                            <input id="advanced-lang" type="text" placeholder="自动识别（en 或 zh）">
                         </div>
                         <div class="form-group checkbox-group">
                             <label><input id="advanced-email" type="checkbox"> 抓取邮箱</label>
@@ -116,19 +116,6 @@
                         <textarea id="advanced-proxies" rows="3" placeholder="HTTPS 代理：https://username:password@myproxy.local:443&#10;HTTP 代理：http://username:password@myproxy.local:443&#10;SOCKS5 代理：socks5://127.0.0.1:8000"></textarea>
                     </div>
                 </details>
-
-                <input type="hidden" name="name" id="hidden-name">
-                <input type="hidden" name="keywords" id="hidden-keywords">
-                <input type="hidden" name="lang" id="hidden-lang">
-                <input type="hidden" name="zoom" id="hidden-zoom">
-                <input type="hidden" name="latitude" id="hidden-latitude">
-                <input type="hidden" name="longitude" id="hidden-longitude">
-                <input type="hidden" name="radius" id="hidden-radius">
-                <input type="hidden" name="fastmode" id="hidden-fastmode">
-                <input type="hidden" name="email" id="hidden-email">
-                <input type="hidden" name="depth" id="hidden-depth">
-                <input type="hidden" name="maxtime" id="hidden-maxtime">
-                <input type="hidden" name="proxies" id="hidden-proxies">
 
                 <button id="submit-button" class="primary-button" type="submit" disabled>
                     开始抓取 <span aria-hidden="true">→</span>
@@ -179,7 +166,7 @@
     }
 
     function inferredLanguage() {
-        return /[\u3400-\u9fff]/.test(businessType.value + location.value) ? 'zh-CN' : 'en';
+        return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(businessType.value + location.value) ? 'zh' : 'en';
     }
 
     function setSubmitState() {
@@ -196,22 +183,24 @@
         }).join('\n');
     }
 
-    window.prepareScrape = function () {
-        const depth = document.querySelector('input[name="quantity"]:checked').value;
+    window.configureScrape = function (event) {
+        const depth = document.querySelector('input[data-depth]:checked').dataset.depth;
+        delete event.detail.parameters.quantity;
         const title = businessType.value.trim() + (location.value.trim() ? ' · ' + location.value.trim() : '');
-        document.getElementById('hidden-name').value = title + ' · ' + new Date().toLocaleString();
-        document.getElementById('hidden-keywords').value = composeKeywords();
-        document.getElementById('hidden-lang').value = document.getElementById('advanced-lang').value.trim() || inferredLanguage();
-        document.getElementById('hidden-zoom').value = document.getElementById('advanced-zoom').value || '15';
-        document.getElementById('hidden-latitude').value = document.getElementById('advanced-latitude').value || '0';
-        document.getElementById('hidden-longitude').value = document.getElementById('advanced-longitude').value || '0';
-        document.getElementById('hidden-radius').value = document.getElementById('advanced-radius').value || '10000';
-        document.getElementById('hidden-fastmode').value = document.getElementById('advanced-fastmode').checked ? 'on' : '';
-        document.getElementById('hidden-email').value = document.getElementById('advanced-email').checked ? 'on' : '';
-        document.getElementById('hidden-depth').value = depth;
-        document.getElementById('hidden-maxtime').value = document.getElementById('advanced-maxtime').value || '10m';
-        document.getElementById('hidden-proxies').value = document.getElementById('advanced-proxies').value;
+        event.detail.parameters.name = title + ' · ' + new Date().toLocaleString();
+        event.detail.parameters.keywords = composeKeywords();
+        event.detail.parameters.lang = document.getElementById('advanced-lang').value.trim() || inferredLanguage();
+        event.detail.parameters.zoom = document.getElementById('advanced-zoom').value || '15';
+        event.detail.parameters.latitude = document.getElementById('advanced-latitude').value || '0';
+        event.detail.parameters.longitude = document.getElementById('advanced-longitude').value || '0';
+        event.detail.parameters.radius = document.getElementById('advanced-radius').value || '10000';
+        event.detail.parameters.fastmode = document.getElementById('advanced-fastmode').checked ? 'on' : '';
+        event.detail.parameters.email = document.getElementById('advanced-email').checked ? 'on' : '';
+        event.detail.parameters.depth = depth;
+        event.detail.parameters.maxtime = document.getElementById('advanced-maxtime').value || '10m';
+        event.detail.parameters.proxies = document.getElementById('advanced-proxies').value;
         document.getElementById('error-container').innerHTML = '';
+        document.getElementById('success-container').innerHTML = '';
     };
 
     window.finishScrape = function (event) {
