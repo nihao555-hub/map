@@ -15,6 +15,14 @@ const (
 	StatusFailed  = "failed"
 )
 
+func hasCoordinates(lat, lon string) bool {
+	if lat == "" || lon == "" {
+		return false
+	}
+
+	return lat != "0" || lon != "0"
+}
+
 type SelectParams struct {
 	Status string
 	Limit  int
@@ -73,6 +81,10 @@ type JobData struct {
 	ExtraReviews bool          `json:"extra_reviews"`
 	MaxTime      time.Duration `json:"max_time"`
 	Proxies      []string      `json:"proxies"`
+	Location     string        `json:"location"`
+	FullCoverage bool          `json:"full_coverage"`
+	GridBBox     string        `json:"grid_bbox"`
+	GridCell     float64       `json:"grid_cell"`
 }
 
 func (d *JobData) Validate() error {
@@ -98,6 +110,10 @@ func (d *JobData) Validate() error {
 
 	if d.FastMode && (d.Lat == "" || d.Lon == "") {
 		return errors.New("missing geo coordinates")
+	}
+
+	if d.FullCoverage && d.GridBBox == "" && d.Location == "" && !hasCoordinates(d.Lat, d.Lon) {
+		return errors.New("full coverage requires a location, coordinates or a grid bounding box")
 	}
 
 	return nil

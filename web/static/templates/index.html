@@ -76,7 +76,9 @@
                         <label><input type="radio" name="quantity" data-depth="1" checked><span>少量（快）<small>约 1 分钟</small></span></label>
                         <label><input type="radio" name="quantity" data-depth="5"><span>中等<small>约 1–3 分钟</small></span></label>
                         <label><input type="radio" name="quantity" data-depth="10"><span>大量（慢）<small>约 3–5 分钟</small></span></label>
+                        <label><input type="radio" name="quantity" data-depth="10" data-full-coverage="1"><span>尽量全量<small>网格扫描，很慢</small></span></label>
                     </div>
+                    <p class="quantity-hint">「尽量全量」会把所在城市/区域切成网格逐格搜索并自动去重，能突破单次搜索约 120 条的上限，耗时可达数十分钟。</p>
                 </fieldset>
 
                 <details class="advanced-options">
@@ -109,6 +111,16 @@
                         <div class="form-group">
                             <label for="advanced-radius">搜索半径（米）</label>
                             <input id="advanced-radius" type="number" value="10000" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="advanced-grid-cell">网格边长（公里）</label>
+                            <input id="advanced-grid-cell" type="number" value="1" min="0.2" step="0.1">
+                            <small>仅「尽量全量」使用，越小越全但越慢</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="advanced-grid-bbox">网格边界（可选）</label>
+                            <input id="advanced-grid-bbox" type="text" placeholder="minLat,minLon,maxLat,maxLon">
+                            <small>留空则按「在哪里」自动定位，或用坐标+半径推算</small>
                         </div>
                         <div class="form-group">
                             <label for="advanced-maxtime">最长运行时间</label>
@@ -185,7 +197,9 @@
     }
 
     window.configureScrape = function (event) {
-        const depth = document.querySelector('input[data-depth]:checked').dataset.depth;
+        const quantity = document.querySelector('input[data-depth]:checked');
+        const depth = quantity.dataset.depth;
+        const fullCoverage = quantity.dataset.fullCoverage === '1';
         delete event.detail.parameters.quantity;
         const queryCount = composeKeywords().split('\n').filter(Boolean).length;
         if (queryCount > 50 && !window.confirm('本次将创建 ' + queryCount + ' 个搜索词，可能耗时较长。确定继续吗？')) {
@@ -195,9 +209,9 @@
         const title = businessType.value.trim() + (location.value.trim() ? ' · ' + location.value.trim() : '');
         event.detail.parameters.name = title;
         event.detail.parameters.keywords = composeKeywords();
+        event.detail.parameters.locations = location.value;
         if (!manualKeywords.value.trim()) {
             event.detail.parameters.business_types = businessType.value;
-            event.detail.parameters.locations = location.value;
         }
         event.detail.parameters.lang = document.getElementById('advanced-lang').value.trim() || inferredLanguage();
         event.detail.parameters.zoom = document.getElementById('advanced-zoom').value || '15';
@@ -207,7 +221,11 @@
         event.detail.parameters.fastmode = document.getElementById('advanced-fastmode').checked ? 'on' : '';
         event.detail.parameters.email = document.getElementById('advanced-email').checked ? 'on' : '';
         event.detail.parameters.depth = depth;
-        event.detail.parameters.maxtime = document.getElementById('advanced-maxtime').value || '10m';
+        event.detail.parameters.full_coverage = fullCoverage ? 'on' : '';
+        event.detail.parameters.grid_cell = document.getElementById('advanced-grid-cell').value || '1';
+        event.detail.parameters.grid_bbox = document.getElementById('advanced-grid-bbox').value.trim();
+        const maxTime = document.getElementById('advanced-maxtime').value.trim();
+        event.detail.parameters.maxtime = maxTime && maxTime !== '10m' ? maxTime : (fullCoverage ? '2h' : '10m');
         event.detail.parameters.proxies = document.getElementById('advanced-proxies').value;
         document.getElementById('error-container').innerHTML = '';
         document.getElementById('success-container').innerHTML = '';

@@ -206,6 +206,10 @@ func (s *Server) Start(ctx context.Context) error {
 	return nil
 }
 
+// defaultGridCellKm is the default grid cell edge length, in kilometres, used
+// when full coverage is requested without an explicit cell size.
+const defaultGridCellKm = 1.0
+
 type formData struct {
 	Name     string
 	MaxTime  string
@@ -387,6 +391,23 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newJob.Data.Email = r.Form.Get("email") == "on"
+
+	newJob.Data.Location = strings.TrimSpace(r.Form.Get("locations"))
+	newJob.Data.FullCoverage = r.Form.Get("full_coverage") == "on"
+	newJob.Data.GridBBox = strings.TrimSpace(r.Form.Get("grid_bbox"))
+
+	if cell := strings.TrimSpace(r.Form.Get("grid_cell")); cell != "" {
+		newJob.Data.GridCell, err = strconv.ParseFloat(cell, 64)
+		if err != nil || newJob.Data.GridCell <= 0 {
+			http.Error(w, "invalid grid cell size", http.StatusUnprocessableEntity)
+
+			return
+		}
+	}
+
+	if newJob.Data.FullCoverage && newJob.Data.GridCell == 0 {
+		newJob.Data.GridCell = defaultGridCellKm
+	}
 
 	proxies := strings.Split(r.Form.Get("proxies"), "\n")
 	if len(proxies) > 0 {
