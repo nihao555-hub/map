@@ -12,6 +12,8 @@ services:
       - ":8080"
       - "-data-folder"
       - "/data"
+      - "-proxies"
+      - "${GMS_PROXIES:-}"
     environment:
       GMS_WEB_CONCURRENCY: "${GMS_WEB_CONCURRENCY:-2}"
       GMS_WEB_BROWSER_POOL_SIZE: "${GMS_WEB_BROWSER_POOL_SIZE:-1}"
