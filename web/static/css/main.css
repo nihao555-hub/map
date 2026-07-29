@@ -2,13 +2,52 @@
     color-scheme: light;
     --accent: #2563eb;
     --accent-dark: #1d4ed8;
+    --accent-soft: #eff6ff;
     --ink: #172033;
     --muted: #64748b;
     --line: #e2e8f0;
     --surface: #ffffff;
+    --surface-raised: #f8fafc;
     --page: #f3f7fc;
     --danger: #dc2626;
     --success: #15803d;
+    --warning: #b45309;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+    --space-8: 64px;
+    --text-xs: .75rem;
+    --text-sm: .875rem;
+    --text-md: 1rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.75rem;
+    --text-display: clamp(2rem, 5vw, 3.25rem);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 18px;
+    --radius-xl: 24px;
+    --shadow-sm: 0 4px 12px rgba(30, 64, 100, .08);
+    --shadow-lg: 0 20px 55px rgba(30, 64, 100, .09);
+    --focus-ring: 0 0 0 4px rgba(37, 99, 235, .18);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        color-scheme: dark;
+        --ink: #e5e7eb;
+        --muted: #a8b3c2;
+        --line: #334155;
+        --surface: #172033;
+        --surface-raised: #202b3f;
+        --page: #0f172a;
+        --accent-soft: #172d52;
+        --shadow-sm: 0 4px 12px rgba(0, 0, 0, .2);
+        --shadow-lg: 0 20px 55px rgba(0, 0, 0, .3);
+    }
 }
 
 * {
@@ -46,6 +85,7 @@ textarea:focus-visible,
 summary:focus-visible {
     outline: 3px solid rgba(37, 99, 235, .28);
     outline-offset: 2px;
+    box-shadow: var(--focus-ring);
 }
 
 .page-shell {
@@ -57,9 +97,9 @@ summary:focus-visible {
 .hero-card,
 .jobs-card {
     background: var(--surface);
-    border: 1px solid rgba(226, 232, 240, .9);
-    border-radius: 24px;
-    box-shadow: 0 20px 55px rgba(30, 64, 100, .09);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
 }
 
 .hero-card {
@@ -89,7 +129,7 @@ p {
 
 h1 {
     margin-bottom: 10px;
-    font-size: clamp(2rem, 5vw, 3.25rem);
+    font-size: var(--text-display);
     letter-spacing: -.045em;
     line-height: 1.1;
 }
@@ -127,7 +167,8 @@ input[type="number"],
 textarea {
     width: 100%;
     border: 1px solid #cbd5e1;
-    border-radius: 12px;
+    min-height: 48px;
+    border-radius: var(--radius-md);
     padding: 13px 14px;
     color: var(--ink);
     background: #fff;
@@ -155,6 +196,7 @@ textarea {
 
 .chip {
     border: 1px solid #dbe4f0;
+    min-height: 36px;
     border-radius: 999px;
     padding: 5px 10px;
     color: #475569;
@@ -268,7 +310,8 @@ textarea {
 .primary-button {
     width: 100%;
     border: 0;
-    border-radius: 13px;
+    min-height: 52px;
+    border-radius: var(--radius-md);
     padding: 15px 18px;
     color: white;
     background: var(--accent);
@@ -313,6 +356,124 @@ textarea {
     margin-bottom: 18px;
     border-radius: 10px;
     padding: 11px 14px;
+}
+
+.progress-card {
+    min-width: 220px;
+    margin-top: var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    color: var(--ink);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-sm);
+}
+
+.progress-loading {
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.progress-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: var(--space-3);
+}
+
+.progress-card-header strong {
+    display: block;
+    font-size: var(--text-sm);
+}
+
+.progress-kicker {
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--accent);
+    font-size: var(--text-xs);
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.progress-track {
+    height: 8px;
+    overflow: hidden;
+    margin: var(--space-3) 0;
+    border-radius: 999px;
+    background: var(--line);
+}
+
+.progress-track span {
+    display: block;
+    width: 42%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+    animation: progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+    0% { transform: translateX(-120%); }
+    100% { transform: translateX(300%); }
+}
+
+.progress-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.progress-metrics b {
+    color: var(--ink);
+}
+
+.progress-placeholder {
+    margin: var(--space-2) 0 0;
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.latest-results {
+    display: grid;
+    gap: var(--space-1);
+    margin: var(--space-3) 0 0;
+    padding: 0;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    list-style: none;
+}
+
+.latest-results li {
+    overflow: hidden;
+    padding-left: var(--space-3);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.latest-results li::before {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin: 0 var(--space-2) 1px -12px;
+    border-radius: 50%;
+    background: var(--accent);
+    content: "";
+}
+
+.progress-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+}
+
+.job-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
 }
 
 .success-message:not(:empty),
@@ -412,7 +573,8 @@ th {
     display: inline-flex;
     align-items: center;
     border: 1px solid transparent;
-    border-radius: 8px;
+    min-height: 40px;
+    border-radius: var(--radius-sm);
     padding: 7px 10px;
     text-decoration: none;
     font-size: .78rem;
@@ -422,7 +584,7 @@ th {
 .button-secondary {
     border-color: #bfdbfe;
     color: var(--accent-dark);
-    background: #eff6ff;
+    background: var(--accent-soft);
 }
 
 .button-danger {
@@ -435,6 +597,17 @@ th {
     padding: 28px 10px;
     color: var(--muted);
     text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+    }
 }
 
 footer {

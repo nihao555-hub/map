@@ -1,0 +1,29 @@
+<div id="progress-{{.ID}}" class="progress-card progress-{{.Status}}" {{if or (eq .Status "pending") (eq .Status "working")}}hx-get="/progress?id={{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+    <div class="progress-card-header">
+        <div>
+            <span class="progress-kicker">实时进度</span>
+            <strong>{{if eq .Status "ok"}}已完成，共 {{.Count}} 条{{else if eq .Status "failed"}}抓取失败{{else}}正在抓取{{end}}</strong>
+        </div>
+        <span class="status-badge status-{{.Status}}">{{if eq .Status "working"}}进行中{{else if eq .Status "ok"}}已完成{{else if eq .Status "failed"}}失败{{else}}排队中{{end}}</span>
+    </div>
+    {{if or (eq .Status "pending") (eq .Status "working")}}
+    <div class="progress-track" aria-label="抓取进行中"><span></span></div>
+    {{end}}
+    <div class="progress-metrics">
+        <span><b>{{.Count}}</b> 条已抓取</span>
+        <span>已运行 <b data-elapsed="{{.ElapsedSeconds}}">{{.Elapsed}}</b></span>
+    </div>
+    {{if .LatestNames}}
+    <ul class="latest-results" aria-label="最新抓到的商家">
+        {{range .LatestNames}}<li>{{.}}</li>{{end}}
+    </ul>
+    {{else if or (eq .Status "pending") (eq .Status "working")}}
+    <p class="progress-placeholder">正在等待第一条结果…</p>
+    {{end}}
+    {{if eq .Status "ok"}}
+    <div class="progress-actions">
+        <button type="button" class="button button-secondary" hx-get="/view?id={{.ID}}" hx-target="#map-modal-container" hx-swap="innerHTML">查看结果</button>
+        <a href="/download?id={{.ID}}" download class="button button-secondary">下载 CSV</a>
+    </div>
+    {{end}}
+</div>

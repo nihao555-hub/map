@@ -4,8 +4,10 @@
     <td class="job-date">{{.Date.Format "2006-01-02 15:04"}}</td>
     <td><span class="status-badge status-{{.Status}}">{{if eq .Status "working"}}进行中{{else if eq .Status "ok"}}已完成{{else if eq .Status "failed"}}失败{{else}}排队中{{end}}</span></td>
     <td class="actions">
-        {{if eq .Status "ok"}}<button type="button" class="button button-secondary" hx-get="/view?id={{.ID}}" hx-target="#map-modal-container" hx-swap="innerHTML">查看结果</button><a href="/download?id={{.ID}}" download class="button button-secondary">下载 CSV</a>{{end}}
+        <div class="job-actions">{{if eq .Status "ok"}}<button type="button" class="button button-secondary" hx-get="/view?id={{.ID}}" hx-target="#map-modal-container" hx-swap="innerHTML">查看结果</button><a href="/download?id={{.ID}}" download class="button button-secondary">下载 CSV</a>{{end}}
         <button hx-delete="/delete?id={{.ID}}" hx-target="closest tr" hx-swap="outerHTML" hx-confirm="确定要删除这个任务吗？" class="button button-danger">删除</button>
+        </div>
+        <div id="progress-{{.ID}}" class="progress-card progress-loading" hx-get="/progress?id={{.ID}}" hx-trigger="load" hx-swap="outerHTML">正在加载实时进度…</div>
     </td>
 </tr>
 {{else}}

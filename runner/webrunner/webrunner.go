@@ -145,6 +145,12 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		return err
 	}
 
+	w.svc.MarkStarted(job.ID, time.Now().UTC())
+
+	defer func() {
+		w.svc.MarkFinished(job.ID, time.Now().UTC())
+	}()
+
 	if len(job.Data.Keywords) == 0 {
 		job.Status = web.StatusFailed
 

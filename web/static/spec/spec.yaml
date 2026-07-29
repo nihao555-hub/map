@@ -157,6 +157,35 @@ paths:
         '500':
           description: Internal server error
 
+  /api/v1/jobs/{id}/progress:
+    get:
+      summary: Get live progress for a scraping job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current scraping progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobProgress'
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          description: Invalid ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
 components:
   schemas:
     ApiError:
@@ -250,3 +279,19 @@ components:
           items:
             type: string
 
+    JobProgress:
+      type: object
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        elapsed_seconds:
+          type: integer
+        latest_names:
+          type: array
+          items:
+            type: string

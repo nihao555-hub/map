@@ -5,8 +5,74 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestCountCSVResults(t *testing.T) {
+	tests := []struct {
+		name   string
+		csv    string
+		count  int
+		latest []string
+	}{
+		{
+			name:   "header only",
+			csv:    "title,address\n",
+			count:  0,
+			latest: nil,
+		},
+		{
+			name:   "counts rows and keeps latest five names",
+			csv:    "title,address\nOne,1\nTwo,2\nThree,3\nFour,4\nFive,5\nSix,6\n",
+			count:  6,
+			latest: []string{"Two", "Three", "Four", "Five", "Six"},
+		},
+		{
+			name:   "handles quoted commas and incomplete trailing row",
+			csv:    "title,address\n\"Coffee, One\",A\n\"Coffee, Two\",B\n\"Incomplete",
+			count:  2,
+			latest: []string{"Coffee, One", "Coffee, Two"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			count, latest, err := countCSVResults(strings.NewReader(tt.csv))
+			if err != nil {
+				t.Fatalf("countCSVResults: %v", err)
+			}
+
+			if count != tt.count {
+				t.Fatalf("count = %d, want %d", count, tt.count)
+			}
+
+			if strings.Join(latest, "|") != strings.Join(tt.latest, "|") {
+				t.Fatalf("latest = %v, want %v", latest, tt.latest)
+			}
+		})
+	}
+}
+
+func TestFormatElapsed(t *testing.T) {
+	tests := []struct {
+		seconds int64
+		want    string
+	}{
+		{seconds: 0, want: "00:00"},
+		{seconds: 7, want: "00:07"},
+		{seconds: 65, want: "01:05"},
+		{seconds: 3661, want: "61:01"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := formatElapsed(tt.seconds); got != tt.want {
+				t.Fatalf("formatElapsed(%d) = %q, want %q", tt.seconds, got, tt.want)
+			}
+		})
+	}
+}
 
 func writeCSV(t *testing.T, dir, id, content string) {
 	t.Helper()

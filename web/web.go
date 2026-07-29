@@ -65,6 +65,11 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.delete(w, r)
 	})
 	mux.HandleFunc("/jobs", ans.getJobs)
+	mux.HandleFunc("/progress", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+
+		ans.progress(w, r)
+	})
 	mux.HandleFunc("/view", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 
@@ -107,6 +112,20 @@ func New(svc *Service, addr string) (*Server, error) {
 			renderJSON(w, http.StatusMethodNotAllowed, ans)
 		}
 	})
+	mux.HandleFunc("/api/v1/jobs/{id}/progress", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+
+		if r.Method != http.MethodGet {
+			renderJSON(w, http.StatusMethodNotAllowed, apiError{
+				Code:    http.StatusMethodNotAllowed,
+				Message: "Method not allowed",
+			})
+
+			return
+		}
+
+		ans.apiProgress(w, r)
+	})
 
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
@@ -132,6 +151,7 @@ func New(svc *Service, addr string) (*Server, error) {
 		"static/templates/index.html",
 		"static/templates/job_rows.html",
 		"static/templates/job_row.html",
+		"static/templates/progress.html",
 		"static/templates/job_view.html",
 		"static/templates/redoc.html",
 	}
@@ -399,6 +419,45 @@ func (s *Server) getJobs(w http.ResponseWriter, r *http.Request) {
 	_ = tmpl.Execute(w, jobs)
 }
 
+func (s *Server) progress(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
+		return
+	}
+
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Invalid ID", http.StatusUnprocessableEntity)
+
+		return
+	}
+
+	progress, err := s.svc.Progress(r.Context(), id.String())
+	if err != nil {
+		http.Error(w, "job not found", http.StatusNotFound)
+
+		return
+	}
+
+	tmpl, ok := s.tmpl["static/templates/progress.html"]
+	if !ok {
+		http.Error(w, "missing tpl", http.StatusInternalServerError)
+
+		return
+	}
+
+	_ = tmpl.Execute(w, struct {
+		ID string
+		JobProgress
+		Elapsed string
+	}{
+		ID:          id.String(),
+		JobProgress: progress,
+		Elapsed:     formatElapsed(progress.ElapsedSeconds),
+	})
+}
+
 func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -587,6 +646,30 @@ func (s *Server) apiGetJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderJSON(w, http.StatusOK, job)
+}
+
+func (s *Server) apiProgress(w http.ResponseWriter, r *http.Request) {
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		renderJSON(w, http.StatusUnprocessableEntity, apiError{
+			Code:    http.StatusUnprocessableEntity,
+			Message: "Invalid ID",
+		})
+
+		return
+	}
+
+	progress, err := s.svc.Progress(r.Context(), id.String())
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: http.StatusText(http.StatusNotFound),
+		})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, progress)
 }
 
 // viewJob renders the map modal fragment for a job, embedding the job's places
