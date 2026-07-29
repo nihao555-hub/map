@@ -5,6 +5,7 @@ services:
       args:
         GOPROXY: "${GOPROXY:-https://proxy.golang.org,direct}"
         PLAYWRIGHT_DOWNLOAD_HOST: "${PLAYWRIGHT_DOWNLOAD_HOST:-}"
+        APT_MIRROR: "${APT_MIRROR:-}"
     command:
       - "-web"
       - "-addr"

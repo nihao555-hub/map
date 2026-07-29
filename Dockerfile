@@ -38,11 +38,16 @@ RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o /usr/bin/google-maps-scraper
 
 # Final stage
 FROM debian:trixie-slim
+ARG APT_MIRROR=
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 ENV PLAYWRIGHT_DRIVER_PATH=/opt/ms-playwright-go
 
 # Install only the necessary dependencies in a single layer
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|http://deb.debian.org|http://$APT_MIRROR|g; s|http://security.debian.org|http://$APT_MIRROR|g" \
+        /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+    fi \
+    && apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libnss3 \
     libnspr4 \
