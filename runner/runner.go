@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -149,6 +150,10 @@ func ParseConfig() *Config {
 
 	flag.Parse()
 
+	cfg.Concurrency = envInt("GMS_WEB_CONCURRENCY", cfg.Concurrency)
+	cfg.BrowserPoolSize = envInt("GMS_WEB_BROWSER_POOL_SIZE", cfg.BrowserPoolSize)
+	cfg.MaxPagesPerBrowser = envInt("GMS_WEB_PAGES_PER_BROWSER", cfg.MaxPagesPerBrowser)
+
 	if cfg.Version {
 		info, ok := debug.ReadBuildInfo()
 		if !ok {
@@ -240,6 +245,20 @@ func ParseConfig() *Config {
 	}
 
 	return &cfg
+}
+
+func envInt(name string, fallback int) int {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
 }
 
 var (

@@ -314,6 +314,27 @@ Then open http://localhost:8080 in your browser.
 
 Or download the [binary release](https://github.com/gosom/google-maps-scraper/releases) for your platform.
 
+#### Public deployment
+
+For a small VPS, the included deployment stack adds Nginx gzip, long-running
+proxy timeouts, per-IP rate limiting, a 1 GiB container limit, and persistent
+scrape data:
+
+```bash
+docker compose -f docker-compose.deploy.yaml up -d
+```
+
+Tune web-mode capacity with environment variables before starting:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GMS_WEB_CONCURRENCY` | `1` | Maximum active scrape concurrency |
+| `GMS_WEB_BROWSER_POOL_SIZE` | `1` | Browser contexts in the pool |
+| `GMS_WEB_PAGES_PER_BROWSER` | `1` | Pages per browser context |
+
+Jobs beyond the active concurrency remain queued. This deployment intentionally
+has no login; usage statistics are available from `/api/v1/stats`.
+
 > **Note:** Results take at least 3 minutes to appear (minimum configured runtime).
 > 
 > **macOS Users:** Docker command may not work. See [MacOS Instructions](MacOS%20instructions.md).
