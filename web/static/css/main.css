@@ -91,26 +91,32 @@ summary:focus-visible {
 }
 
 .page-shell {
+    display: flex;
     width: 100%;
     height: 100%;
+    flex-direction: column;
+    gap: clamp(12px, 1.5vw, 20px);
     margin: 0 auto;
-    padding: clamp(16px, 2vw, 28px) clamp(16px, 2vw, 32px);
+    padding: clamp(12px, 1.5vw, 24px) clamp(12px, 1.5vw, 28px);
     overflow: hidden;
 }
 
 .workspace {
     display: grid;
-    height: 100%;
-    grid-template-columns: minmax(340px, 26vw) minmax(0, 1fr);
+    min-height: 0;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(300px, 24vw) minmax(0, 1fr);
     align-items: stretch;
-    gap: clamp(16px, 2vw, 32px);
+    gap: clamp(14px, 1.6vw, 28px);
 }
 
 .control-column,
 .results-column {
+    min-height: 0;
     height: 100%;
     overflow-y: auto;
-    padding-right: 4px;
+    scrollbar-gutter: stable;
+    padding-right: 6px;
 }
 
 .hero-card,
@@ -124,7 +130,7 @@ summary:focus-visible {
 
 .hero-card {
     margin: 0;
-    padding: 28px;
+    padding: clamp(16px, 1.6vw, 28px);
 }
 
 .results-column {
@@ -162,7 +168,7 @@ p {
 
 h1 {
     margin-bottom: 8px;
-    font-size: clamp(1.9rem, 3vw, 2.35rem);
+    font-size: clamp(1.45rem, 1.9vw, 2.1rem);
     letter-spacing: -.045em;
     line-height: 1.1;
 }
@@ -975,9 +981,9 @@ footer {
 
 .stats-strip {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 1px;
-    margin: var(--space-5) 0 0;
+    margin: 0;
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     overflow: hidden;
