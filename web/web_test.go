@@ -41,7 +41,7 @@ func TestViewJobRendersPlaces(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{`id="results-modal"`, `结果列表`, `Place`} {
+	for _, want := range []string{`class="results-panel"`, `结果列表`, `Place`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}

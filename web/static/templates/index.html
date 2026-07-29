@@ -9,6 +9,13 @@
 </head>
 <body>
     <main class="page-shell">
+        <div id="stats-container"
+             hx-get="/stats"
+             hx-trigger="load, every 15s"
+             hx-swap="innerHTML"></div>
+
+        <div class="workspace">
+            <aside class="control-column">
         <section class="hero-card">
             <div class="hero-copy">
                 <span class="eyebrow">Google Maps 商家采集</span>
@@ -125,21 +132,17 @@
                 <div id="spinner" class="spinner" aria-hidden="true"></div>
             </form>
         </section>
-
-        <div id="stats-container"
-             hx-get="/stats"
-             hx-trigger="load, every 15s"
-             hx-swap="innerHTML"></div>
-
-        <section class="jobs-card">
-            <div id="job-list" class="job-list" hx-get="/jobs" hx-trigger="load, every 15s" hx-swap="innerHTML"></div>
-        </section>
+            </aside>
+            <section class="results-column">
+                <div id="job-list" class="job-list" hx-get="/jobs" hx-trigger="load, every 15s" hx-swap="innerHTML"></div>
+                <div id="results-container" aria-live="polite"></div>
+            </section>
+        </div>
 
         <footer>
             基于 <a href="https://github.com/gosom/google-maps-scraper" target="_blank" rel="noopener noreferrer">gosom/google-maps-scraper</a> · <a href="/api/docs" target="_blank" rel="noopener noreferrer">API 文档</a>
         </footer>
     </main>
-    <div id="results-modal-container"></div>
 <script>
 (function () {
     const businessType = document.getElementById('business-type');

@@ -1,11 +1,9 @@
-<div id="results-modal" class="results-modal" role="dialog" aria-modal="true" aria-labelledby="results-modal-title" tabindex="-1" onclick="if(event.target===this)closeResults()">
-    <div class="results-modal-content">
-        <div class="results-modal-header">
+<section class="results-panel" aria-labelledby="results-panel-title">
+        <div class="results-panel-header">
             <div>
                 <span class="eyebrow">抓取结果</span>
-                <h2 id="results-modal-title">结果列表</h2>
+                <h2 id="results-panel-title">结果列表</h2>
             </div>
-            <button type="button" class="modal-close" aria-label="关闭" onclick="closeResults()">&times;</button>
         </div>
         <div class="results-toolbar">
             <strong>共 {{len .}} 条</strong>
@@ -34,7 +32,18 @@
                 </thead>
                 <tbody id="results-body">
                     {{range .}}
-                    <tr class="result-row" data-search="{{.Title}} {{.Address}}">
+                    <tr class="result-row" data-search="{{.Title}} {{.Address}}"
+                        data-title="{{.Title}}" data-category="{{.Category}}" data-address="{{.Address}}"
+                        data-phone="{{.Phone}}" data-email="{{.Email}}" data-website="{{.Website}}"
+                        data-rating="{{if .ReviewRating}}{{printf "%.1f" .ReviewRating}}{{end}}"
+                        data-review-count="{{if .ReviewCount}}{{.ReviewCount}}{{end}}"
+                        data-open-hours="{{.OpenHours}}" data-link="{{.Link}}"
+                        data-complete-address="{{.CompleteAddress}}" data-price-range="{{.PriceRange}}"
+                        data-descriptions="{{.Descriptions}}" data-thumbnail="{{.Thumbnail}}"
+                        data-timezone="{{.Timezone}}" data-plus-code="{{.PlusCode}}"
+                        data-latitude="{{.Latitude}}" data-longitude="{{.Longitude}}"
+                        data-reviews-per-rating="{{.ReviewsPerRating}}" data-reservations="{{.Reservations}}"
+                        data-order-online="{{.OrderOnline}}" data-menu="{{.Menu}}">
                         <td class="sticky-name" title="{{.Title}}">{{if .Title}}{{.Title}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
                         <td title="{{.Category}}">{{if .Category}}{{.Category}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
                         <td title="{{.Address}}">{{if .Address}}{{.Address}}{{else}}<span class="empty-cell">—</span>{{end}}</td>
@@ -65,10 +74,8 @@
             </table>
         </div>
         <button id="load-more-results" type="button" class="button button-secondary load-more-button">加载更多</button>
-    </div>
     <script>
     (function () {
-        var modal = document.getElementById('results-modal');
         var filter = document.getElementById('results-filter');
         var rows = Array.prototype.slice.call(document.querySelectorAll('.result-row'));
         var loadMore = document.getElementById('load-more-results');
@@ -91,22 +98,26 @@
             loadMore.hidden = matches.length <= shown;
         }
 
-        window.closeResults = function () {
-            document.removeEventListener('keydown', onKeyDown);
-            var container = document.getElementById('results-modal-container');
-            if (container) container.innerHTML = '';
-        };
-
-        function onKeyDown(event) {
-            if (event.key === 'Escape') closeResults();
-        }
-
         window.downloadVisibleResults = function () {
+            var exportColumns = [
+                {header: '名称', field: 'title'}, {header: '分类', field: 'category'},
+                {header: '地址', field: 'address'}, {header: '电话', field: 'phone'},
+                {header: '邮箱', field: 'email'}, {header: '网站', field: 'website'},
+                {header: '评分', field: 'rating'}, {header: '评论数', field: 'reviewCount'},
+                {header: '营业时间', field: 'openHours'}, {header: 'Google Maps 链接', field: 'link'},
+                {header: '完整地址', field: 'completeAddress'}, {header: '价格区间', field: 'priceRange'},
+                {header: '简介', field: 'descriptions'}, {header: '缩略图', field: 'thumbnail'},
+                {header: '时区', field: 'timezone'}, {header: 'Plus Code', field: 'plusCode'},
+                {header: '纬度', field: 'latitude'}, {header: '经度', field: 'longitude'},
+                {header: '评分分布', field: 'reviewsPerRating'}, {header: '预订', field: 'reservations'},
+                {header: '在线下单', field: 'orderOnline'}, {header: '菜单', field: 'menu'}
+            ];
             var rowsForDownload = rows.filter(function (row) { return !row.hidden; });
-            var csv = ['名称,分类,地址,电话,网站,评分,评论数'];
+            var csv = [exportColumns.map(function (column) { return column.header; }).join(',')];
             rowsForDownload.forEach(function (row) {
-                var values = Array.prototype.slice.call(row.querySelectorAll('td')).map(function (cell) {
-                    return '"' + cell.textContent.trim().replace(/"/g, '""') + '"';
+                var values = exportColumns.map(function (column) {
+                    var value = row.dataset[column.field] || '';
+                    return '"' + value.replace(/"/g, '""') + '"';
                 });
                 csv.push(values.join(','));
             });
@@ -127,9 +138,8 @@
             shown += pageSize;
             updateRows();
         });
-        document.addEventListener('keydown', onKeyDown);
         updateRows();
         setTimeout(function () { filter.focus(); }, 0);
     })();
     </script>
-</div>
+</section>
