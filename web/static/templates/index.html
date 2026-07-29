@@ -124,6 +124,11 @@
             </form>
         </section>
 
+        <div id="stats-container"
+             hx-get="/stats"
+             hx-trigger="load, every 15s"
+             hx-swap="innerHTML"></div>
+
         <section class="jobs-card">
             <div id="job-list" class="job-list" hx-get="/jobs" hx-trigger="load, every 15s" hx-swap="innerHTML"></div>
         </section>

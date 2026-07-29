@@ -886,6 +886,35 @@ footer {
     font-size: var(--text-sm);
 }
 
+.stats-strip {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 1px;
+    margin: var(--space-5) 0 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--line);
+}
+
+.stats-strip div {
+    display: grid;
+    gap: 2px;
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface-raised);
+}
+
+.stats-strip span {
+    color: var(--muted);
+    font-size: var(--text-xs);
+}
+
+.stats-strip strong {
+    color: var(--ink);
+    font-size: var(--text-lg);
+    font-weight: 700;
+}
+
 @media (max-width: 700px) {
     .page-shell {
         width: min(100% - 20px, 1040px);
@@ -953,5 +982,9 @@ footer {
 
     .history-actions {
         justify-content: flex-start;
+    }
+
+    .stats-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }

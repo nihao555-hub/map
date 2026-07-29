@@ -16,6 +16,13 @@ type Service struct {
 	progressMu sync.RWMutex
 	started    map[string]time.Time
 	finished   map[string]time.Time
+	counts     map[string]csvCountCache
+}
+
+type csvCountCache struct {
+	modTime time.Time
+	size    int64
+	count   int
 }
 
 func NewService(repo JobRepository, dataFolder string) *Service {
@@ -24,6 +31,7 @@ func NewService(repo JobRepository, dataFolder string) *Service {
 		dataFolder: dataFolder,
 		started:    make(map[string]time.Time),
 		finished:   make(map[string]time.Time),
+		counts:     make(map[string]csvCountCache),
 	}
 }
 
@@ -58,6 +66,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 		s.progressMu.Lock()
 		delete(s.started, id)
 		delete(s.finished, id)
+		delete(s.counts, id)
 		s.progressMu.Unlock()
 	}
 
@@ -175,4 +184,83 @@ func (s *Service) readProgressCSV(id string) (resultCount int, resultLatest []st
 	defer file.Close()
 
 	return countCSVResults(file)
+}
+
+type UsageStats struct {
+	TotalJobs    int `json:"total_jobs"`
+	TotalRecords int `json:"total_records"`
+	JobsToday    int `json:"jobs_today"`
+	RecordsToday int `json:"records_today"`
+	RunningJobs  int `json:"running_jobs"`
+	FailedJobs   int `json:"failed_jobs"`
+}
+
+func (s *Service) cachedCSVCount(id string) (int, error) {
+	path, err := s.csvPath(id)
+	if err != nil {
+		return 0, err
+	}
+
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	s.progressMu.RLock()
+	cached, ok := s.counts[id]
+	s.progressMu.RUnlock()
+	if ok && cached.size == info.Size() && cached.modTime.Equal(info.ModTime()) {
+		return cached.count, nil
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	count, _, countErr := countCSVResults(file)
+	_ = file.Close()
+	if countErr != nil {
+		return 0, countErr
+	}
+
+	s.progressMu.Lock()
+	s.counts[id] = csvCountCache{modTime: info.ModTime(), size: info.Size(), count: count}
+	s.progressMu.Unlock()
+
+	return count, nil
+}
+
+func (s *Service) Stats(ctx context.Context) (UsageStats, error) {
+	jobs, err := s.All(ctx)
+	if err != nil {
+		return UsageStats{}, err
+	}
+
+	today := time.Now().In(time.Local).Format("2006-01-02")
+	stats := UsageStats{TotalJobs: len(jobs)}
+	for _, job := range jobs {
+		if job.Date.In(time.Local).Format("2006-01-02") == today {
+			stats.JobsToday++
+		}
+		if job.Status == StatusPending || job.Status == StatusWorking {
+			stats.RunningJobs++
+		}
+		if job.Status == StatusFailed {
+			stats.FailedJobs++
+		}
+
+		count, countErr := s.cachedCSVCount(job.ID)
+		if countErr != nil {
+			return UsageStats{}, countErr
+		}
+		stats.TotalRecords += count
+		if job.Date.In(time.Local).Format("2006-01-02") == today {
+			stats.RecordsToday += count
+		}
+	}
+
+	return stats, nil
 }

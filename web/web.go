@@ -70,6 +70,7 @@ func New(svc *Service, addr string) (*Server, error) {
 
 		ans.progress(w, r)
 	})
+	mux.HandleFunc("/stats", ans.stats)
 	mux.HandleFunc("/view", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 
@@ -93,6 +94,18 @@ func New(svc *Service, addr string) (*Server, error) {
 
 			renderJSON(w, http.StatusMethodNotAllowed, ans)
 		}
+	})
+	mux.HandleFunc("/api/v1/stats", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			renderJSON(w, http.StatusMethodNotAllowed, apiError{
+				Code:    http.StatusMethodNotAllowed,
+				Message: "Method not allowed",
+			})
+
+			return
+		}
+
+		ans.apiStats(w, r)
 	})
 
 	mux.HandleFunc("/api/v1/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +165,7 @@ func New(svc *Service, addr string) (*Server, error) {
 		"static/templates/job_rows.html",
 		"static/templates/job_row.html",
 		"static/templates/progress.html",
+		"static/templates/stats.html",
 		"static/templates/job_view.html",
 		"static/templates/redoc.html",
 	}
@@ -458,6 +472,30 @@ func (s *Server) progress(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
+		return
+	}
+
+	stats, err := s.svc.Stats(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	tmpl, ok := s.tmpl["static/templates/stats.html"]
+	if !ok {
+		http.Error(w, "missing tpl", http.StatusInternalServerError)
+
+		return
+	}
+
+	_ = tmpl.Execute(w, stats)
+}
+
 func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -670,6 +708,20 @@ func (s *Server) apiProgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderJSON(w, http.StatusOK, progress)
+}
+
+func (s *Server) apiStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.svc.Stats(r.Context())
+	if err != nil {
+		renderJSON(w, http.StatusInternalServerError, apiError{
+			Code:    http.StatusInternalServerError,
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, stats)
 }
 
 // viewJob renders the results table fragment for a job.
