@@ -1,12 +1,19 @@
-<div id="map-modal" class="map-modal" role="dialog" aria-modal="true" aria-labelledby="map-modal-title" onclick="if(event.target===this)closeJobMap()">
-    <div class="map-modal-content">
-        <div class="map-modal-header">
-            <h2 id="map-modal-title">抓取结果</h2>
-            <button type="button" class="map-modal-close" aria-label="关闭" onclick="closeJobMap()">&times;</button>
+<div id="results-modal" class="results-modal" role="dialog" aria-modal="true" aria-labelledby="results-modal-title" tabindex="-1" onclick="if(event.target===this)closeResults()">
+    <div class="results-modal-content">
+        <div class="results-modal-header">
+            <div>
+                <span class="eyebrow">抓取结果</span>
+                <h2 id="results-modal-title">结果列表</h2>
+            </div>
+            <button type="button" class="modal-close" aria-label="关闭" onclick="closeResults()">&times;</button>
         </div>
-        <div class="map-modal-body">
-            <div id="job-map"></div>
-            <div id="job-places-list"></div>
+        <div class="results-toolbar">
+            <label class="results-search">
+                <span class="sr-only">筛选结果</span>
+                <input id="results-filter" type="search" placeholder="搜索名称或地址…" autocomplete="off">
+            </label>
+            <strong>共 {{len .}} 条</strong>
+            <a class="button button-secondary" href="#" onclick="return downloadVisibleResults()">下载 CSV</a>
         </div>
         <div class="results-table-wrap">
             <table class="results-table">
@@ -17,153 +24,88 @@
                         <th>地址</th>
                         <th>电话</th>
                         <th>网站</th>
-                        <th>评分</th>
-                        <th>评论数</th>
+                        <th class="numeric">评分</th>
+                        <th class="numeric">评论数</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="results-body">
                     {{range .}}
-                    <tr>
-                        <td>{{.Title}}</td>
-                        <td>{{.Category}}</td>
-                        <td>{{.Address}}</td>
-                        <td>{{.Phone}}</td>
-                        <td>{{if .Website}}<a href="{{.Website}}" target="_blank" rel="noopener noreferrer">{{.Website}}</a>{{end}}</td>
-                        <td>{{.ReviewRating}}</td>
-                        <td>{{.ReviewCount}}</td>
+                    <tr class="result-row" data-search="{{.Title}} {{.Address}}">
+                        <td title="{{.Title}}">{{.Title}}</td>
+                        <td title="{{.Category}}">{{.Category}}</td>
+                        <td title="{{.Address}}">{{.Address}}</td>
+                        <td>{{if .Phone}}<a href="tel:{{.Phone}}">{{.Phone}}</a>{{end}}</td>
+                        <td class="website-cell">{{if .Website}}<a href="{{.Website}}" target="_blank" rel="noopener noreferrer" title="{{.Website}}">{{.Website}}</a>{{end}}</td>
+                        <td class="numeric">{{if .ReviewRating}}{{printf "%.1f" .ReviewRating}}{{end}}</td>
+                        <td class="numeric">{{.ReviewCount}}</td>
                     </tr>
                     {{else}}
-                    <tr><td colspan="7" class="empty-state">没有找到带坐标的结果。</td></tr>
+                    <tr><td colspan="7" class="empty-state">没有找到结果。</td></tr>
                     {{end}}
                 </tbody>
             </table>
         </div>
+        <button id="load-more-results" type="button" class="button button-secondary load-more-button">加载更多</button>
     </div>
     <script>
     (function () {
-        var places = {{ . }};
+        var modal = document.getElementById('results-modal');
+        var filter = document.getElementById('results-filter');
+        var rows = Array.prototype.slice.call(document.querySelectorAll('.result-row'));
+        var loadMore = document.getElementById('load-more-results');
+        var pageSize = 50;
+        var shown = pageSize;
 
-        var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
-        var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
-
-        // ensureLeaflet lazily loads Leaflet (CSS + JS) the first time the map
-        // is opened, then invokes callback once it is available.
-        function ensureLeaflet(callback) {
-            if (window.L) {
-                callback();
-                return;
-            }
-
-            if (!document.getElementById('leaflet-css')) {
-                var link = document.createElement('link');
-                link.id = 'leaflet-css';
-                link.rel = 'stylesheet';
-                link.href = LEAFLET_CSS;
-                document.head.appendChild(link);
-            }
-
-            var script = document.getElementById('leaflet-js');
-            if (!script) {
-                script = document.createElement('script');
-                script.id = 'leaflet-js';
-                script.src = LEAFLET_JS;
-                document.head.appendChild(script);
-            }
-
-            script.addEventListener('load', callback);
-        }
-
-        function escapeHtml(str) {
-            var div = document.createElement('div');
-            div.textContent = str == null ? '' : str;
-            return div.innerHTML;
-        }
-
-        function createMap() {
-            if (window.__jobMap) {
-                window.__jobMap.remove();
-            }
-
-            var map = L.map('job-map');
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
-
-            window.__jobMap = map;
-            return map;
-        }
-
-        function placePopup(place) {
-            var parts = ['<strong>' + escapeHtml(place.title) + '</strong>'];
-            if (place.address) {
-                parts.push(escapeHtml(place.address));
-            }
-            if (place.link && /^https?:\/\//i.test(place.link)) {
-                parts.push('<a href="' + encodeURI(place.link) + '" target="_blank" rel="noopener noreferrer">在 Google Maps 中查看</a>');
-            }
-            return parts.join('<br>');
-        }
-
-        function placeListItem(place, onSelect) {
-            var item = document.createElement('div');
-            item.className = 'place-item';
-            item.innerHTML = '<div class="place-title">' + escapeHtml(place.title) + '</div>' +
-                (place.address ? '<div class="place-address">' + escapeHtml(place.address) + '</div>' : '') +
-                (place.review_rating ? '<div class="place-rating">★ ' + escapeHtml(String(place.review_rating)) + '</div>' : '');
-            item.addEventListener('click', onSelect);
-            return item;
-        }
-
-        function renderPlaces(map, listEl) {
-            var bounds = [];
-
-            places.forEach(function (place) {
-                var latlng = [place.latitude, place.longitude];
-                bounds.push(latlng);
-
-                L.marker(latlng).bindPopup(placePopup(place)).addTo(map);
-                listEl.appendChild(placeListItem(place, function () {
-                    map.setView(latlng, 16);
-                }));
+        function updateRows() {
+            var query = (filter.value || '').trim().toLowerCase();
+            var matches = rows.filter(function (row) {
+                return !query || row.dataset.search.toLowerCase().indexOf(query) !== -1;
             });
 
-            map.fitBounds(bounds, { padding: [30, 30] });
-            setTimeout(function () { map.invalidateSize(); }, 0);
+            rows.forEach(function (row) { row.hidden = true; });
+            matches.slice(0, shown).forEach(function (row) { row.hidden = false; });
+            loadMore.hidden = matches.length <= shown;
         }
 
-        function showEmptyState(map, listEl) {
-            listEl.innerHTML = '<p class="map-empty">没有找到带坐标的结果。</p>';
-            map.setView([0, 0], 2);
-        }
-
-        function initJobMap() {
-            var listEl = document.getElementById('job-places-list');
-            var map = createMap();
-
-            listEl.innerHTML = '';
-
-            if (places.length === 0) {
-                showEmptyState(map, listEl);
-                return;
-            }
-
-            renderPlaces(map, listEl);
-        }
-
-        window.closeJobMap = function () {
-            if (window.__jobMap) {
-                window.__jobMap.remove();
-                window.__jobMap = null;
-            }
-
-            var container = document.getElementById('map-modal-container');
-            if (container) {
-                container.innerHTML = '';
-            }
+        window.closeResults = function () {
+            document.removeEventListener('keydown', onKeyDown);
+            var container = document.getElementById('results-modal-container');
+            if (container) container.innerHTML = '';
         };
 
-        ensureLeaflet(initJobMap);
+        function onKeyDown(event) {
+            if (event.key === 'Escape') closeResults();
+        }
+
+        window.downloadVisibleResults = function () {
+            var rowsForDownload = rows.filter(function (row) { return !row.hidden; });
+            var csv = ['名称,分类,地址,电话,网站,评分,评论数'];
+            rowsForDownload.forEach(function (row) {
+                var values = Array.prototype.slice.call(row.querySelectorAll('td')).map(function (cell) {
+                    return '"' + cell.textContent.trim().replace(/"/g, '""') + '"';
+                });
+                csv.push(values.join(','));
+            });
+            var blob = new Blob(['\ufeff' + csv.join('\n')], {type: 'text/csv;charset=utf-8'});
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'results-filtered.csv';
+            link.click();
+            URL.revokeObjectURL(link.href);
+            return false;
+        };
+
+        document.querySelectorAll('.website-cell a').forEach(function (link) {
+            try { link.textContent = new URL(link.href).hostname; } catch (_) {}
+        });
+        filter.addEventListener('input', updateRows);
+        loadMore.addEventListener('click', function () {
+            shown += pageSize;
+            updateRows();
+        });
+        document.addEventListener('keydown', onKeyDown);
+        updateRows();
+        setTimeout(function () { filter.focus(); }, 0);
     })();
     </script>
 </div>

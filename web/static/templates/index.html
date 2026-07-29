@@ -127,8 +127,8 @@
         <section class="jobs-card">
             <div class="section-heading">
                 <div>
-                    <span class="eyebrow">任务记录</span>
-                    <h2>我的抓取任务</h2>
+                    <span class="eyebrow">任务</span>
+                    <h2>任务进度</h2>
                 </div>
                 <span class="polling-note">任务列表每 15 秒更新，进度实时刷新</span>
             </div>
@@ -139,7 +139,7 @@
             基于 <a href="https://github.com/gosom/google-maps-scraper" target="_blank" rel="noopener noreferrer">gosom/google-maps-scraper</a> · <a href="/api/docs" target="_blank" rel="noopener noreferrer">API 文档</a>
         </footer>
     </main>
-    <div id="map-modal-container"></div>
+    <div id="results-modal-container"></div>
 <script>
 (function () {
     const businessType = document.getElementById('business-type');
@@ -155,22 +155,6 @@
 
     function inferredLanguage() {
         return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(businessType.value + location.value) ? 'zh' : 'en';
-    }
-
-    function formatJobTimestamp(date) {
-        const parts = new Intl.DateTimeFormat('zh-CN', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        }).formatToParts(date).reduce(function (values, part) {
-            values[part.type] = part.value;
-            return values;
-        }, {});
-
-        return parts.year + '-' + parts.month + '-' + parts.day + ' ' + parts.hour + ':' + parts.minute;
     }
 
     function setSubmitState() {
@@ -191,7 +175,7 @@
         const depth = document.querySelector('input[data-depth]:checked').dataset.depth;
         delete event.detail.parameters.quantity;
         const title = businessType.value.trim() + (location.value.trim() ? ' · ' + location.value.trim() : '');
-        event.detail.parameters.name = title + ' · ' + formatJobTimestamp(new Date());
+        event.detail.parameters.name = title;
         event.detail.parameters.keywords = composeKeywords();
         event.detail.parameters.lang = document.getElementById('advanced-lang').value.trim() || inferredLanguage();
         event.detail.parameters.zoom = document.getElementById('advanced-zoom').value || '15';
@@ -210,6 +194,9 @@
     window.finishScrape = function (event) {
         if (event.detail.successful) {
             document.getElementById('success-container').textContent = '任务已开始，抓取中… 通常需要 1-5 分钟';
+            window.setTimeout(function () {
+                document.getElementById('success-container').textContent = '';
+            }, 8000);
             document.getElementById('scrape-form').reset();
             document.getElementById('advanced-lang').value = '';
             setSubmitState();

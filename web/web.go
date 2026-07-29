@@ -672,8 +672,7 @@ func (s *Server) apiProgress(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusOK, progress)
 }
 
-// viewJob renders the map modal fragment for a job, embedding the job's places
-// directly so the client needs no separate data request.
+// viewJob renders the results table fragment for a job.
 func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -769,7 +768,7 @@ func securityHeaders(next http.Handler) http.Handler {
 				"script-src 'self' cdn.redoc.ly cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval'; "+
 				"worker-src 'self' blob:; "+
 				"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com; "+
-				"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org; "+
+				"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com; "+
 				"font-src 'self' fonts.gstatic.com; "+
 				"connect-src 'self'")
 

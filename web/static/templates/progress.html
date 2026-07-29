@@ -1,4 +1,7 @@
-<div id="progress-{{.ID}}" class="progress-card progress-{{.Status}}" {{if or (eq .Status "pending") (eq .Status "working")}}hx-get="/progress?id={{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+<div id="progress-{{.ID}}" class="{{if or (eq .Status "pending") (eq .Status "working")}}progress-card{{else}}history-count{{end}} progress-{{.Status}}" {{if or (eq .Status "pending") (eq .Status "working")}}hx-get="/progress?id={{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+{{if not (or (eq .Status "pending") (eq .Status "working"))}}
+    <span>共 {{.Count}} 条</span>
+{{else}}
     <div class="progress-card-header">
         <div>
             <span class="progress-kicker">抓取进度</span>
@@ -19,4 +22,5 @@
     {{else if or (eq .Status "pending") (eq .Status "working")}}
     <p class="progress-placeholder">正在等待第一条结果…</p>
     {{end}}
+{{end}}
 </div>

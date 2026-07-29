@@ -41,7 +41,7 @@ func TestViewJobRendersPlaces(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{`id="map-modal"`, `initJobMap()`, `"title":"Place"`, `"latitude":1.5`} {
+	for _, want := range []string{`id="results-modal"`, `结果列表`, `Place`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
 		}
@@ -61,8 +61,8 @@ func TestViewJobEmptyState(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "var places = [];") {
-		t.Fatalf("expected empty places array, got:\n%s", body)
+	if !strings.Contains(body, "共 0 条") || !strings.Contains(body, "没有找到结果") {
+		t.Fatalf("expected empty results table, got:\n%s", body)
 	}
 }
 
@@ -78,7 +78,7 @@ func TestViewJobInvalidID(t *testing.T) {
 	}
 }
 
-func TestSecurityHeadersAllowMapResources(t *testing.T) {
+func TestSecurityHeadersAllowFrontendResources(t *testing.T) {
 	handler := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -88,7 +88,7 @@ func TestSecurityHeadersAllowMapResources(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	csp := rec.Header().Get("Content-Security-Policy")
-	for _, want := range []string{"tile.openstreetmap.org", "cdnjs.cloudflare.com"} {
+	for _, want := range []string{"cdnjs.cloudflare.com"} {
 		if !strings.Contains(csp, want) {
 			t.Fatalf("CSP missing %q: %s", want, csp)
 		}
