@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "mkdir -p public && cp -r web/static/templates/* public/ && cp -r web/static/css public/",
+  "outputDirectory": "public",
+  "framework": null,
+  "ignoreCommand": "echo 'ignore nothing - use outputDirectory'",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "http://124.222.208.237:8080/api/:path*"
+    },
+    {
+      "source": "/scrape",
+      "destination": "http://124.222.208.237:8080/scrape"
+    },
+    {
+      "source": "/jobs",
+      "destination": "http://124.222.208.237:8080/jobs"
+    },
+    {
+      "source": "/job/:path*",
+      "destination": "http://124.222.208.237:8080/job/:path*"
+    },
+    {
+      "source": "/stats",
+      "destination": "http://124.222.208.237:8080/stats"
+    },
+    {
+      "source": "/csv/:path*",
+      "destination": "http://124.222.208.237:8080/csv/:path*"
+    },
+    {
+      "source": "/delete/:path*",
+      "destination": "http://124.222.208.237:8080/delete/:path*"
+    },
+    {
+      "source": "/static/:path*",
+      "destination": "http://124.222.208.237:8080/static/:path*"
+    }
+  ]
+}
