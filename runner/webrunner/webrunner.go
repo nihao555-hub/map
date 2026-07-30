@@ -14,6 +14,7 @@ import (
 
 	"github.com/gosom/google-maps-scraper/deduper"
 	"github.com/gosom/google-maps-scraper/exiter"
+	"github.com/gosom/google-maps-scraper/grid"
 	"github.com/gosom/google-maps-scraper/runner"
 	"github.com/gosom/google-maps-scraper/tlmt"
 	"github.com/gosom/google-maps-scraper/web"
@@ -181,46 +182,120 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 	defer mate.Close()
 
-	var coords string
-	if job.Data.Lat != "" && job.Data.Lon != "" {
-		coords = job.Data.Lat + "," + job.Data.Lon
-	}
-
 	dedup := deduper.New()
 	exitMonitor := exiter.New()
 
-	seedJobs, err := runner.CreateSeedJobs(
-		job.Data.FastMode,
-		job.Data.Lang,
-		strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
-		job.Data.Depth,
-		job.Data.Email,
-		coords,
-		job.Data.Zoom,
-		func() float64 {
-			if job.Data.Radius <= 0 {
-				return 10000 // 10 km
-			}
+	var seedJobs []scrapemate.IJob
 
-			return float64(job.Data.Radius)
-		}(),
-		dedup,
-		exitMonitor,
-		w.cfg.ExtraReviews || job.Data.ExtraReviews,
-	)
-	if err != nil {
-		err2 := w.svc.Update(ctx, job)
-		if err2 != nil {
-			log.Printf("failed to update job status: %v", err2)
+	// 网格全量模式
+	if job.Data.GridMode {
+		var bbox grid.BoundingBox
+
+		// 优先用手动传的 bbox
+		if job.Data.GridBBox != "" {
+			var err error
+			bbox, err = grid.ParseBoundingBox(job.Data.GridBBox)
+			if err != nil {
+				log.Printf("failed to parse grid bbox %q: %v, falling back to geocoding", job.Data.GridBBox, err)
+			}
 		}
 
-		return err
+		// 没有 bbox 就用地理编码从地点名生成
+		if bbox.MinLat == 0 && bbox.MaxLat == 0 && job.Data.Locations != "" {
+			log.Printf("geocoding location %q for grid mode", job.Data.Locations)
+
+			var err error
+			bbox, err = geocode(ctx, job.Data.Locations)
+			if err != nil {
+				log.Printf("geocoding failed: %v, falling back to single search", err)
+				// 地理编码失败就退化成普通模式
+				job.Data.GridMode = false
+			} else {
+				// 向外扩展 10%，确保覆盖完整
+				bbox = expandBBox(bbox, 0.1)
+				log.Printf("geocoded bbox: %.4f,%.4f -> %.4f,%.4f (%s)",
+					bbox.MinLat, bbox.MinLon, bbox.MaxLat, bbox.MaxLon, job.Data.Locations)
+			}
+		}
+
+		if job.Data.GridMode {
+			cellKm := job.Data.GridCellKm
+			if cellKm <= 0 {
+				cellKm = 1.5 // 默认 1.5km 一格
+			}
+
+			// 估算格子数，打个日志
+			estCells := grid.EstimateCellCount(bbox, cellKm)
+			log.Printf("grid mode: ~%d cells at %.1fkm resolution", estCells, cellKm)
+
+			var err error
+			seedJobs, err = runner.CreateGridSeedJobs(
+				job.Data.Lang,
+				strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
+				job.Data.Depth,
+				job.Data.Email,
+				bbox,
+				cellKm,
+				job.Data.Zoom,
+				dedup,
+				exitMonitor,
+				w.cfg.ExtraReviews || job.Data.ExtraReviews,
+			)
+			if err != nil {
+				log.Printf("failed to create grid seed jobs: %v, falling back to single search", err)
+				job.Data.GridMode = false
+			}
+		}
+	}
+
+	// 普通模式（快速 / 标准深度）
+	if !job.Data.GridMode {
+		var coords string
+		if job.Data.Lat != "" && job.Data.Lon != "" {
+			coords = job.Data.Lat + "," + job.Data.Lon
+		}
+
+		var err error
+		seedJobs, err = runner.CreateSeedJobs(
+			job.Data.FastMode,
+			job.Data.Lang,
+			strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
+			job.Data.Depth,
+			job.Data.Email,
+			coords,
+			job.Data.Zoom,
+			func() float64 {
+				if job.Data.Radius <= 0 {
+					return 10000 // 10 km
+				}
+
+				return float64(job.Data.Radius)
+			}(),
+			dedup,
+			exitMonitor,
+			w.cfg.ExtraReviews || job.Data.ExtraReviews,
+		)
+		if err != nil {
+			err2 := w.svc.Update(ctx, job)
+			if err2 != nil {
+				log.Printf("failed to update job status: %v", err2)
+			}
+
+			return err
+		}
 	}
 
 	if len(seedJobs) > 0 {
 		exitMonitor.SetSeedCount(len(seedJobs))
 
-		allowedSeconds := max(60, len(seedJobs)*10*job.Data.Depth/50+120)
+		// 网格模式下格子多，需要更长超时；按格子数估算
+		var allowedSeconds int
+		if job.Data.GridMode {
+			// 每格约 15 秒（含详情页），最少 3 分钟
+			allowedSeconds = max(180, len(seedJobs)*15)
+		} else {
+			allowedSeconds = max(60, len(seedJobs)*10*job.Data.Depth/50+120)
+		}
 
 		if job.Data.MaxTime > 0 {
 			if job.Data.MaxTime.Seconds() < 180 {
@@ -261,9 +336,10 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.Job) (mateRunner, error) {
 	return func(_ context.Context, writer io.Writer, job *web.Job) (mateRunner, error) {
+		// 提速：并发 = 配置的并发数；页面复用从 2 提到 20，浏览器复用从 200 提到 1000
 		opts := []func(*scrapemateapp.Config) error{
 			scrapemateapp.WithConcurrency(cfg.Concurrency),
-			scrapemateapp.WithExitOnInactivity(time.Minute * 3),
+			scrapemateapp.WithExitOnInactivity(time.Minute * 2),
 		}
 
 		if !job.Data.FastMode {
@@ -276,7 +352,16 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 			)
 		}
 
+		// 提速：多页面复用 + 更大的浏览器池（如果配置了）
 		opts = runner.AppendBrowserCapacityOptions(opts, cfg)
+
+		// 提速：如果没配置浏览器容量，给一个默认的优化值
+		// 一个浏览器开 4 个页面，省内存换并发
+		if cfg.MaxPagesPerBrowser <= 1 && cfg.BrowserPoolSize <= 0 {
+			opts = append(opts,
+				scrapemateapp.WithMaxPagesPerBrowser(4),
+			)
+		}
 
 		hasProxy := false
 
@@ -291,9 +376,11 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 		}
 
 		if !cfg.DisablePageReuse {
+			// 提速：页面复用从 2 提到 20，减少页面创建开销
+			// 浏览器复用从 200 提到 1000，减少浏览器重启开销
 			opts = append(opts,
-				scrapemateapp.WithPageReuseLimit(2),
-				scrapemateapp.WithBrowserReuseLimit(200),
+				scrapemateapp.WithPageReuseLimit(20),
+				scrapemateapp.WithBrowserReuseLimit(1000),
 			)
 		}
 

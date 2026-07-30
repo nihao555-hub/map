@@ -1,160 +1,411 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google Maps Scraper</title>
-    <link rel="stylesheet" href="/static/css/main.css">
+    <title>商家采集</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/1.9.6/htmx.min.js"></script>
+    <link rel="stylesheet" href="/static/css/main.css">
 </head>
 <body>
-    <div class="app-container">
-        <header>
-            <h1>Google Maps Scraper</h1>
-            <nav>
-                <a href="/api/docs" target="_blank" rel="noopener noreferrer">API Documentation</a>
-            </nav>
-            <div class="github-section">
-                <p>If you find this tool useful, please consider starring our repository: </p>
-                <a href="https://github.com/gosom/google-maps-scraper" class="github-button">
-                <svg height="16" width="16" viewBox="0 0 16 16">
-                    <path fill="currentColor" d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/>
-                  </svg>
-                  Star on GitHub
-                </a>
+    <div id="app-shell">
+      <!-- 左侧栏 -->
+      <aside id="sidebar">
+        <div id="sidebar-content">
+          <!-- Logo 区域 -->
+          <div class="flex items-center gap-3 mb-8 logo-area">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center logo-icon">
+              <i data-lucide="map-pin" class="w-5 h-5 text-white"></i>
             </div>
-            <div id="sponsor-section" class="sponsor-section">
-    <button class="sponsor-close" onclick="hideSponsor()">
-        ×
-    </button>
-    <p class="sponsor-text">Support the ongoing maintenance and development of this project by becoming a sponsor. Your contribution helps ensure the tool's continued improvement and reliability.</p>
-    <a href="https://github.com/sponsors/gosom" class="sponsor-button" target="_blank" rel="noopener noreferrer">
-        <svg height="16" width="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-            <path fill-rule="evenodd" clip-rule="evenodd" d="M4.25 2.5C4.25 1.83696 4.67143 1.25 5.25 1.25C5.82857 1.25 6.25 1.83696 6.25 2.5C6.25 3.16304 5.82857 3.75 5.25 3.75C4.67143 3.75 4.25 3.16304 4.25 2.5ZM2.5 3.75C1.92143 3.75 1.5 3.16304 1.5 2.5C1.5 1.83696 1.92143 1.25 2.5 1.25C3.07857 1.25 3.5 1.83696 3.5 2.5C3.5 3.16304 3.07857 3.75 2.5 3.75ZM8 1.25C7.42143 1.25 7 1.83696 7 2.5C7 3.16304 7.42143 3.75 8 3.75C8.57857 3.75 9 3.16304 9 2.5C9 1.83696 8.57857 1.25 8 1.25ZM10.75 2.5C10.75 1.83696 11.1714 1.25 11.75 1.25C12.3286 1.25 12.75 1.83696 12.75 2.5C12.75 3.16304 12.3286 3.75 11.75 3.75C11.1714 3.75 10.75 3.16304 10.75 2.5ZM14.5 1.25C13.9214 1.25 13.5 1.83696 13.5 2.5C13.5 3.16304 13.9214 3.75 14.5 3.75C15.0786 3.75 15.5 3.16304 15.5 2.5C15.5 1.83696 15.0786 1.25 14.5 1.25ZM1.25 5.25C1.25 4.67143 1.83696 4.25 2.5 4.25C3.16304 4.25 3.75 4.67143 3.75 5.25C3.75 5.82857 3.16304 6.25 2.5 6.25C1.83696 6.25 1.25 5.82857 1.25 5.25ZM5.25 4.25C4.67143 4.25 4.25 4.67143 4.25 5.25C4.25 5.82857 4.67143 6.25 5.25 6.25C5.82857 6.25 6.25 5.82857 6.25 5.25C6.25 4.67143 5.82857 4.25 5.25 4.25ZM7 5.25C7 4.67143 7.42143 4.25 8 4.25C8.57857 4.25 9 4.67143 9 5.25C9 5.82857 8.57857 6.25 8 6.25C7.42143 6.25 7 5.82857 7 5.25ZM11.75 4.25C11.1714 4.25 10.75 4.67143 10.75 5.25C10.75 5.82857 11.1714 6.25 11.75 6.25C12.3286 6.25 12.75 5.82857 12.75 5.25C12.75 4.67143 12.3286 4.25 11.75 4.25ZM13.5 5.25C13.5 4.67143 13.9214 4.25 14.5 4.25C15.0786 4.25 15.5 4.67143 15.5 5.25C15.5 5.82857 15.0786 6.25 14.5 6.25C13.9214 6.25 13.5 5.82857 13.5 5.25ZM2.5 7.25C1.83696 7.25 1.25 7.67143 1.25 8.25C1.25 8.82857 1.83696 9.25 2.5 9.25C3.16304 9.25 3.75 8.82857 3.75 8.25C3.75 7.67143 3.16304 7.25 2.5 7.25ZM4.25 8.25C4.25 7.67143 4.67143 7.25 5.25 7.25C5.82857 7.25 6.25 7.67143 6.25 8.25C6.25 8.82857 5.82857 9.25 5.25 9.25C4.67143 9.25 4.25 8.82857 4.25 8.25ZM8 7.25C7.42143 7.25 7 7.67143 7 8.25C7 8.82857 7.42143 9.25 8 9.25C8.57857 9.25 9 8.82857 9 8.25C9 7.67143 8.57857 7.25 8 7.25ZM10.75 8.25C10.75 7.67143 11.1714 7.25 11.75 7.25C12.3286 7.25 12.75 7.67143 12.75 8.25C12.75 8.82857 12.3286 9.25 11.75 9.25C11.1714 9.25 10.75 8.82857 10.75 8.25ZM14.5 7.25C13.9214 7.25 13.5 7.67143 13.5 8.25C13.5 8.82857 13.9214 9.25 14.5 9.25C15.0786 9.25 15.5 8.82857 15.5 8.25C15.5 7.67143 15.0786 7.25 14.5 7.25Z" fill="currentColor"/>
-        </svg>
-        Sponsor on GitHub
-    </a>
-</div>
+            <div>
+              <h1 class="text-lg font-semibold text-foreground">商家采集</h1>
+              <p class="text-xs text-muted-foreground">Google Maps 数据工具</p>
+            </div>
+          </div>
 
-        </header>
-        <main>
-            <div class="sidebar">
-                <div id="error-container" class="error-message"></div>
-                <form 
-                    hx-post="/scrape" 
-                    hx-target="#job-table tbody" 
-                    hx-swap="beforeend"
-                    hx-indicator="#spinner"
-                    hx-on::before-request="document.getElementById('error-container').innerHTML = ''"
-                    hx-on::after-request="if(!event.detail.successful) document.getElementById('error-container').innerHTML = event.detail.xhr.responseText"
-                >
-                    
-                    <fieldset>
-                        <legend>Job Details</legend>
-                        <div class="form-group">
-                            <label for="name">Job Name:</label>
-                            <input type="text" id="name" name="name" value="{{.Name}}">
-                        </div>
-                        <div class="form-group">
-                            <label for="keywords">Keywords:</label>
-                            <textarea id="keywords" name="keywords" rows="10">{{ .KeywordsString }}</textarea>
-                        </div>
-                        <div class="form-group">
-                            <label for="lang">Language:</label>
-                            <input type="text" id="lang" name="lang" value="{{.Language}}">
-                        </div>
-                    </fieldset>
-                    
-                    <details class="expandable-section">
-                        <summary>Location Settings</summary>
-                        <fieldset>
-                            <div class="form-group">
-                                <label for="zoom">Zoom:</label>
-                                <input type="number" id="zoom" name="zoom" value="{{.Zoom}}">
-                            </div>
-                            <div class="form-group">
-                                <label for="latitude">Latitude:</label>
-                                <input type="number" step="0.000000000000001" id="latitude" name="latitude" value="{{.Lat}}">
-                            </div>
-                            <div class="form-group">
-                                <label for="longitude">Longitude:</label>
-                                <input type="number" step="0.000000000000001" id="longitude" name="longitude" value="{{.Lon}}">
-                            </div>
-                        </fieldset>
-                    </details>
-                    
-                    <details class="expandable-section">
-                        <summary>Advanced Options</summary>
-                        <fieldset>
-                            <div class="form-group">
-                                <label for="fastmode">Fast Mode (BETA):</label>
-                                <input type="checkbox" id="fastmode" name="fastmode" {{if .FastMode}}checked{{end}}>
-                            </div>
-                            <div class="form-group">
-                                    <label for="radius">Radius (BETA):</label>
-                                    <input type="number" id="radius" name="radius" value="{{.Radius}}">
-                            </div>
-                            <div class="form-group">
-                                <label for="depth">Depth:</label>
-                                <input type="number" step="1" id="depth" name="depth" value="{{.Depth}}">
-                            </div>
-                            <div class="form-group checkbox">
-                                <input type="checkbox" id="email" name="email" {{if .Email}}checked{{end}}>
-                                <label for="email">Fetch Emails</label>
-                            </div>
-                            <div class="form-group">
-                                <label for="maxtime">Max job time:</label>
-                                <input type="text" id="maxtime" name="maxtime" value="{{.MaxTime}}">
-                            </div>
-                        </fieldset>
-                    </details>
-                    <details class="expandable-section">
-                        <summary>Proxies</summary>
-                        <fieldset>
-                            <div class="form-group">
-                                <label for="proxies">Proxies:(one per line)</label>
-                                <p class="text-muted"><small>Examples:<br>
-                                        <p>HTTPS proxy with username/password: https://username:password@myproxy.local:443<p>
-                                        <p>HTTP proxy with username/password: http://username:password@myproxy.local:443<p>
-                                        <p>SOCKS5 proxy without auth: socks5://127.0.0.1:8000</p>
-                                </p>
+          <!-- 主表单区 -->
+          <div id="error-container" class="error-message"></div>
+          <form 
+            id="search-form"
+            hx-post="/scrape" 
+            hx-target="#job-list" 
+            hx-swap="afterbegin"
+            hx-indicator="#spinner"
+            hx-on::before-request="document.getElementById('error-container').innerHTML = ''"
+            hx-on::after-request="if(!event.detail.successful) { document.getElementById('error-container').innerHTML = event.detail.xhr.responseText; } else { handleScrapeSuccess(); }"
+          >
+            <!-- 隐藏字段：任务名称 = 关键词+地点 -->
+            <input type="hidden" id="name" name="name" value="">
+            
+            <!-- 关键词输入 -->
+            <div class="mb-4">
+              <label class="block text-sm font-medium mb-2 text-foreground">关键词</label>
+              <div class="input-field flex items-center gap-2 px-3 py-2.5 rounded-lg border border-input bg-card">
+                <i data-lucide="search" class="w-4 h-4 flex-shrink-0 text-muted-foreground"></i>
+                <input
+                  type="text"
+                  id="keywords"
+                  name="keywords"
+                  placeholder="例如：咖啡店、牙科诊所、健身房"
+                  class="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground text-foreground"
+                />
+              </div>
+            </div>
 
-                                <textarea id="proxies" name="proxies" rows="5">{{.ProxiesString}}</textarea>
-                            </div>
-                        </fieldset>
-                    </details>
-                    
-                    <button type="submit">Start Scraping</button>
-                </form>
+            <!-- 地点输入 -->
+            <div class="mb-5">
+              <label class="block text-sm font-medium mb-2 text-foreground">地点</label>
+              <div class="input-field flex items-center gap-2 px-3 py-2.5 rounded-lg border border-input bg-card">
+                <i data-lucide="map-pin" class="w-4 h-4 flex-shrink-0 text-muted-foreground"></i>
+                <input
+                  type="text"
+                  id="locations"
+                  name="locations"
+                  placeholder="例如：新加坡乌节路、曼谷素坤逸"
+                  class="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground text-foreground"
+                />
+              </div>
             </div>
-            <div class="content">
-                <div id="spinner" class="spinner"></div>
-                <table id="job-table">
-                    <thead>
-                        <tr>
-                            <th>Job ID</th>
-                            <th>Job Name</th>
-                            <th>Job Date</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody hx-get="/jobs" hx-trigger="load, every 10s">
-                        <!-- Job rows will be inserted here by HTMX -->
-                    </tbody>
-                </table>
+
+            <!-- 采集模式选择 -->
+            <div class="mb-5">
+              <label class="block text-sm font-medium mb-2 text-foreground">采集模式</label>
+              <div class="grid grid-cols-3 gap-2">
+                <div class="mode-card active rounded-lg border p-2.5 mode-quick" data-mode="quick" onclick="selectMode(this, 'quick')">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <i data-lucide="zap" class="w-3.5 h-3.5 mode-icon"></i>
+                    <span class="text-xs font-medium mode-label">快速模式</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground" style="font-size: 10px;">列表数据·快</p>
+                </div>
+                <div class="mode-card rounded-lg border p-2.5 mode-standard" data-mode="standard" onclick="selectMode(this, 'standard')">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <i data-lucide="file-text" class="w-3.5 h-3.5 mode-icon"></i>
+                    <span class="text-xs font-medium mode-label">标准深度</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground" style="font-size: 10px;">完整字段·中</p>
+                </div>
+                <div class="mode-card rounded-lg border p-2.5 mode-grid" data-mode="grid" onclick="selectMode(this, 'grid')">
+                  <div class="flex items-center gap-1.5 mb-1">
+                    <i data-lucide="grid-3x3" class="w-3.5 h-3.5 mode-icon"></i>
+                    <span class="text-xs font-medium mode-label">全域全量</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground" style="font-size: 10px;">网格搜索·全</p>
+                </div>
+              </div>
             </div>
-        </main>
+
+            <!-- 网格密度（仅全域全量显示） -->
+            <div class="mb-5 hidden" id="grid-density-section">
+              <label class="block text-sm font-medium mb-2 text-foreground">网格密度</label>
+              <select
+                id="gridcell"
+                name="gridcell"
+                class="select-field w-full px-3 py-2 rounded-lg border text-sm border-input text-foreground bg-card"
+              >
+                <option value="2.0">稀疏（约 2km 一格，速度快）</option>
+                <option value="1.5" selected>标准（约 1.5km 一格，推荐）</option>
+                <option value="1.0">密集（约 1km 一格，更全但慢）</option>
+                <option value="0.5">极密（约 500m 一格，最慢最全）</option>
+              </select>
+              <p class="text-xs mt-1.5 text-muted-foreground">
+                密度越高，格子越多，结果越全，但耗时也越长
+              </p>
+            </div>
+
+            <!-- 开始采集按钮 -->
+            <button
+              type="submit"
+              id="start-btn"
+              class="btn-primary w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-white bg-primary"
+            >
+              <i data-lucide="zap" class="w-5 h-5"></i>
+              <span>开始采集</span>
+            </button>
+            <div id="spinner" class="spinner htmx-indicator"></div>
+          </form>
+
+          <!-- 分隔线 -->
+          <div class="my-6 border-t border-border"></div>
+
+          <!-- 高级选项折叠区 -->
+          <div>
+            <button
+              type="button"
+              id="advanced-toggle"
+              class="w-full flex items-center justify-between py-2 text-sm font-medium text-foreground"
+              onclick="toggleAdvanced()"
+            >
+              <span class="flex items-center gap-2">
+                <i data-lucide="settings" class="w-4 h-4 text-muted-foreground"></i>
+                高级选项
+              </span>
+              <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon" id="advanced-icon" style="color: var(--brand-muted-foreground);"></i>
+            </button>
+
+            <div id="advanced-options" class="collapse-content">
+              <div class="pt-3 space-y-4">
+                <!-- 抓取邮箱开关 -->
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="mail" class="w-4 h-4 text-muted-foreground"></i>
+                    <span class="text-sm text-foreground">抓取邮箱</span>
+                  </div>
+                  <input type="checkbox" id="email" name="email" checked class="hidden">
+                  <div class="toggle-switch on" id="email-toggle" onclick="toggleSwitch(this, 'email')"></div>
+                </div>
+
+                <!-- 语言输入 -->
+                <div>
+                  <label class="block text-sm mb-2 text-foreground">语言</label>
+                  <div class="input-field flex items-center gap-2 px-3 py-2 rounded-lg border border-input">
+                    <i data-lucide="globe" class="w-4 h-4 flex-shrink-0 text-muted-foreground"></i>
+                    <input
+                      type="text"
+                      id="lang"
+                      name="lang"
+                      value="en"
+                      placeholder="自动检测"
+                      class="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground text-foreground"
+                    />
+                  </div>
+                </div>
+
+                <!-- 最大运行时间 -->
+                <div>
+                  <label class="block text-sm mb-2 text-foreground">最大运行时间</label>
+                  <select
+                    id="maxtime"
+                    name="maxtime"
+                    class="select-field w-full px-3 py-2 rounded-lg border text-sm border-input text-foreground bg-card"
+                  >
+                    <option value="3m">3 分钟</option>
+                    <option value="10m" selected>10 分钟</option>
+                    <option value="30m">30 分钟</option>
+                    <option value="60m">1 小时</option>
+                    <option value="120m">2 小时</option>
+                  </select>
+                </div>
+
+                <!-- 滚动深度 -->
+                <div>
+                  <label class="block text-sm mb-2 text-foreground">滚动深度</label>
+                  <select
+                    id="depth"
+                    name="depth"
+                    class="select-field w-full px-3 py-2 rounded-lg border text-sm border-input text-foreground bg-card"
+                  >
+                    <option value="5">浅（5 次，快速）</option>
+                    <option value="10" selected>标准（10 次）</option>
+                    <option value="20">深（20 次）</option>
+                    <option value="50">极深（50 次）</option>
+                  </select>
+                  <p class="text-xs mt-1 text-muted-foreground">滚动次数越多，结果可能越多，但 Google 有上限</p>
+                </div>
+
+                <!-- 隐藏的后端参数 -->
+                <input type="hidden" id="zoom" name="zoom" value="15">
+                <input type="hidden" id="latitude" name="latitude" value="0">
+                <input type="hidden" id="longitude" name="longitude" value="0">
+                <input type="hidden" id="fastmode" name="fastmode" value="">
+                <input type="hidden" id="gridmode" name="gridmode" value="">
+                <input type="hidden" id="gridbbox" name="gridbbox" value="">
+                <input type="hidden" id="radius" name="radius" value="10000">
+
+                <!-- 代理设置 -->
+                <div>
+                  <label class="block text-sm mb-2 text-foreground">
+                    代理设置
+                    <span class="text-xs ml-1 text-muted-foreground">（可选）</span>
+                  </label>
+                  <textarea
+                    id="proxies"
+                    name="proxies"
+                    class="custom-textarea w-full px-3 py-2 rounded-lg border text-sm resize-none border-input text-foreground bg-card"
+                    rows="3"
+                    placeholder="每行一个代理，支持 HTTP/HTTPS/SOCKS5&#10;例如：http://user:pass@host:port"
+                  ></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 右侧主内容区 -->
+      <main id="main-content">
+        <!-- 顶部工具栏 -->
+        <div class="flex items-center justify-between px-8 py-4 border-b flex-shrink-0 border-border bg-card">
+          <div class="flex items-center gap-3">
+            <h2 class="text-lg font-semibold text-foreground">任务列表</h2>
+            <span id="task-count-badge" class="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-medium badge-count">
+              0
+            </span>
+          </div>
+          <button
+            type="button"
+            class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-muted-foreground"
+            onclick="handleRefresh()"
+          >
+            <i data-lucide="refresh-cw" class="w-4 h-4" id="refresh-icon"></i>
+            <span>刷新</span>
+          </button>
+        </div>
+
+        <!-- 任务列表滚动区 -->
+        <div id="main-scroll">
+          <div id="job-list" class="space-y-4" hx-get="/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            <!-- 任务卡片由 HTMX 动态加载 -->
+          </div>
+
+          <!-- 空状态 -->
+          <div id="empty-state" class="flex-col items-center justify-center py-20 hidden">
+            <div class="w-20 h-20 rounded-full flex items-center justify-center mb-4 empty-icon-bg">
+              <i data-lucide="map" class="w-10 h-10 text-muted-foreground"></i>
+            </div>
+            <h3 class="text-base font-medium mb-1.5 text-foreground">还没有采集任务</h3>
+            <p class="text-sm text-center max-w-xs text-muted-foreground">在左侧输入关键词和地点，开始你的第一次采集</p>
+          </div>
+        </div>
+      </main>
     </div>
 
     <div id="map-modal-container"></div>
-<script>
-function hideSponsor() {
-    const sponsorSection = document.getElementById('sponsor-section');
-    if (sponsorSection) {
-        sponsorSection.style.display = 'none';
-    }
-}
-</script>
+
+    <script>
+      // 初始化 Lucide 图标
+      lucide.createIcons();
+
+      // 模式选择
+      let currentMode = 'quick';
+      function selectMode(el, mode) {
+        currentMode = mode;
+        const cards = document.querySelectorAll('.mode-card');
+        cards.forEach(card => {
+          card.classList.remove('active');
+        });
+        el.classList.add('active');
+
+        // 设置 fastmode 隐藏字段（快速模式 = fastmode on）
+        document.getElementById('fastmode').value = mode === 'quick' ? 'on' : '';
+
+        // 设置 gridmode 隐藏字段（全域全量 = gridmode on）
+        document.getElementById('gridmode').value = mode === 'grid' ? 'on' : '';
+
+        // 网格密度选项：仅全域全量模式显示
+        const gridSection = document.getElementById('grid-density-section');
+        if (mode === 'grid') {
+          gridSection.classList.remove('hidden');
+        } else {
+          gridSection.classList.add('hidden');
+        }
+      }
+
+      // 高级选项折叠
+      function toggleAdvanced() {
+        const content = document.getElementById('advanced-options');
+        const icon = document.getElementById('advanced-icon');
+        content.classList.toggle('open');
+        icon.classList.toggle('open');
+      }
+
+      // 开关切换
+      function toggleSwitch(el, inputId) {
+        el.classList.toggle('on');
+        const input = document.getElementById(inputId);
+        if (input) {
+          input.checked = el.classList.contains('on');
+        }
+      }
+
+      // 提交前组装任务名称
+      document.getElementById('search-form').addEventListener('htmx:configRequest', function(event) {
+        const keywords = document.getElementById('keywords').value.trim();
+        const locations = document.getElementById('locations').value.trim();
+        
+        // 组装任务名称
+        let name = '';
+        if (keywords && locations) {
+          name = keywords + ' / ' + locations;
+        } else if (keywords) {
+          name = keywords;
+        } else {
+          name = locations;
+        }
+        document.getElementById('name').value = name;
+
+        // 自动推断语言
+        const langInput = document.getElementById('lang');
+        if (!langInput.value || langInput.value === '') {
+          const hasChinese = /[\u4e00-\u9fa5]/.test(keywords + locations);
+          langInput.value = hasChinese ? 'zh' : 'en';
+        }
+      });
+
+      // 采集成功后的处理
+      function handleScrapeSuccess() {
+        // 清空输入
+        document.getElementById('keywords').value = '';
+        document.getElementById('locations').value = '';
+        
+        // 滚动到顶部
+        document.getElementById('main-scroll').scrollTop = 0;
+        
+        // 重新初始化图标
+        setTimeout(() => lucide.createIcons(), 100);
+        
+        // 更新计数
+        updateTaskCount();
+        
+        // 隐藏空状态
+        const emptyState = document.getElementById('empty-state');
+        const jobList = document.getElementById('job-list');
+        emptyState.classList.add('hidden');
+        emptyState.classList.remove('flex');
+        jobList.classList.remove('hidden');
+      }
+
+      // 更新任务计数
+      function updateTaskCount() {
+        const count = document.querySelectorAll('.task-card').length;
+        document.getElementById('task-count-badge').textContent = count;
+
+        const emptyState = document.getElementById('empty-state');
+        const jobList = document.getElementById('job-list');
+        if (count === 0) {
+          jobList.classList.add('hidden');
+          emptyState.classList.remove('hidden');
+          emptyState.classList.add('flex');
+        } else {
+          jobList.classList.remove('hidden');
+          emptyState.classList.add('hidden');
+          emptyState.classList.remove('flex');
+        }
+      }
+
+      // 刷新按钮
+      function handleRefresh() {
+        const icon = document.getElementById('refresh-icon');
+        if (icon) {
+          icon.style.transition = 'transform 0.5s ease';
+          icon.style.transform = 'rotate(360deg)';
+          setTimeout(() => {
+            icon.style.transform = 'rotate(0deg)';
+          }, 500);
+        }
+        // 触发 HTMX 刷新
+        htmx.trigger('#job-list', 'load');
+      }
+
+      // HTMX 加载完成后更新计数和图标
+      document.body.addEventListener('htmx:afterOnLoad', function(event) {
+        if (event.detail.elt.id === 'job-list') {
+          updateTaskCount();
+          lucide.createIcons();
+        }
+      });
+    </script>
 </body>
 </html>

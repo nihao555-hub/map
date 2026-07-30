@@ -173,18 +173,19 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 type formData struct {
-	Name     string
-	MaxTime  string
-	Keywords []string
-	Language string
-	Zoom     int
-	FastMode bool
-	Radius   int
-	Lat      string
-	Lon      string
-	Depth    int
-	Email    bool
-	Proxies  []string
+	Name      string
+	MaxTime   string
+	Keywords  []string
+	Locations string
+	Language  string
+	Zoom      int
+	FastMode  bool
+	Radius    int
+	Lat       string
+	Lon       string
+	Depth     int
+	Email     bool
+	Proxies   []string
 }
 
 type ctxKey string
@@ -298,11 +299,19 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	locationsStr := r.Form.Get("locations")
+	locationsStr = strings.TrimSpace(locationsStr)
+
 	keywords := strings.Split(keywordsStr[0], "\n")
 	for _, k := range keywords {
 		k = strings.TrimSpace(k)
 		if k == "" {
 			continue
+		}
+
+		// 如果有地点，把地点拼到关键词后面（加 in 前缀）
+		if locationsStr != "" {
+			k = k + " in " + locationsStr
 		}
 
 		newJob.Data.Keywords = append(newJob.Data.Keywords, k)
@@ -339,6 +348,27 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newJob.Data.Email = r.Form.Get("email") == "on"
+
+	// 网格全量模式
+	if r.Form.Get("gridmode") == "on" {
+		newJob.Data.GridMode = true
+		// 网格边长（公里），默认 1.5
+		cellKm := 1.5
+		if cellStr := r.Form.Get("gridcell"); cellStr != "" {
+			if v, err := strconv.ParseFloat(cellStr, 64); err == nil && v > 0 {
+				cellKm = v
+			}
+		}
+		newJob.Data.GridCellKm = cellKm
+		// 保存原始地点名（用于地理编码生成 bbox）
+		newJob.Data.Locations = locationsStr
+		// 如果手动传了 bbox 就用手动的
+		if bbox := r.Form.Get("gridbbox"); bbox != "" {
+			newJob.Data.GridBBox = bbox
+		}
+		// 网格模式下 fastmode 强制关闭（要进详情页抓完整字段）
+		newJob.Data.FastMode = false
+	}
 
 	proxies := strings.Split(r.Form.Get("proxies"), "\n")
 	if len(proxies) > 0 {
@@ -682,13 +712,13 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; "+
-				"script-src 'self' cdn.redoc.ly cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval'; "+
-				"worker-src 'self' blob:; "+
-				"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com; "+
-				"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org; "+
-				"font-src 'self' fonts.gstatic.com; "+
-				"connect-src 'self'")
+		"default-src 'self'; "+
+			"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
+			"worker-src 'self' blob:; "+
+			"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
+			"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org; "+
+			"font-src 'self' fonts.gstatic.com; "+
+			"connect-src 'self'")
 
 		next.ServeHTTP(w, r)
 	})

@@ -1,24 +1,74 @@
 {{range .}}
-<tr>
-    <td>{{.ID}}</td>
-    <td>{{.Name}}</td>
-    <td>{{.Date}}</td>
-    <td>
-        <span class="status-indicator status-{{.Status}}">{{.Status}}</span>
-    </td>
-    <td>
-        {{ if eq .Status "ok" }}
-            <button type="button" class="button view-button"
-                    hx-get="/view?id={{.ID}}"
-                    hx-target="#map-modal-container"
-                    hx-swap="innerHTML">View</button>
-            <a href="/download?id={{.ID}}" download class="button download-button">Download</a>
-        {{ end }}
-        <button hx-delete="/delete?id={{.ID}}" 
-                hx-target="closest tr"
-                hx-swap="outerHTML"
-                hx-confirm="Are you sure you want to delete this job?"
-                class="delete-button">Delete</button>
-    </td>
-</tr>
+<div class="task-card rounded-xl border p-5 border-border bg-card" data-job-id="{{.ID}}">
+  <div class="flex items-start justify-between mb-3">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 task-icon-bg">
+        <i data-lucide="building-2" class="w-5 h-5 task-icon"></i>
+      </div>
+      <div>
+        <h3 class="font-medium text-foreground">{{.Name}}</h3>
+        <p class="text-xs mt-0.5 text-muted-foreground">{{.Date}}</p>
+      </div>
+    </div>
+    <span class="badge-status status-{{.Status}}">
+      <span class="dot"></span>
+      {{ if eq .Status "pending" }}待启动
+      {{ else if eq .Status "working" }}进行中
+      {{ else if eq .Status "ok" }}已完成
+      {{ else if eq .Status "failed" }}失败
+      {{ else }}{{.Status}}
+      {{ end }}
+    </span>
+  </div>
+
+  {{ if eq .Status "working" }}
+  <div class="mb-3">
+    <div class="flex items-center justify-between mb-1.5">
+      <span class="text-xs text-muted-foreground">采集中...</span>
+      <span class="text-xs font-medium text-primary">进行中</span>
+    </div>
+    <div class="w-full h-2 rounded-full bg-muted">
+      <div class="progress-bar-inner h-full rounded-full" style="width: 30%;"></div>
+    </div>
+  </div>
+  {{ end }}
+
+  <div class="flex items-center gap-5 mb-4">
+    <div class="flex items-center gap-1.5">
+      <i data-lucide="building-2" class="w-4 h-4 text-muted-foreground"></i>
+      <span class="text-sm text-foreground">{{.Status}} 状态</span>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <i data-lucide="clock" class="w-4 h-4 text-muted-foreground"></i>
+      <span class="text-sm text-muted-foreground">{{.Date}}</span>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-2 pt-3 border-t border-border">
+    {{ if eq .Status "ok" }}
+    <button type="button" class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-muted-foreground view-result-btn">
+      <i data-lucide="eye" class="w-4 h-4"></i>
+      查看结果
+    </button>
+    <a href="/download?id={{.ID}}" download class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-muted-foreground no-underline">
+      <i data-lucide="download" class="w-4 h-4"></i>
+      导出 CSV
+    </a>
+    <button type="button" class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-muted-foreground"
+            hx-get="/view?id={{.ID}}"
+            hx-target="#map-modal-container"
+            hx-swap="innerHTML">
+      <i data-lucide="map" class="w-4 h-4"></i>
+      查看地图
+    </button>
+    {{ end }}
+    <button class="action-btn flex items-center justify-center w-8 h-8 rounded-lg ml-auto text-muted-foreground delete-btn"
+            hx-delete="/delete?id={{.ID}}"
+            hx-target="closest .task-card"
+            hx-swap="outerHTML swap:0.2s"
+            hx-confirm="确定要删除这个任务吗？">
+      <i data-lucide="trash-2" class="w-4 h-4"></i>
+    </button>
+  </div>
+</div>
 {{end}}

@@ -219,22 +219,22 @@ func (j *PlaceJob) getRaw(ctx context.Context, page scrapemate.BrowserPage) (any
 		default:
 			raw, err := page.Eval(js)
 			if err != nil {
-				// Continue retrying on error
-				<-time.After(time.Millisecond * 200)
+				// 提速：轮询间隔从 200ms 降到 100ms，更快检测到数据就绪
+				<-time.After(time.Millisecond * 100)
 				continue
 			}
 
 			// Check for valid non-null result.
 			// JS null may arrive as nil, and empty strings are not useful here.
 			if raw == nil {
-				<-time.After(time.Millisecond * 200)
+				<-time.After(time.Millisecond * 100)
 				continue
 			}
 
 			// If it's a string, make sure it's not empty
 			if str, ok := raw.(string); ok {
 				if str == "" {
-					<-time.After(time.Millisecond * 200)
+					<-time.After(time.Millisecond * 100)
 					continue
 				}
 			}
@@ -248,7 +248,8 @@ func (j *PlaceJob) extractJSON(page scrapemate.BrowserPage) ([]byte, error) {
 	const maxRetries = 2
 
 	for attempt := range maxRetries {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// 提速：超时从 30s 降到 15s，正常页面 3-5 秒就出数据了
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		rawI, err := j.getRaw(ctx, page)
 
 		cancel()

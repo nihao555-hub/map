@@ -73,6 +73,11 @@ type JobData struct {
 	ExtraReviews bool          `json:"extra_reviews"`
 	MaxTime      time.Duration `json:"max_time"`
 	Proxies      []string      `json:"proxies"`
+	// 网格全量模式：把区域切块搜索，突破 120 条上限
+	GridMode    bool    `json:"grid_mode"`
+	GridBBox    string  `json:"grid_bbox"`    // "minLat,minLon,maxLat,maxLon"
+	GridCellKm  float64 `json:"grid_cell_km"` // 每格边长（公里）
+	Locations   string  `json:"locations"`    // 原始地点名，用于网格模式的地理编码
 }
 
 func (d *JobData) Validate() error {
@@ -96,7 +101,7 @@ func (d *JobData) Validate() error {
 		return errors.New("missing max time")
 	}
 
-	if d.FastMode && (d.Lat == "" || d.Lon == "") {
+	if d.FastMode && !d.GridMode && (d.Lat == "" || d.Lon == "") {
 		return errors.New("missing geo coordinates")
 	}
 

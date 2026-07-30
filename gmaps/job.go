@@ -312,14 +312,14 @@ func scroll(ctx context.Context,
 
 		return new Promise((resolve, reject) => {
   			setTimeout(() => {
-    		resolve(el.scrollHeight);
+    			resolve(el.scrollHeight);
   			}, %d);
 		});
 	}`
 
 	var currentScrollHeight int
-	// Scroll to the bottom of the page.
-	waitTime := 100.
+	// 提速：初始等待时间从 100ms 降到 50ms，更快开始滚动
+	waitTime := 50.
 	cnt := 0
 
 	const (
@@ -364,7 +364,8 @@ func scroll(ctx context.Context,
 		default:
 		}
 
-		waitTime *= 1.5
+		// 提速：增长系数从 1.5 降到 1.3，更快达到最大等待时间
+		waitTime *= 1.3
 
 		if waitTime > maxWait2 {
 			waitTime = maxWait2
