@@ -9,7 +9,21 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy code to server via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "."
+          target: "/home/ubuntu/gmaps_new"
+          rm: true
+
+      - name: Deploy on server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -17,22 +31,14 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-            PROJECT_DIR="/home/ubuntu/gmaps"
-
-            # 如果目录不是 git 仓库，重新 clone
-            if [ ! -d "$PROJECT_DIR/.git" ]; then
-              echo "Directory is not a git repo, re-cloning..."
-              rm -rf "$PROJECT_DIR"
-              git clone --depth 1 --branch main "$REPO_URL" "$PROJECT_DIR"
-            else
-              cd "$PROJECT_DIR"
-              git remote set-url origin "$REPO_URL"
-              git fetch origin
-              git reset --hard origin/main
+            # 替换旧代码
+            rm -rf /home/ubuntu/gmaps_old
+            if [ -d "/home/ubuntu/gmaps" ]; then
+              mv /home/ubuntu/gmaps /home/ubuntu/gmaps_old
             fi
+            mv /home/ubuntu/gmaps_new /home/ubuntu/gmaps
 
-            cd "$PROJECT_DIR"
+            cd /home/ubuntu/gmaps
 
             # 配置 .env
             cat > .env << 'EOF'
@@ -40,7 +46,11 @@ jobs:
             PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
             EOF
 
-            # 构建并启动（禁用缓存确保使用最新代码）
+            # 构建并启动
             sudo -E docker compose --env-file .env -f docker-compose.deploy.yaml build --no-cache
             sudo -E docker compose --env-file .env -f docker-compose.deploy.yaml up -d
+
+            # 清理旧版本
+            rm -rf /home/ubuntu/gmaps_old
+
             echo "Deploy completed at $(date)"
