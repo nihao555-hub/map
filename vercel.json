@@ -1,15 +1,10 @@
 {
   "version": 2,
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "mkdir -p public && cp -r web/static/templates/* public/ && cp -r web/static/css public/",
+  "buildCommand": "mkdir -p public/static && cp -r web/static/templates/* public/ && cp -r web/static/css public/static/ && cp -r web/static/spec public/static/",
   "outputDirectory": "public",
   "framework": null,
-  "ignoreCommand": "echo 'ignore nothing - use outputDirectory'",
   "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "http://124.222.208.237:8080/api/:path*"
-    },
     {
       "source": "/scrape",
       "destination": "http://124.222.208.237:8080/scrape"
@@ -19,20 +14,32 @@
       "destination": "http://124.222.208.237:8080/jobs"
     },
     {
-      "source": "/job/:path*",
-      "destination": "http://124.222.208.237:8080/job/:path*"
+      "source": "/view",
+      "destination": "http://124.222.208.237:8080/view"
+    },
+    {
+      "source": "/delete",
+      "destination": "http://124.222.208.237:8080/delete"
+    },
+    {
+      "source": "/download",
+      "destination": "http://124.222.208.237:8080/download"
     },
     {
       "source": "/stats",
       "destination": "http://124.222.208.237:8080/stats"
     },
     {
-      "source": "/csv/:path*",
-      "destination": "http://124.222.208.237:8080/csv/:path*"
+      "source": "/progress",
+      "destination": "http://124.222.208.237:8080/progress"
     },
     {
-      "source": "/delete/:path*",
-      "destination": "http://124.222.208.237:8080/delete/:path*"
+      "source": "/api/:path*",
+      "destination": "http://124.222.208.237:8080/api/:path*"
+    },
+    {
+      "source": "/csv/:path*",
+      "destination": "http://124.222.208.237:8080/csv/:path*"
     },
     {
       "source": "/static/:path*",
