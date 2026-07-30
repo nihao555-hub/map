@@ -9,48 +9,56 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Copy code to server via SCP
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "."
-          target: "/home/ubuntu/gmaps_new"
-          rm: true
-
-      - name: Deploy on server
+      - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
+          script_stop: true
           script: |
-            # 替换旧代码
-            rm -rf /home/ubuntu/gmaps_old
-            if [ -d "/home/ubuntu/gmaps" ]; then
-              mv /home/ubuntu/gmaps /home/ubuntu/gmaps_old
+            set -e
+
+            PROJECT_DIR="/home/ubuntu/gmaps"
+            ZIP_URL="https://github.com/${{ github.repository }}/archive/refs/heads/main.tar.gz"
+
+            echo "Step 1: Download latest code..."
+            cd /tmp
+            rm -rf map-main code.tar.gz
+            curl -sL -o code.tar.gz "$ZIP_URL"
+            tar -xzf code.tar.gz
+            rm code.tar.gz
+            echo "Step 1 done: code downloaded"
+
+            echo "Step 2: Replace old code..."
+            # 备份旧版本
+            if [ -d "$PROJECT_DIR" ]; then
+              rm -rf /home/ubuntu/gmaps_backup
+              mv "$PROJECT_DIR" /home/ubuntu/gmaps_backup
             fi
-            mv /home/ubuntu/gmaps_new /home/ubuntu/gmaps
+            mv /tmp/map-main "$PROJECT_DIR"
+            echo "Step 2 done: code replaced"
 
-            cd /home/ubuntu/gmaps
+            cd "$PROJECT_DIR"
 
-            # 配置 .env
+            echo "Step 3: Configure environment..."
             cat > .env << 'EOF'
             GOPROXY=https://goproxy.cn,direct
             PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
             EOF
+            echo "Step 3 done"
 
-            # 构建并启动
+            echo "Step 4: Build Docker image (no-cache, this takes 5-10 min)..."
             sudo -E docker compose --env-file .env -f docker-compose.deploy.yaml build --no-cache
+            echo "Step 4 done: build complete"
+
+            echo "Step 5: Start service..."
             sudo -E docker compose --env-file .env -f docker-compose.deploy.yaml up -d
+            echo "Step 5 done: service started"
 
-            # 清理旧版本
-            rm -rf /home/ubuntu/gmaps_old
-
-            echo "Deploy completed at $(date)"
+            # 清理旧备份
+            rm -rf /home/ubuntu/gmaps_backup
+            echo "=========================================="
+            echo "  Deploy completed at $(date)"
+            echo "=========================================="
