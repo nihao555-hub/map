@@ -8,7 +8,7 @@ set -e
 
 PROJECT_DIR="/home/ubuntu/gmaps"
 WEBHOOK_PORT=9000
-WEBHOOK_SECRET="gmaps-deploy-secret-$(date +%s | sha256sum | head -c 16)"
+WEBHOOK_SECRET="gmaps-auto-deploy-1d6eff2755f5986d"
 
 echo "=============================================="
 echo "  Google Maps 采集 —— 一键部署脚本"
