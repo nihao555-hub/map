@@ -125,112 +125,112 @@
               <span>开始采集</span>
             </button>
             <div id="spinner" class="spinner htmx-indicator"></div>
-          </form>
 
-          <!-- 分隔线 -->
-          <div class="my-6 border-t border-border"></div>
+            <!-- 分隔线 -->
+            <div class="my-6 border-t border-border"></div>
 
-          <!-- 高级选项折叠区 -->
-          <div>
-            <button
-              type="button"
-              id="advanced-toggle"
-              class="w-full flex items-center justify-between py-2 text-sm font-medium text-foreground"
-              onclick="toggleAdvanced()"
-            >
-              <span class="flex items-center gap-2">
-                <i data-lucide="settings" class="w-4 h-4 text-muted-foreground"></i>
-                高级选项
-              </span>
-              <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon" id="advanced-icon" style="color: var(--brand-muted-foreground);"></i>
-            </button>
+            <!-- 高级选项折叠区 -->
+            <div>
+              <button
+                type="button"
+                id="advanced-toggle"
+                class="w-full flex items-center justify-between py-2 text-sm font-medium text-foreground"
+                onclick="toggleAdvanced()"
+              >
+                <span class="flex items-center gap-2">
+                  <i data-lucide="settings" class="w-4 h-4 text-muted-foreground"></i>
+                  高级选项
+                </span>
+                <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon" id="advanced-icon" style="color: var(--brand-muted-foreground);"></i>
+              </button>
 
-            <div id="advanced-options" class="collapse-content">
-              <div class="pt-3 space-y-4">
-                <!-- 抓取邮箱开关 -->
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <i data-lucide="mail" class="w-4 h-4 text-muted-foreground"></i>
-                    <span class="text-sm text-foreground">抓取邮箱</span>
+              <div id="advanced-options" class="collapse-content">
+                <div class="pt-3 space-y-4">
+                  <!-- 抓取邮箱开关 -->
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="mail" class="w-4 h-4 text-muted-foreground"></i>
+                      <span class="text-sm text-foreground">抓取邮箱</span>
+                    </div>
+                    <input type="checkbox" id="email" name="email" checked class="hidden">
+                    <div class="toggle-switch on" id="email-toggle" onclick="toggleSwitch(this, 'email')"></div>
                   </div>
-                  <input type="checkbox" id="email" name="email" checked class="hidden">
-                  <div class="toggle-switch on" id="email-toggle" onclick="toggleSwitch(this, 'email')"></div>
-                </div>
 
-                <!-- 语言输入 -->
-                <div>
-                  <label class="block text-sm mb-2 text-foreground">语言</label>
-                  <div class="input-field flex items-center gap-2 px-3 py-2 rounded-lg border border-input">
-                    <i data-lucide="globe" class="w-4 h-4 flex-shrink-0 text-muted-foreground"></i>
-                    <input
-                      type="text"
-                      id="lang"
-                      name="lang"
-                      value="en"
-                      placeholder="自动检测"
-                      class="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground text-foreground"
-                    />
+                  <!-- 语言输入 -->
+                  <div>
+                    <label class="block text-sm mb-2 text-foreground">语言</label>
+                    <div class="input-field flex items-center gap-2 px-3 py-2 rounded-lg border border-input">
+                      <i data-lucide="globe" class="w-4 h-4 flex-shrink-0 text-muted-foreground"></i>
+                      <input
+                        type="text"
+                        id="lang"
+                        name="lang"
+                        value="en"
+                        placeholder="自动检测"
+                        class="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground text-foreground"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <!-- 最大运行时间 -->
-                <div>
-                  <label class="block text-sm mb-2 text-foreground">最大运行时间</label>
-                  <select
-                    id="maxtime"
-                    name="maxtime"
-                    class="select-field w-full px-3 py-2 rounded-lg border text-sm border-input text-foreground bg-card"
-                  >
-                    <option value="3m">3 分钟</option>
-                    <option value="10m" selected>10 分钟</option>
-                    <option value="30m">30 分钟</option>
-                    <option value="60m">1 小时</option>
-                    <option value="120m">2 小时</option>
-                  </select>
-                </div>
+                  <!-- 最大运行时间 -->
+                  <div>
+                    <label class="block text-sm mb-2 text-foreground">最大运行时间</label>
+                    <select
+                      id="maxtime"
+                      name="maxtime"
+                      class="select-field w-full px-3 py-2 rounded-lg border text-sm border-input text-foreground bg-card"
+                    >
+                      <option value="3m">3 分钟</option>
+                      <option value="10m" selected>10 分钟</option>
+                      <option value="30m">30 分钟</option>
+                      <option value="60m">1 小时</option>
+                      <option value="120m">2 小时</option>
+                    </select>
+                  </div>
 
-                <!-- 滚动深度 -->
-                <div>
-                  <label class="block text-sm mb-2 text-foreground">滚动深度</label>
-                  <select
-                    id="depth"
-                    name="depth"
-                    class="select-field w-full px-3 py-2 rounded-lg border text-sm border-input text-foreground bg-card"
-                  >
-                    <option value="5">浅（5 次，快速）</option>
-                    <option value="10" selected>标准（10 次）</option>
-                    <option value="20">深（20 次）</option>
-                    <option value="50">极深（50 次）</option>
-                  </select>
-                  <p class="text-xs mt-1 text-muted-foreground">滚动次数越多，结果可能越多，但 Google 有上限</p>
-                </div>
+                  <!-- 滚动深度 -->
+                  <div>
+                    <label class="block text-sm mb-2 text-foreground">滚动深度</label>
+                    <select
+                      id="depth"
+                      name="depth"
+                      class="select-field w-full px-3 py-2 rounded-lg border text-sm border-input text-foreground bg-card"
+                    >
+                      <option value="5">浅（5 次，快速）</option>
+                      <option value="10" selected>标准（10 次）</option>
+                      <option value="20">深（20 次）</option>
+                      <option value="50">极深（50 次）</option>
+                    </select>
+                    <p class="text-xs mt-1 text-muted-foreground">滚动次数越多，结果可能越多，但 Google 有上限</p>
+                  </div>
 
-                <!-- 隐藏的后端参数 -->
-                <input type="hidden" id="zoom" name="zoom" value="15">
-                <input type="hidden" id="latitude" name="latitude" value="0">
-                <input type="hidden" id="longitude" name="longitude" value="0">
-                <input type="hidden" id="fastmode" name="fastmode" value="">
-                <input type="hidden" id="gridmode" name="gridmode" value="">
-                <input type="hidden" id="gridbbox" name="gridbbox" value="">
-                <input type="hidden" id="radius" name="radius" value="10000">
+                  <!-- 隐藏的后端参数 -->
+                  <input type="hidden" id="zoom" name="zoom" value="15">
+                  <input type="hidden" id="latitude" name="latitude" value="0">
+                  <input type="hidden" id="longitude" name="longitude" value="0">
+                  <input type="hidden" id="fastmode" name="fastmode" value="">
+                  <input type="hidden" id="gridmode" name="gridmode" value="">
+                  <input type="hidden" id="gridbbox" name="gridbbox" value="">
+                  <input type="hidden" id="radius" name="radius" value="10000">
 
-                <!-- 代理设置 -->
-                <div>
-                  <label class="block text-sm mb-2 text-foreground">
-                    代理设置
-                    <span class="text-xs ml-1 text-muted-foreground">（可选）</span>
-                  </label>
-                  <textarea
-                    id="proxies"
-                    name="proxies"
-                    class="custom-textarea w-full px-3 py-2 rounded-lg border text-sm resize-none border-input text-foreground bg-card"
-                    rows="3"
-                    placeholder="每行一个代理，支持 HTTP/HTTPS/SOCKS5&#10;例如：http://user:pass@host:port"
-                  ></textarea>
+                  <!-- 代理设置 -->
+                  <div>
+                    <label class="block text-sm mb-2 text-foreground">
+                      代理设置
+                      <span class="text-xs ml-1 text-muted-foreground">（可选）</span>
+                    </label>
+                    <textarea
+                      id="proxies"
+                      name="proxies"
+                      class="custom-textarea w-full px-3 py-2 rounded-lg border text-sm resize-none border-input text-foreground bg-card"
+                      rows="3"
+                      placeholder="每行一个代理，支持 HTTP/HTTPS/SOCKS5&#10;例如：http://user:pass@host:port"
+                    ></textarea>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </form>
         </div>
       </aside>
 
