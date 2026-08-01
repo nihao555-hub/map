@@ -4,38 +4,39 @@
 
 /* Design Tokens */
 :root {
-  --brand-primary: #2563eb;
+  /* 低饱和暖色系主题（陶土赭主色 + 暖白底） */
+  --brand-primary: #b3552d;
   --brand-primary-foreground: #ffffff;
-  --brand-primary-hover: #1d4ed8;
-  --brand-primary-active: #1e40af;
-  --brand-primary-soft: #dbeafe;
-  --brand-primary-soft-foreground: #1e40af;
+  --brand-primary-hover: #9c4826;
+  --brand-primary-active: #863e21;
+  --brand-primary-soft: #f7e4da;
+  --brand-primary-soft-foreground: #8f4423;
 
-  --brand-background: #f8fafc;
-  --brand-foreground: #0f172a;
+  --brand-background: #faf7f3;
+  --brand-foreground: #2b2521;
   --brand-card: #ffffff;
-  --brand-card-foreground: #0f172a;
+  --brand-card-foreground: #2b2521;
   --brand-popover: #ffffff;
-  --brand-popover-foreground: #0f172a;
+  --brand-popover-foreground: #2b2521;
 
-  --brand-muted: #f1f5f9;
-  --brand-muted-foreground: #64748b;
+  --brand-muted: #f3eee8;
+  --brand-muted-foreground: #7d7168;
 
-  --brand-border: #e2e8f0;
-  --brand-input: #e2e8f0;
-  --brand-ring: #2563eb;
+  --brand-border: #e7dfd6;
+  --brand-input: #e0d7cc;
+  --brand-ring: #b3552d;
 
-  --state-success: #10b981;
+  --state-success: #4d7c5f;
   --state-success-foreground: #ffffff;
-  --state-success-soft: #d1fae5;
-  --state-warning: #f59e0b;
+  --state-success-soft: #e2efe6;
+  --state-warning: #b8873a;
   --state-warning-foreground: #ffffff;
-  --state-warning-soft: #fef3c7;
-  --state-error: #ef4444;
+  --state-warning-soft: #f6ecd8;
+  --state-error: #a8524a;
   --state-error-foreground: #ffffff;
-  --state-error-soft: #fee2e2;
-  --state-info: #3b82f6;
-  --state-info-soft: #dbeafe;
+  --state-error-soft: #f5e3e1;
+  --state-info: #8a6d4b;
+  --state-info-soft: #f0e8dd;
 
   --brand-radius-sm: 4px;
   --brand-radius-md: 8px;
@@ -166,7 +167,7 @@ html, body {
 
 .input-field:focus-within {
   border-color: var(--brand-primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px rgba(179, 85, 45, 0.12);
 }
 
 .input-field input {
@@ -225,7 +226,7 @@ html, body {
 .btn-primary:hover {
   background-color: var(--brand-primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 4px 12px rgba(179, 85, 45, 0.28);
 }
 
 .btn-primary:active {
@@ -316,7 +317,7 @@ html, body {
 .select-field:focus {
   outline: none;
   border-color: var(--brand-primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px rgba(179, 85, 45, 0.12);
 }
 
 /* ========================================
@@ -331,7 +332,7 @@ textarea.custom-textarea {
 textarea.custom-textarea:focus {
   outline: none;
   border-color: var(--brand-primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 3px rgba(179, 85, 45, 0.12);
 }
 
 textarea.custom-textarea::placeholder {
@@ -351,10 +352,13 @@ textarea.custom-textarea::placeholder {
    ======================================== */
 .task-card {
   transition: box-shadow 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 1px 2px rgba(43, 37, 33, 0.04);
 }
 
 .task-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 6px 16px rgba(43, 37, 33, 0.08);
+  border-color: var(--brand-input);
 }
 
 .task-icon-bg {
@@ -395,7 +399,7 @@ textarea.custom-textarea::placeholder {
 /* pending 状态 */
 .badge-status.status-pending {
   background: var(--state-warning-soft);
-  color: #92400e;
+  color: #8a6220;
 }
 
 .badge-status.status-pending .dot {
@@ -405,7 +409,7 @@ textarea.custom-textarea::placeholder {
 /* working 状态 */
 .badge-status.status-working {
   background: var(--state-warning-soft);
-  color: #92400e;
+  color: #8a6220;
 }
 
 .badge-status.status-working .dot {
@@ -416,7 +420,7 @@ textarea.custom-textarea::placeholder {
 /* ok / completed 状态 */
 .badge-status.status-ok {
   background: var(--state-success-soft);
-  color: #065f46;
+  color: #3d5f4b;
 }
 
 .badge-status.status-ok .dot {
@@ -426,7 +430,7 @@ textarea.custom-textarea::placeholder {
 /* failed 状态 */
 .badge-status.status-failed {
   background: var(--state-error-soft);
-  color: #991b1b;
+  color: #7f453e;
 }
 
 .badge-status.status-failed .dot {
@@ -491,9 +495,9 @@ textarea.custom-textarea::placeholder {
    ======================================== */
 .error-message {
   display: none;
-  background-color: #fee2e2;
+  background-color: var(--state-error-soft);
   border: 1px solid var(--state-error);
-  color: #991b1b;
+  color: #7f453e;
   padding: 12px 16px;
   border-radius: 8px;
   margin-bottom: 16px;
