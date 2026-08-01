@@ -15,14 +15,6 @@ const (
 	StatusFailed  = "failed"
 )
 
-func hasCoordinates(lat, lon string) bool {
-	if lat == "" || lon == "" {
-		return false
-	}
-
-	return lat != "0" || lon != "0"
-}
-
 type SelectParams struct {
 	Status string
 	Limit  int
@@ -81,10 +73,22 @@ type JobData struct {
 	ExtraReviews bool          `json:"extra_reviews"`
 	MaxTime      time.Duration `json:"max_time"`
 	Proxies      []string      `json:"proxies"`
-	Location     string        `json:"location"`
-	FullCoverage bool          `json:"full_coverage"`
-	GridBBox     string        `json:"grid_bbox"`
-	GridCell     float64       `json:"grid_cell"`
+	// 网格全量模式：把区域切块搜索，突破 120 条上限
+	GridMode    bool    `json:"grid_mode"`
+	GridBBox    string  `json:"grid_bbox"`    // "minLat,minLon,maxLat,maxLon"
+	GridCellKm  float64 `json:"grid_cell_km"` // 每格边长（公里）
+	Locations   string  `json:"locations"`    // 原始地点名，用于网格模式的地理编码
+}
+
+// GeoAnchor 返回用于展示的锚定坐标（如 "13.756331, 100.501765"），
+// 无有效锚定（空值或表单默认的 0,0）时返回空串，模板据此决定是否展示
+//nolint:gocritic // 模板里以值形式访问 .Data.GeoAnchor，需要值接收者
+func (d JobData) GeoAnchor() string {
+	if !hasGeoAnchor(d.Lat, d.Lon) {
+		return ""
+	}
+
+	return d.Lat + ", " + d.Lon
 }
 
 func (d *JobData) Validate() error {
@@ -108,12 +112,8 @@ func (d *JobData) Validate() error {
 		return errors.New("missing max time")
 	}
 
-	if d.FastMode && (d.Lat == "" || d.Lon == "") {
+	if d.FastMode && !d.GridMode && (d.Lat == "" || d.Lon == "") {
 		return errors.New("missing geo coordinates")
-	}
-
-	if d.FullCoverage && d.GridBBox == "" && d.Location == "" && !hasCoordinates(d.Lat, d.Lon) {
-		return errors.New("full coverage requires a location, coordinates or a grid bounding box")
 	}
 
 	return nil

@@ -1,17 +1,78 @@
-<article class="active-job-card" id="job-card-{{.ID}}">
-    <div class="job-card-header">
-        <strong class="job-name" title="{{.Name}}">{{.Name}}</strong>
-        <span class="status-badge status-{{.Status}}">{{if eq .Status "working"}}进行中{{else if eq .Status "ok"}}已完成{{else if eq .Status "failed"}}失败{{else}}排队中{{end}}</span>
+<div class="task-card rounded-xl border p-5 border-border bg-card" data-job-id="{{.ID}}">
+  <div class="flex items-start justify-between mb-3">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 task-icon-bg">
+        <i data-lucide="building-2" class="w-5 h-5 task-icon"></i>
+      </div>
+      <div>
+        <h3 class="font-medium text-foreground">{{.Name}}</h3>
+        <p class="text-xs mt-0.5 text-muted-foreground">{{.Date}}</p>
+      </div>
     </div>
-    <div class="job-card-meta">
-        <span class="meta-label">创建时间</span>
-        <time datetime="{{.Date.Format "2006-01-02T15:04:05Z07:00"}}">{{.Date.Format "2006-01-02 15:04"}}</time>
+    <span class="badge-status status-{{.Status}}">
+      <span class="dot"></span>
+      {{ if eq .Status "pending" }}待启动
+      {{ else if eq .Status "working" }}进行中
+      {{ else if eq .Status "ok" }}已完成
+      {{ else if eq .Status "failed" }}失败
+      {{ else }}{{.Status}}
+      {{ end }}
+    </span>
+  </div>
+
+  {{ if eq .Status "working" }}
+  <div class="mb-3">
+    <div class="flex items-center justify-between mb-1.5">
+      <span class="text-xs text-muted-foreground">采集中...</span>
+      <span class="text-xs font-medium text-primary">进行中</span>
     </div>
-    <div id="progress-{{.ID}}" class="progress-card progress-loading" hx-get="/progress?id={{.ID}}" hx-trigger="load" hx-swap="outerHTML">正在加载实时进度…</div>
-    <div class="job-card-actions">
-        <div class="job-actions">
-            {{if eq .Status "ok"}}<button type="button" class="button button-secondary" hx-get="/view?id={{.ID}}" hx-target="#results-container" hx-swap="innerHTML">查看结果</button><a href="/download?id={{.ID}}" download class="button button-secondary">下载 CSV</a>{{end}}
-            <button hx-delete="/delete?id={{.ID}}" hx-target="closest .active-job-card" hx-swap="outerHTML" hx-confirm="确定要删除这个任务吗？" class="button button-danger">删除任务</button>
-        </div>
+    <div class="w-full h-2 rounded-full bg-muted">
+      <div class="progress-bar-inner h-full rounded-full" style="width: 30%;"></div>
     </div>
-</article>
+  </div>
+  {{ end }}
+
+  <div class="flex items-center gap-5 mb-4">
+    <div class="flex items-center gap-1.5">
+      <i data-lucide="building-2" class="w-4 h-4 text-muted-foreground"></i>
+      <span class="text-sm text-foreground">{{.Status}} 状态</span>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <i data-lucide="clock" class="w-4 h-4 text-muted-foreground"></i>
+      <span class="text-sm text-muted-foreground">{{.Date}}</span>
+    </div>
+    {{ if .Data.GeoAnchor }}
+    <div class="flex items-center gap-1.5">
+      <i data-lucide="map-pin" class="w-4 h-4 text-muted-foreground"></i>
+      <span class="text-sm text-muted-foreground">锚定坐标 {{ .Data.GeoAnchor }}</span>
+    </div>
+    {{ end }}
+  </div>
+
+  <div class="flex items-center gap-2 pt-3 border-t border-border">
+    {{ if eq .Status "ok" }}
+    <button type="button" class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-muted-foreground view-result-btn">
+      <i data-lucide="eye" class="w-4 h-4"></i>
+      查看结果
+    </button>
+    <a href="/download?id={{.ID}}" download class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-muted-foreground no-underline">
+      <i data-lucide="download" class="w-4 h-4"></i>
+      导出 CSV
+    </a>
+    <button type="button" class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-muted-foreground"
+            hx-get="/view?id={{.ID}}"
+            hx-target="#map-modal-container"
+            hx-swap="innerHTML">
+      <i data-lucide="map" class="w-4 h-4"></i>
+      查看地图
+    </button>
+    {{ end }}
+    <button class="action-btn flex items-center justify-center w-8 h-8 rounded-lg ml-auto text-muted-foreground delete-btn"
+            hx-delete="/delete?id={{.ID}}"
+            hx-target="closest .task-card"
+            hx-swap="outerHTML swap:0.2s"
+            hx-confirm="确定要删除这个任务吗？">
+      <i data-lucide="trash-2" class="w-4 h-4"></i>
+    </button>
+  </div>
+</div>
