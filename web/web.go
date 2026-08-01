@@ -108,6 +108,23 @@ func New(svc *Service, addr string) (*Server, error) {
 		}
 	})
 
+	mux.HandleFunc("/api/v1/jobs/{id}/places", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+
+		if r.Method != http.MethodGet {
+			ans := apiError{
+				Code:    http.StatusMethodNotAllowed,
+				Message: "Method not allowed",
+			}
+
+			renderJSON(w, http.StatusMethodNotAllowed, ans)
+
+			return
+		}
+
+		ans.apiGetPlaces(w, r)
+	})
+
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 
@@ -646,6 +663,43 @@ func (s *Server) apiGetJob(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusOK, job)
 }
 
+// apiGetPlaces returns the job's mappable places (parsed from its CSV output)
+// as JSON. A job without CSV output yet yields an empty list, not an error.
+func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		apiError := apiError{
+			Code:    http.StatusUnprocessableEntity,
+			Message: "Invalid ID",
+		}
+
+		renderJSON(w, http.StatusUnprocessableEntity, apiError)
+
+		return
+	}
+
+	places, err := s.svc.GetPlaces(r.Context(), id.String())
+
+	if err != nil {
+		if !errors.Is(err, ErrPlacesNotFound) {
+			log.Printf("api get places %s: %v", id, err)
+
+			apiError := apiError{
+				Code:    http.StatusInternalServerError,
+				Message: http.StatusText(http.StatusInternalServerError),
+			}
+
+			renderJSON(w, http.StatusInternalServerError, apiError)
+
+			return
+		}
+
+		places = []Place{}
+	}
+
+	renderJSON(w, http.StatusOK, places)
+}
+
 // viewJob renders the map modal fragment for a job, embedding the job's places
 // directly so the client needs no separate data request.
 func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
@@ -743,7 +797,7 @@ func securityHeaders(next http.Handler) http.Handler {
 			"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
 			"worker-src 'self' blob:; "+
 			"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
-			"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org; "+
+			"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org *.is.autonavi.com; "+
 			"font-src 'self' fonts.gstatic.com; "+
 			"connect-src 'self'")
 

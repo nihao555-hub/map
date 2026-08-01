@@ -3,183 +3,182 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>商家采集</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>地图获客 · 智能版</title>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/1.9.6/htmx.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="/static/css/main.css">
 </head>
 <body>
+    <!-- 顶部导航栏 -->
+    <header id="topbar">
+      <a class="brand" href="/">
+        <span class="brand-icon"><i data-lucide="map-pin" class="w-5 h-5"></i></span>
+        <span class="brand-name">地图获客</span>
+        <span class="brand-tag">智能版</span>
+      </a>
+      <div class="topbar-right">
+        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
+        <button type="button" class="help-btn"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</button>
+        <div class="user-box">
+          <span class="avatar"><i data-lucide="user" class="w-4 h-4"></i></span>
+          <span class="user-name">张三</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 chevron"></i>
+        </div>
+      </div>
+    </header>
+
     <div id="app-shell">
-      <!-- 左侧栏 -->
+      <!-- 左侧表单面板 -->
       <aside id="sidebar">
         <div id="sidebar-content">
-          <!-- Logo 区域 -->
-          <div class="flex items-center gap-3 mb-8 logo-area">
-            <div class="w-10 h-10 rounded-lg flex items-center justify-center logo-icon">
-              <i data-lucide="map-pin" class="w-5 h-5 text-white"></i>
-            </div>
-            <div>
-              <h1 class="text-lg font-semibold text-foreground">商家采集</h1>
-              <p class="text-xs text-muted-foreground">Google Maps 数据工具</p>
-            </div>
-          </div>
+          <h1 class="page-title">找到精准客户，从地图开始</h1>
+          <p class="page-subtitle">输入位置和需求，智能为您挖掘潜在客户</p>
 
-          <!-- 主表单区 -->
           <div id="error-container" class="error-message"></div>
-          <form 
+          <form
             id="search-form"
-            hx-post="/scrape" 
-            hx-target="#job-list" 
+            hx-post="/scrape"
+            hx-target="#job-list"
             hx-swap="afterbegin"
             hx-indicator="#spinner"
-            hx-on::before-request="document.getElementById('error-container').innerHTML = ''"
-            hx-on::after-request="if(!event.detail.successful) { document.getElementById('error-container').innerHTML = event.detail.xhr.responseText; } else { handleScrapeSuccess(); }"
+            hx-on::before-request="document.getElementById('error-container').innerHTML = ''; document.getElementById('map-area').classList.add('map-loading')"
+            hx-on::after-request="document.getElementById('map-area').classList.remove('map-loading'); if(!event.detail.successful) { document.getElementById('error-container').innerHTML = event.detail.xhr.responseText; } else { handleScrapeSuccess(); }"
           >
             <!-- 隐藏字段：任务名称 = 关键词+地点 -->
             <input type="hidden" id="name" name="name" value="">
-            
-            <!-- 关键词输入 -->
-            <div class="mb-4">
-              <label class="block text-sm font-medium mb-2 text-foreground">关键词</label>
-              <div class="input-field flex items-center gap-2 px-3 py-2.5 rounded-lg border border-input bg-card">
-                <i data-lucide="search" class="w-4 h-4 flex-shrink-0 text-muted-foreground"></i>
-                <input
-                  type="text"
-                  id="keywords"
-                  name="keywords"
-                  placeholder="例如：咖啡店、牙科诊所、健身房"
-                  class="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground text-foreground"
-                />
-              </div>
-            </div>
 
-            <!-- 地点输入 -->
-            <div class="mb-5">
-              <label class="block text-sm font-medium mb-2 text-foreground">地点</label>
-              <div class="input-field flex items-center gap-2 px-3 py-2.5 rounded-lg border border-input bg-card">
-                <i data-lucide="map-pin" class="w-4 h-4 flex-shrink-0 text-muted-foreground"></i>
+            <!-- 在哪里 -->
+            <div class="field-group">
+              <label class="field-label" for="locations">在哪里</label>
+              <div class="input-field">
+                <i data-lucide="map-pin" class="w-4 h-4 input-icon icon-blue"></i>
                 <input
                   type="text"
                   id="locations"
                   name="locations"
-                  placeholder="例如：新加坡乌节路、曼谷素坤逸"
-                  class="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground text-foreground"
+                  placeholder="请输入地点，如：深圳市南山区科技园"
+                  autocomplete="off"
                 />
               </div>
+              <p class="field-hint">支持输入关键词搜索和地图选点两种方式</p>
             </div>
 
-            <!-- 采集模式选择 -->
-            <div class="mb-5">
-              <label class="block text-sm font-medium mb-2 text-foreground">采集模式</label>
-              <div class="grid grid-cols-3 gap-2">
-                <div class="mode-card active rounded-lg border p-2.5 mode-quick" data-mode="quick" onclick="selectMode(this, 'quick')">
-                  <div class="flex items-center gap-1.5 mb-1">
-                    <i data-lucide="zap" class="w-3.5 h-3.5 mode-icon"></i>
-                    <span class="text-xs font-medium mode-label">快速模式</span>
+            <!-- 找什么 -->
+            <div class="field-group">
+              <label class="field-label" for="keywords">找什么</label>
+              <div class="input-field">
+                <i data-lucide="search" class="w-4 h-4 input-icon"></i>
+                <input
+                  type="text"
+                  id="keywords"
+                  name="keywords"
+                  placeholder="咖啡馆"
+                  autocomplete="off"
+                />
+                <button type="button" class="clear-btn" id="keywords-clear" title="清除">&times;</button>
+              </div>
+            </div>
+
+            <!-- 热门搜索 -->
+            <div class="hot-search">
+              <span class="hot-label">热门搜索：</span>
+              <div class="hot-tags">
+                <button type="button" class="hot-tag" onclick="fillKeyword('咖啡馆')">咖啡馆</button>
+                <button type="button" class="hot-tag" onclick="fillKeyword('奶茶店')">奶茶店</button>
+                <button type="button" class="hot-tag" onclick="fillKeyword('健身房')">健身房</button>
+                <button type="button" class="hot-tag" onclick="fillKeyword('美容院')">美容院</button>
+                <button type="button" class="hot-tag" onclick="fillKeyword('宠物店')">宠物店</button>
+              </div>
+            </div>
+
+            <!-- 模式选择 -->
+            <div class="field-group">
+              <label class="field-label">模式选择</label>
+              <div class="mode-cards">
+                <div class="mode-card active" data-mode="quick" onclick="selectMode('quick')">
+                  <div class="mode-head">
+                    <i data-lucide="zap" class="w-4 h-4 mode-icon"></i>
+                    <span class="mode-label">快速模式</span>
+                    <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
                   </div>
-                  <p class="text-xs text-muted-foreground" style="font-size: 10px;">列表数据·快</p>
+                  <p class="mode-desc">快速获取基础信息<br/>适合初步筛选</p>
                 </div>
-                <div class="mode-card rounded-lg border p-2.5 mode-standard" data-mode="standard" onclick="selectMode(this, 'standard')">
-                  <div class="flex items-center gap-1.5 mb-1">
-                    <i data-lucide="file-text" class="w-3.5 h-3.5 mode-icon"></i>
-                    <span class="text-xs font-medium mode-label">标准深度</span>
+                <div class="mode-card" data-mode="standard" onclick="selectMode('standard')">
+                  <div class="mode-head">
+                    <i data-lucide="crosshair" class="w-4 h-4 mode-icon"></i>
+                    <span class="mode-label">深度模式</span>
+                    <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
                   </div>
-                  <p class="text-xs text-muted-foreground" style="font-size: 10px;">完整字段·中</p>
-                </div>
-                <div class="mode-card rounded-lg border p-2.5 mode-grid" data-mode="grid" onclick="selectMode(this, 'grid')">
-                  <div class="flex items-center gap-1.5 mb-1">
-                    <i data-lucide="grid-3x3" class="w-3.5 h-3.5 mode-icon"></i>
-                    <span class="text-xs font-medium mode-label">全域全量</span>
-                  </div>
-                  <p class="text-xs text-muted-foreground" style="font-size: 10px;">网格搜索·全</p>
+                  <p class="mode-desc">深度挖掘详细信息<br/>适合精准分析</p>
                 </div>
               </div>
             </div>
 
-            <!-- 网格密度（仅全域全量显示） -->
-            <div class="mb-5 hidden" id="grid-density-section">
-              <label class="block text-sm font-medium mb-2 text-foreground">网格密度</label>
-              <select
-                id="gridcell"
-                name="gridcell"
-                class="select-field w-full px-3 py-2 rounded-lg border text-sm border-input text-foreground bg-card"
-              >
-                <option value="2.0">稀疏（约 2km 一格，速度快）</option>
-                <option value="1.5" selected>标准（约 1.5km 一格，推荐）</option>
-                <option value="1.0">密集（约 1km 一格，更全但慢）</option>
-                <option value="0.5">极密（约 500m 一格，最慢最全）</option>
-              </select>
-              <p class="text-xs mt-1.5 text-muted-foreground">
-                密度越高，格子越多，结果越全，但耗时也越长
-              </p>
-            </div>
-
-            <!-- 开始采集按钮 -->
-            <button
-              type="submit"
-              id="start-btn"
-              class="btn-primary w-full flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-white bg-primary"
-            >
-              <i data-lucide="zap" class="w-5 h-5"></i>
-              <span>开始采集</span>
+            <!-- 开始搜索 -->
+            <button type="submit" id="start-btn" class="btn-primary">
+              <i data-lucide="search" class="w-5 h-5"></i>
+              <span>开始搜索</span>
             </button>
             <div id="spinner" class="spinner htmx-indicator"></div>
 
-            <!-- 分隔线 -->
-            <div class="my-6 border-t border-border"></div>
-
-            <!-- 高级选项折叠区 -->
-            <div>
-              <button
-                type="button"
-                id="advanced-toggle"
-                class="w-full flex items-center justify-between py-2 text-sm font-medium text-foreground"
-                onclick="toggleAdvanced()"
-              >
-                <span class="flex items-center gap-2">
-                  <i data-lucide="settings" class="w-4 h-4 text-muted-foreground"></i>
+            <!-- 高级选项（折叠） -->
+            <div class="advanced-block">
+              <button type="button" id="advanced-toggle" onclick="toggleAdvanced()">
+                <span class="adv-left">
+                  <i data-lucide="settings" class="w-4 h-4"></i>
                   高级选项
                 </span>
-                <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon" id="advanced-icon" style="color: var(--brand-muted-foreground);"></i>
+                <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon" id="advanced-icon"></i>
               </button>
 
               <div id="advanced-options" class="collapse-content">
-                <div class="pt-3 space-y-4">
-                  <!-- 抓取邮箱开关 -->
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                      <i data-lucide="mail" class="w-4 h-4 text-muted-foreground"></i>
-                      <span class="text-sm text-foreground">抓取邮箱</span>
+                <div class="adv-inner">
+                  <!-- 全域全量模式 -->
+                  <div>
+                    <label class="field-label-sm">全域全量模式（网格搜索，突破数量上限）</label>
+                    <div class="mode-card mode-card-sm" data-mode="grid" onclick="selectMode('grid')">
+                      <div class="mode-head">
+                        <i data-lucide="grid-3x3" class="w-4 h-4 mode-icon"></i>
+                        <span class="mode-label">全域全量</span>
+                        <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
+                      </div>
+                      <p class="mode-desc">区域切块搜索<br/>结果更全但更慢</p>
                     </div>
+                  </div>
+
+                  <!-- 网格密度 -->
+                  <div id="grid-density-section" class="hidden">
+                    <label class="field-label-sm" for="gridcell">网格密度</label>
+                    <select id="gridcell" name="gridcell" class="select-field">
+                      <option value="2.0">稀疏（约 2km 一格，速度快）</option>
+                      <option value="1.5" selected>标准（约 1.5km 一格，推荐）</option>
+                      <option value="1.0">密集（约 1km 一格，更全但慢）</option>
+                      <option value="0.5">极密（约 500m 一格，最慢最全）</option>
+                    </select>
+                  </div>
+
+                  <!-- 抓取邮箱开关 -->
+                  <div class="switch-row">
+                    <span class="switch-label"><i data-lucide="mail" class="w-4 h-4"></i>抓取邮箱</span>
                     <input type="checkbox" id="email" name="email" checked class="hidden">
                     <div class="toggle-switch on" id="email-toggle" onclick="toggleSwitch(this, 'email')"></div>
                   </div>
 
-                  <!-- 语言输入 -->
+                  <!-- 语言 -->
                   <div>
-                    <label class="block text-sm mb-2 text-foreground">语言</label>
-                    <div class="input-field flex items-center gap-2 px-3 py-2 rounded-lg border border-input">
-                      <i data-lucide="globe" class="w-4 h-4 flex-shrink-0 text-muted-foreground"></i>
-                      <input
-                        type="text"
-                        id="lang"
-                        name="lang"
-                        value="en"
-                        placeholder="自动检测"
-                        class="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground text-foreground"
-                      />
+                    <label class="field-label-sm" for="lang">语言</label>
+                    <div class="input-field">
+                      <i data-lucide="globe" class="w-4 h-4 input-icon"></i>
+                      <input type="text" id="lang" name="lang" value="" placeholder="自动检测"/>
                     </div>
                   </div>
 
                   <!-- 最大运行时间 -->
                   <div>
-                    <label class="block text-sm mb-2 text-foreground">最大运行时间</label>
-                    <select
-                      id="maxtime"
-                      name="maxtime"
-                      class="select-field w-full px-3 py-2 rounded-lg border text-sm border-input text-foreground bg-card"
-                    >
+                    <label class="field-label-sm" for="maxtime">最大运行时间</label>
+                    <select id="maxtime" name="maxtime" class="select-field">
                       <option value="3m">3 分钟</option>
                       <option value="10m" selected>10 分钟</option>
                       <option value="30m">30 分钟</option>
@@ -190,39 +189,31 @@
 
                   <!-- 滚动深度 -->
                   <div>
-                    <label class="block text-sm mb-2 text-foreground">滚动深度</label>
-                    <select
-                      id="depth"
-                      name="depth"
-                      class="select-field w-full px-3 py-2 rounded-lg border text-sm border-input text-foreground bg-card"
-                    >
+                    <label class="field-label-sm" for="depth">滚动深度</label>
+                    <select id="depth" name="depth" class="select-field">
                       <option value="5">浅（5 次，快速）</option>
                       <option value="10" selected>标准（10 次）</option>
                       <option value="20">深（20 次）</option>
                       <option value="50">极深（50 次）</option>
                     </select>
-                    <p class="text-xs mt-1 text-muted-foreground">滚动次数越多，结果可能越多，但 Google 有上限</p>
                   </div>
 
                   <!-- 隐藏的后端参数 -->
                   <input type="hidden" id="zoom" name="zoom" value="15">
                   <input type="hidden" id="latitude" name="latitude" value="0">
                   <input type="hidden" id="longitude" name="longitude" value="0">
-                  <input type="hidden" id="fastmode" name="fastmode" value="">
+                  <input type="hidden" id="fastmode" name="fastmode" value="on">
                   <input type="hidden" id="gridmode" name="gridmode" value="">
                   <input type="hidden" id="gridbbox" name="gridbbox" value="">
                   <input type="hidden" id="radius" name="radius" value="10000">
 
                   <!-- 代理设置 -->
                   <div>
-                    <label class="block text-sm mb-2 text-foreground">
-                      代理设置
-                      <span class="text-xs ml-1 text-muted-foreground">（可选）</span>
-                    </label>
+                    <label class="field-label-sm" for="proxies">代理设置 <span class="label-note">（可选）</span></label>
                     <textarea
                       id="proxies"
                       name="proxies"
-                      class="custom-textarea w-full px-3 py-2 rounded-lg border text-sm resize-none border-input text-foreground bg-card"
+                      class="custom-textarea"
                       rows="3"
                       placeholder="每行一个代理，支持 HTTP/HTTPS/SOCKS5&#10;例如：http://user:pass@host:port"
                     ></textarea>
@@ -232,131 +223,126 @@
             </div>
           </form>
 
-          <div class="sidebar-steps">
-            <img src="/static/img/steps-glass.png" alt="三步获客流程插画" />
-            <p>搜行业地点 → 自动采集 → 导出 CSV 交给销售跟进</p>
+          <!-- 搜索记录 -->
+          <div class="history-block">
+            <div class="history-head">
+              <span class="history-title"><i data-lucide="history" class="w-4 h-4"></i>搜索记录</span>
+              <button type="button" class="history-clear" onclick="clearHistory()">清空记录</button>
+            </div>
+            <div id="job-list" hx-get="/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML">
+              <!-- 搜索记录由 HTMX 动态加载 -->
+            </div>
+            <div id="empty-state" class="hidden">
+              <p class="empty-text">暂无搜索记录</p>
+            </div>
           </div>
         </div>
       </aside>
 
-      <!-- 右侧主内容区 -->
-      <main id="main-content">
-        <!-- 顶部工具栏 -->
-        <div class="flex items-center justify-between px-8 py-4 border-b flex-shrink-0 border-border bg-card">
-          <div class="flex items-center gap-3">
-            <h2 class="text-lg font-semibold text-foreground">任务列表</h2>
-            <span id="task-count-badge" class="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-medium badge-count">
-              0
-            </span>
-          </div>
-          <button
-            type="button"
-            class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-muted-foreground"
-            onclick="handleRefresh()"
-          >
-            <i data-lucide="refresh-cw" class="w-4 h-4" id="refresh-icon"></i>
-            <span>刷新</span>
-          </button>
-        </div>
+      <!-- 右侧地图区 -->
+      <main id="map-area">
+        <div id="map"></div>
 
-        <!-- 任务列表滚动区 -->
-        <div id="main-scroll">
-          <!-- 营销 Hero：面向中国商家/销售场景的高转化首屏 -->
-          <section class="marketing-hero">
-            <div class="hero-grid">
-              <div class="hero-copy">
-                <span class="hero-pill">同城获客 · 批量线索 · 一键导出</span>
-                <h2>把目标商圈的商家，<br/>变成可跟进的销售线索</h2>
-                <p>输入行业和地点，自动采集 Google Maps 商家电话、网站、评分、评论数与坐标；适合本地服务商、跨境卖家、渠道招商与地推团队快速建库。</p>
-                <div class="hero-actions">
-                  <a href="#keywords" class="hero-cta">立即采集线索</a>
-                  <span class="hero-note">无需配置 · 3 分钟出第一批 CSV</span>
-                </div>
-                <div class="hero-stats">
-                  <div class="glass-stat"><b>36 列</b><span>结构化字段</span></div>
-                  <div class="glass-stat"><b>3 档</b><span>快速/标准/全域</span></div>
-                  <div class="glass-stat"><b>CSV</b><span>直接交付销售</span></div>
-                </div>
-              </div>
-              <div class="hero-art">
-                <img src="/static/img/hero-glass.png" alt="玻璃拟态同城商家线索插画" />
-              </div>
-            </div>
-          </section>
-
-          <div id="job-list" class="space-y-4" hx-get="/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML">
-            <!-- 任务卡片由 HTMX 动态加载 -->
-          </div>
-
-          <!-- 空状态 -->
-          <div id="empty-state" class="flex-col items-center justify-center py-20 hidden">
-            <div class="w-20 h-20 rounded-full flex items-center justify-center mb-4 empty-icon-bg">
-              <i data-lucide="map" class="w-10 h-10 text-muted-foreground"></i>
-            </div>
-            <h3 class="text-base font-medium mb-1.5 text-foreground">还没有采集任务</h3>
-            <p class="text-sm text-center max-w-xs text-muted-foreground">在左侧输入关键词和地点，开始你的第一次采集</p>
+        <!-- 地图加载中遮罩 -->
+        <div id="map-loading-mask">
+          <div class="map-loading-box">
+            <div class="spinner-inline"></div>
+            <span>正在采集，请稍候…</span>
           </div>
         </div>
+
+        <!-- 左上：当前区域重新搜索 -->
+        <button type="button" id="research-btn" class="map-card map-card-btn">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          在当前区域重新搜索
+        </button>
+
+        <!-- 右上：热力图开关 -->
+        <div id="heatmap-card" class="map-card">
+          <i data-lucide="flame" class="w-4 h-4 flame-icon"></i>
+          <span>显示热力图</span>
+          <div class="toggle-switch" id="heatmap-toggle" onclick="toggleHeatmap(this)"></div>
+        </div>
+
+        <!-- 右下：地图控制器 -->
+        <div id="map-ctrl">
+          <button type="button" class="ctrl-btn" title="定位" onclick="locateMe()"><i data-lucide="locate-fixed" class="w-4 h-4"></i></button>
+          <button type="button" class="ctrl-btn" title="放大" onclick="zoomMap(1)"><i data-lucide="plus" class="w-4 h-4"></i></button>
+          <button type="button" class="ctrl-btn" title="缩小" onclick="zoomMap(-1)"><i data-lucide="minus" class="w-4 h-4"></i></button>
+        </div>
+
+        <!-- 底部结果栏 -->
+        <div id="result-bar" class="hidden">
+          <div class="result-info">
+            <div class="result-title">找到 <b id="result-count">0</b> 个相关结果<span id="result-mode">（快速模式）</span></div>
+            <div class="result-source">数据来源：高德地图POI</div>
+          </div>
+          <button type="button" id="result-detail-btn" class="result-detail">查看详情 <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
+        </div>
+
+        <!-- 地图选点提示 -->
+        <div id="pick-tip" class="hidden"></div>
       </main>
     </div>
 
     <div id="map-modal-container"></div>
 
+    <script src="/static/js/map.js"></script>
     <script>
       // 初始化 Lucide 图标
       lucide.createIcons();
 
-      // 模式选择
+      // 模式选择：quick=快速(fastmode) / standard=深度 / grid=全域全量
       let currentMode = 'quick';
-      function selectMode(el, mode) {
+      function selectMode(mode) {
         currentMode = mode;
-        const cards = document.querySelectorAll('.mode-card');
-        cards.forEach(card => {
-          card.classList.remove('active');
+        document.querySelectorAll('.mode-card').forEach(function (card) {
+          card.classList.toggle('active', card.dataset.mode === mode);
         });
-        el.classList.add('active');
-
-        // 设置 fastmode 隐藏字段（快速模式 = fastmode on）
         document.getElementById('fastmode').value = mode === 'quick' ? 'on' : '';
-
-        // 设置 gridmode 隐藏字段（全域全量 = gridmode on）
         document.getElementById('gridmode').value = mode === 'grid' ? 'on' : '';
-
-        // 网格密度选项：仅全域全量模式显示
-        const gridSection = document.getElementById('grid-density-section');
+        document.getElementById('grid-density-section').classList.toggle('hidden', mode !== 'grid');
+        // 选了网格模式时自动展开高级选项，让用户看到密度设置
         if (mode === 'grid') {
-          gridSection.classList.remove('hidden');
-        } else {
-          gridSection.classList.add('hidden');
+          document.getElementById('advanced-options').classList.add('open');
+          document.getElementById('advanced-icon').classList.add('open');
         }
+        updateResultModeLabel();
       }
+
+      // 热门搜索词填入
+      function fillKeyword(word) {
+        document.getElementById('keywords').value = word;
+        document.getElementById('keywords').focus();
+      }
+
+      // 找什么清除按钮
+      document.getElementById('keywords-clear').addEventListener('click', function () {
+        document.getElementById('keywords').value = '';
+        document.getElementById('keywords').focus();
+      });
 
       // 高级选项折叠
       function toggleAdvanced() {
-        const content = document.getElementById('advanced-options');
-        const icon = document.getElementById('advanced-icon');
-        content.classList.toggle('open');
-        icon.classList.toggle('open');
+        document.getElementById('advanced-options').classList.toggle('open');
+        document.getElementById('advanced-icon').classList.toggle('open');
       }
 
       // 开关切换
       function toggleSwitch(el, inputId) {
         el.classList.toggle('on');
         const input = document.getElementById(inputId);
-        if (input) {
-          input.checked = el.classList.contains('on');
-        }
+        if (input) input.checked = el.classList.contains('on');
       }
 
-      // 提交前组装任务名称
-      document.getElementById('search-form').addEventListener('htmx:configRequest', function(event) {
+      // 提交前组装任务名称 + 自动推断语言
+      document.getElementById('search-form').addEventListener('htmx:configRequest', function () {
         const keywords = document.getElementById('keywords').value.trim();
         const locations = document.getElementById('locations').value.trim();
-        
-        // 组装任务名称
+
         let name = '';
         if (keywords && locations) {
-          name = keywords + ' / ' + locations;
+          name = locations + ' · ' + keywords;
         } else if (keywords) {
           name = keywords;
         } else {
@@ -364,9 +350,8 @@
         }
         document.getElementById('name').value = name;
 
-        // 自动推断语言
         const langInput = document.getElementById('lang');
-        if (!langInput.value || langInput.value === '') {
+        if (!langInput.value) {
           const hasChinese = /[\u4e00-\u9fa5]/.test(keywords + locations);
           langInput.value = hasChinese ? 'zh' : 'en';
         }
@@ -374,64 +359,52 @@
 
       // 采集成功后的处理
       function handleScrapeSuccess() {
-        // 清空输入
         document.getElementById('keywords').value = '';
         document.getElementById('locations').value = '';
-        
-        // 滚动到顶部
-        document.getElementById('main-scroll').scrollTop = 0;
-        
-        // 重新初始化图标
-        setTimeout(() => lucide.createIcons(), 100);
-        
-        // 更新计数
-        updateTaskCount();
-        
-        // 隐藏空状态
+        // 清空地图选点
+        if (window.clearPickMarker) window.clearPickMarker();
+        setTimeout(function () { lucide.createIcons(); }, 100);
+        refreshRecords();
+      }
+
+      // 记录列表刷新后的统一处理
+      function refreshRecords() {
+        const records = document.querySelectorAll('#job-list .record-item');
         const emptyState = document.getElementById('empty-state');
-        const jobList = document.getElementById('job-list');
-        emptyState.classList.add('hidden');
-        emptyState.classList.remove('flex');
-        jobList.classList.remove('hidden');
+        emptyState.classList.toggle('hidden', records.length > 0);
+        lucide.createIcons();
+        // 同步地图与结果栏（由 map.js 提供）
+        if (window.syncMapWithRecords) window.syncMapWithRecords();
       }
 
-      // 更新任务计数
-      function updateTaskCount() {
-        const count = document.querySelectorAll('.task-card').length;
-        document.getElementById('task-count-badge').textContent = count;
-
-        const emptyState = document.getElementById('empty-state');
-        const jobList = document.getElementById('job-list');
-        if (count === 0) {
-          jobList.classList.add('hidden');
-          emptyState.classList.remove('hidden');
-          emptyState.classList.add('flex');
-        } else {
-          jobList.classList.remove('hidden');
-          emptyState.classList.add('hidden');
-          emptyState.classList.remove('flex');
-        }
+      // 清空记录
+      function clearHistory() {
+        const records = document.querySelectorAll('#job-list .record-item');
+        if (records.length === 0) return;
+        if (!confirm('确定要清空全部搜索记录吗？')) return;
+        records.forEach(function (el) {
+          fetch('/delete?id=' + encodeURIComponent(el.dataset.jobId), { method: 'DELETE' });
+        });
+        setTimeout(function () { htmx.trigger('#job-list', 'load'); }, 500);
       }
 
-      // 刷新按钮
-      function handleRefresh() {
-        const icon = document.getElementById('refresh-icon');
-        if (icon) {
-          icon.style.transition = 'transform 0.5s ease';
-          icon.style.transform = 'rotate(360deg)';
-          setTimeout(() => {
-            icon.style.transform = 'rotate(0deg)';
-          }, 500);
-        }
-        // 触发 HTMX 刷新
-        htmx.trigger('#job-list', 'load');
+      // 结果栏模式文案
+      function updateResultModeLabel() {
+        const label = { quick: '快速模式', standard: '深度模式', grid: '全域全量模式' }[currentMode] || '快速模式';
+        document.getElementById('result-mode').textContent = '（' + label + '）';
       }
 
-      // HTMX 加载完成后更新计数和图标
-      document.body.addEventListener('htmx:afterOnLoad', function(event) {
+      // HTMX 加载完成后处理记录列表
+      document.body.addEventListener('htmx:afterOnLoad', function (event) {
         if (event.detail.elt.id === 'job-list') {
-          updateTaskCount();
-          lucide.createIcons();
+          refreshRecords();
+        }
+      });
+
+      // 记录行点击删除后刷新（htmx 删除行）
+      document.body.addEventListener('htmx:afterRequest', function (event) {
+        if (event.detail.elt.classList && event.detail.elt.classList.contains('record-del')) {
+          setTimeout(refreshRecords, 300);
         }
       });
     </script>
