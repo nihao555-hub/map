@@ -370,17 +370,16 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		newJob.Data.FastMode = false
 	}
 
-	proxies := strings.Split(r.Form.Get("proxies"), "\n")
-	if len(proxies) > 0 {
-		for _, p := range proxies {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
+	// 提交前校验代理：格式非法、缺用户名密码认证的立即拒绝，
+	// 不要等任务跑到启动 auth proxy 时才失败
+	proxies, err := validateProxyLines(r.Form.Get("proxies"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 
-			newJob.Data.Proxies = append(newJob.Data.Proxies, p)
-		}
+		return
 	}
+
+	newJob.Data.Proxies = proxies
 
 	err = newJob.Validate()
 	if err != nil {
