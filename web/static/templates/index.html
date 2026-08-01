@@ -231,6 +231,11 @@
               </div>
             </div>
           </form>
+
+          <div class="sidebar-steps">
+            <img src="/static/img/steps-glass.png" alt="三步获客流程插画" />
+            <p>搜行业地点 → 自动采集 → 导出 CSV 交给销售跟进</p>
+          </div>
         </div>
       </aside>
 
@@ -256,6 +261,29 @@
 
         <!-- 任务列表滚动区 -->
         <div id="main-scroll">
+          <!-- 营销 Hero：面向中国商家/销售场景的高转化首屏 -->
+          <section class="marketing-hero">
+            <div class="hero-grid">
+              <div class="hero-copy">
+                <span class="hero-pill">同城获客 · 批量线索 · 一键导出</span>
+                <h2>把目标商圈的商家，<br/>变成可跟进的销售线索</h2>
+                <p>输入行业和地点，自动采集 Google Maps 商家电话、网站、评分、评论数与坐标；适合本地服务商、跨境卖家、渠道招商与地推团队快速建库。</p>
+                <div class="hero-actions">
+                  <a href="#keywords" class="hero-cta">立即采集线索</a>
+                  <span class="hero-note">无需配置 · 3 分钟出第一批 CSV</span>
+                </div>
+                <div class="hero-stats">
+                  <div class="glass-stat"><b>36 列</b><span>结构化字段</span></div>
+                  <div class="glass-stat"><b>3 档</b><span>快速/标准/全域</span></div>
+                  <div class="glass-stat"><b>CSV</b><span>直接交付销售</span></div>
+                </div>
+              </div>
+              <div class="hero-art">
+                <img src="/static/img/hero-glass.png" alt="玻璃拟态同城商家线索插画" />
+              </div>
+            </div>
+          </section>
+
           <div id="job-list" class="space-y-4" hx-get="/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML">
             <!-- 任务卡片由 HTMX 动态加载 -->
           </div>
