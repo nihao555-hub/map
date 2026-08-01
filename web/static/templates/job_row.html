@@ -41,6 +41,12 @@
       <i data-lucide="clock" class="w-4 h-4 text-muted-foreground"></i>
       <span class="text-sm text-muted-foreground">{{.Date}}</span>
     </div>
+    {{ if .Data.GeoAnchor }}
+    <div class="flex items-center gap-1.5">
+      <i data-lucide="map-pin" class="w-4 h-4 text-muted-foreground"></i>
+      <span class="text-sm text-muted-foreground">锚定坐标 {{ .Data.GeoAnchor }}</span>
+    </div>
+    {{ end }}
   </div>
 
   <div class="flex items-center gap-2 pt-3 border-t border-border">

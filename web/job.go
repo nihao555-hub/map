@@ -80,6 +80,17 @@ type JobData struct {
 	Locations   string  `json:"locations"`    // 原始地点名，用于网格模式的地理编码
 }
 
+// GeoAnchor 返回用于展示的锚定坐标（如 "13.756331, 100.501765"），
+// 无有效锚定（空值或表单默认的 0,0）时返回空串，模板据此决定是否展示
+//nolint:gocritic // 模板里以值形式访问 .Data.GeoAnchor，需要值接收者
+func (d JobData) GeoAnchor() string {
+	if !hasGeoAnchor(d.Lat, d.Lon) {
+		return ""
+	}
+
+	return d.Lat + ", " + d.Lon
+}
+
 func (d *JobData) Validate() error {
 	if len(d.Keywords) == 0 {
 		return errors.New("missing keywords")
