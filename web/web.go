@@ -65,12 +65,6 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.delete(w, r)
 	})
 	mux.HandleFunc("/jobs", ans.getJobs)
-	mux.HandleFunc("/progress", func(w http.ResponseWriter, r *http.Request) {
-		r = requestWithID(r)
-
-		ans.progress(w, r)
-	})
-	mux.HandleFunc("/stats", ans.stats)
 	mux.HandleFunc("/view", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 
@@ -95,18 +89,6 @@ func New(svc *Service, addr string) (*Server, error) {
 			renderJSON(w, http.StatusMethodNotAllowed, ans)
 		}
 	})
-	mux.HandleFunc("/api/v1/stats", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			renderJSON(w, http.StatusMethodNotAllowed, apiError{
-				Code:    http.StatusMethodNotAllowed,
-				Message: "Method not allowed",
-			})
-
-			return
-		}
-
-		ans.apiStats(w, r)
-	})
 
 	mux.HandleFunc("/api/v1/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
@@ -124,20 +106,6 @@ func New(svc *Service, addr string) (*Server, error) {
 
 			renderJSON(w, http.StatusMethodNotAllowed, ans)
 		}
-	})
-	mux.HandleFunc("/api/v1/jobs/{id}/progress", func(w http.ResponseWriter, r *http.Request) {
-		r = requestWithID(r)
-
-		if r.Method != http.MethodGet {
-			renderJSON(w, http.StatusMethodNotAllowed, apiError{
-				Code:    http.StatusMethodNotAllowed,
-				Message: "Method not allowed",
-			})
-
-			return
-		}
-
-		ans.apiProgress(w, r)
 	})
 
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
@@ -164,8 +132,6 @@ func New(svc *Service, addr string) (*Server, error) {
 		"static/templates/index.html",
 		"static/templates/job_rows.html",
 		"static/templates/job_row.html",
-		"static/templates/progress.html",
-		"static/templates/stats.html",
 		"static/templates/job_view.html",
 		"static/templates/redoc.html",
 	}
@@ -206,23 +172,20 @@ func (s *Server) Start(ctx context.Context) error {
 	return nil
 }
 
-// defaultGridCellKm is the default grid cell edge length, in kilometres, used
-// when full coverage is requested without an explicit cell size.
-const defaultGridCellKm = 1.0
-
 type formData struct {
-	Name     string
-	MaxTime  string
-	Keywords []string
-	Language string
-	Zoom     int
-	FastMode bool
-	Radius   int
-	Lat      string
-	Lon      string
-	Depth    int
-	Email    bool
-	Proxies  []string
+	Name      string
+	MaxTime   string
+	Keywords  []string
+	Locations string
+	Language  string
+	Zoom      int
+	FastMode  bool
+	Radius    int
+	Lat       string
+	Lon       string
+	Depth     int
+	Email     bool
+	Proxies   []string
 }
 
 type ctxKey string
@@ -336,25 +299,19 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var keywords []string
+	locationsStr := r.Form.Get("locations")
+	locationsStr = strings.TrimSpace(locationsStr)
 
-	types := r.Form.Get("business_types")
-
-	if types != "" {
-		locations := []string{}
-		if location := r.Form.Get("locations"); location != "" {
-			locations = []string{location}
-		}
-
-		keywords = ExpandBatchKeywords([]string{types}, locations)
-	} else {
-		keywords = strings.Split(keywordsStr[0], "\n")
-	}
-
+	keywords := strings.Split(keywordsStr[0], "\n")
 	for _, k := range keywords {
 		k = strings.TrimSpace(k)
 		if k == "" {
 			continue
+		}
+
+		// 如果有地点，把地点拼到关键词后面（加 in 前缀）
+		if locationsStr != "" {
+			k = k + " in " + locationsStr
 		}
 
 		newJob.Data.Keywords = append(newJob.Data.Keywords, k)
@@ -392,34 +349,37 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 	newJob.Data.Email = r.Form.Get("email") == "on"
 
-	newJob.Data.Location = strings.TrimSpace(r.Form.Get("locations"))
-	newJob.Data.FullCoverage = r.Form.Get("full_coverage") == "on"
-	newJob.Data.GridBBox = strings.TrimSpace(r.Form.Get("grid_bbox"))
-
-	if cell := strings.TrimSpace(r.Form.Get("grid_cell")); cell != "" {
-		newJob.Data.GridCell, err = strconv.ParseFloat(cell, 64)
-		if err != nil || newJob.Data.GridCell <= 0 {
-			http.Error(w, "invalid grid cell size", http.StatusUnprocessableEntity)
-
-			return
-		}
-	}
-
-	if newJob.Data.FullCoverage && newJob.Data.GridCell == 0 {
-		newJob.Data.GridCell = defaultGridCellKm
-	}
-
-	proxies := strings.Split(r.Form.Get("proxies"), "\n")
-	if len(proxies) > 0 {
-		for _, p := range proxies {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
+	// 网格全量模式
+	if r.Form.Get("gridmode") == "on" {
+		newJob.Data.GridMode = true
+		// 网格边长（公里），默认 1.5
+		cellKm := 1.5
+		if cellStr := r.Form.Get("gridcell"); cellStr != "" {
+			if v, err := strconv.ParseFloat(cellStr, 64); err == nil && v > 0 {
+				cellKm = v
 			}
-
-			newJob.Data.Proxies = append(newJob.Data.Proxies, p)
 		}
+		newJob.Data.GridCellKm = cellKm
+		// 保存原始地点名（用于地理编码生成 bbox）
+		newJob.Data.Locations = locationsStr
+		// 如果手动传了 bbox 就用手动的
+		if bbox := r.Form.Get("gridbbox"); bbox != "" {
+			newJob.Data.GridBBox = bbox
+		}
+		// 网格模式下 fastmode 强制关闭（要进详情页抓完整字段）
+		newJob.Data.FastMode = false
 	}
+
+	// 提交前校验代理：格式非法、缺用户名密码认证的立即拒绝，
+	// 不要等任务跑到启动 auth proxy 时才失败
+	proxies, err := validateProxyLines(r.Form.Get("proxies"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+
+		return
+	}
+
+	newJob.Data.Proxies = proxies
 
 	err = newJob.Validate()
 	if err != nil {
@@ -468,69 +428,6 @@ func (s *Server) getJobs(w http.ResponseWriter, r *http.Request) {
 	_ = tmpl.Execute(w, jobs)
 }
 
-func (s *Server) progress(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-
-		return
-	}
-
-	id, ok := getIDFromRequest(r)
-	if !ok {
-		http.Error(w, "Invalid ID", http.StatusUnprocessableEntity)
-
-		return
-	}
-
-	progress, err := s.svc.Progress(r.Context(), id.String())
-	if err != nil {
-		http.Error(w, "job not found", http.StatusNotFound)
-
-		return
-	}
-
-	tmpl, ok := s.tmpl["static/templates/progress.html"]
-	if !ok {
-		http.Error(w, "missing tpl", http.StatusInternalServerError)
-
-		return
-	}
-
-	_ = tmpl.Execute(w, struct {
-		ID string
-		JobProgress
-		Elapsed string
-	}{
-		ID:          id.String(),
-		JobProgress: progress,
-		Elapsed:     formatElapsed(progress.ElapsedSeconds),
-	})
-}
-
-func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-
-		return
-	}
-
-	stats, err := s.svc.Stats(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-
-		return
-	}
-
-	tmpl, ok := s.tmpl["static/templates/stats.html"]
-	if !ok {
-		http.Error(w, "missing tpl", http.StatusInternalServerError)
-
-		return
-	}
-
-	_ = tmpl.Execute(w, stats)
-}
-
 func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -563,10 +460,6 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	fileName := filepath.Base(filePath)
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
 	w.Header().Set("Content-Type", "text/csv")
-
-	if _, err := w.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
-		return
-	}
 
 	_, err = io.Copy(w, file)
 	if err != nil {
@@ -725,45 +618,8 @@ func (s *Server) apiGetJob(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusOK, job)
 }
 
-func (s *Server) apiProgress(w http.ResponseWriter, r *http.Request) {
-	id, ok := getIDFromRequest(r)
-	if !ok {
-		renderJSON(w, http.StatusUnprocessableEntity, apiError{
-			Code:    http.StatusUnprocessableEntity,
-			Message: "Invalid ID",
-		})
-
-		return
-	}
-
-	progress, err := s.svc.Progress(r.Context(), id.String())
-	if err != nil {
-		renderJSON(w, http.StatusNotFound, apiError{
-			Code:    http.StatusNotFound,
-			Message: http.StatusText(http.StatusNotFound),
-		})
-
-		return
-	}
-
-	renderJSON(w, http.StatusOK, progress)
-}
-
-func (s *Server) apiStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := s.svc.Stats(r.Context())
-	if err != nil {
-		renderJSON(w, http.StatusInternalServerError, apiError{
-			Code:    http.StatusInternalServerError,
-			Message: err.Error(),
-		})
-
-		return
-	}
-
-	renderJSON(w, http.StatusOK, stats)
-}
-
-// viewJob renders the results table fragment for a job.
+// viewJob renders the map modal fragment for a job, embedding the job's places
+// directly so the client needs no separate data request.
 func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -855,13 +711,13 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; "+
-				"script-src 'self' cdn.redoc.ly cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval'; "+
-				"worker-src 'self' blob:; "+
-				"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com; "+
-				"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com; "+
-				"font-src 'self' fonts.gstatic.com; "+
-				"connect-src 'self'")
+		"default-src 'self'; "+
+			"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
+			"worker-src 'self' blob:; "+
+			"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
+			"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org; "+
+			"font-src 'self' fonts.gstatic.com; "+
+			"connect-src 'self'")
 
 		next.ServeHTTP(w, r)
 	})
