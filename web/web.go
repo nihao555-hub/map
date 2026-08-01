@@ -370,6 +370,34 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		newJob.Data.FastMode = false
 	}
 
+	// 地理锚定：普通模式（非网格）下，用户只填了地点没填有效经纬度时，
+	// 先地理编码一次，把搜索锚定到目标地，并让 hl 与目标地语言匹配，
+	// 避免 Google 按代理出口/浏览器环境本地化结果。
+	// 地理编码失败只告警，回退为原来的未锚定搜索，不让任务失败
+	if !newJob.Data.GridMode && locationsStr != "" && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+		geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+
+		point, geoErr := Geocode(geoCtx, locationsStr)
+
+		cancel()
+
+		if geoErr != nil {
+			log.Printf("地理编码 %q 失败: %v，回退为未锚定搜索", locationsStr, geoErr)
+		} else {
+			newJob.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
+			newJob.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
+
+			if hl := langForCountryCode(point.CountryCode); hl != "" && hl != newJob.Data.Lang {
+				log.Printf("地点 %q 国家代码 %s，hl 从 %s 调整为 %s",
+					locationsStr, point.CountryCode, newJob.Data.Lang, hl)
+
+				newJob.Data.Lang = hl
+			}
+
+			log.Printf("地点 %q 锚定到 %s,%s", locationsStr, newJob.Data.Lat, newJob.Data.Lon)
+		}
+	}
+
 	// 提交前校验代理：格式非法、缺用户名密码认证的立即拒绝，
 	// 不要等任务跑到启动 auth proxy 时才失败
 	proxies, err := validateProxyLines(r.Form.Get("proxies"))
