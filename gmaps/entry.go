@@ -205,14 +205,35 @@ func (e *Entry) IsWebsiteValidForEmail() bool {
 		return false
 	}
 
+	lower := strings.ToLower(e.WebSite)
+
 	needles := []string{
-		"facebook",
-		"instragram",
-		"twitter",
+		"facebook.com",
+		"fb.com",
+		"instagram.com",
+		"instragram", // legacy typo kept for compatibility
+		"twitter.com",
+		"x.com/",
+		"tiktok.com",
+		"youtube.com",
+		"youtu.be",
+		"linkedin.com",
+		"doordash.com",
+		"ubereats.com",
+		"grubhub.com",
+		"postmates.com",
+		"toasttab.com",
+		"square.site",
+		"opentable.com",
+		"resy.com",
+		"yelp.com",
+		"tripadvisor.",
+		"linktr.ee",
+		"mobile-webview",
 	}
 
 	for i := range needles {
-		if strings.Contains(e.WebSite, needles[i]) {
+		if strings.Contains(lower, needles[i]) {
 			return false
 		}
 	}
