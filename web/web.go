@@ -321,19 +321,14 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	locationsStr := r.Form.Get("locations")
 	locationsStr = strings.TrimSpace(locationsStr)
 
-	keywords := strings.Split(keywordsStr[0], "\n")
-	for _, k := range keywords {
+	// 先保留用户原始中文关键词；海外搜索时再译成当地语言拼进 Maps 查询
+	var rawKeywords []string
+	for _, k := range strings.Split(keywordsStr[0], "\n") {
 		k = strings.TrimSpace(k)
 		if k == "" {
 			continue
 		}
-
-		// 如果有地点，把地点拼到关键词后面（加 in 前缀）
-		if locationsStr != "" {
-			k = k + " in " + locationsStr
-		}
-
-		newJob.Data.Keywords = append(newJob.Data.Keywords, k)
+		rawKeywords = append(rawKeywords, k)
 	}
 
 	newJob.Data.Lang = r.Form.Get("lang")
@@ -398,21 +393,21 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 地理锚定：普通模式（非网格）下，只要填了地点就地理编码一次——
-	// 缺经纬度时写入锚点；即便前端已回填坐标，也按目标国家校正 hl，
-	// 避免「纽约 + 中文关键词」被前端误设为 hl=zh。
-	// 地理编码失败只告警，回退为原来的未锚定搜索，不让任务失败
-	if !newJob.Data.GridMode && locationsStr != "" {
-		geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	// 地理锚定 + 海外中文查询本地化：
+	// 1) 锚定经纬度 / 按国家校正 hl
+	// 2) 把「咖啡 in 纽约」译成「coffee in New York」再交给 Google Maps
+	searchLocation := locationsStr
+	if locationsStr != "" {
+		geoCtx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 
-		point, geoErr := Geocode(geoCtx, locationsStr)
+		point, geoErr := GeocodeLang(geoCtx, locationsStr, "en")
 
 		cancel()
 
 		if geoErr != nil {
 			log.Printf("地理编码 %q 失败: %v，回退为未锚定搜索", locationsStr, geoErr)
 		} else {
-			if !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+			if !newJob.Data.GridMode && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
 				newJob.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
 				newJob.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
 				log.Printf("地点 %q 锚定到 %s,%s", locationsStr, newJob.Data.Lat, newJob.Data.Lon)
@@ -424,12 +419,44 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 				newJob.Data.Lang = hl
 			}
+
+			// 海外中文地名：优先词典/英文展示名，避免 Maps 吃中文地点
+			if containsChinese(locationsStr) && newJob.Data.Lang != "zh" {
+				if loc, ok := zhPlaceLexicon[locationsStr]; ok {
+					searchLocation = loc
+				} else if short := shortDisplayName(point.DisplayName); short != "" && !containsChinese(short) {
+					searchLocation = short
+				}
+			}
 		}
 	}
 
-	// 任务名：前端应自动拼「地点 · 关键词」；若 HTMX 参数未带上则服务端兜底
+	// 任务名始终用用户输入的中文（体验不变）
 	if newJob.Name == "" {
-		newJob.Name = buildJobName(newJob.Data.Keywords, locationsStr)
+		newJob.Name = buildJobName(rawKeywords, locationsStr)
+	}
+
+	// 关键词本地化：中文品类 → 目标国语言；地点用英文/当地名
+	{
+		locCtx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+		localized, locUsed, did := localizeSearchQuery(locCtx, rawKeywords, searchLocation, newJob.Data.Lang)
+		cancel()
+
+		if len(localized) == 0 {
+			http.Error(w, "missing keywords", http.StatusUnprocessableEntity)
+
+			return
+		}
+
+		newJob.Data.Keywords = localized
+		if did {
+			log.Printf("中文查询已本地化: name=%q lang=%s loc=%q -> %v",
+				newJob.Name, newJob.Data.Lang, locUsed, localized)
+		}
+	}
+
+	if newJob.Data.Locations == "" && locationsStr != "" {
+		newJob.Data.Locations = locationsStr
 	}
 
 	// 提交前校验代理：格式非法、缺用户名密码认证的立即拒绝，

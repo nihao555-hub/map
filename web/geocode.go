@@ -20,6 +20,7 @@ type GeoPoint struct {
 	Lat         float64
 	Lon         float64
 	CountryCode string // ISO 3166-1 alpha-2 小写国家代码（可能为空）
+	DisplayName string // Nominatim 展示名（可用 accept-language 控制）
 	// 包围盒（Nominatim 返回顺序: minLat, maxLat, minLon, maxLon），网格模式用
 	MinLat float64
 	MaxLat float64
@@ -31,6 +32,7 @@ type GeoPoint struct {
 type nominatimResult struct {
 	Lat         string   `json:"lat"`
 	Lon         string   `json:"lon"`
+	DisplayName string   `json:"display_name"`
 	BoundingBox []string `json:"boundingbox"` // [minLat, maxLat, minLon, maxLon]
 	Address     struct {
 		CountryCode string `json:"country_code"`
@@ -40,6 +42,11 @@ type nominatimResult struct {
 // Geocode 用 Nominatim 把地点名解析成经纬度和国家代码。
 // 网格模式（runner/webrunner）与普通模式的地理锚定共用这一个实现。
 func Geocode(ctx context.Context, query string) (GeoPoint, error) {
+	return GeocodeLang(ctx, query, "")
+}
+
+// GeocodeLang 同 Geocode，可指定 accept-language（如 en）以拿到英文地名供海外搜索。
+func GeocodeLang(ctx context.Context, query, acceptLang string) (GeoPoint, error) {
 	if strings.TrimSpace(query) == "" {
 		return GeoPoint{}, fmt.Errorf("empty query")
 	}
@@ -49,6 +56,9 @@ func Geocode(ctx context.Context, query string) (GeoPoint, error) {
 		nominatimSearchURL,
 		url.QueryEscape(query),
 	)
+	if lang := strings.TrimSpace(acceptLang); lang != "" {
+		apiURL += "&accept-language=" + url.QueryEscape(lang)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
@@ -57,6 +67,9 @@ func Geocode(ctx context.Context, query string) (GeoPoint, error) {
 
 	// Nominatim 要求设置 User-Agent
 	req.Header.Set("User-Agent", "google-maps-scraper/1.0")
+	if lang := strings.TrimSpace(acceptLang); lang != "" {
+		req.Header.Set("Accept-Language", lang)
+	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
 
@@ -97,6 +110,7 @@ func (r *nominatimResult) geoPoint() (GeoPoint, error) {
 		Lat:         lat,
 		Lon:         lon,
 		CountryCode: strings.ToLower(r.Address.CountryCode),
+		DisplayName: strings.TrimSpace(r.DisplayName),
 	}
 
 	// 包围盒是可选的，解析失败不视为错误
@@ -108,6 +122,30 @@ func (r *nominatimResult) geoPoint() (GeoPoint, error) {
 	}
 
 	return point, nil
+}
+
+// shortDisplayName 从 Nominatim 长展示名取前两段，适合拼进 Maps 查询
+func shortDisplayName(display string) string {
+	display = strings.TrimSpace(display)
+	if display == "" {
+		return ""
+	}
+
+	parts := strings.Split(display, ",")
+	if len(parts) == 1 {
+		return strings.TrimSpace(parts[0])
+	}
+
+	a := strings.TrimSpace(parts[0])
+	b := strings.TrimSpace(parts[1])
+	if a == "" {
+		return b
+	}
+	if b == "" {
+		return a
+	}
+
+	return a + ", " + b
 }
 
 // hasGeoAnchor 判断 lat/lon 是否是有效的锚定坐标。
