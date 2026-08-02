@@ -383,8 +383,7 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		if bbox := r.Form.Get("gridbbox"); bbox != "" {
 			newJob.Data.GridBBox = bbox
 		}
-		// 网格模式下 fastmode 强制关闭（要进详情页抓完整字段）
-		newJob.Data.FastMode = false
+		// 快速模式已原生支持网格（纯 HTTP 搜索接口按格取数），不再强制关闭
 	}
 
 	// 结果列配置（快速模式可不选；深度/网格模式用户自选表头）

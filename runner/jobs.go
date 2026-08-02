@@ -123,6 +123,14 @@ func CreateSeedJobs(
 				opts = append(opts, gmaps.WithSearchJobExitMonitor(exitMonitor))
 			}
 
+			if dedup != nil {
+				opts = append(opts, gmaps.WithSearchJobDeduper(dedup))
+			}
+
+			if email {
+				opts = append(opts, gmaps.WithSearchJobEmail())
+			}
+
 			job = gmaps.NewSearchJob(&jparams, opts...)
 		}
 
@@ -207,6 +215,79 @@ func CreateGridSeedJobs(
 			)
 
 			jobs = append(jobs, job)
+		}
+	}
+
+	return jobs, nil
+}
+
+// CreateGridSearchSeedJobs 快速模式的网格版本：每个格子生成一个 SearchJob
+// （纯 HTTP 的 maps 搜索接口，无需浏览器渲染），配合共享 deduper 跨格去重。
+// 与深度模式的 GmapJob 网格相比，单格一次请求即可取回格内商户，
+// 名称/地址/电话/网站/评分/评论数一应俱全，速度快一到两个数量级。
+func CreateGridSearchSeedJobs(
+	langCode string,
+	r io.Reader,
+	email bool,
+	bbox grid.BoundingBox,
+	cellSizeKm float64,
+	zoom int,
+	dedup deduper.Deduper,
+	exitMonitor exiter.Exiter,
+) ([]scrapemate.IJob, error) {
+	if zoom < 1 || zoom > 21 {
+		return nil, fmt.Errorf("invalid zoom level: %d", zoom)
+	}
+
+	cells := grid.GenerateCells(bbox, cellSizeKm)
+	if len(cells) == 0 {
+		return nil, fmt.Errorf("grid produced 0 cells — check bounding box and cell size")
+	}
+
+	queries, err := readQueries(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(queries) == 0 {
+		return nil, fmt.Errorf("no queries found in input")
+	}
+
+	// 半径取格子半对角线，保证相邻格子有重叠、不丢边缘商户
+	cellRadiusM := cellSizeKm * 1000 / 2 * 1.42
+
+	var jobs []scrapemate.IJob
+
+	for _, q := range queries {
+		for _, cell := range cells {
+			jparams := gmaps.MapSearchParams{
+				Location: gmaps.MapLocation{
+					Lat:     cell.Lat,
+					Lon:     cell.Lon,
+					ZoomLvl: float64(zoom),
+					Radius:  cellRadiusM,
+				},
+				Query:     q.text,
+				ViewportW: 1920,
+				ViewportH: 800,
+				Hl:        langCode,
+			}
+
+			opts := []gmaps.SearchJobOptions{}
+
+			if exitMonitor != nil {
+				opts = append(opts, gmaps.WithSearchJobExitMonitor(exitMonitor))
+			}
+
+			if dedup != nil {
+				opts = append(opts, gmaps.WithSearchJobDeduper(dedup))
+			}
+
+			if email {
+				opts = append(opts, gmaps.WithSearchJobEmail())
+			}
+
+			jobs = append(jobs, gmaps.NewSearchJob(&jparams, opts...))
 		}
 	}
 

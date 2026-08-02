@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: map-leadgen
+    runtime: docker
+    plan: standard
+    region: oregon
+    branch: main
+    healthCheckPath: /
+    dockerCommand: -web -addr :10000 -data-folder /data -lang zh -c 8

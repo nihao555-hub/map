@@ -393,19 +393,29 @@ const js = `
 		return null;
 	}
 	const appState = window.APP_INITIALIZATION_STATE[3];
-	
-	// Search all properties of appState for arrays containing JSON strings
+
+	// Collect all candidate JSON strings, then validate shape.
+	// Google sometimes injects a compact variant first (jd[6] === null);
+	// only the classic variant (jd[6] is an array) contains full place data.
+	const candidates = [];
 	for (const key of Object.keys(appState)) {
 		const arr = appState[key];
 		if (Array.isArray(arr)) {
-			// Check indices 6 and 5 (where place data typically is)
 			for (const idx of [6, 5]) {
 				const item = arr[idx];
 				if (typeof item === 'string' && item.startsWith(")]}'")) {
-					return item;
+					candidates.push(item);
 				}
 			}
 		}
+	}
+	for (const item of candidates) {
+		try {
+			const jd = JSON.parse(item.slice(4));
+			if (Array.isArray(jd) && Array.isArray(jd[6])) {
+				return item;
+			}
+		} catch (e) {}
 	}
 	return null;
 })()

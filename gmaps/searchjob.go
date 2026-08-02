@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/gosom/google-maps-scraper/deduper"
 	"github.com/gosom/google-maps-scraper/exiter"
 	"github.com/gosom/scrapemate"
 )
@@ -26,6 +27,8 @@ type MapSearchParams struct {
 	ViewportW int
 	ViewportH int
 	Hl        string
+	// Offset 分页偏移（每页固定 20 条），0 为第一页
+	Offset int
 }
 
 type SearchJob struct {
@@ -34,6 +37,8 @@ type SearchJob struct {
 	params                  *MapSearchParams
 	ExitMonitor             exiter.Exiter
 	WriterManagedCompletion bool
+	Deduper                 deduper.Deduper
+	ExtractEmail            bool
 }
 
 func NewSearchJob(params *MapSearchParams, opts ...SearchJobOptions) *SearchJob {
@@ -75,6 +80,18 @@ func WithSearchJobWriterManagedCompletion() SearchJobOptions {
 	}
 }
 
+func WithSearchJobDeduper(d deduper.Deduper) SearchJobOptions {
+	return func(j *SearchJob) {
+		j.Deduper = d
+	}
+}
+
+func WithSearchJobEmail() SearchJobOptions {
+	return func(j *SearchJob) {
+		j.ExtractEmail = true
+	}
+}
+
 func (j *SearchJob) ProcessOnFetchError() bool {
 	return true
 }
@@ -112,22 +129,100 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 		return nil, nil, fmt.Errorf("failed to parse search results: %w", err)
 	}
 
+	// 分页：该接口每页固定 20 条。本页抓满且未到页数上限时派生下一页任务；
+	// 种子完成计数只在翻页链结束（不满页 / 到上限 / 出错）时累加，
+	// 避免退出监控在翻页中途误判任务完成。
+	const (
+		searchPageSize = 20
+		maxSearchPages = 5
+	)
+
+	rawCount := len(entries)
+	spawnNext := rawCount >= searchPageSize && j.params.Offset < (maxSearchPages-1)*searchPageSize
+
+	var nextJobs []scrapemate.IJob
+
+	if spawnNext {
+		nextParams := *j.params
+		nextParams.Offset += searchPageSize
+
+		next := NewSearchJob(&nextParams)
+		next.ExitMonitor = j.ExitMonitor
+		next.WriterManagedCompletion = j.WriterManagedCompletion
+		next.Deduper = j.Deduper
+		next.ExtractEmail = j.ExtractEmail
+
+		nextJobs = append(nextJobs, next)
+	}
+
 	entries = filterAndSortEntriesWithinRadius(entries,
 		j.params.Location.Lat,
 		j.params.Location.Lon,
 		j.params.Location.Radius,
 	)
 
+	// 去重：网格单元重叠 / 数量上限共用 deduper（达到上限时 AddIfNotExists 返回 false）
+	if j.Deduper != nil {
+		ctx := context.Background()
+		uniq := make([]*Entry, 0, len(entries))
+
+		for _, e := range entries {
+			key := e.Link
+			if key == "" {
+				key = e.ID
+			}
+			if key == "" {
+				key = fmt.Sprintf("%s|%.6f,%.6f", e.Title, e.Latitude, e.Longtitude)
+			}
+			if j.Deduper.AddIfNotExists(ctx, key) {
+				uniq = append(uniq, e)
+			}
+		}
+
+		entries = uniq
+	}
+
 	if j.ExitMonitor != nil {
 		j.ExitMonitor.IncrPlacesFound(len(entries))
-		j.ExitMonitor.IncrSeedCompleted(1)
-
-		if !j.WriterManagedCompletion {
-			j.ExitMonitor.IncrPlacesCompleted(len(entries))
+		if !spawnNext {
+			j.ExitMonitor.IncrSeedCompleted(1)
 		}
 	}
 
-	return entries, nil, nil
+	// 邮箱提取：有官网的商户派生轻量 HTTP 邮箱任务（不走浏览器）
+	if j.ExtractEmail {
+		direct := make([]*Entry, 0, len(entries))
+
+		var emailJobs []scrapemate.IJob
+
+		for _, e := range entries {
+			if e.IsWebsiteValidForEmail() {
+				opts := []EmailExtractJobOptions{}
+				if j.ExitMonitor != nil {
+					opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
+				}
+				if j.WriterManagedCompletion {
+					opts = append(opts, WithEmailJobWriterManagedCompletion())
+				}
+
+				emailJobs = append(emailJobs, NewEmailJob(j.ID, e, opts...))
+			} else {
+				direct = append(direct, e)
+			}
+		}
+
+		if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+			j.ExitMonitor.IncrPlacesCompleted(len(direct))
+		}
+
+		return direct, append(nextJobs, emailJobs...), nil
+	}
+
+	if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+		j.ExitMonitor.IncrPlacesCompleted(len(entries))
+	}
+
+	return entries, nextJobs, nil
 }
 
 func removeFirstLine(data []byte) []byte {
@@ -154,7 +249,7 @@ func buildGoogleMapsParams(params *MapSearchParams) map[string]string {
 		"q":        params.Query,
 	}
 
-	pb := fmt.Sprintf("!4m12!1m3!1d3826.902183192154!2d%.4f!3d%.4f!2m3!1f0!2f0!3f0!3m2!1i%d!2i%d!4f%.1f!7i20!8i0"+
+	pb := fmt.Sprintf("!4m12!1m3!1d3826.902183192154!2d%.4f!3d%.4f!2m3!1f0!2f0!3f0!3m2!1i%d!2i%d!4f%.1f!7i20!8i%d"+
 		"!10b1!12m22!1m3!18b1!30b1!34e1!2m3!5m1!6e2!20e3!4b0!10b1!12b1!13b1!16b1!17m1!3e1!20m3!5e2!6b1!14b1!46m1!1b0"+
 		"!96b1!19m4!2m3!1i360!2i120!4i8",
 		params.Location.Lon,
@@ -162,6 +257,7 @@ func buildGoogleMapsParams(params *MapSearchParams) map[string]string {
 		params.ViewportW,
 		params.ViewportH,
 		params.Location.ZoomLvl,
+		params.Offset,
 	)
 
 	ans["pb"] = pb

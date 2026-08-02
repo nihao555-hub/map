@@ -246,18 +246,32 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			log.Printf("grid mode: ~%d cells at %.1fkm resolution", estCells, cellKm)
 
 			var err error
-			seedJobs, err = runner.CreateGridSeedJobs(
-				job.Data.Lang,
-				strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
-				job.Data.Depth,
-				job.Data.Email,
-				bbox,
-				cellKm,
-				job.Data.Zoom,
-				dedup,
-				exitMonitor,
-				w.cfg.ExtraReviews || job.Data.ExtraReviews,
-			)
+			if job.Data.FastMode {
+				// 快速模式：纯 HTTP 搜索接口按格取数，不启动浏览器，速度快数十倍
+				seedJobs, err = runner.CreateGridSearchSeedJobs(
+					job.Data.Lang,
+					strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
+					job.Data.Email,
+					bbox,
+					cellKm,
+					job.Data.Zoom,
+					dedup,
+					exitMonitor,
+				)
+			} else {
+				seedJobs, err = runner.CreateGridSeedJobs(
+					job.Data.Lang,
+					strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
+					job.Data.Depth,
+					job.Data.Email,
+					bbox,
+					cellKm,
+					job.Data.Zoom,
+					dedup,
+					exitMonitor,
+					w.cfg.ExtraReviews || job.Data.ExtraReviews,
+				)
+			}
 			if err != nil {
 				log.Printf("failed to create grid seed jobs: %v, falling back to single search", err)
 				job.Data.GridMode = false
