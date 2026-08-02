@@ -1,7 +1,7 @@
 <div id="map-modal" class="map-modal" role="dialog" aria-modal="true" aria-labelledby="map-modal-title" onclick="if(event.target===this)closeJobMap()">
     <div class="map-modal-content">
         <div class="map-modal-header">
-            <h2 id="map-modal-title">Places</h2>
+            <h2 id="map-modal-title">采集结果</h2>
             <button type="button" class="map-modal-close" aria-label="Close" onclick="closeJobMap()">&times;</button>
         </div>
         <div class="map-modal-body">
@@ -65,60 +65,108 @@
         }
 
         function placePopup(place) {
-            var parts = ['<strong>' + escapeHtml(place.title) + '</strong>'];
+            var parts = ['<strong>' + escapeHtml(place.title || '未命名商家') + '</strong>'];
             if (place.address) {
                 parts.push(escapeHtml(place.address));
             }
-            if (place.link && /^https?:\/\//i.test(place.link)) {
-                parts.push('<a href="' + encodeURI(place.link) + '" target="_blank" rel="noopener noreferrer">View on Google Maps</a>');
+            if (place.phone) {
+                parts.push('电话：' + escapeHtml(place.phone));
+            }
+            if (place.emails) {
+                parts.push('邮箱：' + escapeHtml(place.emails));
+            }
+            if (place.review_rating) {
+                parts.push('评分：★ ' + escapeHtml(String(place.review_rating)));
             }
             return parts.join('<br>');
         }
 
-        function placeListItem(place, onSelect) {
-            var item = document.createElement('div');
-            item.className = 'place-item';
-            item.innerHTML = '<div class="place-title">' + escapeHtml(place.title) + '</div>' +
-                (place.address ? '<div class="place-address">' + escapeHtml(place.address) + '</div>' : '') +
-                (place.review_rating ? '<div class="place-rating">★ ' + escapeHtml(String(place.review_rating)) + '</div>' : '');
-            item.addEventListener('click', onSelect);
-            return item;
+        function websiteCell(place) {
+            if (place.website && /^https?:\/\//i.test(place.website)) {
+                var host = place.website;
+                try { host = new URL(place.website).hostname.replace(/^www\./, ''); } catch (e) {}
+                return '<a href="' + encodeURI(place.website) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">' + escapeHtml(host) + '</a>';
+            }
+            return '<span class="cell-empty">—</span>';
         }
 
-        function renderPlaces(map, listEl) {
+        function textCell(value) {
+            if (value === null || value === undefined || value === '') {
+                return '<span class="cell-empty">—</span>';
+            }
+            return escapeHtml(String(value));
+        }
+
+        function buildTable(map) {
+            var wrap = document.createElement('div');
+            wrap.className = 'places-table-wrap';
+
+            var html = '<table class="places-table">' +
+                '<thead><tr>' +
+                '<th class="col-name">名称</th>' +
+                '<th class="col-addr">地址</th>' +
+                '<th class="col-phone">电话</th>' +
+                '<th class="col-mail">邮箱</th>' +
+                '<th class="col-rating">评分</th>' +
+                '<th class="col-reviews">评论数</th>' +
+                '<th class="col-site">网站</th>' +
+                '</tr></thead><tbody></tbody></table>';
+            wrap.innerHTML = html;
+
+            var tbody = wrap.querySelector('tbody');
             var bounds = [];
 
-            places.forEach(function (place) {
+            places.forEach(function (place, idx) {
                 var latlng = [place.latitude, place.longitude];
                 bounds.push(latlng);
 
                 L.marker(latlng).bindPopup(placePopup(place)).addTo(map);
-                listEl.appendChild(placeListItem(place, function () {
+
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td class="col-name">' + textCell(place.title) + '</td>' +
+                    '<td class="col-addr">' + textCell(place.address) + '</td>' +
+                    '<td class="col-phone">' + textCell(place.phone) + '</td>' +
+                    '<td class="col-mail">' + textCell(place.emails) + '</td>' +
+                    '<td class="col-rating">' + (place.review_rating ? '★ ' + escapeHtml(String(place.review_rating)) : '<span class="cell-empty">—</span>') + '</td>' +
+                    '<td class="col-reviews">' + (place.review_count ? escapeHtml(String(place.review_count)) : '<span class="cell-empty">—</span>') + '</td>' +
+                    '<td class="col-site">' + websiteCell(place) + '</td>';
+                tr.addEventListener('click', function () {
+                    tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
+                    tr.classList.add('row-active');
                     map.setView(latlng, 16);
-                }));
+                });
+                if (idx === 0) tr.classList.add('row-active');
+                tbody.appendChild(tr);
             });
 
             map.fitBounds(bounds, { padding: [30, 30] });
             setTimeout(function () { map.invalidateSize(); }, 0);
+            return wrap;
         }
 
         function showEmptyState(map, listEl) {
-            listEl.innerHTML = '<p class="map-empty">No places with coordinates were found for this job.</p>';
+            listEl.innerHTML = '<p class="map-empty">该任务暂无可展示的商家数据。</p>';
             map.setView([0, 0], 2);
         }
 
         function initJobMap() {
             var listEl = document.getElementById('job-places-list');
+            var titleEl = document.getElementById('map-modal-title');
             var map = createMap();
 
             listEl.innerHTML = '';
+
+            if (titleEl) {
+                titleEl.textContent = places.length ? ('采集结果（共 ' + places.length + ' 家）') : '采集结果';
+            }
 
             if (places.length === 0) {
                 showEmptyState(map, listEl);
                 return;
             }
 
-            renderPlaces(map, listEl);
+            listEl.appendChild(buildTable(map));
         }
 
         window.closeJobMap = function () {

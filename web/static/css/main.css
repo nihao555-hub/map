@@ -888,7 +888,7 @@ svg.lucide { flex-shrink: 0; }
 
 .map-modal-body {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   min-height: 420px;
   overflow: hidden;
 }
@@ -898,7 +898,7 @@ svg.lucide { flex-shrink: 0; }
 #job-places-list {
   overflow-y: auto;
   border-left: 1px solid var(--border-light);
-  padding: 8px;
+  padding: 0;
 }
 
 .place-item {
@@ -927,6 +927,60 @@ svg.lucide { flex-shrink: 0; }
   color: var(--brand-warning);
   margin-top: 2px;
 }
+
+/* ============ 结果表格 ============ */
+.places-table-wrap {
+  height: 100%;
+  overflow: auto;
+}
+
+.places-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.places-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f7f9fc;
+  color: var(--text-aux);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
+}
+
+.places-table tbody td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #f0f3f8;
+  vertical-align: top;
+  line-height: 1.45;
+}
+
+.places-table tbody tr {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.places-table tbody tr:nth-child(even) { background: #fafbfd; }
+.places-table tbody tr:hover { background: var(--bg-light-blue); }
+.places-table tbody tr.row-active { background: var(--bg-light-blue); box-shadow: inset 3px 0 0 var(--brand-primary); }
+
+.places-table .col-name { font-weight: 500; min-width: 140px; }
+.places-table .col-addr { color: var(--text-aux); min-width: 180px; }
+.places-table .col-phone { white-space: nowrap; }
+.places-table .col-mail { color: var(--text-secondary); min-width: 150px; word-break: break-all; }
+.places-table .col-rating { color: var(--brand-warning); white-space: nowrap; }
+.places-table .col-reviews { text-align: right; white-space: nowrap; }
+.places-table .col-site a { color: var(--brand-primary); text-decoration: none; }
+.places-table .col-site a:hover { text-decoration: underline; }
+
+.places-table .cell-empty { color: #c0c6d2; }
 
 .map-loading,
 .map-empty,

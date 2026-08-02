@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -200,6 +201,18 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			}
 		}
 
+		// 用户已在地图上选点（带经纬度锚点）：直接以锚点为中心构造网格，
+		// 不依赖外部地理编码服务，稳定且零延迟
+		if bbox.MinLat == 0 && bbox.MaxLat == 0 {
+			if alat, aerr := strconv.ParseFloat(job.Data.Lat, 64); aerr == nil {
+				if alon, aerr2 := strconv.ParseFloat(job.Data.Lon, 64); aerr2 == nil && !(alat == 0 && alon == 0) {
+					halfKm := float64(job.Data.Radius) / 2000 // radius=10000m → 半径5km（约10km×10km）
+					bbox = anchorBBox(alat, alon, halfKm)
+					log.Printf("grid mode: anchor bbox around %.4f,%.4f (±%.1fkm)", alat, alon, halfKm)
+				}
+			}
+		}
+
 		// 没有 bbox 就用地理编码从地点名生成
 		if bbox.MinLat == 0 && bbox.MaxLat == 0 && job.Data.Locations != "" {
 			log.Printf("geocoding location %q for grid mode", job.Data.Locations)
@@ -298,7 +311,10 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		}
 
 		if job.Data.MaxTime > 0 {
-			if job.Data.MaxTime.Seconds() < 180 {
+			if job.Data.GridMode {
+				// 网格全量模式不允许用户侧的最大时间造成截断：取网格估算与设置值中的较大者
+				allowedSeconds = max(allowedSeconds, int(job.Data.MaxTime.Seconds()))
+			} else if job.Data.MaxTime.Seconds() < 180 {
 				allowedSeconds = 180
 			} else {
 				allowedSeconds = int(job.Data.MaxTime.Seconds())
@@ -339,7 +355,7 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 		// 提速：并发 = 配置的并发数；页面复用从 2 提到 20，浏览器复用从 200 提到 1000
 		opts := []func(*scrapemateapp.Config) error{
 			scrapemateapp.WithConcurrency(cfg.Concurrency),
-			scrapemateapp.WithExitOnInactivity(time.Minute * 2),
+			scrapemateapp.WithExitOnInactivity(time.Minute * 10),
 		}
 
 		if !job.Data.FastMode {

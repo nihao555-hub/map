@@ -26,6 +26,8 @@ type Place struct {
 	Phone        string  `json:"phone"`
 	Website      string  `json:"website"`
 	ReviewRating float64 `json:"review_rating"`
+	ReviewCount  int     `json:"review_count"`
+	Emails       string  `json:"emails"`
 }
 
 // GetPlaces locates the job's CSV output and parses it into mappable places.
@@ -119,6 +121,8 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 			rating = 0
 		}
 
+		reviewCount, _ := strconv.Atoi(get(row, "review_count"))
+
 		places = append(places, Place{
 			Title:        get(row, "title"),
 			Address:      get(row, "address"),
@@ -129,6 +133,8 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 			Phone:        get(row, "phone"),
 			Website:      get(row, "website"),
 			ReviewRating: rating,
+			ReviewCount:  reviewCount,
+			Emails:       get(row, "emails"),
 		})
 	}
 

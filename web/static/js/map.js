@@ -54,7 +54,7 @@
       if (heatOn) renderHeat();
     });
 
-    // 地图选点：点击写入隐藏经纬度字段
+    // 地图选点：点击写入隐藏经纬度字段，并同步到左侧「在哪里」输入框
     map.on('click', function (e) {
       var lat = e.latlng.lat.toFixed(6);
       var lng = e.latlng.lng.toFixed(6);
@@ -71,9 +71,49 @@
         })
       }).addTo(map);
 
+      syncLocationInput(lat, lng);
       showTip('已选点：' + lat + ', ' + lng);
     });
   }
+
+  // 程序化写入标记：避免触发“手动输入”监听导致锚点被清掉
+  var pickProgrammatic = false;
+
+  function setLocationText(text) {
+    pickProgrammatic = true;
+    document.getElementById('locations').value = text;
+    pickProgrammatic = false;
+  }
+
+  // 选点后立即回填坐标；随后尝试逆地理编码升级为可读地址（失败保留坐标）
+  function syncLocationInput(lat, lng) {
+    var coordText = lat + ', ' + lng;
+    setLocationText(coordText);
+
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 3500);
+    fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=zh&lat=' + lat + '&lon=' + lng, { signal: ctrl.signal })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        clearTimeout(timer);
+        // 仅当用户未再次手动改动输入框时才升级显示
+        if (data && data.display_name && document.getElementById('locations').value === coordText) {
+          setLocationText(data.display_name);
+        }
+      })
+      .catch(function () { clearTimeout(timer); });
+  }
+
+  // 用户手动编辑「在哪里」时，清除地图选点锚定，以输入文本为准
+  document.addEventListener('DOMContentLoaded', function () {
+    var locInput = document.getElementById('locations');
+    if (!locInput) return;
+    locInput.addEventListener('input', function () {
+      if (pickProgrammatic) return;
+      document.getElementById('latitude').value = '0';
+      document.getElementById('longitude').value = '0';
+    });
+  });
 
   // 清除地图选点
   window.clearPickMarker = function () {
@@ -101,10 +141,8 @@
     var parts = ['<strong>' + escapeHtml(p.title || '未命名商家') + '</strong>'];
     if (p.address) parts.push(escapeHtml(p.address));
     if (p.phone) parts.push('电话：' + escapeHtml(p.phone));
+    if (p.emails) parts.push('邮箱：' + escapeHtml(p.emails));
     if (p.review_rating) parts.push('评分：★ ' + escapeHtml(String(p.review_rating)));
-    if (p.link && /^https?:\/\//i.test(p.link)) {
-      parts.push('<a href="' + encodeURI(p.link) + '" target="_blank" rel="noopener noreferrer">在地图中查看</a>');
-    }
     return parts.join('<br>');
   }
 

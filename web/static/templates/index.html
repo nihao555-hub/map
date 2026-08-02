@@ -97,7 +97,7 @@
             <div class="field-group">
               <label class="field-label">模式选择</label>
               <div class="mode-cards">
-                <div class="mode-card active" data-mode="quick" onclick="selectMode('quick')">
+                <div class="mode-card" data-mode="quick" onclick="selectMode('quick')">
                   <div class="mode-head">
                     <i data-lucide="zap" class="w-4 h-4 mode-icon"></i>
                     <span class="mode-label">快速模式</span>
@@ -130,15 +130,15 @@
                   <i data-lucide="settings" class="w-4 h-4"></i>
                   高级选项
                 </span>
-                <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon" id="advanced-icon"></i>
+                <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon open" id="advanced-icon"></i>
               </button>
 
-              <div id="advanced-options" class="collapse-content">
+              <div id="advanced-options" class="collapse-content open">
                 <div class="adv-inner">
                   <!-- 全域全量模式 -->
                   <div>
                     <label class="field-label-sm">全域全量模式（网格搜索，突破数量上限）</label>
-                    <div class="mode-card mode-card-sm" data-mode="grid" onclick="selectMode('grid')">
+                    <div class="mode-card mode-card-sm active" data-mode="grid" onclick="selectMode('grid')">
                       <div class="mode-head">
                         <i data-lucide="grid-3x3" class="w-4 h-4 mode-icon"></i>
                         <span class="mode-label">全域全量</span>
@@ -149,7 +149,7 @@
                   </div>
 
                   <!-- 网格密度 -->
-                  <div id="grid-density-section" class="hidden">
+                  <div id="grid-density-section">
                     <label class="field-label-sm" for="gridcell">网格密度</label>
                     <select id="gridcell" name="gridcell" class="select-field">
                       <option value="2.0">稀疏（约 2km 一格，速度快）</option>
@@ -192,8 +192,8 @@
                     <label class="field-label-sm" for="depth">滚动深度</label>
                     <select id="depth" name="depth" class="select-field">
                       <option value="5">浅（5 次，快速）</option>
-                      <option value="10" selected>标准（10 次）</option>
-                      <option value="20">深（20 次）</option>
+                      <option value="10">标准（10 次）</option>
+                      <option value="20" selected>深（20 次）</option>
                       <option value="50">极深（50 次）</option>
                     </select>
                   </div>
@@ -202,8 +202,8 @@
                   <input type="hidden" id="zoom" name="zoom" value="15">
                   <input type="hidden" id="latitude" name="latitude" value="0">
                   <input type="hidden" id="longitude" name="longitude" value="0">
-                  <input type="hidden" id="fastmode" name="fastmode" value="on">
-                  <input type="hidden" id="gridmode" name="gridmode" value="">
+                  <input type="hidden" id="fastmode" name="fastmode" value="">
+                  <input type="hidden" id="gridmode" name="gridmode" value="on">
                   <input type="hidden" id="gridbbox" name="gridbbox" value="">
                   <input type="hidden" id="radius" name="radius" value="10000">
 
@@ -275,7 +275,7 @@
         <div id="result-bar" class="hidden">
           <div class="result-info">
             <div class="result-title">找到 <b id="result-count">0</b> 个相关结果<span id="result-mode">（快速模式）</span></div>
-            <div class="result-source">数据来源：高德地图POI</div>
+            <div class="result-source">真实商户数据 · 实时采集</div>
           </div>
           <button type="button" id="result-detail-btn" class="result-detail">查看详情 <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
         </div>
@@ -293,7 +293,7 @@
       lucide.createIcons();
 
       // 模式选择：quick=快速(fastmode) / standard=深度 / grid=全域全量
-      let currentMode = 'quick';
+      let currentMode = 'grid';
       function selectMode(mode) {
         currentMode = mode;
         document.querySelectorAll('.mode-card').forEach(function (card) {

@@ -3,6 +3,7 @@ package webrunner
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"github.com/gosom/google-maps-scraper/grid"
 	"github.com/gosom/google-maps-scraper/web"
@@ -38,5 +39,27 @@ func expandBBox(bbox grid.BoundingBox, ratio float64) grid.BoundingBox {
 		MaxLat: bbox.MaxLat + latPad,
 		MinLon: bbox.MinLon - lonPad,
 		MaxLon: bbox.MaxLon + lonPad,
+	}
+}
+
+// anchorBBox 以地图选点（经纬度锚点）为中心构造网格范围。
+// 完全不依赖外部地理编码服务，离线可用、零延迟。
+// halfKm 为中心到边界的公里数，<=0 时默认 5km（即约 10km×10km 全覆盖）。
+func anchorBBox(lat, lon, halfKm float64) grid.BoundingBox {
+	if halfKm <= 0 {
+		halfKm = 5
+	}
+
+	latPad := halfKm / 111.0 // 纬度 1° ≈ 111km
+	lonPad := latPad
+	if c := math.Cos(lat * math.Pi / 180); c > 0.01 {
+		lonPad = halfKm / (111.0 * c)
+	}
+
+	return grid.BoundingBox{
+		MinLat: lat - latPad,
+		MaxLat: lat + latPad,
+		MinLon: lon - lonPad,
+		MaxLon: lon + lonPad,
 	}
 }
