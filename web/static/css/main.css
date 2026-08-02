@@ -681,13 +681,143 @@ svg.lucide { flex-shrink: 0; }
 #research-btn i { color: var(--text-aux); }
 #research-btn:hover i { color: var(--brand-primary); }
 
-#heatmap-card { top: 16px; right: 16px; cursor: default; }
+#heatmap-card { top: 16px; right: 292px; cursor: default; }
 .flame-icon { color: var(--brand-warning); }
+
+/* 右侧任务进度面板 */
+#task-dock {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 120px;
+  width: 260px;
+  z-index: 520;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 16px;
+  box-shadow: var(--shadow-float);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.task-dock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.task-dock-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.task-dock-hint {
+  font-size: 11px;
+  color: var(--text-aux);
+}
+
+.task-dock-list {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-dock-empty {
+  margin: 18px 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-aux);
+  text-align: center;
+}
+
+.task-dock-item {
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.task-dock-item:hover {
+  border-color: rgba(22, 119, 255, 0.35);
+}
+
+.task-dock-item.active {
+  border-color: rgba(22, 119, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.08);
+}
+
+.task-dock-item-top,
+.task-dock-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-dock-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-dock-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #F3F4F6;
+  color: var(--text-secondary);
+}
+
+.task-dock-item.status-working .task-dock-badge,
+.task-dock-item.status-pending .task-dock-badge {
+  background: rgba(22, 119, 255, 0.12);
+  color: var(--brand-primary);
+}
+
+.task-dock-item.status-ok .task-dock-badge {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.task-dock-item.status-failed .task-dock-badge {
+  background: rgba(239, 68, 68, 0.12);
+  color: #DC2626;
+}
+
+.task-dock-item-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-aux);
+}
+
+.task-dock-count {
+  color: var(--brand-primary);
+  font-weight: 500;
+}
 
 /* 右下地图控制器 */
 #map-ctrl {
   position: absolute;
-  right: 16px;
+  right: 292px;
   bottom: 120px;
   z-index: 500;
   display: flex;
@@ -1009,6 +1139,23 @@ svg.lucide { flex-shrink: 0; }
   }
 
   #map-area { flex: 1; min-height: 45vh; }
+
+  #task-dock {
+    top: auto;
+    right: 12px;
+    left: 12px;
+    bottom: 88px;
+    width: auto;
+    max-height: 38%;
+  }
+
+  #heatmap-card,
+  #map-ctrl {
+    right: 12px;
+  }
+
+  #heatmap-card { top: 12px; }
+  #map-ctrl { bottom: auto; top: 64px; }
 
   #result-bar {
     min-width: 0;
