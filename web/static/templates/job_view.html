@@ -255,7 +255,9 @@
             setTimeout(function () { map.invalidateSize(); }, 0);
 
             if (streamActive) {
-                pollTimer = setInterval(pollPlaces, 5000);
+                // 结果是流式写入 CSV 的：轮询会看到数量逐渐增加
+                pollTimer = setInterval(pollPlaces, 3000);
+                pollPlaces();
             }
         }
 

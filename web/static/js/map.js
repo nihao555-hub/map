@@ -24,6 +24,9 @@
   var heatOn = false;
   var usingAmap = false;
   var baseSwitching = false;
+  var livePollTimer = null; // 进行中任务：主地图结果增量轮询
+  var dockCountCache = {};  // jobId -> place count
+  var dockCountInflight = {};
 
   function inChinaView(lat, lng) {
     // 粗略中国大陆范围（含近海）；海外搜索（如纽约）走全球底图
@@ -342,12 +345,157 @@
     document.getElementById('result-mode').textContent = '（' + modeLabel + '）';
   }
 
+  // 打开结果小窗口（运行中会流式追加）
+  window.openJobView = function (jobId) {
+    if (!jobId) return;
+    htmx.ajax('GET', '/view?id=' + encodeURIComponent(jobId), {
+      target: '#map-modal-container',
+      swap: 'innerHTML'
+    });
+  };
+
   document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('result-detail-btn').addEventListener('click', function () {
       if (!currentJobId) return;
-      htmx.ajax('GET', '/view?id=' + encodeURIComponent(currentJobId), { target: '#map-modal-container', swap: 'innerHTML' });
+      window.openJobView(currentJobId);
     });
   });
+
+  function stopLivePoll() {
+    if (livePollTimer) {
+      clearInterval(livePollTimer);
+      livePollTimer = null;
+    }
+  }
+
+  function applyPlacesToMap(places, modeLabel, hasAnchor, lat, lon, fit) {
+    currentPlaces = places || [];
+    renderMarkers();
+    updateResultBar(currentPlaces.length, modeLabel);
+    dockCountCache[currentJobId] = currentPlaces.length;
+    window.syncTaskDock && window.syncTaskDock();
+
+    if (currentPlaces.length) {
+      var mid = currentPlaces[0];
+      setBaseLayer(inChinaView(mid.latitude, mid.longitude));
+      if (fit) {
+        var bounds = currentPlaces.map(function (p) { return [p.latitude, p.longitude]; });
+        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+      }
+    } else if (hasAnchor) {
+      setBaseLayer(inChinaView(lat, lon));
+      map.setView([lat, lon], DEFAULT_ZOOM);
+    }
+
+    refreshMapSize();
+    if (heatOn) renderHeat();
+  }
+
+  function fetchPlacesForJob(id, modeLabel, hasAnchor, lat, lon, fit) {
+    return fetch('/api/v1/jobs/' + encodeURIComponent(id) + '/places')
+      .then(function (res) { return res.ok ? res.json() : []; })
+      .then(function (places) {
+        if (currentJobId !== id) return;
+        applyPlacesToMap(places, modeLabel, hasAnchor, lat, lon, fit);
+      })
+      .catch(function () {
+        if (currentJobId !== id) return;
+        if (!currentPlaces.length) {
+          applyPlacesToMap([], modeLabel, hasAnchor, lat, lon, false);
+        }
+      });
+  }
+
+  // ============ 右侧任务进度面板 ============
+  function statusLabel(status) {
+    if (status === 'working') return '进行中';
+    if (status === 'pending') return '排队中';
+    if (status === 'ok') return '已完成';
+    if (status === 'failed') return '失败';
+    return status || '未知';
+  }
+
+  function modeFromRecord(el) {
+    var tag = el.querySelector('.mode-tag');
+    return tag ? tag.textContent.trim() : '快速模式';
+  }
+
+  function refreshDockCount(jobId) {
+    if (!jobId || dockCountInflight[jobId]) return;
+    dockCountInflight[jobId] = true;
+    fetch('/api/v1/jobs/' + encodeURIComponent(jobId) + '/places')
+      .then(function (res) { return res.ok ? res.json() : []; })
+      .then(function (places) {
+        dockCountCache[jobId] = (places || []).length;
+        var countEl = document.querySelector('#task-dock-list [data-dock-id="' + jobId + '"] .task-dock-count');
+        if (countEl) {
+          var n = dockCountCache[jobId] || 0;
+          countEl.textContent = n ? ('已抓 ' + n + ' 家') : '等待首条结果…';
+        }
+      })
+      .catch(function () {})
+      .finally(function () { delete dockCountInflight[jobId]; });
+  }
+
+  window.syncTaskDock = function () {
+    var list = document.getElementById('task-dock-list');
+    if (!list) return;
+
+    var records = Array.prototype.slice.call(document.querySelectorAll('#job-list .record-item'));
+    if (!records.length) {
+      list.innerHTML = '<p class="task-dock-empty">还没有任务。填写左侧表单后点击「开始搜索」。</p>';
+      return;
+    }
+
+    // 进行中优先，其次最近完成/失败
+    var running = records.filter(function (r) {
+      return r.dataset.status === 'working' || r.dataset.status === 'pending';
+    });
+    var done = records.filter(function (r) {
+      return r.dataset.status === 'ok' || r.dataset.status === 'failed';
+    }).slice(0, 6);
+    var shown = running.concat(done);
+
+    list.innerHTML = shown.map(function (el) {
+      var id = el.dataset.jobId;
+      var status = el.dataset.status || '';
+      var name = (el.querySelector('.record-name') || {}).textContent || '未命名任务';
+      var mode = modeFromRecord(el);
+      var count = dockCountCache[id];
+      var countText = typeof count === 'number'
+        ? (count ? ('已抓 ' + count + ' 家') : (status === 'ok' ? '暂无结果' : '等待首条结果…'))
+        : (status === 'working' || status === 'pending' ? '同步进度…' : '查看详情');
+      var active = id === currentJobId ? ' active' : '';
+      return '<button type="button" class="task-dock-item status-' + status + active + '" data-dock-id="' + id + '" onclick="window.focusTaskFromDock(\'' + id + '\')">' +
+        '<div class="task-dock-item-top">' +
+          '<span class="task-dock-name">' + escapeHtml(name.trim()) + '</span>' +
+          '<span class="task-dock-badge">' + statusLabel(status) + '</span>' +
+        '</div>' +
+        '<div class="task-dock-item-meta">' +
+          '<span>' + escapeHtml(mode) + '</span>' +
+          '<span class="task-dock-count">' + countText + '</span>' +
+        '</div>' +
+      '</button>';
+    }).join('');
+
+    // 进行中的任务持续拉数量（结果逐渐增加）
+    running.forEach(function (el) { refreshDockCount(el.dataset.jobId); });
+    done.slice(0, 3).forEach(function (el) {
+      if (typeof dockCountCache[el.dataset.jobId] !== 'number') {
+        refreshDockCount(el.dataset.jobId);
+      }
+    });
+
+    if (window.lucide) lucide.createIcons();
+  };
+
+  window.focusTaskFromDock = function (jobId) {
+    var el = document.querySelector('#job-list .record-item[data-job-id="' + jobId + '"]');
+    if (el) {
+      window.selectRecord(el);
+    }
+    window.openJobView(jobId);
+  };
 
   // ============ 任务选择与数据加载 ============
   window.selectRecord = function (el) {
@@ -355,11 +503,13 @@
       r.classList.toggle('active', r === el);
     });
     loadJob(el);
+    window.syncTaskDock && window.syncTaskDock();
   };
 
   function loadJob(el) {
     var id = el.dataset.jobId;
     currentJobId = id;
+    stopLivePoll();
 
     // 地图定位到任务锚点
     var lat = parseFloat(el.dataset.lat);
@@ -369,8 +519,39 @@
 
     var modeTag = el.querySelector('.mode-tag');
     var modeLabel = modeTag ? modeTag.textContent.trim() : '快速模式';
+    var status = el.dataset.status;
 
-    if (el.dataset.status !== 'ok') {
+    // 进行中/排队：先定位，再轮询增量结果（主地图标记逐渐增加）
+    if (status === 'working' || status === 'pending') {
+      currentPlaces = [];
+      renderMarkers();
+      updateResultBar(dockCountCache[id] || 0, modeLabel);
+      if (hasAnchor && map) {
+        setBaseLayer(inChinaView(lat, lon));
+        map.setView([lat, lon], DEFAULT_ZOOM);
+        refreshMapSize();
+      }
+      var fitted = false;
+      fetchPlacesForJob(id, modeLabel, hasAnchor, lat, lon, true).then(function () {
+        fitted = currentPlaces.length > 0;
+      });
+      livePollTimer = setInterval(function () {
+        var rec = document.querySelector('#job-list .record-item[data-job-id="' + id + '"]');
+        if (!rec) return;
+        var st = rec.dataset.status;
+        fetchPlacesForJob(id, modeLabel, hasAnchor, lat, lon, !fitted).then(function () {
+          if (currentPlaces.length) fitted = true;
+        });
+        if (st === 'ok' || st === 'failed') {
+          stopLivePoll();
+          // 完成后最后拉一次完整结果
+          fetchPlacesForJob(id, modeLabel, hasAnchor, lat, lon, false);
+        }
+      }, 4000);
+      return;
+    }
+
+    if (status !== 'ok') {
       currentPlaces = [];
       renderMarkers();
       updateResultBar(0, modeLabel);
@@ -382,31 +563,7 @@
       return;
     }
 
-    fetch('/api/v1/jobs/' + encodeURIComponent(id) + '/places')
-      .then(function (res) { return res.ok ? res.json() : []; })
-      .then(function (places) {
-        currentPlaces = places || [];
-        renderMarkers();
-        updateResultBar(currentPlaces.length, modeLabel);
-
-        if (currentPlaces.length) {
-          var bounds = currentPlaces.map(function (p) { return [p.latitude, p.longitude]; });
-          var mid = currentPlaces[0];
-          setBaseLayer(inChinaView(mid.latitude, mid.longitude));
-          map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
-        } else if (hasAnchor) {
-          setBaseLayer(inChinaView(lat, lon));
-          map.setView([lat, lon], DEFAULT_ZOOM);
-        }
-
-        refreshMapSize();
-        if (heatOn) renderHeat();
-      })
-      .catch(function () {
-        currentPlaces = [];
-        renderMarkers();
-        updateResultBar(0, modeLabel);
-      });
+    fetchPlacesForJob(id, modeLabel, hasAnchor, lat, lon, true);
   }
 
   // 记录列表刷新后同步：相对时间 + 默认选中任务
@@ -423,21 +580,26 @@
     if (!records.length) {
       currentJobId = null;
       currentPlaces = [];
+      stopLivePoll();
       renderMarkers();
       updateResultBar(0, '');
+      window.syncTaskDock && window.syncTaskDock();
       return;
     }
 
-    // 保留已选任务；否则选第一个已完成任务，再退化为第一条
+    // 保留已选任务；否则优先进行中任务，再选已完成
     var selected = null;
     if (currentJobId) {
       selected = records.filter(function (r) { return r.dataset.jobId === currentJobId; })[0] || null;
     }
     if (!selected) {
-      selected = records.filter(function (r) { return r.dataset.status === 'ok'; })[0] || records[0];
+      selected = records.filter(function (r) {
+        return r.dataset.status === 'working' || r.dataset.status === 'pending';
+      })[0] || records.filter(function (r) { return r.dataset.status === 'ok'; })[0] || records[0];
     }
     selectRecord(selected);
     refreshMapSize();
+    window.syncTaskDock && window.syncTaskDock();
   };
 
   function formatTimeAgo(tsSec) {

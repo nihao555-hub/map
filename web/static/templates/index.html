@@ -135,9 +135,9 @@
               <label class="field-label" for="maxresults">目标客户数量上限</label>
               <div class="input-field">
                 <i data-lucide="target" class="w-4 h-4 input-icon"></i>
-                <input type="number" id="maxresults" name="maxresults" min="0" step="50" value="0" placeholder="0 或留空 = 不限，抓到全域全量为止"/>
+                <input type="number" id="maxresults" name="maxresults" min="0" step="1" value="0" placeholder="0 或留空 = 不限，抓到全域全量为止"/>
               </div>
-              <p class="columns-note">不设限时结果最全，但量大时耗时较长（建议配合 30 分钟以上运行时间）</p>
+              <p class="columns-note">可填任意正整数（如 30 / 50 / 100）；0 或不填 = 不限</p>
             </div>
 
             <!-- 开始搜索 -->
@@ -254,7 +254,7 @@
               <span class="history-title"><i data-lucide="history" class="w-4 h-4"></i>搜索记录</span>
               <button type="button" class="history-clear" onclick="clearHistory()">清空记录</button>
             </div>
-            <div id="job-list" hx-get="/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            <div id="job-list" hx-get="/jobs" hx-trigger="load, every 5s" hx-swap="innerHTML">
               <!-- 搜索记录由 HTMX 动态加载 -->
             </div>
             <div id="empty-state" class="hidden">
@@ -289,6 +289,20 @@
           <div class="toggle-switch" id="heatmap-toggle" onclick="toggleHeatmap(this)"></div>
         </div>
 
+        <!-- 右侧任务进度面板：进行中 / 已完成 -->
+        <aside id="task-dock" aria-label="任务进度">
+          <div class="task-dock-head">
+            <div class="task-dock-title">
+              <i data-lucide="list-checks" class="w-4 h-4"></i>
+              <span>任务进度</span>
+            </div>
+            <span id="task-dock-hint" class="task-dock-hint">实时更新</span>
+          </div>
+          <div id="task-dock-list" class="task-dock-list">
+            <p class="task-dock-empty">还没有任务。填写左侧表单后点击「开始搜索」。</p>
+          </div>
+        </aside>
+
         <!-- 右下：地图控制器 -->
         <div id="map-ctrl">
           <button type="button" class="ctrl-btn" title="定位" onclick="locateMe()"><i data-lucide="locate-fixed" class="w-4 h-4"></i></button>
@@ -300,7 +314,7 @@
         <div id="result-bar" class="hidden">
           <div class="result-info">
             <div class="result-title">找到 <b id="result-count">0</b> 个相关结果<span id="result-mode">（快速模式）</span></div>
-            <div class="result-source">真实商户数据 · 实时采集</div>
+            <div class="result-source">真实商户数据 · 结果会随抓取逐渐增加</div>
           </div>
           <button type="button" id="result-detail-btn" class="result-detail">查看详情 <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
         </div>
@@ -449,14 +463,17 @@
         syncColumnsHidden();
       });
 
-      // 采集成功后的处理
+      // 采集提交成功：保留表单内容，刷新任务列表并自动打开进度/结果窗口
       function handleScrapeSuccess() {
-        document.getElementById('keywords').value = '';
-        document.getElementById('locations').value = '';
-        // 清空地图选点
-        if (window.clearPickMarker) window.clearPickMarker();
         setTimeout(function () { lucide.createIcons(); }, 100);
-        refreshRecords();
+        // scrape 响应会把新任务插到 #job-list 顶部，稍后打开详情弹窗（支持流式增量）
+        setTimeout(function () {
+          refreshRecords();
+          var first = document.querySelector('#job-list .record-item');
+          if (first && window.openJobView) {
+            window.openJobView(first.dataset.jobId);
+          }
+        }, 80);
       }
 
       // 记录列表刷新后的统一处理
@@ -465,8 +482,9 @@
         const emptyState = document.getElementById('empty-state');
         emptyState.classList.toggle('hidden', records.length > 0);
         lucide.createIcons();
-        // 同步地图与结果栏（由 map.js 提供）
+        // 同步地图、结果栏、右侧任务进度（由 map.js 提供）
         if (window.syncMapWithRecords) window.syncMapWithRecords();
+        if (window.syncTaskDock) window.syncTaskDock();
       }
 
       // 清空记录
