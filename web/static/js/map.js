@@ -1,20 +1,92 @@
-/* 地图获客 - 右侧大地图逻辑（Leaflet + 高德瓦片，OSM 兜底） */
+/* 地图获客 - 右侧大地图逻辑（Leaflet）
+ *
+ * 底图策略：
+ * - 中国大陆视野：优先高德（中文注记更好）
+ * - 海外视野：Carto Voyager（高德海外几乎无图，表现为灰底/空白）
+ * - 任一失败时互相兜底
+ */
 (function () {
   'use strict';
 
   var DEFAULT_CENTER = [22.54, 114.06]; // 深圳
   var DEFAULT_ZOOM = 13;
   var AMAP_TILES = 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}';
-  var OSM_TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  // Carto 全球可用，避免 OSM 官方瓦片对数据中心/无 Referer 请求的封锁
+  var CARTO_TILES = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 
   var map = null;
+  var baseLayer = null;
   var markerLayer = null;   // 聚合/商家标记层
   var heatLayer = null;     // 热力图层
   var pickMarker = null;    // 地图选点标记
   var currentJobId = null;  // 当前选中任务
   var currentPlaces = [];   // 当前任务商家
   var heatOn = false;
-  var osmFallback = false;
+  var usingAmap = false;
+  var baseSwitching = false;
+
+  function inChinaView(lat, lng) {
+    // 粗略中国大陆范围（含近海）；海外搜索（如纽约）走全球底图
+    return lat >= 18 && lat <= 54 && lng >= 73 && lng <= 135;
+  }
+
+  function createAmapLayer() {
+    return L.tileLayer(AMAP_TILES, {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '© 高德地图 AutoNavi'
+    });
+  }
+
+  function createCartoLayer() {
+    return L.tileLayer(CARTO_TILES, {
+      subdomains: 'abcd',
+      maxZoom: 20,
+      attribution: '© OpenStreetMap © CARTO'
+    });
+  }
+
+  function setBaseLayer(preferAmap) {
+    if (!map || baseSwitching) return;
+
+    if (baseLayer && preferAmap === usingAmap) {
+      return;
+    }
+
+    baseSwitching = true;
+
+    var next = preferAmap ? createAmapLayer() : createCartoLayer();
+    next.on('tileerror', function () {
+      // 当前底图失败时切到另一套，避免灰屏
+      if (preferAmap) {
+        setBaseLayer(false);
+      } else if (!usingAmap) {
+        setBaseLayer(true);
+      }
+    });
+
+    if (baseLayer) {
+      map.removeLayer(baseLayer);
+    }
+
+    baseLayer = next.addTo(map);
+    usingAmap = preferAmap;
+    baseSwitching = false;
+  }
+
+  function syncBaseLayerForView() {
+    if (!map) return;
+    var c = map.getCenter();
+    setBaseLayer(inChinaView(c.lat, c.lng));
+  }
+
+  function refreshMapSize() {
+    if (!map) return;
+    setTimeout(function () {
+      map.invalidateSize({ pan: false });
+      syncBaseLayerForView();
+    }, 50);
+  }
 
   function initMap() {
     if (map || typeof L === 'undefined') return;
@@ -26,30 +98,14 @@
       attributionControl: true
     });
 
-    var amap = L.tileLayer(AMAP_TILES, {
-      subdomains: ['1', '2', '3', '4'],
-      maxZoom: 18,
-      attribution: '© 高德地图 AutoNavi'
-    });
-
-    // 高德瓦片加载失败时自动切换 OSM 兜底
-    amap.on('tileerror', function () {
-      if (osmFallback || !map) return;
-      osmFallback = true;
-      map.removeLayer(amap);
-      L.tileLayer(OSM_TILES, {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
-      }).addTo(map);
-    });
-
-    amap.addTo(map);
+    setBaseLayer(inChinaView(DEFAULT_CENTER[0], DEFAULT_CENTER[1]));
 
     markerLayer = L.layerGroup().addTo(map);
     heatLayer = L.layerGroup();
 
-    // 缩放/拖动后重新聚合计数
+    // 缩放/拖动后重新聚合计数，并按视野切换底图
     map.on('zoomend moveend', function () {
+      syncBaseLayerForView();
       renderMarkers();
       if (heatOn) renderHeat();
     });
@@ -74,6 +130,8 @@
       syncLocationInput(lat, lng);
       showTip('已选点：' + lat + ', ' + lng);
     });
+
+    refreshMapSize();
   }
 
   // 程序化写入标记：避免触发“手动输入”监听导致锚点被清掉
@@ -128,7 +186,11 @@
         if (cur !== text) return;
         document.getElementById('latitude').value = lat.toFixed(6);
         document.getElementById('longitude').value = lon.toFixed(6);
-        if (map) map.flyTo([lat, lon], 12);
+        if (map) {
+          setBaseLayer(inChinaView(lat, lon));
+          map.flyTo([lat, lon], 12);
+          refreshMapSize();
+        }
         showTip('已定位：' + (data[0].display_name || text));
       })
       .catch(function () { clearTimeout(timer); });
@@ -197,6 +259,8 @@
     var cellPx = 80;
     var cells = {};
     currentPlaces.forEach(function (p) {
+      if (typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return;
+      if (!isFinite(p.latitude) || !isFinite(p.longitude)) return;
       var pt = map.latLngToContainerPoint([p.latitude, p.longitude]);
       var key = Math.floor(pt.x / cellPx) + ':' + Math.floor(pt.y / cellPx);
       (cells[key] = cells[key] || []).push(p);
@@ -229,6 +293,7 @@
     if (!heatOn || !currentPlaces.length) return;
 
     currentPlaces.forEach(function (p) {
+      if (typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return;
       var weight = p.review_rating ? Math.min(p.review_rating / 5, 1) : 0.5;
       L.circleMarker([p.latitude, p.longitude], {
         radius: 26,
@@ -309,7 +374,11 @@
       currentPlaces = [];
       renderMarkers();
       updateResultBar(0, modeLabel);
-      if (hasAnchor) map.setView([lat, lon], DEFAULT_ZOOM);
+      if (hasAnchor && map) {
+        setBaseLayer(inChinaView(lat, lon));
+        map.setView([lat, lon], DEFAULT_ZOOM);
+        refreshMapSize();
+      }
       return;
     }
 
@@ -322,11 +391,15 @@
 
         if (currentPlaces.length) {
           var bounds = currentPlaces.map(function (p) { return [p.latitude, p.longitude]; });
+          var mid = currentPlaces[0];
+          setBaseLayer(inChinaView(mid.latitude, mid.longitude));
           map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
         } else if (hasAnchor) {
+          setBaseLayer(inChinaView(lat, lon));
           map.setView([lat, lon], DEFAULT_ZOOM);
         }
 
+        refreshMapSize();
         if (heatOn) renderHeat();
       })
       .catch(function () {
@@ -364,6 +437,7 @@
       selected = records.filter(function (r) { return r.dataset.status === 'ok'; })[0] || records[0];
     }
     selectRecord(selected);
+    refreshMapSize();
   };
 
   function formatTimeAgo(tsSec) {
@@ -389,7 +463,9 @@
     }
     navigator.geolocation.getCurrentPosition(
       function (pos) {
+        setBaseLayer(inChinaView(pos.coords.latitude, pos.coords.longitude));
         map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+        refreshMapSize();
       },
       function () { showTip('定位失败，请检查浏览器权限'); },
       { timeout: 8000 }
@@ -418,6 +494,14 @@
       document.getElementById('latitude').value = center.lat.toFixed(6);
       document.getElementById('longitude').value = center.lng.toFixed(6);
       document.getElementById('search-form').requestSubmit();
+    });
+
+    // 抓取提交遮罩消失后，强制重算地图尺寸，避免灰屏/半截图
+    document.body.addEventListener('htmx:afterRequest', function (event) {
+      if (event.detail && event.detail.elt && event.detail.elt.id === 'search-form') {
+        document.getElementById('map-area').classList.remove('map-loading');
+        refreshMapSize();
+      }
     });
   });
 

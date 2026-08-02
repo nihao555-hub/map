@@ -57,12 +57,15 @@
             }
 
             var map = L.map('job-map');
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap contributors'
+            // 与主界面一致：全球 Carto 底图（高德海外无图；OSM 官方瓦片易被拦）
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                subdomains: 'abcd',
+                maxZoom: 20,
+                attribution: '© OpenStreetMap © CARTO'
             }).addTo(map);
 
             window.__jobMap = map;
+            setTimeout(function () { map.invalidateSize({ pan: false }); }, 50);
             return map;
         }
 
