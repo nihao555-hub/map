@@ -174,35 +174,47 @@
   function prefetchGeocode(text) {
     var seq = ++geocodeSeq;
     var ctrl = new AbortController();
-    var timer = setTimeout(function () { ctrl.abort(); }, 5000);
-    fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&accept-language=zh&limit=1&q=' + encodeURIComponent(text), { signal: ctrl.signal })
+    var timer = setTimeout(function () { ctrl.abort(); }, 8000);
+    // 走后端代理：支持中文海外地名，并带上目标地推荐语言
+    fetch('/api/v1/geocode?q=' + encodeURIComponent(text), { signal: ctrl.signal })
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (data) {
         clearTimeout(timer);
         if (seq !== geocodeSeq) return; // 已有更新的输入
-        if (!data || !data.length) return;
-        var lat = parseFloat(data[0].lat);
-        var lon = parseFloat(data[0].lon);
+        if (!data) {
+          showTip('未找到地点：' + text);
+          return;
+        }
+        var lat = parseFloat(data.lat);
+        var lon = parseFloat(data.lon);
         if (isNaN(lat) || isNaN(lon)) return;
         // 仅当用户仍在输入同一地点时回填锚点
         var cur = document.getElementById('locations').value.trim();
         if (cur !== text) return;
         document.getElementById('latitude').value = lat.toFixed(6);
         document.getElementById('longitude').value = lon.toFixed(6);
+        // 海外中文地名：按国家校正 hl，避免误用 zh
+        if (data.lang) {
+          var langInput = document.getElementById('lang');
+          if (langInput) langInput.value = data.lang;
+        }
         if (map) {
           setBaseLayer(inChinaView(lat, lon));
           map.flyTo([lat, lon], 12);
           refreshMapSize();
         }
-        showTip('已定位：' + (data[0].display_name || text));
+        showTip('已定位：' + (data.display_name || text));
       })
-      .catch(function () { clearTimeout(timer); });
+      .catch(function () {
+        clearTimeout(timer);
+        showTip('地点定位失败，仍可提交（后端会再试一次）');
+      });
   }
 
   document.addEventListener('DOMContentLoaded', function () {
     var locInput = document.getElementById('locations');
     if (!locInput) return;
-    locInput.addEventListener('input', function () {
+    function scheduleGeocode() {
       if (pickProgrammatic) return;
       document.getElementById('latitude').value = '0';
       document.getElementById('longitude').value = '0';
@@ -210,7 +222,15 @@
       if (geocodeTimer) clearTimeout(geocodeTimer);
       // 坐标格式文本（地图选点回填）不做地理编码
       if (text.length >= 2 && !/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(text)) {
-        geocodeTimer = setTimeout(function () { prefetchGeocode(text); }, 900);
+        geocodeTimer = setTimeout(function () { prefetchGeocode(text); }, 450);
+      }
+    }
+    locInput.addEventListener('input', scheduleGeocode);
+    locInput.addEventListener('change', scheduleGeocode);
+    locInput.addEventListener('blur', function () {
+      var text = locInput.value.trim();
+      if (text.length >= 2 && document.getElementById('latitude').value === '0') {
+        prefetchGeocode(text);
       }
     });
   });

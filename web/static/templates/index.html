@@ -438,8 +438,9 @@
         if (input) input.checked = el.classList.contains('on');
       }
 
-      // 提交前组装任务名称 + 自动推断语言
-      document.getElementById('search-form').addEventListener('htmx:configRequest', function () {
+      // 提交前组装任务名称 + 语言
+      // 注意：必须写入 event.detail.parameters，仅改隐藏 input 在 HTMX 1.9 里可能已晚于序列化
+      document.getElementById('search-form').addEventListener('htmx:configRequest', function (evt) {
         const keywords = document.getElementById('keywords').value.trim();
         const locations = document.getElementById('locations').value.trim();
 
@@ -454,13 +455,24 @@
         document.getElementById('name').value = name;
 
         const langInput = document.getElementById('lang');
+        // 语言优先用地图定位回填的目标国语言；没有时再默认 en（勿因中文地名误设 zh）
         if (!langInput.value) {
-          const hasChinese = /[\u4e00-\u9fa5]/.test(keywords + locations);
-          langInput.value = hasChinese ? 'zh' : 'en';
+          langInput.value = 'en';
         }
 
         // 组装结果字段参数
         syncColumnsHidden();
+
+        const params = evt.detail && evt.detail.parameters;
+        if (params) {
+          params['name'] = name;
+          params['lang'] = langInput.value;
+          params['columns'] = document.getElementById('columns').value;
+          params['latitude'] = document.getElementById('latitude').value;
+          params['longitude'] = document.getElementById('longitude').value;
+          params['fastmode'] = document.getElementById('fastmode').value;
+          params['gridmode'] = document.getElementById('gridmode').value;
+        }
       });
 
       // 采集提交成功：保留表单内容，刷新任务列表并自动打开进度/结果窗口

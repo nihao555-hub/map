@@ -125,6 +125,8 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.apiGetPlaces(w, r)
 	})
 
+	mux.HandleFunc("/api/v1/geocode", ans.apiGeocode)
+
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 
@@ -286,7 +288,7 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 	newJob := Job{
 		ID:     uuid.New().String(),
-		Name:   r.Form.Get("name"),
+		Name:   strings.TrimSpace(r.Form.Get("name")),
 		Date:   time.Now().UTC(),
 		Status: StatusPending,
 		Data:   JobData{},
@@ -396,11 +398,11 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 地理锚定：普通模式（非网格）下，用户只填了地点没填有效经纬度时，
-	// 先地理编码一次，把搜索锚定到目标地，并让 hl 与目标地语言匹配，
-	// 避免 Google 按代理出口/浏览器环境本地化结果。
+	// 地理锚定：普通模式（非网格）下，只要填了地点就地理编码一次——
+	// 缺经纬度时写入锚点；即便前端已回填坐标，也按目标国家校正 hl，
+	// 避免「纽约 + 中文关键词」被前端误设为 hl=zh。
 	// 地理编码失败只告警，回退为原来的未锚定搜索，不让任务失败
-	if !newJob.Data.GridMode && locationsStr != "" && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+	if !newJob.Data.GridMode && locationsStr != "" {
 		geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 
 		point, geoErr := Geocode(geoCtx, locationsStr)
@@ -410,8 +412,11 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		if geoErr != nil {
 			log.Printf("地理编码 %q 失败: %v，回退为未锚定搜索", locationsStr, geoErr)
 		} else {
-			newJob.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
-			newJob.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
+			if !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+				newJob.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
+				newJob.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
+				log.Printf("地点 %q 锚定到 %s,%s", locationsStr, newJob.Data.Lat, newJob.Data.Lon)
+			}
 
 			if hl := langForCountryCode(point.CountryCode); hl != "" && hl != newJob.Data.Lang {
 				log.Printf("地点 %q 国家代码 %s，hl 从 %s 调整为 %s",
@@ -419,9 +424,12 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 				newJob.Data.Lang = hl
 			}
-
-			log.Printf("地点 %q 锚定到 %s,%s", locationsStr, newJob.Data.Lat, newJob.Data.Lon)
 		}
+	}
+
+	// 任务名：前端应自动拼「地点 · 关键词」；若 HTMX 参数未带上则服务端兜底
+	if newJob.Name == "" {
+		newJob.Name = buildJobName(newJob.Data.Keywords, locationsStr)
 	}
 
 	// 提交前校验代理：格式非法、缺用户名密码认证的立即拒绝，
@@ -569,6 +577,72 @@ func (s *Server) redocHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	_ = tmpl.Execute(w, nil)
+}
+
+// apiGeocode 供前端「在哪里」预取坐标：支持中文海外地名（纽约/东京等），
+// 走服务端 Nominatim，避免浏览器直连被限流或 CSP/CORS 拦住。
+func (s *Server) apiGeocode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "missing q",
+		})
+
+		return
+	}
+
+	geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	point, err := Geocode(geoCtx, q)
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"lat":          point.Lat,
+		"lon":          point.Lon,
+		"country_code": point.CountryCode,
+		"lang":         langForCountryCode(point.CountryCode),
+		"display_name": q,
+	})
+}
+
+// buildJobName 用关键词与地点拼任务显示名（取第一条关键词的原始词，去掉 " in 地点" 后缀）
+func buildJobName(keywords []string, locations string) string {
+	kw := ""
+	if len(keywords) > 0 {
+		kw = keywords[0]
+		if locations != "" {
+			kw = strings.TrimSuffix(kw, " in "+locations)
+		}
+		kw = strings.TrimSpace(kw)
+	}
+
+	locations = strings.TrimSpace(locations)
+	switch {
+	case kw != "" && locations != "":
+		return locations + " · " + kw
+	case kw != "":
+		return kw
+	default:
+		return locations
+	}
 }
 
 func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
