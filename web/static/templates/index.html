@@ -116,6 +116,30 @@
               </div>
             </div>
 
+            <!-- 深度模式：结果字段自选（点击深度模式后展开） -->
+            <div class="field-group hidden" id="columns-section">
+              <label class="field-label">结果字段（深度模式可自选）</label>
+              <p class="columns-note">名称 / 链接 / 经纬度 / CID / PlaceID 为系统保留字段，始终包含</p>
+              <div class="columns-grid" id="columns-grid">
+                <!-- 由 JS 生成复选框 -->
+              </div>
+              <div class="columns-actions">
+                <button type="button" class="columns-btn" onclick="setAllColumns(true)">全选</button>
+                <button type="button" class="columns-btn" onclick="setAllColumns(false)">清空</button>
+                <button type="button" class="columns-btn" onclick="resetEssentialColumns()">只留必要字段</button>
+              </div>
+            </div>
+
+            <!-- 目标客户数量上限 -->
+            <div class="field-group">
+              <label class="field-label" for="maxresults">目标客户数量上限</label>
+              <div class="input-field">
+                <i data-lucide="target" class="w-4 h-4 input-icon"></i>
+                <input type="number" id="maxresults" name="maxresults" min="0" step="50" value="0" placeholder="0 或留空 = 不限，抓到全域全量为止"/>
+              </div>
+              <p class="columns-note">不设限时结果最全，但量大时耗时较长（建议配合 30 分钟以上运行时间）</p>
+            </div>
+
             <!-- 开始搜索 -->
             <button type="submit" id="start-btn" class="btn-primary">
               <i data-lucide="search" class="w-5 h-5"></i>
@@ -180,8 +204,8 @@
                     <label class="field-label-sm" for="maxtime">最大运行时间</label>
                     <select id="maxtime" name="maxtime" class="select-field">
                       <option value="3m">3 分钟</option>
-                      <option value="10m" selected>10 分钟</option>
-                      <option value="30m">30 分钟</option>
+                      <option value="10m">10 分钟</option>
+                      <option value="30m" selected>30 分钟（推荐，量大时更稳）</option>
                       <option value="60m">1 小时</option>
                       <option value="120m">2 小时</option>
                     </select>
@@ -206,6 +230,7 @@
                   <input type="hidden" id="gridmode" name="gridmode" value="on">
                   <input type="hidden" id="gridbbox" name="gridbbox" value="">
                   <input type="hidden" id="radius" name="radius" value="10000">
+                  <input type="hidden" id="columns" name="columns" value="">
 
                   <!-- 代理设置 -->
                   <div>
@@ -292,6 +317,68 @@
       // 初始化 Lucide 图标
       lucide.createIcons();
 
+
+
+      // 结果字段定义（深度模式可勾选；系统保留字段不在此列，始终包含）
+      var ALL_COLUMNS = [
+        ['address', '地址', true], ['phone', '电话', true], ['emails', '邮箱', true],
+        ['website', '网站', true], ['category', '类别', true], ['review_rating', '评分', true],
+        ['review_count', '评论数', true], ['reviews_per_rating', '各星级评论数', false],
+        ['open_hours', '营业时间', true], ['popular_times', '客流高峰', false],
+        ['price_range', '价格区间', true], ['status', '营业状态', true],
+        ['descriptions', '商家简介', true], ['about', '特色标签', false],
+        ['menu', '菜单', false], ['owner', '店主信息', false],
+        ['images', '图片', false], ['thumbnail', '缩略图', true],
+        ['reviews_link', '评论链接', false], ['user_reviews', '用户评论', false],
+        ['user_reviews_extended', '扩展评论', false], ['plus_code', 'Plus Code', false],
+        ['timezone', '时区', true], ['complete_address', '完整地址', false],
+        ['credit_cards_accepted', '信用卡支付', false], ['reservations', '预约方式', false],
+        ['order_online', '在线下单', false], ['street_view_url', '街景', false],
+        ['data_id', '数据ID', false]
+      ];
+      var ESSENTIAL_COLUMN_KEYS = ['address', 'phone', 'emails', 'website', 'review_rating', 'review_count', 'category'];
+
+      function buildColumnsPicker() {
+        var grid = document.getElementById('columns-grid');
+        grid.innerHTML = '';
+        ALL_COLUMNS.forEach(function (col) {
+          var key = col[0], label = col[1], def = col[2];
+          var item = document.createElement('label');
+          item.className = 'column-chip';
+          item.innerHTML = '<input type="checkbox" class="column-check" value="' + key + '"' +
+            (def ? ' checked' : '') + '><span>' + label + '</span>';
+          grid.appendChild(item);
+        });
+      }
+
+      function setAllColumns(on) {
+        document.querySelectorAll('.column-check').forEach(function (c) { c.checked = on; });
+      }
+
+      function resetEssentialColumns() {
+        document.querySelectorAll('.column-check').forEach(function (c) {
+          c.checked = ESSENTIAL_COLUMN_KEYS.indexOf(c.value) !== -1;
+        });
+      }
+
+      function syncColumnsHidden() {
+        // 快速模式：不传 columns（后端自动用必要列）；深度/网格：传用户勾选
+        if (currentMode === 'quick') {
+          document.getElementById('columns').value = '';
+          return;
+        }
+        var checked = [];
+        document.querySelectorAll('.column-check').forEach(function (c) {
+          if (c.checked) checked.push(c.value);
+        });
+        // 全选时等同默认全部列，也传空让后端走全列逻辑
+        if (checked.length === ALL_COLUMNS.length) {
+          document.getElementById('columns').value = '';
+        } else {
+          document.getElementById('columns').value = checked.join(',');
+        }
+      }
+
       // 模式选择：quick=快速(fastmode) / standard=深度 / grid=全域全量
       let currentMode = 'grid';
       function selectMode(mode) {
@@ -302,6 +389,8 @@
         document.getElementById('fastmode').value = mode === 'quick' ? 'on' : '';
         document.getElementById('gridmode').value = mode === 'grid' ? 'on' : '';
         document.getElementById('grid-density-section').classList.toggle('hidden', mode !== 'grid');
+        // 快速模式只出必要字段；深度/全域模式展示字段自选区
+        document.getElementById('columns-section').classList.toggle('hidden', mode === 'quick');
         // 选了网格模式时自动展开高级选项，让用户看到密度设置
         if (mode === 'grid') {
           document.getElementById('advanced-options').classList.add('open');
@@ -355,6 +444,9 @@
           const hasChinese = /[\u4e00-\u9fa5]/.test(keywords + locations);
           langInput.value = hasChinese ? 'zh' : 'en';
         }
+
+        // 组装结果字段参数
+        syncColumnsHidden();
       });
 
       // 采集成功后的处理
@@ -407,6 +499,11 @@
           setTimeout(refreshRecords, 300);
         }
       });
+
+      // 构建结果字段选择器（脚本末尾执行，确保 ALL_COLUMNS 已就绪；
+      // 默认全域全量模式 -> 展示自选区）
+      buildColumnsPicker();
+      document.getElementById('columns-section').classList.remove('hidden');
     </script>
 </body>
 </html>

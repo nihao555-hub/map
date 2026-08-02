@@ -104,7 +104,36 @@
       .catch(function () { clearTimeout(timer); });
   }
 
-  // 用户手动编辑「在哪里」时，清除地图选点锚定，以输入文本为准
+  // 用户手动编辑「在哪里」时，清除地图选点锚定，以输入文本为准；
+  // 同时在浏览器侧做地理编码预取（支持中文地名，如「曼谷」「新加坡」），
+  // 定位成功后回填隐藏经纬度并把地图飞过去 —— 输入中文也能精准找到目标国家
+  var geocodeTimer = null;
+  var geocodeSeq = 0;
+
+  function prefetchGeocode(text) {
+    var seq = ++geocodeSeq;
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 5000);
+    fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&accept-language=zh&limit=1&q=' + encodeURIComponent(text), { signal: ctrl.signal })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        clearTimeout(timer);
+        if (seq !== geocodeSeq) return; // 已有更新的输入
+        if (!data || !data.length) return;
+        var lat = parseFloat(data[0].lat);
+        var lon = parseFloat(data[0].lon);
+        if (isNaN(lat) || isNaN(lon)) return;
+        // 仅当用户仍在输入同一地点时回填锚点
+        var cur = document.getElementById('locations').value.trim();
+        if (cur !== text) return;
+        document.getElementById('latitude').value = lat.toFixed(6);
+        document.getElementById('longitude').value = lon.toFixed(6);
+        if (map) map.flyTo([lat, lon], 12);
+        showTip('已定位：' + (data[0].display_name || text));
+      })
+      .catch(function () { clearTimeout(timer); });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     var locInput = document.getElementById('locations');
     if (!locInput) return;
@@ -112,6 +141,12 @@
       if (pickProgrammatic) return;
       document.getElementById('latitude').value = '0';
       document.getElementById('longitude').value = '0';
+      var text = locInput.value.trim();
+      if (geocodeTimer) clearTimeout(geocodeTimer);
+      // 坐标格式文本（地图选点回填）不做地理编码
+      if (text.length >= 2 && !/^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(text)) {
+        geocodeTimer = setTimeout(function () { prefetchGeocode(text); }, 900);
+      }
     });
   });
 

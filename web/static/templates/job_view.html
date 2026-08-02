@@ -11,7 +11,9 @@
     </div>
     <script>
     (function () {
-        var places = {{ . }};
+        var places = {{ .Places }};
+        var JOB_ID = {{ .JobID }};
+        var JOB_STATUS = {{ .Status }};
 
         var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
         var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
@@ -97,11 +99,59 @@
             return escapeHtml(String(value));
         }
 
-        function buildTable(map) {
+        // ============ 流式结果表格：初始渲染 + 运行中轮询增量追加 ============
+        var map = null;
+        var tbody = null;
+        var markersLayer = null;
+        var renderedCount = 0;
+        var pollTimer = null;
+        var statusPollCount = 0;
+        var streamActive = (JOB_STATUS === 'working' || JOB_STATUS === 'pending');
+
+        function rowHtml(place) {
+            return '<td class="col-name">' + textCell(place.title) + '</td>' +
+                '<td class="col-addr">' + textCell(place.address) + '</td>' +
+                '<td class="col-phone">' + textCell(place.phone) + '</td>' +
+                '<td class="col-mail">' + textCell(place.emails) + '</td>' +
+                '<td class="col-rating">' + (place.review_rating ? '★ ' + escapeHtml(String(place.review_rating)) : '<span class="cell-empty">—</span>') + '</td>' +
+                '<td class="col-reviews">' + (place.review_count ? escapeHtml(String(place.review_count)) : '<span class="cell-empty">—</span>') + '</td>' +
+                '<td class="col-site">' + websiteCell(place) + '</td>';
+        }
+
+        function appendPlace(place, isFirst) {
+            var latlng = [place.latitude, place.longitude];
+
+            if (markersLayer) {
+                L.marker(latlng).bindPopup(placePopup(place)).addTo(markersLayer);
+            }
+
+            if (!tbody) return;
+
+            var tr = document.createElement('tr');
+            tr.innerHTML = rowHtml(place);
+            tr.addEventListener('click', function () {
+                tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
+                tr.classList.add('row-active');
+                if (map) map.setView(latlng, 16);
+            });
+            if (isFirst) tr.classList.add('row-active');
+            tbody.appendChild(tr);
+        }
+
+        function updateTitle() {
+            var titleEl = document.getElementById('map-modal-title');
+            if (!titleEl) return;
+            var suffix = streamActive ? '（实时更新中… 已 ' + renderedCount + ' 家）' : ('（共 ' + renderedCount + ' 家）');
+            titleEl.textContent = renderedCount ? ('采集结果' + suffix) : (streamActive ? '采集结果（实时更新中…）' : '采集结果');
+        }
+
+        function ensureTable() {
+            var listEl = document.getElementById('job-places-list');
+            if (tbody) return;
+            listEl.innerHTML = '';
             var wrap = document.createElement('div');
             wrap.className = 'places-table-wrap';
-
-            var html = '<table class="places-table">' +
+            wrap.innerHTML = '<table class="places-table">' +
                 '<thead><tr>' +
                 '<th class="col-name">名称</th>' +
                 '<th class="col-addr">地址</th>' +
@@ -111,65 +161,104 @@
                 '<th class="col-reviews">评论数</th>' +
                 '<th class="col-site">网站</th>' +
                 '</tr></thead><tbody></tbody></table>';
-            wrap.innerHTML = html;
-
-            var tbody = wrap.querySelector('tbody');
-            var bounds = [];
-
-            places.forEach(function (place, idx) {
-                var latlng = [place.latitude, place.longitude];
-                bounds.push(latlng);
-
-                L.marker(latlng).bindPopup(placePopup(place)).addTo(map);
-
-                var tr = document.createElement('tr');
-                tr.innerHTML =
-                    '<td class="col-name">' + textCell(place.title) + '</td>' +
-                    '<td class="col-addr">' + textCell(place.address) + '</td>' +
-                    '<td class="col-phone">' + textCell(place.phone) + '</td>' +
-                    '<td class="col-mail">' + textCell(place.emails) + '</td>' +
-                    '<td class="col-rating">' + (place.review_rating ? '★ ' + escapeHtml(String(place.review_rating)) : '<span class="cell-empty">—</span>') + '</td>' +
-                    '<td class="col-reviews">' + (place.review_count ? escapeHtml(String(place.review_count)) : '<span class="cell-empty">—</span>') + '</td>' +
-                    '<td class="col-site">' + websiteCell(place) + '</td>';
-                tr.addEventListener('click', function () {
-                    tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
-                    tr.classList.add('row-active');
-                    map.setView(latlng, 16);
-                });
-                if (idx === 0) tr.classList.add('row-active');
-                tbody.appendChild(tr);
-            });
-
-            map.fitBounds(bounds, { padding: [30, 30] });
-            setTimeout(function () { map.invalidateSize(); }, 0);
-            return wrap;
+            listEl.appendChild(wrap);
+            tbody = wrap.querySelector('tbody');
         }
 
-        function showEmptyState(map, listEl) {
+        function renderBatch(list) {
+            // CSV 只增不改，按下标增量追加即可
+            for (var i = renderedCount; i < list.length; i++) {
+                appendPlace(list[i], renderedCount === 0 && i === 0);
+            }
+            var hadNew = list.length > renderedCount;
+            renderedCount = list.length;
+
+            if (hadNew && map && markersLayer) {
+                // 首次有数据时缩放到结果范围；后续追加不再打断用户视角
+                if (!renderBatch._fitted) {
+                    renderBatch._fitted = true;
+                    try { map.fitBounds(markersLayer.getBounds(), { padding: [30, 30] }); } catch (e) {}
+                }
+            }
+            updateTitle();
+        }
+
+        function showEmptyState() {
+            var listEl = document.getElementById('job-places-list');
             listEl.innerHTML = '<p class="map-empty">该任务暂无可展示的商家数据。</p>';
-            map.setView([0, 0], 2);
+            if (map) map.setView([0, 0], 2);
+        }
+
+        function stopStreaming() {
+            streamActive = false;
+            if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
+            updateTitle();
+        }
+
+        function pollPlaces() {
+            fetch('/api/v1/jobs/' + JOB_ID + '/places')
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .then(function (list) {
+                    if (!list) return;
+                    if (list.length > 0) ensureTable();
+                    renderBatch(list);
+                })
+                .catch(function () {});
+
+            // 每 2 次轮询查一次任务状态，完成/失败即停止流式更新
+            statusPollCount++;
+            if (statusPollCount % 2 === 0) {
+                fetch('/api/v1/jobs/' + JOB_ID)
+                    .then(function (res) { return res.ok ? res.json() : null; })
+                    .then(function (job) {
+                        if (job && job.Status !== 'working' && job.Status !== 'pending') {
+                            // 最后再拉一次结果，然后停止
+                            fetch('/api/v1/jobs/' + JOB_ID + '/places')
+                                .then(function (res) { return res.ok ? res.json() : null; })
+                                .then(function (list) {
+                                    if (list) {
+                                        if (list.length > 0) ensureTable();
+                                        renderBatch(list);
+                                    }
+                                    stopStreaming();
+                                })
+                                .catch(function () { stopStreaming(); });
+                        }
+                    })
+                    .catch(function () {});
+            }
         }
 
         function initJobMap() {
             var listEl = document.getElementById('job-places-list');
-            var titleEl = document.getElementById('map-modal-title');
-            var map = createMap();
 
-            listEl.innerHTML = '';
+            map = createMap();
+            markersLayer = L.layerGroup().addTo(map);
 
-            if (titleEl) {
-                titleEl.textContent = places.length ? ('采集结果（共 ' + places.length + ' 家）') : '采集结果';
+            if (places.length > 0) {
+                ensureTable();
+                renderBatch(places);
+            } else if (streamActive) {
+                ensureTable();
+                updateTitle();
+                map.setView([20, 0], 2);
+            } else {
+                showEmptyState();
             }
 
-            if (places.length === 0) {
-                showEmptyState(map, listEl);
-                return;
-            }
+            setTimeout(function () { map.invalidateSize(); }, 0);
 
-            listEl.appendChild(buildTable(map));
+            if (streamActive) {
+                pollTimer = setInterval(pollPlaces, 5000);
+            }
         }
 
         window.closeJobMap = function () {
+            stopStreaming();
+
             if (window.__jobMap) {
                 window.__jobMap.remove();
                 window.__jobMap = null;

@@ -1,7 +1,9 @@
 package gmaps
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -87,11 +89,18 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 
 	raw, ok := resp.Meta["json"].([]byte)
 	if !ok {
-		if j.ExitMonitor != nil {
-			j.ExitMonitor.IncrPlacesCompleted(1)
-		}
+		// 纯 HTTP 抓取路径：没有浏览器注入的 Meta，直接从 HTML 里的
+		// window.APP_INITIALIZATION_STATE 字面量提取同样的地点 JSON
+		var err error
 
-		return nil, nil, fmt.Errorf("could not convert to []byte")
+		raw, err = extractJSONFromBody(resp.Body)
+		if err != nil {
+			if j.ExitMonitor != nil {
+				j.ExitMonitor.IncrPlacesCompleted(1)
+			}
+
+			return nil, nil, fmt.Errorf("could not convert to []byte: %w", err)
+		}
 	}
 
 	entry, err := EntryFromJSON(raw)
@@ -288,6 +297,81 @@ func (j *PlaceJob) extractJSON(page scrapemate.BrowserPage) ([]byte, error) {
 	}
 
 	return nil, fmt.Errorf("APP_INITIALIZATION_STATE data not found after retries")
+}
+
+// extractJSONFromBody 从纯 HTTP 拿到的 HTML 里提取地点 JSON，
+// 与浏览器版 extractJSON 的 JS 逻辑等价：
+// window.APP_INITIALIZATION_STATE=<literal>; 取 [3]，遍历其中的数组，
+// 找下标 6/5 处由 ")]}'" 开头的 JSON 字符串。
+func extractJSONFromBody(body []byte) ([]byte, error) {
+	const marker = "window.APP_INITIALIZATION_STATE="
+
+	start := bytes.Index(body, []byte(marker))
+	if start < 0 {
+		return nil, fmt.Errorf("APP_INITIALIZATION_STATE marker not found in body")
+	}
+
+	literal := body[start+len(marker):]
+
+	// 字面量以 ;window. 结束
+	end := bytes.Index(literal, []byte(";window."))
+	if end < 0 {
+		return nil, fmt.Errorf("APP_INITIALIZATION_STATE literal end not found")
+	}
+
+	literal = literal[:end]
+
+	var state []any
+	if err := json.Unmarshal(literal, &state); err != nil {
+		return nil, fmt.Errorf("parse APP_INITIALIZATION_STATE: %w", err)
+	}
+
+	if len(state) <= 3 || state[3] == nil {
+		return nil, fmt.Errorf("APP_INITIALIZATION_STATE[3] missing")
+	}
+
+	const prefix = `)]}'`
+
+	findInArr := func(arr []any) []byte {
+		for _, idx := range []int{6, 5} {
+			if idx >= len(arr) {
+				continue
+			}
+
+			if s, ok := arr[idx].(string); ok && strings.HasPrefix(s, prefix) {
+				return []byte(strings.TrimSpace(strings.TrimPrefix(s, prefix)))
+			}
+		}
+
+		return nil
+	}
+
+	switch appState := state[3].(type) {
+	case map[string]any:
+		for _, v := range appState {
+			if arr, ok := v.([]any); ok {
+				if raw := findInArr(arr); raw != nil {
+					return raw, nil
+				}
+			}
+		}
+	case []any:
+		// 原始 HTML 中地点 JSON 常直接挂在 state[3][5]/[6]
+		if raw := findInArr(appState); raw != nil {
+			return raw, nil
+		}
+
+		// 兜底：与浏览器 JS 一致，遍历嵌套数组
+		for _, v := range appState {
+			if arr, ok := v.([]any); ok {
+				if raw := findInArr(arr); raw != nil {
+					return raw, nil
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("place JSON not found in APP_INITIALIZATION_STATE")
 }
 
 func (j *PlaceJob) getReviewCount(data []byte) int {

@@ -387,6 +387,16 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		newJob.Data.FastMode = false
 	}
 
+	// 结果列配置（快速模式可不选；深度/网格模式用户自选表头）
+	newJob.Data.Columns = strings.TrimSpace(r.Form.Get("columns"))
+
+	// 目标客户数量上限：0 或不填 = 不限
+	if mr := strings.TrimSpace(r.Form.Get("maxresults")); mr != "" {
+		if v, err := strconv.Atoi(mr); err == nil && v > 0 {
+			newJob.Data.MaxResults = v
+		}
+	}
+
 	// 地理锚定：普通模式（非网格）下，用户只填了地点没填有效经纬度时，
 	// 先地理编码一次，把搜索锚定到目标地，并让 hl 与目标地语言匹配，
 	// 避免 Google 按代理出口/浏览器环境本地化结果。
@@ -737,8 +747,20 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 附带上任务 ID 与状态：前端据此在任务运行中流式追加结果行
+	status := ""
+	if job, jerr := s.svc.Get(r.Context(), id.String()); jerr == nil {
+		status = job.Status
+	}
+
+	viewData := map[string]any{
+		"JobID":  id.String(),
+		"Status": status,
+		"Places": places,
+	}
+
 	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, places); err != nil {
+	if err := tmpl.Execute(&buf, viewData); err != nil {
 		log.Printf("view job %s: render: %v", id, err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 

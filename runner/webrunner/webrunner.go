@@ -21,7 +21,6 @@ import (
 	"github.com/gosom/google-maps-scraper/web"
 	"github.com/gosom/google-maps-scraper/web/sqlite"
 	"github.com/gosom/scrapemate"
-	"github.com/gosom/scrapemate/adapters/writers/csvwriter"
 	"github.com/gosom/scrapemate/scrapemateapp"
 	"golang.org/x/sync/errgroup"
 )
@@ -183,7 +182,12 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 	defer mate.Close()
 
-	dedup := deduper.New()
+	var dedup deduper.Deduper = deduper.New()
+	if job.Data.MaxResults > 0 {
+		// 用户设置了目标客户数量上限：去重计数达上限后不再播种新详情任务
+		dedup = newLimitDeduper(dedup, job.Data.MaxResults)
+	}
+
 	exitMonitor := exiter.New()
 
 	var seedJobs []scrapemate.IJob
@@ -402,7 +406,8 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 
 		log.Printf("job %s has proxy: %v", job.ID, hasProxy)
 
-		csvWriter := csvwriter.NewCsvWriter(csv.NewWriter(writer))
+		// 按任务配置过滤输出列：快速=必要列，深度=用户自选列（内部列强制保留）
+		csvWriter := newColumnWriter(csv.NewWriter(writer), job.Data.FastMode, job.Data.Columns)
 
 		writers := []scrapemate.ResultWriter{csvWriter}
 
