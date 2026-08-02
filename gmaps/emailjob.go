@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/google/uuid"
@@ -27,6 +28,8 @@ func NewEmailJob(parentID string, entry *Entry, opts ...EmailExtractJobOptions) 
 	const (
 		defaultPrio       = scrapemate.PriorityHigh
 		defaultMaxRetries = 0
+		// Cap website waits so one slow merchant site cannot stall a worker.
+		defaultTimeout = 12 * time.Second
 	)
 
 	job := EmailExtractJob{
@@ -37,6 +40,7 @@ func NewEmailJob(parentID string, entry *Entry, opts ...EmailExtractJobOptions) 
 			URL:        normalizeGoogleURL(entry.WebSite),
 			MaxRetries: defaultMaxRetries,
 			Priority:   defaultPrio,
+			Timeout:    defaultTimeout,
 		},
 	}
 
