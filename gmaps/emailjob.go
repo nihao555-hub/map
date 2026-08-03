@@ -51,6 +51,8 @@ var (
 		"abc@xyz", "email@email", "test@test", "foo@bar",
 		"yoursite.com", "anthropic.com", "gdprlocal.com", "linktr.ee",
 		"wix.com", "sentry.io", "noreply@", "no-reply@",
+		"addresshere.com", "support@support.com", "blackbox.ai",
+		"enteryour@", "your@email",
 	}
 	emailJunkSuffixes = []string{
 		".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".css", ".js", ".map",
@@ -212,8 +214,13 @@ func normalizeWhatsApp(raw string) string {
 			b.WriteRune(r)
 		}
 	}
+
 	digits := b.String()
-	if len(digits) < 8 || len(digits) > 15 {
+	// 过短/过长丢掉；8 位且像年份日期(20230830)的也丢掉
+	if len(digits) < 10 || len(digits) > 15 {
+		return ""
+	}
+	if len(digits) == 8 && (strings.HasPrefix(digits, "20") || strings.HasPrefix(digits, "19")) {
 		return ""
 	}
 
