@@ -135,6 +135,18 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.apiGetPlaces(w, r)
 	})
 
+	mux.HandleFunc("/api/v1/jobs/{id}/places/{place_id}/intel", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			renderJSON(w, http.StatusMethodNotAllowed, apiError{
+				Code:    http.StatusMethodNotAllowed,
+				Message: "Method not allowed",
+			})
+			return
+		}
+		ans.apiPlaceIntel(w, r)
+	})
+
 	mux.HandleFunc("/api/v1/geocode", ans.apiGeocode)
 	mux.HandleFunc("/api/v1/reverse-geocode", ans.apiReverseGeocode)
 	mux.HandleFunc("/api/v1/ai-translate", ans.apiAITranslate)
@@ -357,9 +369,10 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		newJob.Data.FastMode = true
 	}
 
-	newJob.Data.Radius, err = strconv.Atoi(r.Form.Get("radius"))
+	// 目标半径：优先 radius_km（公里，项目上限 MaxRadiusKm），否则兼容旧 radius（米）
+	newJob.Data.Radius, err = parseTargetRadiusMeters(r)
 	if err != nil {
-		http.Error(w, "invalid radius", http.StatusUnprocessableEntity)
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 
 		return
 	}
@@ -398,45 +411,40 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 快速模式单点搜索结果很少：自动开粗网格扩量（仍走纯 HTTP）。
-	// 格子边长/半径加以限制，避免上百格拖慢「抓满即停」的收尾。
+	// 保留用户设定的目标半径；仅在未设网格密度时给粗默认。
 	if newJob.Data.FastMode && !newJob.Data.GridMode {
 		newJob.Data.GridMode = true
-		newJob.Data.GridCellKm = 2.5
-		if newJob.Data.Radius <= 0 || newJob.Data.Radius > 10000 {
-			newJob.Data.Radius = 10000 // ±5km → 大约十几格
+		if newJob.Data.GridCellKm <= 0 {
+			newJob.Data.GridCellKm = 2.5
 		}
 		if newJob.Data.Locations == "" {
 			newJob.Data.Locations = locationsStr
 		}
-		log.Printf("快速模式自动启用粗网格扩量 cell=%.1fkm radius=%dm", newJob.Data.GridCellKm, newJob.Data.Radius)
+		log.Printf("快速模式自动启用粗网格扩量 cell=%.1fkm radius=%dm (%.1fkm)",
+			newJob.Data.GridCellKm, newJob.Data.Radius, float64(newJob.Data.Radius)/1000)
 	}
 
 	// 结果列配置（快速模式可不选；深度/网格模式用户自选表头）
 	newJob.Data.Columns = strings.TrimSpace(r.Form.Get("columns"))
 
-	// 目标客户数量上限：0 或不填 = 不限
+	// 可选数量上限（高级）：0 或不填 = 在目标半径内尽量抓全
 	if mr := strings.TrimSpace(r.Form.Get("maxresults")); mr != "" {
 		if v, err := strconv.Atoi(mr); err == nil && v > 0 {
 			newJob.Data.MaxResults = v
 		}
 	}
 
-	// 深度模式目标量大（≥100 或不限）时自动开粗网格，否则单点+偏移仍远达不到「全量」。
-	// 必须在解析 maxresults 之后；用户点了「全域全量」时已是 GridMode，这里只补「深度 + 高上限」。
-	if !newJob.Data.FastMode && !newJob.Data.GridMode &&
-		(newJob.Data.MaxResults == 0 || newJob.Data.MaxResults >= 100) {
+	// 深度模式：在目标半径内用粗网格覆盖（单点滚动远达不到半径内全量）。
+	if !newJob.Data.FastMode && !newJob.Data.GridMode {
 		newJob.Data.GridMode = true
 		if newJob.Data.GridCellKm <= 0 {
 			newJob.Data.GridCellKm = 2.0 // 深度走浏览器，格子稍粗以免格数爆炸
 		}
-		if newJob.Data.Radius <= 0 || newJob.Data.Radius > 15000 {
-			newJob.Data.Radius = 15000 // ±7.5km
-		}
 		if newJob.Data.Locations == "" {
 			newJob.Data.Locations = locationsStr
 		}
-		log.Printf("深度模式目标量大(max=%d)，自动启用粗网格全量 cell=%.1fkm radius=%dm",
-			newJob.Data.MaxResults, newJob.Data.GridCellKm, newJob.Data.Radius)
+		log.Printf("深度模式启用粗网格覆盖目标半径 cell=%.1fkm radius=%dm (%.1fkm) max=%d",
+			newJob.Data.GridCellKm, newJob.Data.Radius, float64(newJob.Data.Radius)/1000, newJob.Data.MaxResults)
 	}
 
 	// 用户显式选择的目标国家（优先于地理编码推断）
@@ -1021,6 +1029,60 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusOK, places)
 }
 
+// apiPlaceIntel 返回/生成商家背调（公司架构 + 决策人联系方式）
+func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "Invalid ID"})
+		return
+	}
+	placeID := strings.TrimSpace(r.PathValue("place_id"))
+	if placeID == "" {
+		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "missing place_id"})
+		return
+	}
+
+	// 已有缓存且非强制刷新
+	refresh := r.URL.Query().Get("refresh") == "1" || r.Method == http.MethodPost
+	if !refresh {
+		if cached, ok := s.svc.loadIntel(id.String(), placeID); ok {
+			renderJSON(w, http.StatusOK, cached)
+			return
+		}
+	}
+
+	places, err := s.svc.GetPlaces(r.Context(), id.String())
+	if err != nil && !errors.Is(err, ErrPlacesNotFound) {
+		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: err.Error()})
+		return
+	}
+	var place Place
+	found := false
+	for _, p := range places {
+		if p.PlaceID == placeID || p.Cid == placeID || p.DataID == placeID {
+			place = p
+			found = true
+			break
+		}
+	}
+	if !found {
+		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "place not found in job results"})
+		return
+	}
+	if place.PlaceID == "" {
+		place.PlaceID = placeID
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 70*time.Second)
+	defer cancel()
+	intel, err := s.svc.BuildPlaceIntel(ctx, id.String(), place)
+	if err != nil {
+		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: err.Error()})
+		return
+	}
+	renderJSON(w, http.StatusOK, intel)
+}
+
 // viewJob renders the map modal fragment for a job, embedding the job's places
 // directly so the client needs no separate data request.
 func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
@@ -1130,6 +1192,38 @@ func renderJSON(w http.ResponseWriter, code int, data any) {
 
 func formatDate(t time.Time) string {
 	return t.Format("Jan 02, 2006 15:04:05")
+}
+
+// parseTargetRadiusMeters 解析目标半径：优先 radius_km（公里），否则 radius（米）。
+// 结果钳制到 (0, MaxRadiusMeters]，默认 10km。
+func parseTargetRadiusMeters(r *http.Request) (int, error) {
+	if kmStr := strings.TrimSpace(r.Form.Get("radius_km")); kmStr != "" {
+		km, err := strconv.ParseFloat(kmStr, 64)
+		if err != nil || km <= 0 {
+			return 0, fmt.Errorf("invalid radius_km")
+		}
+		if km > float64(MaxRadiusKm()) {
+			return 0, fmt.Errorf("radius_km must be ≤ %d", MaxRadiusKm())
+		}
+		meters := int(km * 1000)
+		if meters < 1000 {
+			meters = 1000 // 至少 1km，避免过碎网格
+		}
+		return meters, nil
+	}
+
+	raw := strings.TrimSpace(r.Form.Get("radius"))
+	if raw == "" {
+		return 10000, nil // 默认 10km
+	}
+	meters, err := strconv.Atoi(raw)
+	if err != nil || meters <= 0 {
+		return 0, fmt.Errorf("invalid radius")
+	}
+	if meters > MaxRadiusMeters() {
+		meters = MaxRadiusMeters()
+	}
+	return meters, nil
 }
 
 func securityHeaders(next http.Handler) http.Handler {

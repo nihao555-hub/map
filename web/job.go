@@ -80,9 +80,10 @@ type JobData struct {
 	Locations   string  `json:"locations"`    // 原始地点名，用于网格模式的地理编码
 	// 结果列配置：逗号分隔的 CSV 列名；空 = 按模式默认（快速=必要列，深度/网格=全部列）
 	Columns string `json:"columns"`
-	// 目标客户数量上限：0 = 不限（抓到全域全量为止）
+	// 目标客户数量上限：0 = 不限（在目标半径内尽量抓全）
 	MaxResults int `json:"max_results"`
-	// 用户意图留痕：前端选的国家/原始关键词，方便核对「找什么/在哪/哪个国家」
+	// 目标半径由 Radius（米）表达；前端以公里输入，上限见 MaxRadiusKm()
+	// Country / 关键词留痕：方便核对「找什么/在哪/哪个国家」
 	CountryCode  string   `json:"country_code,omitempty"`
 	CountryName  string   `json:"country_name,omitempty"`
 	RawKeywords  []string `json:"raw_keywords,omitempty"`

@@ -1,12 +1,26 @@
 <div id="map-modal" class="map-modal" role="dialog" aria-modal="true" aria-labelledby="map-modal-title" onclick="if(event.target===this)closeJobMap()">
-    <div class="map-modal-content">
+    <div class="map-modal-content job-view-shell">
         <div class="map-modal-header">
             <h2 id="map-modal-title">采集结果</h2>
             <button type="button" class="map-modal-close" aria-label="Close" onclick="closeJobMap()">&times;</button>
         </div>
-        <div class="map-modal-body">
-            <div id="job-places-list"></div>
-            <div id="job-map"></div>
+        <div class="map-modal-body job-view-body">
+            <div class="job-view-main">
+                <div id="job-map" class="job-view-map"></div>
+                <div id="job-places-list" class="job-view-table"></div>
+            </div>
+            <aside id="job-intel-drawer" class="job-intel-drawer" aria-hidden="true">
+                <div class="intel-drawer-head">
+                    <div>
+                        <p class="intel-drawer-kicker">背调详情</p>
+                        <h3 id="intel-drawer-title">选择表格中的一家商户</h3>
+                    </div>
+                    <button type="button" class="intel-drawer-close" onclick="window.__closeIntelDrawer && window.__closeIntelDrawer()" aria-label="关闭背调">&times;</button>
+                </div>
+                <div id="intel-drawer-body" class="intel-drawer-body">
+                    <p class="intel-placeholder">点击下方表格任意一行，在此查看公司架构、决策人与公开情报。</p>
+                </div>
+            </aside>
         </div>
     </div>
     <script>
@@ -19,8 +33,6 @@
         var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
         var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
 
-        // ensureLeaflet lazily loads Leaflet (CSS + JS) the first time the map
-        // is opened, then invokes callback once it is available.
         function ensureLeaflet(callback) {
             if (window.L) {
                 callback();
@@ -54,7 +66,6 @@
 
         function refreshMapSize(map) {
             if (!map) return;
-            // 弹窗刚插入 DOM 时尺寸常为 0，多次 invalidate 才能出瓦片
             [0, 50, 150, 300, 600].forEach(function (ms) {
                 setTimeout(function () { map.invalidateSize({ pan: false }); }, ms);
             });
@@ -68,18 +79,15 @@
             var el = document.getElementById('job-map');
             if (!el) return null;
 
-            // 标记图标走 cdnjs（CSP 已放行）；默认 unpkg 路径会被 img-src 拦掉
             if (L.Icon && L.Icon.Default) {
                 L.Icon.Default.imagePath = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/';
             }
 
-            // 必须先给 center/zoom，否则弹窗布局完成前 Leaflet 不发瓦片请求
             var map = L.map(el, {
                 zoomControl: true,
                 center: [20, 0],
                 zoom: 2
             });
-            // 与主界面一致：全球 Carto 底图（高德海外无图；OSM 官方瓦片易被拦）
             L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
                 subdomains: 'abcd',
                 maxZoom: 20,
@@ -98,11 +106,7 @@
             if (place.whatsapp) parts.push('WhatsApp：' + escapeHtml(place.whatsapp));
             if (place.emails) parts.push('邮箱：' + escapeHtml(place.emails));
             if (place.phone) parts.push('电话：' + escapeHtml(place.phone));
-            if (place.instagram) parts.push('Instagram：' + escapeHtml(place.instagram));
-            if (place.facebook) parts.push('Facebook：' + escapeHtml(place.facebook));
-            if (place.linkedin) parts.push('LinkedIn：' + escapeHtml(place.linkedin));
             if (place.website) parts.push('网站：' + escapeHtml(place.website));
-            if (place.review_rating) parts.push('评分：★ ' + escapeHtml(String(place.review_rating)));
             return parts.join('<br>');
         }
 
@@ -133,7 +137,6 @@
                 return '<span class="cell-empty">—</span>';
             }
             var s = String(value);
-            // JSON-ish blobs: keep readable but truncate for table
             if ((s.charAt(0) === '{' || s.charAt(0) === '[') && s.length > 60) {
                 s = s.slice(0, 57) + '…';
             } else if (s.length > 120) {
@@ -142,7 +145,6 @@
             return escapeHtml(s);
         }
 
-        // 与深度模式可选字段对齐的结果表头（横向滚动查看全部）
         var RESULT_COLUMNS = [
             { key: 'title', label: '名称', cls: 'col-name', render: function (p) { return textCell(p.title); } },
             { key: 'category', label: '类别', cls: 'col-cat', render: function (p) { return textCell(p.category); } },
@@ -194,7 +196,6 @@
             { key: 'data_id', label: '数据ID', cls: 'col-code', render: function (p) { return textCell(p.data_id); } }
         ];
 
-        // ============ 流式结果表格：初始渲染 + 运行中轮询增量追加 ============
         var map = null;
         var tbody = null;
         var markersLayer = null;
@@ -202,6 +203,10 @@
         var pollTimer = null;
         var statusPollCount = 0;
         var streamActive = (JOB_STATUS === 'working' || JOB_STATUS === 'pending');
+        var placeById = {};
+        var activePlaceId = '';
+        var intelCache = {};
+        var intelAbort = null;
 
         function rowHtml(place) {
             return RESULT_COLUMNS.map(function (col) {
@@ -220,10 +225,271 @@
                 escapeHtml(String(wa)) + '</a>';
         }
 
+        function placeKey(place) {
+            return place.place_id || place.cid || place.data_id || '';
+        }
+
+        function openIntelDrawer() {
+            var drawer = document.getElementById('job-intel-drawer');
+            var body = document.querySelector('.job-view-body');
+            if (!drawer || !body) return;
+            drawer.classList.add('open');
+            drawer.setAttribute('aria-hidden', 'false');
+            body.classList.add('intel-open');
+            refreshMapSize(map);
+        }
+
+        function closeIntelDrawer() {
+            var drawer = document.getElementById('job-intel-drawer');
+            var body = document.querySelector('.job-view-body');
+            if (drawer) {
+                drawer.classList.remove('open');
+                drawer.setAttribute('aria-hidden', 'true');
+            }
+            if (body) body.classList.remove('intel-open');
+            activePlaceId = '';
+            if (tbody) {
+                tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
+            }
+            refreshMapSize(map);
+        }
+        window.__closeIntelDrawer = closeIntelDrawer;
+
+        function confBadge(level) {
+            var lv = String(level || 'low').toLowerCase();
+            return '<span class="intel-conf intel-conf-' + escapeHtml(lv) + '">' + escapeHtml(lv) + '</span>';
+        }
+
+        function emptyBlock(msg) {
+            return '<p class="intel-empty">' + escapeHtml(msg || '暂无公开证据') + '</p>';
+        }
+
+        function kv(label, value) {
+            if (value === null || value === undefined || value === '') return '';
+            return '<div class="intel-kv"><span class="intel-k">' + escapeHtml(label) + '</span><span class="intel-v">' + value + '</span></div>';
+        }
+
+        function listChips(items) {
+            if (!items || !items.length) return emptyBlock();
+            return '<div class="intel-chips">' + items.map(function (x) {
+                return '<span class="intel-chip">' + escapeHtml(x) + '</span>';
+            }).join('') + '</div>';
+        }
+
+        function linkOrText(v) {
+            if (!v) return '—';
+            if (/^https?:\/\//i.test(String(v))) {
+                return '<a href="' + encodeURI(String(v)) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(String(v)) + '</a>';
+            }
+            return escapeHtml(String(v));
+        }
+
+        function buildTabs(place, intel) {
+            var tabs = [];
+            tabs.push({
+                id: 'overview',
+                label: '概览',
+                html: [
+                    kv('置信度', confBadge(intel.confidence)),
+                    kv('摘要', escapeHtml(intel.summary || '')),
+                    kv('域名', escapeHtml(intel.domain || '—')),
+                    kv('网站', linkOrText(intel.website || place.website)),
+                    kv('MX', intel.has_mx ? escapeHtml((intel.mx_hosts || []).join(', ') || '有') : '未检测到'),
+                    kv('说明', escapeHtml(intel.note || ''))
+                ].filter(Boolean).join('') || emptyBlock('暂无概览')
+            });
+
+            var dms = intel.decision_makers || [];
+            tabs.push({
+                id: 'people',
+                label: '决策人' + (dms.length ? ' (' + dms.length + ')' : ''),
+                html: dms.length ? dms.map(function (d) {
+                    return '<article class="intel-card">' +
+                        '<div class="intel-card-top"><strong>' + escapeHtml(d.name || '（未具名）') + '</strong>' +
+                        confBadge(d.confidence) + '</div>' +
+                        kv('职位', escapeHtml(d.title || '')) +
+                        kv('邮箱', d.email ? '<a href="mailto:' + encodeURIComponent(d.email) + '">' + escapeHtml(d.email) + '</a>' : '') +
+                        kv('电话', escapeHtml(d.phone || '')) +
+                        kv('LinkedIn', linkOrText(d.linkedin || '')) +
+                        kv('证据', escapeHtml(d.evidence || d.source || '')) +
+                        '</article>';
+                }).join('') : emptyBlock('未在公开页面找到可核验的决策人（不会编造姓名）')
+            });
+
+            var orgs = intel.org_structure || [];
+            tabs.push({
+                id: 'org',
+                label: '架构' + (orgs.length ? ' (' + orgs.length + ')' : ''),
+                html: orgs.length ? '<ul class="intel-org-list">' + orgs.map(function (o) {
+                    return '<li><strong>' + escapeHtml(o.name || '') + '</strong>' +
+                        (o.role ? ' · ' + escapeHtml(o.role) : '') +
+                        (o.parent ? '<div class="intel-muted">上级：' + escapeHtml(o.parent) + '</div>' : '') +
+                        (o.evidence ? '<div class="intel-muted">证据：' + escapeHtml(o.evidence) + '</div>' : '') +
+                        '</li>';
+                }).join('') + '</ul>' : emptyBlock('暂无架构信息')
+            });
+
+            var socials = intel.socials || {};
+            var socialKeys = Object.keys(socials).filter(function (k) { return socials[k]; });
+            var contactHtml = '';
+            contactHtml += '<h4 class="intel-sub">邮箱</h4>' + listChips(intel.extra_emails || []);
+            contactHtml += '<h4 class="intel-sub">电话 / WhatsApp</h4>' + listChips(intel.phones || []);
+            contactHtml += '<h4 class="intel-sub">社媒</h4>';
+            if (socialKeys.length) {
+                contactHtml += socialKeys.map(function (k) {
+                    return kv(k, linkOrText(socials[k]));
+                }).join('');
+            } else {
+                contactHtml += emptyBlock('暂无社媒');
+            }
+            tabs.push({ id: 'contacts', label: '联系方式', html: contactHtml });
+
+            var reg = intel.company_registry;
+            var techHtml = '';
+            techHtml += '<h4 class="intel-sub">检测到的技术</h4>' + listChips(intel.technologies || []);
+            techHtml += '<h4 class="intel-sub">主体登记（OpenCorporates）</h4>';
+            if (reg && reg.name) {
+                techHtml += [
+                    kv('名称', escapeHtml(reg.name)),
+                    kv('编号', escapeHtml(reg.company_number || '')),
+                    kv('辖区', escapeHtml(reg.jurisdiction || '')),
+                    kv('状态', escapeHtml(reg.current_status || '')),
+                    kv('成立', escapeHtml(reg.incorporation_date || '')),
+                    kv('链接', linkOrText(reg.registry_url || ''))
+                ].filter(Boolean).join('');
+            } else {
+                techHtml += emptyBlock('未匹配到公开主体（接口限流或名称差异属正常）');
+            }
+            tabs.push({ id: 'domain', label: '域名/主体', html: techHtml });
+
+            var sources = intel.sources || [];
+            tabs.push({
+                id: 'sources',
+                label: '来源' + (sources.length ? ' (' + sources.length + ')' : ''),
+                html: sources.length
+                    ? '<ol class="intel-sources">' + sources.map(function (s) {
+                        return '<li>' + linkOrText(s) + '</li>';
+                    }).join('') + '</ol>'
+                    : emptyBlock('无网页来源（可能无官网）')
+            });
+
+            // 只展示有实质内容或总是展示的核心 Tab；空的次要 Tab 仍保留但标注
+            return tabs;
+        }
+
+        function renderIntelPanel(place, intel) {
+            var titleEl = document.getElementById('intel-drawer-title');
+            var bodyEl = document.getElementById('intel-drawer-body');
+            if (titleEl) titleEl.textContent = place.title || '背调详情';
+            if (!bodyEl) return;
+
+            var tabs = buildTabs(place, intel || {});
+            var nav = '<div class="intel-tabs" role="tablist">' + tabs.map(function (t, i) {
+                return '<button type="button" class="intel-tab' + (i === 0 ? ' active' : '') + '" data-tab="' + t.id + '" role="tab">' +
+                    escapeHtml(t.label) + '</button>';
+            }).join('') + '</div>';
+            var panels = tabs.map(function (t, i) {
+                return '<div class="intel-tab-panel' + (i === 0 ? ' active' : '') + '" data-panel="' + t.id + '" role="tabpanel">' +
+                    t.html + '</div>';
+            }).join('');
+            var actions = '<div class="intel-actions">' +
+                '<button type="button" class="intel-refresh-btn" data-refresh="1">重新拉取背调</button>' +
+                '<span class="intel-muted">' + escapeHtml((intel && intel.provider) || '') + '</span></div>';
+
+            bodyEl.innerHTML = nav + panels + actions;
+
+            bodyEl.querySelectorAll('.intel-tab').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var id = btn.getAttribute('data-tab');
+                    bodyEl.querySelectorAll('.intel-tab').forEach(function (b) { b.classList.toggle('active', b === btn); });
+                    bodyEl.querySelectorAll('.intel-tab-panel').forEach(function (p) {
+                        p.classList.toggle('active', p.getAttribute('data-panel') === id);
+                    });
+                });
+            });
+            var refreshBtn = bodyEl.querySelector('[data-refresh]');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function () {
+                    loadIntelForPlace(place, true);
+                });
+            }
+        }
+
+        function showIntelLoading(place) {
+            var titleEl = document.getElementById('intel-drawer-title');
+            var bodyEl = document.getElementById('intel-drawer-body');
+            if (titleEl) titleEl.textContent = place.title || '背调详情';
+            if (bodyEl) {
+                bodyEl.innerHTML = '<div class="intel-loading"><div class="spinner-inline"></div><span>正在拉取公开背调…</span></div>';
+            }
+        }
+
+        function loadIntelForPlace(place, refresh) {
+            var key = placeKey(place);
+            if (!key) {
+                renderIntelPanel(place, {
+                    summary: '缺少 Place ID，无法缓存背调',
+                    confidence: 'low',
+                    note: '请使用深度模式结果（含 place_id）'
+                });
+                return;
+            }
+            if (!refresh && intelCache[key]) {
+                renderIntelPanel(place, intelCache[key]);
+                return;
+            }
+            showIntelLoading(place);
+            if (intelAbort) intelAbort.abort();
+            intelAbort = new AbortController();
+            var url = '/api/v1/jobs/' + encodeURIComponent(JOB_ID) + '/places/' + encodeURIComponent(key) + '/intel';
+            if (refresh) url += '?refresh=1';
+            fetch(url, { signal: intelAbort.signal })
+                .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)); })
+                .then(function (data) {
+                    intelCache[key] = data;
+                    if (activePlaceId === key) renderIntelPanel(place, data);
+                })
+                .catch(function (err) {
+                    if (err && err.name === 'AbortError') return;
+                    if (activePlaceId === key) {
+                        renderIntelPanel(place, {
+                            summary: place.title || '',
+                            confidence: 'low',
+                            note: '背调请求失败：' + (err && err.message ? err.message : 'unknown'),
+                            decision_makers: [],
+                            org_structure: [],
+                            extra_emails: (place.emails || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean),
+                            phones: [place.phone, place.whatsapp].filter(Boolean),
+                            socials: {
+                                facebook: place.facebook,
+                                instagram: place.instagram,
+                                linkedin: place.linkedin,
+                                whatsapp: place.whatsapp
+                            }
+                        });
+                    }
+                });
+        }
+
+        function selectPlace(place, tr) {
+            if (tbody) {
+                tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
+            }
+            if (tr) tr.classList.add('row-active');
+            activePlaceId = placeKey(place);
+            openIntelDrawer();
+            if (map && isFinite(place.latitude) && isFinite(place.longitude)) {
+                map.setView([place.latitude, place.longitude], 16);
+            }
+            loadIntelForPlace(place, false);
+        }
+
         function appendPlace(place, isFirst) {
             var latlng = [place.latitude, place.longitude];
+            var key = placeKey(place);
+            if (key) placeById[key] = place;
 
-            if (markersLayer) {
+            if (markersLayer && isFinite(place.latitude) && isFinite(place.longitude)) {
                 L.marker(latlng).bindPopup(placePopup(place)).addTo(markersLayer);
             }
 
@@ -231,10 +497,9 @@
 
             var tr = document.createElement('tr');
             tr.innerHTML = rowHtml(place);
+            if (key) tr.setAttribute('data-place-id', key);
             tr.addEventListener('click', function () {
-                tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
-                tr.classList.add('row-active');
-                if (map) map.setView(latlng, 16);
+                selectPlace(place, tr);
             });
             if (isFirst) tr.classList.add('row-active');
             tbody.appendChild(tr);
@@ -263,7 +528,6 @@
         }
 
         function renderBatch(list) {
-            // CSV 只增不改，按下标增量追加即可
             for (var i = renderedCount; i < list.length; i++) {
                 appendPlace(list[i], renderedCount === 0 && i === 0);
             }
@@ -271,7 +535,6 @@
             renderedCount = list.length;
 
             if (hadNew && map && markersLayer) {
-                // 首次有数据时缩放到结果范围；后续追加不再打断用户视角
                 if (!renderBatch._fitted) {
                     renderBatch._fitted = true;
                     try { map.fitBounds(markersLayer.getBounds(), { padding: [30, 30] }); } catch (e) {}
@@ -305,14 +568,12 @@
                 })
                 .catch(function () {});
 
-            // 每 2 次轮询查一次任务状态，完成/失败即停止流式更新
             statusPollCount++;
             if (statusPollCount % 2 === 0) {
                 fetch('/api/v1/jobs/' + JOB_ID)
                     .then(function (res) { return res.ok ? res.json() : null; })
                     .then(function (job) {
                         if (job && job.Status !== 'working' && job.Status !== 'pending') {
-                            // 最后再拉一次结果，然后停止
                             fetch('/api/v1/jobs/' + JOB_ID + '/places')
                                 .then(function (res) { return res.ok ? res.json() : null; })
                                 .then(function (list) {
@@ -338,13 +599,11 @@
 
             if (places.length > 0) {
                 ensureTable();
-                // 先落到首条坐标，避免长时间停在世界视图
                 var first = places[0];
                 if (first && isFinite(first.latitude) && isFinite(first.longitude)) {
                     map.setView([first.latitude, first.longitude], 13);
                 }
                 renderBatch(places);
-                // 布局稳定后再 fit：弹窗刚插入时偶发 0 尺寸导致灰底不补瓦片
                 setTimeout(function () {
                     refreshMapSize(map);
                     try {
@@ -366,7 +625,6 @@
             refreshMapSize(map);
 
             if (streamActive) {
-                // 结果是流式写入 CSV 的：轮询会看到数量逐渐增加
                 pollTimer = setInterval(pollPlaces, 3000);
                 pollPlaces();
             }
@@ -374,6 +632,8 @@
 
         window.closeJobMap = function () {
             stopStreaming();
+            closeIntelDrawer();
+            if (intelAbort) intelAbort.abort();
 
             if (window.__jobMap) {
                 window.__jobMap.remove();

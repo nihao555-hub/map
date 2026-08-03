@@ -210,7 +210,10 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		if bbox.MinLat == 0 && bbox.MaxLat == 0 {
 			if alat, aerr := strconv.ParseFloat(job.Data.Lat, 64); aerr == nil {
 				if alon, aerr2 := strconv.ParseFloat(job.Data.Lon, 64); aerr2 == nil && !(alat == 0 && alon == 0) {
-					halfKm := float64(job.Data.Radius) / 2000 // radius=10000m → 半径5km（约10km×10km）
+					halfKm := float64(job.Data.Radius) / 1000 // Radius 为米 → 真实目标半径（公里）
+					if halfKm <= 0 {
+						halfKm = 10
+					}
 					bbox = anchorBBox(alat, alon, halfKm)
 					log.Printf("grid mode: anchor bbox around %.4f,%.4f (±%.1fkm)", alat, alon, halfKm)
 				}
