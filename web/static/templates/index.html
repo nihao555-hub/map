@@ -48,6 +48,35 @@
           >
             <!-- 隐藏字段：任务名称 = 关键词+地点 -->
             <input type="hidden" id="name" name="name" value="">
+            <input type="hidden" id="country_code" name="country_code" value="">
+            <input type="hidden" id="country_name" name="country_name" value="">
+            <input type="hidden" id="ai_translate" name="ai_translate" value="on">
+
+            <!-- 目标国家：决定语言 + AI 翻译目标（写在「在哪里」之前） -->
+            <div class="field-group">
+              <label class="field-label" for="country-search">目标国家</label>
+              <div class="country-picker" id="country-picker">
+                <div class="input-field">
+                  <i data-lucide="globe-2" class="w-4 h-4 input-icon icon-blue"></i>
+                  <input
+                    type="text"
+                    id="country-search"
+                    placeholder="搜索或选择国家，如：印尼 / Indonesia"
+                    autocomplete="off"
+                    aria-autocomplete="list"
+                    aria-controls="country-dropdown"
+                  />
+                  <button type="button" class="clear-btn" id="country-clear" title="清除">&times;</button>
+                </div>
+                <div id="country-dropdown" class="country-dropdown hidden" role="listbox"></div>
+              </div>
+              <label class="ai-toggle-row" id="ai-toggle-row">
+                <input type="checkbox" id="ai-translate-check" checked />
+                <span>AI 译成目标国搜索词</span>
+                <span class="ai-badge" id="ai-badge">词典备用</span>
+              </label>
+              <p class="field-hint" id="country-hint">先选国家，再用中文填地点/关键词；未配置 AI 时走词典+机翻</p>
+            </div>
 
             <!-- 在哪里 -->
             <div class="field-group">
@@ -58,11 +87,11 @@
                   type="text"
                   id="locations"
                   name="locations"
-                  placeholder="请输入地点，如：深圳市南山区科技园"
+                  placeholder="请输入地点，如：雅加达 / 纽约曼哈顿"
                   autocomplete="off"
                 />
               </div>
-              <p class="field-hint">支持输入关键词搜索和地图选点两种方式</p>
+              <p class="field-hint">支持中文地名；会按目标国家锚定地图</p>
             </div>
 
             <!-- 找什么 -->
@@ -79,6 +108,7 @@
                 />
                 <button type="button" class="clear-btn" id="keywords-clear" title="清除">&times;</button>
               </div>
+              <p class="field-hint" id="ai-preview-hint">可用中文；提交时 AI/词典译成目标国语言</p>
             </div>
 
             <!-- 热门搜索 -->
@@ -97,13 +127,13 @@
             <div class="field-group">
               <label class="field-label">模式选择</label>
               <div class="mode-cards">
-                <div class="mode-card" data-mode="quick" onclick="selectMode('quick')">
+                <div class="mode-card active" data-mode="quick" onclick="selectMode('quick')">
                   <div class="mode-head">
                     <i data-lucide="zap" class="w-4 h-4 mode-icon"></i>
                     <span class="mode-label">快速模式</span>
                     <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
                   </div>
-                  <p class="mode-desc">极速通道，1分钟约25家<br/>名称/地址/电话/网站/评分</p>
+                  <p class="mode-desc">极速通道，自动扩量+抓邮箱<br/>名称/地址/邮箱/电话/网站</p>
                 </div>
                 <div class="mode-card" data-mode="standard" onclick="selectMode('standard')">
                   <div class="mode-head">
@@ -135,9 +165,9 @@
               <label class="field-label" for="maxresults">目标客户数量上限</label>
               <div class="input-field">
                 <i data-lucide="target" class="w-4 h-4 input-icon"></i>
-                <input type="number" id="maxresults" name="maxresults" min="0" step="50" value="0" placeholder="0 或留空 = 不限，抓到全域全量为止"/>
+                <input type="number" id="maxresults" name="maxresults" min="0" step="1" value="50" placeholder="0 或留空 = 不限，抓到全域全量为止"/>
               </div>
-              <p class="columns-note">不设限时结果最全，但量大时耗时较长（建议配合 30 分钟以上运行时间）</p>
+              <p class="columns-note">可填任意正整数（如 30 / 50 / 100）；0 或不填 = 不限</p>
             </div>
 
             <!-- 开始搜索 -->
@@ -162,7 +192,7 @@
                   <!-- 全域全量模式 -->
                   <div>
                     <label class="field-label-sm">全域全量模式（网格搜索，突破数量上限）</label>
-                    <div class="mode-card mode-card-sm active" data-mode="grid" onclick="selectMode('grid')">
+                    <div class="mode-card mode-card-sm" data-mode="grid" onclick="selectMode('grid')">
                       <div class="mode-head">
                         <i data-lucide="grid-3x3" class="w-4 h-4 mode-icon"></i>
                         <span class="mode-label">全域全量</span>
@@ -183,11 +213,11 @@
                     </select>
                   </div>
 
-                  <!-- 抓取邮箱开关 -->
+                  <!-- 抓取邮箱：获客刚需，快速/深度均强制开启 -->
                   <div class="switch-row">
-                    <span class="switch-label"><i data-lucide="mail" class="w-4 h-4"></i>抓取邮箱</span>
+                    <span class="switch-label"><i data-lucide="mail" class="w-4 h-4"></i>抓取邮箱（必开）</span>
                     <input type="checkbox" id="email" name="email" checked class="hidden">
-                    <div class="toggle-switch on" id="email-toggle" onclick="toggleSwitch(this, 'email')"></div>
+                    <div class="toggle-switch on" id="email-toggle" title="邮箱为必要字段，已锁定开启" aria-disabled="true"></div>
                   </div>
 
                   <!-- 语言 -->
@@ -223,13 +253,13 @@
                   </div>
 
                   <!-- 隐藏的后端参数 -->
-                  <input type="hidden" id="zoom" name="zoom" value="15">
+                  <input type="hidden" id="zoom" name="zoom" value="14">
                   <input type="hidden" id="latitude" name="latitude" value="0">
                   <input type="hidden" id="longitude" name="longitude" value="0">
-                  <input type="hidden" id="fastmode" name="fastmode" value="">
-                  <input type="hidden" id="gridmode" name="gridmode" value="on">
+                  <input type="hidden" id="fastmode" name="fastmode" value="on">
+                  <input type="hidden" id="gridmode" name="gridmode" value="">
                   <input type="hidden" id="gridbbox" name="gridbbox" value="">
-                  <input type="hidden" id="radius" name="radius" value="10000">
+                  <input type="hidden" id="radius" name="radius" value="25000">
                   <input type="hidden" id="columns" name="columns" value="">
 
                   <!-- 代理设置 -->
@@ -254,7 +284,7 @@
               <span class="history-title"><i data-lucide="history" class="w-4 h-4"></i>搜索记录</span>
               <button type="button" class="history-clear" onclick="clearHistory()">清空记录</button>
             </div>
-            <div id="job-list" hx-get="/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            <div id="job-list" hx-get="/jobs" hx-trigger="load, every 5s" hx-swap="innerHTML">
               <!-- 搜索记录由 HTMX 动态加载 -->
             </div>
             <div id="empty-state" class="hidden">
@@ -289,6 +319,20 @@
           <div class="toggle-switch" id="heatmap-toggle" onclick="toggleHeatmap(this)"></div>
         </div>
 
+        <!-- 右侧任务进度面板：进行中 / 已完成 -->
+        <aside id="task-dock" aria-label="任务进度">
+          <div class="task-dock-head">
+            <div class="task-dock-title">
+              <i data-lucide="list-checks" class="w-4 h-4"></i>
+              <span>任务进度</span>
+            </div>
+            <span id="task-dock-hint" class="task-dock-hint">实时更新</span>
+          </div>
+          <div id="task-dock-list" class="task-dock-list">
+            <p class="task-dock-empty">还没有任务。填写左侧表单后点击「开始搜索」。</p>
+          </div>
+        </aside>
+
         <!-- 右下：地图控制器 -->
         <div id="map-ctrl">
           <button type="button" class="ctrl-btn" title="定位" onclick="locateMe()"><i data-lucide="locate-fixed" class="w-4 h-4"></i></button>
@@ -300,7 +344,7 @@
         <div id="result-bar" class="hidden">
           <div class="result-info">
             <div class="result-title">找到 <b id="result-count">0</b> 个相关结果<span id="result-mode">（快速模式）</span></div>
-            <div class="result-source">真实商户数据 · 实时采集</div>
+            <div class="result-source">真实商户数据 · 结果会随抓取逐渐增加</div>
           </div>
           <button type="button" id="result-detail-btn" class="result-detail">查看详情 <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
         </div>
@@ -321,8 +365,11 @@
 
       // 结果字段定义（深度模式可勾选；系统保留字段不在此列，始终包含）
       var ALL_COLUMNS = [
-        ['address', '地址', true], ['phone', '电话', true], ['emails', '邮箱', true],
-        ['website', '网站', true], ['category', '类别', true], ['review_rating', '评分', true],
+        ['address', '地址', true], ['whatsapp', 'WhatsApp', true], ['emails', '邮箱', true], ['phone', '电话', true],
+        ['website', '网站', true],
+        ['facebook', 'Facebook', true], ['instagram', 'Instagram', true], ['linkedin', 'LinkedIn', true],
+        ['twitter', 'Twitter/X', false], ['tiktok', 'TikTok', false], ['youtube', 'YouTube', false],
+        ['category', '类别', true], ['review_rating', '评分', true],
         ['review_count', '评论数', true], ['reviews_per_rating', '各星级评论数', false],
         ['open_hours', '营业时间', true], ['popular_times', '客流高峰', false],
         ['price_range', '价格区间', true], ['status', '营业状态', true],
@@ -336,7 +383,182 @@
         ['order_online', '在线下单', false], ['street_view_url', '街景', false],
         ['data_id', '数据ID', false]
       ];
-      var ESSENTIAL_COLUMN_KEYS = ['address', 'phone', 'emails', 'website', 'review_rating', 'review_count', 'category'];
+      var ESSENTIAL_COLUMN_KEYS = ['address', 'whatsapp', 'emails', 'phone', 'website', 'facebook', 'instagram', 'linkedin', 'review_rating', 'review_count', 'category'];
+
+      // 目标国家（可搜索）。code=ISO2, lang=Google hl, zh=中文名
+      var COUNTRY_LIST = [
+        {code:'id', lang:'id', zh:'印度尼西亚', en:'Indonesia'},
+        {code:'th', lang:'th', zh:'泰国', en:'Thailand'},
+        {code:'vn', lang:'vi', zh:'越南', en:'Vietnam'},
+        {code:'my', lang:'ms', zh:'马来西亚', en:'Malaysia'},
+        {code:'sg', lang:'en', zh:'新加坡', en:'Singapore'},
+        {code:'ph', lang:'en', zh:'菲律宾', en:'Philippines'},
+        {code:'jp', lang:'ja', zh:'日本', en:'Japan'},
+        {code:'kr', lang:'ko', zh:'韩国', en:'South Korea'},
+        {code:'us', lang:'en', zh:'美国', en:'United States'},
+        {code:'gb', lang:'en', zh:'英国', en:'United Kingdom'},
+        {code:'au', lang:'en', zh:'澳大利亚', en:'Australia'},
+        {code:'nz', lang:'en', zh:'新西兰', en:'New Zealand'},
+        {code:'ca', lang:'en', zh:'加拿大', en:'Canada'},
+        {code:'de', lang:'de', zh:'德国', en:'Germany'},
+        {code:'fr', lang:'fr', zh:'法国', en:'France'},
+        {code:'es', lang:'es', zh:'西班牙', en:'Spain'},
+        {code:'it', lang:'it', zh:'意大利', en:'Italy'},
+        {code:'pt', lang:'pt', zh:'葡萄牙', en:'Portugal'},
+        {code:'br', lang:'pt', zh:'巴西', en:'Brazil'},
+        {code:'mx', lang:'es', zh:'墨西哥', en:'Mexico'},
+        {code:'ae', lang:'ar', zh:'阿联酋', en:'United Arab Emirates'},
+        {code:'sa', lang:'ar', zh:'沙特阿拉伯', en:'Saudi Arabia'},
+        {code:'tr', lang:'tr', zh:'土耳其', en:'Turkey'},
+        {code:'ru', lang:'ru', zh:'俄罗斯', en:'Russia'},
+        {code:'in', lang:'en', zh:'印度', en:'India'},
+        {code:'cn', lang:'zh', zh:'中国', en:'China'},
+        {code:'hk', lang:'zh', zh:'中国香港', en:'Hong Kong'},
+        {code:'tw', lang:'zh', zh:'中国台湾', en:'Taiwan'},
+        {code:'nl', lang:'nl', zh:'荷兰', en:'Netherlands'},
+        {code:'pl', lang:'pl', zh:'波兰', en:'Poland'},
+        {code:'se', lang:'sv', zh:'瑞典', en:'Sweden'}
+      ];
+      var selectedCountry = null;
+      var aiTranslateEnabled = false;
+
+      function countryLabel(c) {
+        return c.zh + ' · ' + c.en;
+      }
+
+      function filterCountries(q) {
+        q = (q || '').trim().toLowerCase();
+        if (!q) return COUNTRY_LIST.slice();
+        return COUNTRY_LIST.filter(function (c) {
+          return c.zh.toLowerCase().indexOf(q) !== -1 ||
+            c.en.toLowerCase().indexOf(q) !== -1 ||
+            c.code.indexOf(q) !== -1;
+        });
+      }
+
+      function renderCountryDropdown(list) {
+        var dd = document.getElementById('country-dropdown');
+        dd.innerHTML = '';
+        if (!list.length) {
+          dd.innerHTML = '<div class="country-empty">无匹配国家</div>';
+          dd.classList.remove('hidden');
+          return;
+        }
+        list.forEach(function (c) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'country-option';
+          btn.setAttribute('role', 'option');
+          btn.innerHTML = '<span class="country-zh">' + c.zh + '</span><span class="country-en">' + c.en + '</span>';
+          btn.addEventListener('click', function () { selectCountry(c); });
+          dd.appendChild(btn);
+        });
+        dd.classList.remove('hidden');
+      }
+
+      function selectCountry(c) {
+        selectedCountry = c;
+        document.getElementById('country_code').value = c.code;
+        document.getElementById('country_name').value = c.en;
+        document.getElementById('country-search').value = countryLabel(c);
+        document.getElementById('lang').value = c.lang;
+        document.getElementById('country-dropdown').classList.add('hidden');
+        updateAIPreviewHint();
+      }
+
+      // 供地图点选 / 地理编码回调：按 ISO2 同步左侧「目标国家」
+      window.selectCountryByCode = function (code) {
+        code = String(code || '').toLowerCase();
+        if (!code) return false;
+        for (var i = 0; i < COUNTRY_LIST.length; i++) {
+          if (COUNTRY_LIST[i].code === code) {
+            selectCountry(COUNTRY_LIST[i]);
+            return true;
+          }
+        }
+        // 列表外国家：至少写入 code + lang 隐藏域
+        document.getElementById('country_code').value = code;
+        document.getElementById('country_name').value = code.toUpperCase();
+        document.getElementById('country-search').value = code.toUpperCase();
+        var hl = document.getElementById('lang');
+        if (hl && !hl.value) hl.value = 'en';
+        updateAIPreviewHint();
+        return false;
+      };
+
+      function clearCountry() {
+        selectedCountry = null;
+        document.getElementById('country_code').value = '';
+        document.getElementById('country_name').value = '';
+        document.getElementById('country-search').value = '';
+        document.getElementById('country-dropdown').classList.add('hidden');
+        updateAIPreviewHint();
+      }
+
+      function syncAITranslateHidden() {
+        var on = document.getElementById('ai-translate-check').checked;
+        document.getElementById('ai_translate').value = on ? 'on' : '';
+      }
+
+      function updateAIPreviewHint() {
+        var hint = document.getElementById('ai-preview-hint');
+        var badge = document.getElementById('ai-badge');
+        var c = selectedCountry;
+        if (aiTranslateEnabled && document.getElementById('ai-translate-check').checked) {
+          badge.textContent = 'AI 已就绪';
+          badge.classList.add('on');
+          hint.textContent = c
+            ? ('提交时 AI 将中文译成「' + c.zh + '」本地搜索词（词典优先）')
+            : '请先选目标国家；AI 会把中文译成当地搜索词';
+        } else {
+          badge.textContent = aiTranslateEnabled ? 'AI 已关' : '词典+机翻';
+          badge.classList.remove('on');
+          hint.textContent = c
+            ? ('可用中文；提交时译成「' + c.zh + '」搜索词（词典/机翻）')
+            : '可用中文；提交时按地点推断国家并翻译';
+        }
+      }
+
+      function initCountryPicker() {
+        var input = document.getElementById('country-search');
+        var dd = document.getElementById('country-dropdown');
+        var clearBtn = document.getElementById('country-clear');
+
+        input.addEventListener('focus', function () {
+          renderCountryDropdown(filterCountries(input.value));
+        });
+        input.addEventListener('input', function () {
+          // 手动改字时视为未选定，避免旧 country_code 残留
+          if (selectedCountry && input.value !== countryLabel(selectedCountry)) {
+            selectedCountry = null;
+            document.getElementById('country_code').value = '';
+            document.getElementById('country_name').value = '';
+          }
+          renderCountryDropdown(filterCountries(input.value));
+        });
+        clearBtn.addEventListener('click', function () {
+          clearCountry();
+          input.focus();
+        });
+        document.addEventListener('click', function (e) {
+          if (!document.getElementById('country-picker').contains(e.target)) {
+            dd.classList.add('hidden');
+          }
+        });
+        document.getElementById('ai-translate-check').addEventListener('change', function () {
+          syncAITranslateHidden();
+          updateAIPreviewHint();
+        });
+        syncAITranslateHidden();
+
+        fetch('/api/v1/ai-status').then(function (r) { return r.json(); }).then(function (d) {
+          aiTranslateEnabled = !!(d && d.enabled);
+          updateAIPreviewHint();
+        }).catch(function () {
+          aiTranslateEnabled = false;
+          updateAIPreviewHint();
+        });
+      }
 
       function buildColumnsPicker() {
         var grid = document.getElementById('columns-grid');
@@ -379,8 +601,8 @@
         }
       }
 
-      // 模式选择：quick=快速(fastmode) / standard=深度 / grid=全域全量
-      let currentMode = 'grid';
+      // 模式选择：默认快速（后端 API 测试同路径）；全域全量需用户显式点选
+      let currentMode = 'quick';
       function selectMode(mode) {
         currentMode = mode;
         document.querySelectorAll('.mode-card').forEach(function (card) {
@@ -388,6 +610,17 @@
         });
         document.getElementById('fastmode').value = mode === 'quick' ? 'on' : '';
         document.getElementById('gridmode').value = mode === 'grid' ? 'on' : '';
+        // 快速：稍低缩放 + 更大半径，后端还会自动粗网格扩量
+        document.getElementById('zoom').value = mode === 'quick' ? '14' : '15';
+        document.getElementById('radius').value = mode === 'quick' ? '25000' : '15000';
+        // 深度默认冲量目标 200；快速保持 50（可手改）
+        var maxEl = document.getElementById('maxresults');
+        if (maxEl && (mode === 'standard' || mode === 'grid')) {
+          if (!maxEl.value || maxEl.value === '50') maxEl.value = '200';
+        }
+        document.getElementById('email').checked = true;
+        var emailToggle = document.getElementById('email-toggle');
+        if (emailToggle) emailToggle.classList.add('on');
         document.getElementById('grid-density-section').classList.toggle('hidden', mode !== 'grid');
         // 快速模式只出必要字段；深度/全域模式展示字段自选区
         document.getElementById('columns-section').classList.toggle('hidden', mode === 'quick');
@@ -424,8 +657,9 @@
         if (input) input.checked = el.classList.contains('on');
       }
 
-      // 提交前组装任务名称 + 自动推断语言
-      document.getElementById('search-form').addEventListener('htmx:configRequest', function () {
+      // 提交前组装任务名称 + 语言
+      // 注意：必须写入 event.detail.parameters，仅改隐藏 input 在 HTMX 1.9 里可能已晚于序列化
+      document.getElementById('search-form').addEventListener('htmx:configRequest', function (evt) {
         const keywords = document.getElementById('keywords').value.trim();
         const locations = document.getElementById('locations').value.trim();
 
@@ -440,23 +674,46 @@
         document.getElementById('name').value = name;
 
         const langInput = document.getElementById('lang');
-        if (!langInput.value) {
-          const hasChinese = /[\u4e00-\u9fa5]/.test(keywords + locations);
-          langInput.value = hasChinese ? 'zh' : 'en';
+        // 语言：已选国家 > 已有值 > 默认 en（勿因中文地名误设 zh）
+        if (selectedCountry && selectedCountry.lang) {
+          langInput.value = selectedCountry.lang;
+        } else if (!langInput.value) {
+          langInput.value = 'en';
         }
 
+        syncAITranslateHidden();
         // 组装结果字段参数
         syncColumnsHidden();
+
+        const params = evt.detail && evt.detail.parameters;
+        if (params) {
+          params['name'] = name;
+          params['lang'] = langInput.value;
+          params['country_code'] = document.getElementById('country_code').value;
+          params['country_name'] = document.getElementById('country_name').value;
+          params['ai_translate'] = document.getElementById('ai_translate').value;
+          params['columns'] = document.getElementById('columns').value;
+          params['latitude'] = document.getElementById('latitude').value;
+          params['longitude'] = document.getElementById('longitude').value;
+          params['fastmode'] = document.getElementById('fastmode').value;
+          params['gridmode'] = document.getElementById('gridmode').value;
+          // 邮箱刚需：始终提交 on（与隐藏 checkbox 状态无关）
+          params['email'] = 'on';
+          document.getElementById('email').checked = true;
+        }
       });
 
-      // 采集成功后的处理
+      // 采集提交成功：保留表单内容，刷新任务列表并自动打开进度/结果窗口
       function handleScrapeSuccess() {
-        document.getElementById('keywords').value = '';
-        document.getElementById('locations').value = '';
-        // 清空地图选点
-        if (window.clearPickMarker) window.clearPickMarker();
         setTimeout(function () { lucide.createIcons(); }, 100);
-        refreshRecords();
+        // scrape 响应会把新任务插到 #job-list 顶部，稍后打开详情弹窗（支持流式增量）
+        setTimeout(function () {
+          refreshRecords();
+          var first = document.querySelector('#job-list .record-item');
+          if (first && window.openJobView) {
+            window.openJobView(first.dataset.jobId);
+          }
+        }, 80);
       }
 
       // 记录列表刷新后的统一处理
@@ -465,8 +722,9 @@
         const emptyState = document.getElementById('empty-state');
         emptyState.classList.toggle('hidden', records.length > 0);
         lucide.createIcons();
-        // 同步地图与结果栏（由 map.js 提供）
+        // 同步地图、结果栏、右侧任务进度（由 map.js 提供）
         if (window.syncMapWithRecords) window.syncMapWithRecords();
+        if (window.syncTaskDock) window.syncTaskDock();
       }
 
       // 清空记录
@@ -500,10 +758,10 @@
         }
       });
 
-      // 构建结果字段选择器（脚本末尾执行，确保 ALL_COLUMNS 已就绪；
-      // 默认全域全量模式 -> 展示自选区）
+      // 初始化：国家选择器 + 字段勾选 + 默认快速模式
       buildColumnsPicker();
-      document.getElementById('columns-section').classList.remove('hidden');
+      initCountryPicker();
+      selectMode('quick');
     </script>
 </body>
 </html>

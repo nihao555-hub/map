@@ -134,7 +134,7 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 	// 避免退出监控在翻页中途误判任务完成。
 	const (
 		searchPageSize = 20
-		maxSearchPages = 5
+		maxSearchPages = 10 // 扩页：单点/单格尽量多拿，配合网格覆盖更大区域
 	)
 
 	rawCount := len(entries)
@@ -189,13 +189,13 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 		}
 	}
 
-	// 邮箱提取：有官网的商户派生轻量 HTTP 邮箱任务（不走浏览器）
+	// 邮箱提取：先返回全部地点供立即落盘；有官网的再派邮箱任务 upsert 补联系方式
 	if j.ExtractEmail {
-		direct := make([]*Entry, 0, len(entries))
-
 		var emailJobs []scrapemate.IJob
 
+		nDirect := 0
 		for _, e := range entries {
+			e.PromoteSocialFromMapsFields()
 			if e.IsWebsiteValidForEmail() {
 				opts := []EmailExtractJobOptions{}
 				if j.ExitMonitor != nil {
@@ -207,15 +207,15 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 
 				emailJobs = append(emailJobs, NewEmailJob(j.ID, e, opts...))
 			} else {
-				direct = append(direct, e)
+				nDirect++
 			}
 		}
 
 		if j.ExitMonitor != nil && !j.WriterManagedCompletion {
-			j.ExitMonitor.IncrPlacesCompleted(len(direct))
+			j.ExitMonitor.IncrPlacesCompleted(nDirect)
 		}
 
-		return direct, append(nextJobs, emailJobs...), nil
+		return entries, append(nextJobs, emailJobs...), nil
 	}
 
 	if j.ExitMonitor != nil && !j.WriterManagedCompletion {

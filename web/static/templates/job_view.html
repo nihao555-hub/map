@@ -5,15 +5,16 @@
             <button type="button" class="map-modal-close" aria-label="Close" onclick="closeJobMap()">&times;</button>
         </div>
         <div class="map-modal-body">
-            <div id="job-map"></div>
             <div id="job-places-list"></div>
+            <div id="job-map"></div>
         </div>
     </div>
     <script>
     (function () {
-        var places = {{ .Places }};
-        var JOB_ID = {{ .JobID }};
-        var JOB_STATUS = {{ .Status }};
+        // Places/JobID/Status 必须由服务端 JSON 编码，否则有结果时脚本语法错误导致地图不初始化
+        var places = {{ .PlacesJSON }};
+        var JOB_ID = {{ .JobIDJSON }};
+        var JOB_STATUS = {{ .StatusJSON }};
 
         var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
         var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
@@ -51,18 +52,42 @@
             return div.innerHTML;
         }
 
+        function refreshMapSize(map) {
+            if (!map) return;
+            // 弹窗刚插入 DOM 时尺寸常为 0，多次 invalidate 才能出瓦片
+            [0, 50, 150, 300, 600].forEach(function (ms) {
+                setTimeout(function () { map.invalidateSize({ pan: false }); }, ms);
+            });
+        }
+
         function createMap() {
             if (window.__jobMap) {
                 window.__jobMap.remove();
             }
 
-            var map = L.map('job-map');
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap contributors'
+            var el = document.getElementById('job-map');
+            if (!el) return null;
+
+            // 标记图标走 cdnjs（CSP 已放行）；默认 unpkg 路径会被 img-src 拦掉
+            if (L.Icon && L.Icon.Default) {
+                L.Icon.Default.imagePath = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/';
+            }
+
+            // 必须先给 center/zoom，否则弹窗布局完成前 Leaflet 不发瓦片请求
+            var map = L.map(el, {
+                zoomControl: true,
+                center: [20, 0],
+                zoom: 2
+            });
+            // 与主界面一致：全球 Carto 底图（高德海外无图；OSM 官方瓦片易被拦）
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                subdomains: 'abcd',
+                maxZoom: 20,
+                attribution: '© OpenStreetMap © CARTO'
             }).addTo(map);
 
             window.__jobMap = map;
+            refreshMapSize(map);
             return map;
         }
 
@@ -71,11 +96,14 @@
             if (place.address) {
                 parts.push(escapeHtml(place.address));
             }
-            if (place.phone) {
-                parts.push('电话：' + escapeHtml(place.phone));
+            if (place.whatsapp) {
+                parts.push('WhatsApp：' + escapeHtml(place.whatsapp));
             }
             if (place.emails) {
                 parts.push('邮箱：' + escapeHtml(place.emails));
+            }
+            if (place.phone) {
+                parts.push('电话：' + escapeHtml(place.phone));
             }
             if (place.review_rating) {
                 parts.push('评分：★ ' + escapeHtml(String(place.review_rating)));
@@ -109,13 +137,26 @@
         var streamActive = (JOB_STATUS === 'working' || JOB_STATUS === 'pending');
 
         function rowHtml(place) {
+            // 联系方式权重：WhatsApp > 邮箱 > 电话
             return '<td class="col-name">' + textCell(place.title) + '</td>' +
                 '<td class="col-addr">' + textCell(place.address) + '</td>' +
-                '<td class="col-phone">' + textCell(place.phone) + '</td>' +
+                '<td class="col-wa">' + waCell(place) + '</td>' +
                 '<td class="col-mail">' + textCell(place.emails) + '</td>' +
+                '<td class="col-phone">' + textCell(place.phone) + '</td>' +
                 '<td class="col-rating">' + (place.review_rating ? '★ ' + escapeHtml(String(place.review_rating)) : '<span class="cell-empty">—</span>') + '</td>' +
                 '<td class="col-reviews">' + (place.review_count ? escapeHtml(String(place.review_count)) : '<span class="cell-empty">—</span>') + '</td>' +
                 '<td class="col-site">' + websiteCell(place) + '</td>';
+        }
+
+        function waCell(place) {
+            var wa = place.whatsapp;
+            if (!wa) return '<span class="cell-empty">—</span>';
+            var digits = String(wa).replace(/[^\d+]/g, '');
+            var href = digits.indexOf('+') === 0 || /^\d+$/.test(digits)
+                ? 'https://wa.me/' + digits.replace(/^\+/, '')
+                : (String(wa).indexOf('http') === 0 ? wa : 'https://wa.me/' + digits);
+            return '<a href="' + encodeURI(href) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">' +
+                escapeHtml(String(wa)) + '</a>';
         }
 
         function appendPlace(place, isFirst) {
@@ -155,8 +196,9 @@
                 '<thead><tr>' +
                 '<th class="col-name">名称</th>' +
                 '<th class="col-addr">地址</th>' +
-                '<th class="col-phone">电话</th>' +
+                '<th class="col-wa">WhatsApp</th>' +
                 '<th class="col-mail">邮箱</th>' +
+                '<th class="col-phone">电话</th>' +
                 '<th class="col-rating">评分</th>' +
                 '<th class="col-reviews">评论数</th>' +
                 '<th class="col-site">网站</th>' +
@@ -233,14 +275,31 @@
         }
 
         function initJobMap() {
-            var listEl = document.getElementById('job-places-list');
+            if (!Array.isArray(places)) places = [];
 
             map = createMap();
+            if (!map) return;
             markersLayer = L.layerGroup().addTo(map);
 
             if (places.length > 0) {
                 ensureTable();
+                // 先落到首条坐标，避免长时间停在世界视图
+                var first = places[0];
+                if (first && isFinite(first.latitude) && isFinite(first.longitude)) {
+                    map.setView([first.latitude, first.longitude], 13);
+                }
                 renderBatch(places);
+                // 布局稳定后再 fit：弹窗刚插入时偶发 0 尺寸导致灰底不补瓦片
+                setTimeout(function () {
+                    refreshMapSize(map);
+                    try {
+                        if (markersLayer && markersLayer.getLayers().length) {
+                            map.fitBounds(markersLayer.getBounds(), { padding: [30, 30], maxZoom: 15 });
+                        } else if (first && isFinite(first.latitude) && isFinite(first.longitude)) {
+                            map.setView([first.latitude, first.longitude], 14);
+                        }
+                    } catch (e) {}
+                }, 120);
             } else if (streamActive) {
                 ensureTable();
                 updateTitle();
@@ -249,10 +308,12 @@
                 showEmptyState();
             }
 
-            setTimeout(function () { map.invalidateSize(); }, 0);
+            refreshMapSize(map);
 
             if (streamActive) {
-                pollTimer = setInterval(pollPlaces, 5000);
+                // 结果是流式写入 CSV 的：轮询会看到数量逐渐增加
+                pollTimer = setInterval(pollPlaces, 3000);
+                pollPlaces();
             }
         }
 

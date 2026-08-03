@@ -8,7 +8,9 @@ import (
 	"io"
 	"math"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 // ErrPlacesNotFound is returned by GetPlaces when the job's CSV output does not
@@ -28,6 +30,7 @@ type Place struct {
 	ReviewRating float64 `json:"review_rating"`
 	ReviewCount  int     `json:"review_count"`
 	Emails       string  `json:"emails"`
+	WhatsApp     string  `json:"whatsapp"`
 }
 
 // GetPlaces locates the job's CSV output and parses it into mappable places.
@@ -135,10 +138,43 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 			ReviewRating: rating,
 			ReviewCount:  reviewCount,
 			Emails:       get(row, "emails"),
+			WhatsApp:     get(row, "whatsapp"),
 		})
 	}
 
+	// 获客优先：WhatsApp > 邮箱 > 电话；同档再按评分/评论数
+	sort.SliceStable(places, func(i, j int) bool {
+		si, sj := contactScore(places[i]), contactScore(places[j])
+		if si != sj {
+			return si > sj
+		}
+		if places[i].ReviewRating != places[j].ReviewRating {
+			return places[i].ReviewRating > places[j].ReviewRating
+		}
+
+		return places[i].ReviewCount > places[j].ReviewCount
+	})
+
 	return places, nil
+}
+
+// contactScore WhatsApp > 邮箱 > 电话（印尼等市场更看即时通讯）
+func contactScore(p Place) int {
+	score := 0
+	if strings.TrimSpace(p.WhatsApp) != "" {
+		score += 1000
+	}
+	if strings.TrimSpace(p.Emails) != "" {
+		score += 100
+	}
+	if strings.TrimSpace(p.Phone) != "" {
+		score += 10
+	}
+	if strings.TrimSpace(p.Website) != "" {
+		score += 1
+	}
+
+	return score
 }
 
 // finite reports whether f is a usable, real number (not NaN or ±Inf).

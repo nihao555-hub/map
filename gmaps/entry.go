@@ -131,6 +131,13 @@ type Entry struct {
 	UserReviews         []Review     `json:"user_reviews"`
 	UserReviewsExtended []Review     `json:"user_reviews_extended"`
 	Emails              []string     `json:"emails"`
+	WhatsApp            string       `json:"whatsapp"`
+	Facebook            string       `json:"facebook"`
+	Instagram           string       `json:"instagram"`
+	LinkedIn            string       `json:"linkedin"`
+	Twitter             string       `json:"twitter"`
+	TikTok              string       `json:"tiktok"`
+	YouTube             string       `json:"youtube"`
 }
 
 // entryAlias is used inside Marshal/UnmarshalJSON to avoid infinite recursion
@@ -205,14 +212,35 @@ func (e *Entry) IsWebsiteValidForEmail() bool {
 		return false
 	}
 
+	lower := strings.ToLower(e.WebSite)
+
+	// 社媒主页本身几乎没有可抓邮箱；linktr.ee 常有真实邮箱/WA，允许抓取
 	needles := []string{
-		"facebook",
-		"instragram",
-		"twitter",
+		"facebook.com",
+		"fb.com",
+		"instagram.com",
+		"instragram", // legacy typo kept for compatibility
+		"twitter.com",
+		"x.com/",
+		"tiktok.com",
+		"youtube.com",
+		"youtu.be",
+		"linkedin.com",
+		"doordash.com",
+		"ubereats.com",
+		"grubhub.com",
+		"postmates.com",
+		"toasttab.com",
+		"square.site",
+		"opentable.com",
+		"resy.com",
+		"yelp.com",
+		"tripadvisor.",
+		"mobile-webview",
 	}
 
 	for i := range needles {
-		if strings.Contains(e.WebSite, needles[i]) {
+		if strings.Contains(lower, needles[i]) {
 			return false
 		}
 	}
@@ -270,6 +298,13 @@ func (e *Entry) CsvHeaders() []string {
 		"user_reviews",
 		"user_reviews_extended",
 		"emails",
+		"whatsapp",
+		"facebook",
+		"instagram",
+		"linkedin",
+		"twitter",
+		"tiktok",
+		"youtube",
 	}
 }
 
@@ -311,6 +346,13 @@ func (e *Entry) CsvRow() []string {
 		stringify(e.UserReviews),
 		stringify(e.UserReviewsExtended),
 		stringSliceToString(e.Emails),
+		e.WhatsApp,
+		e.Facebook,
+		e.Instagram,
+		e.LinkedIn,
+		e.Twitter,
+		e.TikTok,
+		e.YouTube,
 	}
 }
 
@@ -543,6 +585,9 @@ func EntryFromJSON(raw []byte, reviewCountOnly ...bool) (entry Entry, err error)
 			entry.UserReviews = make([]Review, 0)
 		}
 	}
+
+	// Maps 常把 Facebook/Instagram 填进 website；拆到社媒字段，避免只当「无效官网」丢掉
+	entry.PromoteSocialFromMapsFields()
 
 	return entry, nil
 }

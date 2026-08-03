@@ -16,6 +16,33 @@ func writeCSV(t *testing.T, dir, id, content string) {
 	}
 }
 
+func TestGetPlacesSortsEmailFirst(t *testing.T) {
+	dir := t.TempDir()
+	csvPath := filepath.Join(dir, "job-email.csv")
+	content := "title,address,latitude,longitude,link,category,phone,website,review_rating,review_count,emails\n" +
+		"OnlyPhone,Addr,1.0,2.0,http://a,cat,111,,4.0,10,\n" +
+		"HasEmail,Addr,1.1,2.1,http://b,cat,222,http://b.com,3.0,5,a@b.com\n" +
+		"Neither,Addr,1.2,2.2,http://c,cat,,,5.0,20,\n"
+	if err := os.WriteFile(csvPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewService(nil, dir)
+	places, err := svc.GetPlaces(context.Background(), "job-email")
+	if err != nil {
+		t.Fatalf("GetPlaces: %v", err)
+	}
+	if len(places) != 3 {
+		t.Fatalf("len=%d", len(places))
+	}
+	if places[0].Title != "HasEmail" {
+		t.Fatalf("want email-first, got %q", places[0].Title)
+	}
+	if places[1].Title != "OnlyPhone" {
+		t.Fatalf("want phone second, got %q", places[1].Title)
+	}
+}
+
 func TestGetPlacesParsesCSV(t *testing.T) {
 	dir := t.TempDir()
 	svc := NewService(nil, dir)
