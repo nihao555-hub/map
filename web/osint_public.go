@@ -656,17 +656,25 @@ func fetchDDGHTML(ctx context.Context, q string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; gmaps-intel/1.0)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		// DDG 常被风控；Brave 作为外贸检索兜底
+		return fetchBraveHTML(ctx, q)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 400<<10))
-	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("ddg status %d", resp.StatusCode)
+	body := string(raw)
+	if resp.StatusCode >= 400 || strings.Contains(body, "error-lite@duckduckgo") || !strings.Contains(body, "result__a") {
+		if alt, err2 := fetchBraveHTML(ctx, q); err2 == nil && alt != "" {
+			return alt, nil
+		}
+		if resp.StatusCode >= 400 {
+			return "", fmt.Errorf("ddg status %d", resp.StatusCode)
+		}
 	}
-	return string(raw), nil
+	return body, nil
 }
 
 func decodeDDGHref(href string) string {

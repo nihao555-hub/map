@@ -96,8 +96,9 @@ var (
 		"/about", "/about-us", "/aboutus", "/team", "/our-team", "/people",
 		"/company", "/leadership", "/management", "/staff", "/contact",
 		"/contact-us", "/contacts", "/imprint", "/impressum",
-		"/kontak", "/tentang-kami", "/profil", "/struktur", "/karir",
-		"/en/about", "/en/team", "/en/contact",
+		"/kontak", "/hubungi-kami", "/tentang-kami", "/profil", "/struktur", "/karir",
+		"/customer-service", "/customerservice", "/help", "/support", "/cs",
+		"/en/about", "/en/team", "/en/contact", "/pages/contact", "/pages/contact-us",
 	}
 	emailFindRe = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
 	phoneFindRe = regexp.MustCompile(`(?i)(?:\+|00)?[\d][\d\s\-().]{7,18}\d`)
@@ -255,7 +256,7 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 			rawBodies = append(rawBodies, string(h.body))
 			text := stripTags(string(h.body))
 			pageTexts = append(pageTexts, truncateRunes(text, 6000))
-			intel.ExtraEmails = mergeUnique(intel.ExtraEmails, filterPublicEmails(emailFindRe.FindAllString(string(h.body), -1), intel.Domain))
+			intel.ExtraEmails = mergeUnique(intel.ExtraEmails, extractEmailsFromHTML(string(h.body), intel.Domain))
 			intel.Phones = mergeUnique(intel.Phones, filterPhones(phoneFindRe.FindAllString(text, -1)))
 			for _, li := range linkedinRe.FindAllString(string(h.body), -1) {
 				if intel.Socials["linkedin"] == "" {
@@ -339,10 +340,15 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		// AI 失败不污染对外说明
 	}
 
+	// 外贸公式：Brave/@domain 公开邮箱 + MX 角色渠道 + 人名排列（公开命中）+ Maps 电话挂载
+	runContactFormulaPass(ctx, intel, place)
+
 	// 仅把「像真人邮箱」升成决策人；全球 info-* 办公室邮箱留在 ExtraEmails，不当决策人
+	intel.ExtraEmails = filterPlaceholderEmails(intel.ExtraEmails)
 	intel.ExtraEmails = prioritizeExtraEmails(place, intel.ExtraEmails)
 	intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, heuristicDecisionMakers(pageTexts, intel.ExtraEmails, place))
 	intel.DecisionMakers = dedupeDecisionMakers(intel.DecisionMakers)
+	intel.DecisionMakers = attachMapsContactsToMakers(intel.DecisionMakers, place)
 	intel.DecisionMakers = attachLinkedInSearchHints(intel.DecisionMakers, place.Title)
 	intel.DecisionMakers = sanitizeDecisionMakers(intel.DecisionMakers, place)
 	intel.DecisionMakers = pruneOfficeInboxesWhenPeopleExist(intel.DecisionMakers)
@@ -714,7 +720,8 @@ func filterPublicEmails(in []string, domain string) []string {
 			strings.Contains(e, "noreply") || strings.Contains(e, "no-reply") ||
 			strings.HasPrefix(e, "abuse@") || strings.Contains(e, "@namecheap.") ||
 			strings.Contains(e, "@godaddy.") || strings.Contains(e, "@cloudflare.") ||
-			strings.Contains(e, "@domainsbyproxy.") || strings.Contains(e, "@privacy") {
+			strings.Contains(e, "@domainsbyproxy.") || strings.Contains(e, "@privacy") ||
+			strings.Contains(e, "error-lite@duckduckgo") {
 			continue
 		}
 		if domain != "" && !strings.HasSuffix(e, "@"+domain) {
@@ -725,7 +732,7 @@ func filterPublicEmails(in []string, domain string) []string {
 		}
 		out = append(out, e)
 	}
-	return uniqueStrings(out)
+	return filterPlaceholderEmails(uniqueStrings(out))
 }
 
 func filterPhones(in []string) []string {
@@ -1634,7 +1641,7 @@ func publicFacingNote(intel *PlaceIntel) string {
 	case intel.Trade != nil && intel.Trade.TotalShipments > 0:
 		return "海关提单已锁定该公司贸易活动；建议用领英公式继续挖采购决策人。"
 	case emails > 0 || phones > 0:
-		return "暂无具名决策人，但已拿到公开邮箱/电话，可先用渠道邮箱触达。"
+		return "暂无具名决策人，但已用官网/公开检索拿到邮箱或电话，可先渠道触达。"
 	case li > 0:
 		return "已定位 LinkedIn 线索，建议先加决策人再建联。"
 	default:
