@@ -40,6 +40,34 @@ func TestTranslateBusinessTerm(t *testing.T) {
 	}
 }
 
+func TestTranslateBusinessTermFuzzyTypo(t *testing.T) {
+	// 输入法丢字：啡店 ← 咖啡店
+	got, ok := translateBusinessTerm("啡店", "en")
+	if !ok || got != "coffee shop" {
+		t.Fatalf("fuzzy 啡店 -> got (%q,%v)", got, ok)
+	}
+	// 印尼优先英文品类（更容易出官网邮箱），不再用 kedai kopi
+	got, ok = translateBusinessTerm("啡店", "id")
+	if !ok || got != "coffee shop" {
+		t.Fatalf("fuzzy 啡店 id -> got (%q,%v)", got, ok)
+	}
+	got, ok = translateBusinessTerm("咖啡店", "id")
+	if !ok || got != "coffee shop" {
+		t.Fatalf("咖啡店 id prefer en -> got (%q,%v)", got, ok)
+	}
+}
+
+func TestFuzzyPlaceLexicon(t *testing.T) {
+	got, ok := fuzzyPlaceLexicon("约曼哈顿")
+	if !ok || got != "Manhattan, New York" {
+		t.Fatalf("got (%q,%v)", got, ok)
+	}
+	got, ok = fuzzyPlaceLexicon("雅加达")
+	if !ok || got != "Jakarta" {
+		t.Fatalf("jakarta got (%q,%v)", got, ok)
+	}
+}
+
 func TestLocalizeSearchQueryUsesLexicon(t *testing.T) {
 	kws, loc, did := localizeSearchQuery(context.Background(), []string{"咖啡店"}, "纽约曼哈顿", "en")
 	if !did {

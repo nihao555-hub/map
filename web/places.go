@@ -8,7 +8,9 @@ import (
 	"io"
 	"math"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 // ErrPlacesNotFound is returned by GetPlaces when the job's CSV output does not
@@ -138,7 +140,36 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 		})
 	}
 
+	// 获客优先：有邮箱 > 仅有电话 > 都没有；同档再按评分/评论数
+	sort.SliceStable(places, func(i, j int) bool {
+		si, sj := contactScore(places[i]), contactScore(places[j])
+		if si != sj {
+			return si > sj
+		}
+		if places[i].ReviewRating != places[j].ReviewRating {
+			return places[i].ReviewRating > places[j].ReviewRating
+		}
+
+		return places[i].ReviewCount > places[j].ReviewCount
+	})
+
 	return places, nil
+}
+
+// contactScore 邮箱权重大于电话（印尼等市场获客更看邮箱）
+func contactScore(p Place) int {
+	score := 0
+	if strings.TrimSpace(p.Emails) != "" {
+		score += 100
+	}
+	if strings.TrimSpace(p.Phone) != "" {
+		score += 10
+	}
+	if strings.TrimSpace(p.Website) != "" {
+		score += 1
+	}
+
+	return score
 }
 
 // finite reports whether f is a usable, real number (not NaN or ±Inf).

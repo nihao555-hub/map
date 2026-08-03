@@ -132,6 +132,12 @@ var zhPlaceLexicon = map[string]string{
 	"新加坡":   "Singapore",
 	"吉隆坡":   "Kuala Lumpur",
 	"雅加达":   "Jakarta",
+	"巴厘岛":   "Bali",
+	"峇里岛":   "Bali",
+	"泗水":    "Surabaya",
+	"万隆":    "Bandung",
+	"棉兰":    "Medan",
+	"日惹":    "Yogyakarta",
 	"河内":    "Hanoi",
 	"胡志明市":  "Ho Chi Minh City",
 	"迪拜":    "Dubai",
@@ -164,7 +170,10 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 		if loc, ok := zhPlaceLexicon[searchLocation]; ok {
 			searchLocation = loc
 			translated = true
-		} else if name, err := translateText(ctx, searchLocation, "zh", "en"); err == nil && name != "" {
+		} else if loc, ok := fuzzyPlaceLexicon(searchLocation); ok {
+			searchLocation = loc
+			translated = true
+		} else if name, err := translateText(ctx, searchLocation, "zh", "en"); err == nil && name != "" && !containsChinese(name) {
 			searchLocation = name
 			translated = true
 		}
@@ -184,7 +193,16 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 			} else if t, err := translateText(ctx, k, "zh", targetLang); err == nil && t != "" {
 				searchK = normalizeMT(t)
 				translated = true
+			} else if t, err := translateText(ctx, k, "zh", "en"); err == nil && t != "" {
+				// 目标语翻译失败时至少落到英文，避免把残缺中文直接丢给 Google
+				searchK = normalizeMT(t)
+				translated = true
 			}
+		}
+
+		// 仍含汉字则不要拼进海外查询（质量会直接崩）
+		if containsChinese(searchK) && targetLang != "zh" {
+			continue
 		}
 
 		if searchLocation != "" {
@@ -194,7 +212,48 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 		keywords = append(keywords, searchK)
 	}
 
+	// 全部被跳过时回退：用英文机翻拼一条，避免任务直接失败
+	if len(keywords) == 0 && len(rawKeywords) > 0 && targetLang != "zh" {
+		k := strings.TrimSpace(rawKeywords[0])
+		if t, err := translateText(ctx, k, "zh", "en"); err == nil && t != "" && !containsChinese(t) {
+			k = normalizeMT(t)
+		}
+		if searchLocation != "" {
+			k = k + " in " + searchLocation
+		}
+		keywords = append(keywords, k)
+		translated = true
+	}
+
 	return keywords, searchLocation, translated
+}
+
+// fuzzyPlaceLexicon 处理输入法丢字（「约曼哈顿」←「纽约曼哈顿」）
+func fuzzyPlaceLexicon(term string) (string, bool) {
+	bestKey := ""
+	bestScore := 0
+
+	for key, en := range zhPlaceLexicon {
+		if key == term {
+			return en, true
+		}
+		if strings.Contains(key, term) || strings.Contains(term, key) {
+			score := len([]rune(key))
+			if strings.Contains(key, term) {
+				score += 5
+			}
+			if score > bestScore {
+				bestScore = score
+				bestKey = key
+			}
+		}
+	}
+
+	if bestKey == "" {
+		return "", false
+	}
+
+	return zhPlaceLexicon[bestKey], true
 }
 
 func translateBusinessTerm(term, targetLang string) (string, bool) {
@@ -203,7 +262,16 @@ func translateBusinessTerm(term, targetLang string) (string, bool) {
 		return "", false
 	}
 
-	if byLang, ok := zhBusinessLexicon[term]; ok {
+	pick := func(byLang map[string]string) (string, bool) {
+		// 印尼/泰国/越南等：英文品类更容易命中带官网、带邮箱的商家（获客更看邮箱）
+		preferEnglishSearch := map[string]bool{
+			"id": true, "th": true, "vi": true, "ms": true, "tl": true,
+		}
+		if preferEnglishSearch[targetLang] {
+			if v, ok := byLang["en"]; ok && v != "" {
+				return v, true
+			}
+		}
 		if v, ok := byLang[targetLang]; ok && v != "" {
 			return v, true
 		}
@@ -213,6 +281,12 @@ func translateBusinessTerm(term, targetLang string) (string, bool) {
 				return v, true
 			}
 		}
+
+		return "", false
+	}
+
+	if byLang, ok := zhBusinessLexicon[term]; ok {
+		return pick(byLang)
 	}
 
 	// 尝试去掉常见后缀再匹配：店/馆/厅
@@ -220,17 +294,49 @@ func translateBusinessTerm(term, targetLang string) (string, bool) {
 		if strings.HasSuffix(term, suffix) && len([]rune(term)) > 1 {
 			base := strings.TrimSuffix(term, suffix)
 			if byLang, ok := zhBusinessLexicon[base]; ok {
-				if v, ok := byLang[targetLang]; ok && v != "" {
-					return v, true
-				}
-				if v, ok := byLang["en"]; ok && v != "" {
+				if v, ok := pick(byLang); ok {
 					return v, true
 				}
 			}
 		}
 	}
 
+	// 模糊匹配：前端/输入法偶发丢字（「啡店」←「咖啡店」），用最长包含关系回落词典
+	bestKey := ""
+	bestLen := 0
+	termRunes := len([]rune(term))
+
+	for key := range zhBusinessLexicon {
+		if key == term {
+			continue
+		}
+		if strings.Contains(key, term) || strings.Contains(term, key) {
+			n := len([]rune(key))
+			// 更偏好与输入长度接近且更长的词条
+			score := n
+			if strings.Contains(key, term) {
+				score += 10 - absInt(n-termRunes)
+			}
+			if score > bestLen {
+				bestLen = score
+				bestKey = key
+			}
+		}
+	}
+
+	if bestKey != "" {
+		return pick(zhBusinessLexicon[bestKey])
+	}
+
 	return "", false
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+
+	return v
 }
 
 func normalizeMT(s string) string {

@@ -260,8 +260,8 @@
   function placePopup(p) {
     var parts = ['<strong>' + escapeHtml(p.title || '未命名商家') + '</strong>'];
     if (p.address) parts.push(escapeHtml(p.address));
-    if (p.phone) parts.push('电话：' + escapeHtml(p.phone));
     if (p.emails) parts.push('邮箱：' + escapeHtml(p.emails));
+    if (p.phone) parts.push('电话：' + escapeHtml(p.phone));
     if (p.review_rating) parts.push('评分：★ ' + escapeHtml(String(p.review_rating)));
     return parts.join('<br>');
   }

@@ -97,13 +97,13 @@
             <div class="field-group">
               <label class="field-label">模式选择</label>
               <div class="mode-cards">
-                <div class="mode-card" data-mode="quick" onclick="selectMode('quick')">
+                <div class="mode-card active" data-mode="quick" onclick="selectMode('quick')">
                   <div class="mode-head">
                     <i data-lucide="zap" class="w-4 h-4 mode-icon"></i>
                     <span class="mode-label">快速模式</span>
                     <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
                   </div>
-                  <p class="mode-desc">极速通道，1分钟约25家<br/>名称/地址/电话/网站/评分</p>
+                  <p class="mode-desc">极速通道，自动扩量+抓邮箱<br/>名称/地址/邮箱/电话/网站</p>
                 </div>
                 <div class="mode-card" data-mode="standard" onclick="selectMode('standard')">
                   <div class="mode-head">
@@ -162,7 +162,7 @@
                   <!-- 全域全量模式 -->
                   <div>
                     <label class="field-label-sm">全域全量模式（网格搜索，突破数量上限）</label>
-                    <div class="mode-card mode-card-sm active" data-mode="grid" onclick="selectMode('grid')">
+                    <div class="mode-card mode-card-sm" data-mode="grid" onclick="selectMode('grid')">
                       <div class="mode-head">
                         <i data-lucide="grid-3x3" class="w-4 h-4 mode-icon"></i>
                         <span class="mode-label">全域全量</span>
@@ -226,8 +226,8 @@
                   <input type="hidden" id="zoom" name="zoom" value="14">
                   <input type="hidden" id="latitude" name="latitude" value="0">
                   <input type="hidden" id="longitude" name="longitude" value="0">
-                  <input type="hidden" id="fastmode" name="fastmode" value="">
-                  <input type="hidden" id="gridmode" name="gridmode" value="on">
+                  <input type="hidden" id="fastmode" name="fastmode" value="on">
+                  <input type="hidden" id="gridmode" name="gridmode" value="">
                   <input type="hidden" id="gridbbox" name="gridbbox" value="">
                   <input type="hidden" id="radius" name="radius" value="25000">
                   <input type="hidden" id="columns" name="columns" value="">
@@ -393,8 +393,8 @@
         }
       }
 
-      // 模式选择：quick=快速(fastmode) / standard=深度 / grid=全域全量
-      let currentMode = 'grid';
+      // 模式选择：默认快速（后端 API 测试同路径）；全域全量需用户显式点选
+      let currentMode = 'quick';
       function selectMode(mode) {
         currentMode = mode;
         document.querySelectorAll('.mode-card').forEach(function (card) {
