@@ -425,6 +425,9 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	countryCode := strings.ToLower(strings.TrimSpace(r.Form.Get("country_code")))
 	countryName := strings.TrimSpace(r.Form.Get("country_name"))
 	useAI := r.Form.Get("ai_translate") == "on" || r.Form.Get("ai_translate") == "true"
+	newJob.Data.CountryCode = countryCode
+	newJob.Data.CountryName = countryName
+	newJob.Data.RawKeywords = append([]string(nil), rawKeywords...)
 	if countryCode != "" {
 		if hl := langForCountryCode(countryCode); hl != "" {
 			newJob.Data.Lang = hl
@@ -505,6 +508,13 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		newJob.Data.Locations = locationsStr
 	}
 
+	// 快速模式必须有真实地理锚点，否则会落到 (0,0) 而不是用户选的国家/城市
+	if newJob.Data.FastMode && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+		http.Error(w, "快速模式需要有效地点：请选择国家并在地图上选点，或等待地点解析完成后再提交", http.StatusUnprocessableEntity)
+
+		return
+	}
+
 	// 提交前校验代理：格式非法、缺用户名密码认证的立即拒绝，
 	// 不要等任务跑到启动 auth proxy 时才失败
 	proxies, err := validateProxyLines(r.Form.Get("proxies"))
@@ -522,6 +532,12 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	log.Printf("任务意图 name=%q raw=%v search=%v country=%s(%s) lang=%s loc=%q geo=%s,%s fast=%v grid=%v",
+		newJob.Name, newJob.Data.RawKeywords, newJob.Data.Keywords,
+		newJob.Data.CountryName, newJob.Data.CountryCode, newJob.Data.Lang,
+		newJob.Data.Locations, newJob.Data.Lat, newJob.Data.Lon,
+		newJob.Data.FastMode, newJob.Data.GridMode)
 
 	err = s.svc.Create(r.Context(), &newJob)
 	if err != nil {

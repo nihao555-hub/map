@@ -3,10 +3,19 @@ services:
     image: teddysun/xray:latest
     volumes:
       - ./deploy/xray/config.json:/etc/xray/config.json:ro
+    # 1080=主 SOCKS，1081=HTTP 调试，1180+ = 多节点 SOCKS（供 scrapemate 轮询）
     expose:
       - "1080"
       - "1081"
-    mem_limit: 256m
+      - "1180"
+      - "1181"
+      - "1182"
+      - "1183"
+      - "1184"
+      - "1185"
+      - "1186"
+      - "1187"
+    mem_limit: 512m
     restart: unless-stopped
 
   scraper:

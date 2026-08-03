@@ -82,6 +82,10 @@ type JobData struct {
 	Columns string `json:"columns"`
 	// 目标客户数量上限：0 = 不限（抓到全域全量为止）
 	MaxResults int `json:"max_results"`
+	// 用户意图留痕：前端选的国家/原始关键词，方便核对「找什么/在哪/哪个国家」
+	CountryCode  string   `json:"country_code,omitempty"`
+	CountryName  string   `json:"country_name,omitempty"`
+	RawKeywords  []string `json:"raw_keywords,omitempty"`
 }
 
 // GeoAnchor 返回用于展示的锚定坐标（如 "13.756331, 100.501765"），
