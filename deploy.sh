@@ -54,7 +54,14 @@ GMS_WEB_BROWSER_POOL_SIZE=${GMS_WEB_BROWSER_POOL_SIZE}
 GMS_WEB_PAGES_PER_BROWSER=${GMS_WEB_PAGES_PER_BROWSER}
 DISABLE_TELEMETRY=1
 GMS_PROXIES=${PROXY_LIST}
+GRSAI_API_KEY=${GRSAI_API_KEY:-}
+GRSAI_API_HOST=${GRSAI_API_HOST:-https://grsaiapi.com}
+GRSAI_MODEL=${GRSAI_MODEL:-gemini-3.1-flash-lite}
 EOF
+
+if [ -z "${GRSAI_API_KEY:-}" ]; then
+  echo "WARNING: GRSAI_API_KEY empty — 中文 AI 翻译不可用（/api/v1/ai-status enabled=false）" >&2
+fi
 
 echo "[3/4] Build and start (docker compose)..."
 sudo -E docker compose --env-file .env \

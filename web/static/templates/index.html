@@ -73,9 +73,9 @@
               <label class="ai-toggle-row" id="ai-toggle-row">
                 <input type="checkbox" id="ai-translate-check" checked />
                 <span>AI 译成目标国搜索词</span>
-                <span class="ai-badge" id="ai-badge">词典备用</span>
+                <span class="ai-badge" id="ai-badge">检测中…</span>
               </label>
-              <p class="field-hint" id="country-hint">先选国家，再用中文填地点/关键词；未配置 AI 时走词典+机翻</p>
+              <p class="field-hint" id="country-hint">先选国家；中文关键词由 AI 译成当地可搜词（需配置 GRSAI_API_KEY）</p>
             </div>
 
             <!-- 在哪里 -->
@@ -510,14 +510,14 @@
           badge.textContent = 'AI 已就绪';
           badge.classList.add('on');
           hint.textContent = c
-            ? ('提交时 AI 将中文译成「' + c.zh + '」本地搜索词（词典优先）')
+            ? ('提交时由 AI 译成「' + c.zh + '」本地 Google Maps 搜索词')
             : '请先选目标国家；AI 会把中文译成当地搜索词';
         } else {
-          badge.textContent = aiTranslateEnabled ? 'AI 已关' : '词典+机翻';
+          badge.textContent = aiTranslateEnabled ? 'AI 已关' : '未配置 AI';
           badge.classList.remove('on');
-          hint.textContent = c
-            ? ('可用中文；提交时译成「' + c.zh + '」搜索词（词典/机翻）')
-            : '可用中文；提交时按地点推断国家并翻译';
+          hint.textContent = aiTranslateEnabled
+            ? (c ? ('已关 AI；将用词典/机翻译成「' + c.zh + '」搜索词') : '已关 AI；提交时按地点推断国家并机翻')
+            : '服务端未配置 GRSAI_API_KEY；请用英文关键词，或配置密钥后刷新';
         }
       }
 

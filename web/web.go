@@ -452,6 +452,21 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 勾了 AI、关键词含中文，但服务端未配密钥：直接拒绝，避免中文进 Maps 只出 1～2 家
+	needAI := useAI && newJob.Data.Lang != "zh"
+	hasChineseKW := false
+	for _, k := range rawKeywords {
+		if containsChinese(k) {
+			hasChineseKW = true
+			break
+		}
+	}
+	if needAI && hasChineseKW && !AITranslateEnabled() {
+		http.Error(w, "已勾选 AI 翻译，但服务端未配置 GRSAI_API_KEY，无法把中文品类译成可搜词。请在 .env 配置密钥后重启，或改用英文关键词", http.StatusServiceUnavailable)
+
+		return
+	}
+
 	// 地理锚定 + 海外中文查询本地化：
 	// 1) 锚定经纬度 / 按国家校正 hl
 	// 2) 把「咖啡 in 纽约」译成「coffee in New York」再交给 Google Maps

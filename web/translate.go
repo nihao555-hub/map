@@ -173,14 +173,15 @@ var zhPlaceLexicon = map[string]string{
 
 var camelSplitRE = regexp.MustCompile(`([a-z])([A-Z])`)
 
-// localizeOpts 控制是否走 AI 翻译（词典未命中时）
+// localizeOpts 控制是否走 AI 翻译
 type localizeOpts struct {
 	CountryName string // 目标国家英文/中文名，给 AI 提示用
 	UseAI       bool   // 用户勾选且服务端已配置 GRSAI_API_KEY
 }
 
 // localizeSearchQuery 把中文「找什么 / 在哪里」转成目标国可搜的查询。
-// 优先级：业务词典 → AI（可选）→ MyMemory → 英文回退。
+// 优先级：AI（勾选且已配置）→ 业务词典 → MyMemory。
+// 海外任务绝不以汉字进 Google Maps。
 // 返回：用于 Google Maps 的关键词列表、搜索用地名、是否发生了翻译。
 func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations string, targetLang string, opts ...localizeOpts) (keywords []string, searchLocation string, translated bool) {
 	targetLang = strings.ToLower(strings.TrimSpace(targetLang))
@@ -196,15 +197,19 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 
 	searchLocation = strings.TrimSpace(locations)
 	if searchLocation != "" && containsChinese(searchLocation) && targetLang != "zh" {
-		if loc, ok := zhPlaceLexicon[searchLocation]; ok {
-			searchLocation = loc
-			translated = true
-		} else if loc, ok := fuzzyPlaceLexicon(searchLocation); ok {
-			searchLocation = loc
-			translated = true
-		} else if useAI {
+		// 地名：AI 优先，再用词典/机翻落到英文（Maps 对英文地名最稳）
+		if useAI {
 			if name, err := AITranslateKeyword(ctx, searchLocation, opt.CountryName, "en"); err == nil && name != "" {
 				searchLocation = name
+				translated = true
+			}
+		}
+		if containsChinese(searchLocation) {
+			if loc, ok := zhPlaceLexicon[searchLocation]; ok {
+				searchLocation = loc
+				translated = true
+			} else if loc, ok := fuzzyPlaceLexicon(searchLocation); ok {
+				searchLocation = loc
 				translated = true
 			}
 		}
@@ -224,21 +229,21 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 
 		searchK := k
 		if containsChinese(k) && targetLang != "zh" {
-			if t, ok := translateBusinessTerm(k, targetLang); ok {
-				searchK = t
-				translated = true
-			} else if useAI {
+			// 品类：勾选 AI 时只信 AI，不再抢词典（避免「采购商」等未收录词被机翻/漏译）
+			if useAI {
 				if t, err := AITranslateKeyword(ctx, k, opt.CountryName, targetLang); err == nil && t != "" {
 					searchK = t
 					translated = true
 				}
 			}
 			if containsChinese(searchK) {
-				if t, err := translateText(ctx, k, "zh", targetLang); err == nil && t != "" {
-					searchK = normalizeMT(t)
+				if t, ok := translateBusinessTerm(k, targetLang); ok {
+					searchK = t
 					translated = true
-				} else if t, err := translateText(ctx, k, "zh", "en"); err == nil && t != "" {
-					// 目标语翻译失败时至少落到英文，避免把残缺中文直接丢给 Google
+				}
+			}
+			if containsChinese(searchK) {
+				if t, err := translateText(ctx, k, "zh", "en"); err == nil && t != "" && !containsChinese(t) {
 					searchK = normalizeMT(t)
 					translated = true
 				}
@@ -257,14 +262,21 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 		keywords = append(keywords, searchK)
 	}
 
-	// 全部被跳过时回退：英文机翻 / 词典英文；仍含汉字则丢弃（绝不把中文丢给海外 Maps）
+	// 全部被跳过：再试一次 AI（若开启）/ 词典英文；仍含汉字则丢弃
 	if len(keywords) == 0 && len(rawKeywords) > 0 && targetLang != "zh" {
 		k := strings.TrimSpace(rawKeywords[0])
 		fallback := ""
-		if t, err := translateText(ctx, k, "zh", "en"); err == nil && t != "" && !containsChinese(t) {
-			fallback = normalizeMT(t)
-		} else if t, ok := translateBusinessTerm(k, "en"); ok {
-			fallback = t
+		if useAI {
+			if t, err := AITranslateKeyword(ctx, k, opt.CountryName, targetLang); err == nil && t != "" && !containsChinese(t) {
+				fallback = t
+			}
+		}
+		if fallback == "" {
+			if t, ok := translateBusinessTerm(k, "en"); ok {
+				fallback = t
+			} else if t, err := translateText(ctx, k, "zh", "en"); err == nil && t != "" && !containsChinese(t) {
+				fallback = normalizeMT(t)
+			}
 		}
 		if fallback != "" && !containsChinese(fallback) {
 			if searchLocation != "" {
@@ -273,7 +285,6 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 			keywords = append(keywords, fallback)
 			translated = true
 		}
-		// 仍译不出：返回空列表，由调用方报错，避免「采购商 in Jakarta」只命中 1～2 家杂店
 	}
 
 	return keywords, searchLocation, translated

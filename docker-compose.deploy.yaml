@@ -26,6 +26,9 @@ services:
       GMS_WEB_BROWSER_POOL_SIZE: "${GMS_WEB_BROWSER_POOL_SIZE:-4}"
       GMS_WEB_PAGES_PER_BROWSER: "${GMS_WEB_PAGES_PER_BROWSER:-4}"
       DISABLE_TELEMETRY: "${DISABLE_TELEMETRY:-1}"
+      GRSAI_API_KEY: "${GRSAI_API_KEY:-}"
+      GRSAI_API_HOST: "${GRSAI_API_HOST:-https://grsaiapi.com}"
+      GRSAI_MODEL: "${GRSAI_MODEL:-gemini-3.1-flash-lite}"
     volumes:
       - scraper-data:/data
     expose:

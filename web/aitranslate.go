@@ -83,8 +83,10 @@ func AITranslateKeyword(ctx context.Context, text, countryName, langCode string)
 		countryName = langCode
 	}
 
-	system := "You translate Chinese business search keywords into the local language " +
-		"people use on Google Maps in the target country. " +
+	system := "You translate Chinese business/lead-gen search keywords into Google Maps search terms " +
+		"for the target country. Prefer short category phrases people actually type on Maps " +
+		"(e.g. importer, wholesaler, cafe, nail salon). For Southeast Asia (Indonesia, Thailand, " +
+		"Vietnam, Malaysia, Philippines) prefer English category words when they yield more Maps hits. " +
 		"Reply with ONLY the translated keyword phrase, no quotes, no explanation."
 	user := fmt.Sprintf("Target country: %s (lang=%s).\nTranslate this keyword for Google Maps search:\n%s",
 		countryName, langCode, text)

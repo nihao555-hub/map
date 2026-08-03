@@ -67,6 +67,29 @@ func TestLocalizeSearchQueryBuyerNeverShipsChinese(t *testing.T) {
 	}
 }
 
+func TestLocalizeSearchQueryAIPreferredOverLexicon(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"importir"}}]}`)
+	}))
+	defer srv.Close()
+
+	t.Setenv("GRSAI_API_KEY", "test-key")
+	t.Setenv("GRSAI_API_HOST", srv.URL)
+	t.Setenv("GRSAI_MODEL", "gemini-3.1-flash-lite")
+
+	kws, _, did := localizeSearchQuery(context.Background(), []string{"采购商"}, "Jakarta", "id", localizeOpts{
+		CountryName: "Indonesia",
+		UseAI:       true,
+	})
+	if !did {
+		t.Fatal("expected AI translation")
+	}
+	if len(kws) != 1 || kws[0] != "importir in Jakarta" {
+		t.Fatalf("AI should win over lexicon importer; got %v", kws)
+	}
+}
+
 func TestTranslateBusinessTermFuzzyTypo(t *testing.T) {
 	// 输入法丢字：啡店 ← 咖啡店
 	got, ok := translateBusinessTerm("啡店", "en")
