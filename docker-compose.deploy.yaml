@@ -1,0 +1,47 @@
+services:
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+      args:
+        GOPROXY: "${GOPROXY:-https://proxy.golang.org,direct}"
+        PLAYWRIGHT_DOWNLOAD_HOST: "${PLAYWRIGHT_DOWNLOAD_HOST:-}"
+        APT_MIRROR: "${APT_MIRROR:-}"
+    command:
+      - "-web"
+      - "-addr"
+      - ":8080"
+      - "-data-folder"
+      - "/data"
+      - "-c"
+      - "${GMS_WEB_CONCURRENCY:-16}"
+      - "-browser-pool-size"
+      - "${GMS_WEB_BROWSER_POOL_SIZE:-4}"
+      - "-pages-per-browser"
+      - "${GMS_WEB_PAGES_PER_BROWSER:-4}"
+      - "-proxies"
+      - "${GMS_PROXIES:-}"
+    environment:
+      GMS_WEB_CONCURRENCY: "${GMS_WEB_CONCURRENCY:-16}"
+      GMS_WEB_BROWSER_POOL_SIZE: "${GMS_WEB_BROWSER_POOL_SIZE:-4}"
+      GMS_WEB_PAGES_PER_BROWSER: "${GMS_WEB_PAGES_PER_BROWSER:-4}"
+      DISABLE_TELEMETRY: "${DISABLE_TELEMETRY:-1}"
+    volumes:
+      - scraper-data:/data
+    expose:
+      - "8080"
+    mem_limit: 2.5g
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - scraper
+    ports:
+      - "8080:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+
+volumes:
+  scraper-data:

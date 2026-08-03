@@ -265,6 +265,79 @@ svg.lucide { flex-shrink: 0; }
   margin: 6px 0 0;
 }
 
+/* 目标国家选择器 */
+.country-picker { position: relative; }
+
+.country-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-ctrl);
+  box-shadow: var(--shadow-float);
+  z-index: 50;
+}
+
+.country-option {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.country-option:hover,
+.country-option:focus {
+  background: var(--bg-light-blue);
+  outline: none;
+}
+
+.country-zh { font-weight: 500; }
+.country-en { color: var(--text-aux); font-size: 12px; }
+.country-empty {
+  padding: 12px;
+  color: var(--text-aux);
+  font-size: 12px;
+  text-align: center;
+}
+
+.ai-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-toggle-row input { margin: 0; accent-color: var(--brand-primary); }
+
+.ai-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-aux);
+  background: var(--bg-page);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.ai-badge.on {
+  color: #0f766e;
+  background: #ecfdf5;
+}
+
 /* 热门搜索 */
 .hot-search {
   display: flex;
@@ -681,13 +754,143 @@ svg.lucide { flex-shrink: 0; }
 #research-btn i { color: var(--text-aux); }
 #research-btn:hover i { color: var(--brand-primary); }
 
-#heatmap-card { top: 16px; right: 16px; cursor: default; }
+#heatmap-card { top: 16px; right: 292px; cursor: default; }
 .flame-icon { color: var(--brand-warning); }
+
+/* 右侧任务进度面板 */
+#task-dock {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 120px;
+  width: 260px;
+  z-index: 520;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 16px;
+  box-shadow: var(--shadow-float);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.task-dock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.task-dock-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.task-dock-hint {
+  font-size: 11px;
+  color: var(--text-aux);
+}
+
+.task-dock-list {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-dock-empty {
+  margin: 18px 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-aux);
+  text-align: center;
+}
+
+.task-dock-item {
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.task-dock-item:hover {
+  border-color: rgba(22, 119, 255, 0.35);
+}
+
+.task-dock-item.active {
+  border-color: rgba(22, 119, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.08);
+}
+
+.task-dock-item-top,
+.task-dock-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-dock-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-dock-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #F3F4F6;
+  color: var(--text-secondary);
+}
+
+.task-dock-item.status-working .task-dock-badge,
+.task-dock-item.status-pending .task-dock-badge {
+  background: rgba(22, 119, 255, 0.12);
+  color: var(--brand-primary);
+}
+
+.task-dock-item.status-ok .task-dock-badge {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.task-dock-item.status-failed .task-dock-badge {
+  background: rgba(239, 68, 68, 0.12);
+  color: #DC2626;
+}
+
+.task-dock-item-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-aux);
+}
+
+.task-dock-count {
+  color: var(--brand-primary);
+  font-weight: 500;
+}
 
 /* 右下地图控制器 */
 #map-ctrl {
   position: absolute;
-  right: 16px;
+  right: 292px;
   bottom: 120px;
   z-index: 500;
   display: flex;
@@ -888,17 +1091,40 @@ svg.lucide { flex-shrink: 0; }
 
 .map-modal-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  min-height: 420px;
+  /* 左表右图：右侧地图需要明确宽高，否则 Leaflet 出不了瓦片 */
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 1fr);
+  min-height: 460px;
+  height: min(70vh, 640px);
   overflow: hidden;
 }
 
-#job-map { min-height: 420px; }
+#job-map {
+  width: 100%;
+  height: 100%;
+  min-height: 460px;
+  background: #e8eef5;
+  z-index: 1;
+}
 
 #job-places-list {
   overflow-y: auto;
-  border-left: 1px solid var(--border-light);
+  border-right: 1px solid var(--border-light);
   padding: 0;
+  min-height: 0;
+}
+
+.places-table .col-wa { min-width: 110px; word-break: break-all; }
+.places-table .col-wa a { color: #128c7e; text-decoration: none; }
+.places-table .col-wa a:hover { text-decoration: underline; }
+
+@media (max-width: 800px) {
+  .map-modal-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 40vh) minmax(240px, 1fr);
+    height: min(85vh, 720px);
+  }
+  #job-map { min-height: 220px; order: -1; }
+  #job-places-list { border-right: none; border-top: 1px solid var(--border-light); }
 }
 
 .place-item {
@@ -972,13 +1198,23 @@ svg.lucide { flex-shrink: 0; }
 .places-table tbody tr.row-active { background: var(--bg-light-blue); box-shadow: inset 3px 0 0 var(--brand-primary); }
 
 .places-table .col-name { font-weight: 500; min-width: 140px; }
-.places-table .col-addr { color: var(--text-aux); min-width: 180px; }
+.places-table .col-addr { color: var(--text-aux); min-width: 180px; max-width: 280px; }
 .places-table .col-phone { white-space: nowrap; }
 .places-table .col-mail { color: var(--text-secondary); min-width: 150px; word-break: break-all; }
 .places-table .col-rating { color: var(--brand-warning); white-space: nowrap; }
 .places-table .col-reviews { text-align: right; white-space: nowrap; }
 .places-table .col-site a { color: var(--brand-primary); text-decoration: none; }
 .places-table .col-site a:hover { text-decoration: underline; }
+.places-table .col-social a { color: var(--brand-primary); text-decoration: none; word-break: break-all; }
+.places-table .col-social { min-width: 120px; max-width: 200px; }
+.places-table .col-json { min-width: 140px; max-width: 220px; color: var(--text-aux); word-break: break-word; }
+.places-table .col-desc { min-width: 160px; max-width: 260px; }
+.places-table .col-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; }
+.places-table .col-geo { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.places-table .col-cat,
+.places-table .col-status,
+.places-table .col-price { white-space: nowrap; }
+.places-table-wide { width: max-content; min-width: 100%; }
 
 .places-table .cell-empty { color: #c0c6d2; }
 
@@ -1009,6 +1245,23 @@ svg.lucide { flex-shrink: 0; }
   }
 
   #map-area { flex: 1; min-height: 45vh; }
+
+  #task-dock {
+    top: auto;
+    right: 12px;
+    left: 12px;
+    bottom: 88px;
+    width: auto;
+    max-height: 38%;
+  }
+
+  #heatmap-card,
+  #map-ctrl {
+    right: 12px;
+  }
+
+  #heatmap-card { top: 12px; }
+  #map-ctrl { bottom: auto; top: 64px; }
 
   #result-bar {
     min-width: 0;

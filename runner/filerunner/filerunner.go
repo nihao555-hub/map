@@ -245,10 +245,15 @@ func (r *fileRunner) setApp() error {
 
 	opts = runner.AppendBrowserCapacityOptions(opts, r.cfg)
 
+	// Match webrunner defaults: more pages per browser when unset.
+	if !r.cfg.FastMode && r.cfg.MaxPagesPerBrowser <= 1 && r.cfg.BrowserPoolSize <= 0 {
+		opts = append(opts, scrapemateapp.WithMaxPagesPerBrowser(4))
+	}
+
 	if !r.cfg.DisablePageReuse {
 		opts = append(opts,
-			scrapemateapp.WithPageReuseLimit(2),
-			scrapemateapp.WithBrowserReuseLimit(200),
+			scrapemateapp.WithPageReuseLimit(20),
+			scrapemateapp.WithBrowserReuseLimit(1000),
 		)
 	}
 

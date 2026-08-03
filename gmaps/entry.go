@@ -131,6 +131,15 @@ type Entry struct {
 	UserReviews         []Review     `json:"user_reviews"`
 	UserReviewsExtended []Review     `json:"user_reviews_extended"`
 	Emails              []string     `json:"emails"`
+	WhatsApp            string       `json:"whatsapp"`
+	Facebook            string       `json:"facebook"`
+	Instagram           string       `json:"instagram"`
+	LinkedIn            string       `json:"linkedin"`
+	Twitter             string       `json:"twitter"`
+	TikTok              string       `json:"tiktok"`
+	YouTube             string       `json:"youtube"`
+	Telegram            string       `json:"telegram"`
+	Pinterest           string       `json:"pinterest"`
 }
 
 // entryAlias is used inside Marshal/UnmarshalJSON to avoid infinite recursion
@@ -205,19 +214,88 @@ func (e *Entry) IsWebsiteValidForEmail() bool {
 		return false
 	}
 
+	lower := strings.ToLower(e.WebSite)
+
+	// link-in-bio / 聚合页常有真实邮箱与 WhatsApp，允许抓取
+	allowHosts := []string{
+		"linktr.ee", "linktree.com", "beacons.ai", "bio.link", "carrd.co",
+		"lnk.bio", "tap.bio", "withkoji.com", "solo.to", "campsite.bio",
+	}
+	for _, h := range allowHosts {
+		if strings.Contains(lower, h) {
+			return true
+		}
+	}
+
+	// 社媒主页本身几乎没有可抓邮箱；聚合页除外（上面已放行）
 	needles := []string{
-		"facebook",
-		"instragram",
-		"twitter",
+		"facebook.com",
+		"fb.com",
+		"instagram.com",
+		"instragram", // legacy typo kept for compatibility
+		"twitter.com",
+		"x.com/",
+		"tiktok.com",
+		"youtube.com",
+		"youtu.be",
+		"linkedin.com",
+		"t.me/",
+		"telegram.me",
+		"telegram.org",
+		"pinterest.com",
+		"pin.it",
+		"doordash.com",
+		"ubereats.com",
+		"grubhub.com",
+		"postmates.com",
+		"toasttab.com",
+		"square.site",
+		"opentable.com",
+		"resy.com",
+		"yelp.com",
+		"tripadvisor.",
+		"mobile-webview",
 	}
 
 	for i := range needles {
-		if strings.Contains(e.WebSite, needles[i]) {
+		if strings.Contains(lower, needles[i]) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// FillWhatsAppFromPhone 在官网未暴露 WA 时，用公开电话推断移动端 WhatsApp（印尼 08→62 等）。
+func (e *Entry) FillWhatsAppFromPhone() {
+	if e == nil || e.WhatsApp != "" || strings.TrimSpace(e.Phone) == "" {
+		return
+	}
+
+	raw := strings.TrimSpace(e.Phone)
+	var b strings.Builder
+	for _, r := range raw {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	digits := b.String()
+	if len(digits) < 10 || len(digits) > 15 {
+		return
+	}
+
+	switch {
+	case strings.HasPrefix(digits, "08") && len(digits) >= 10:
+		// Indonesia mobile
+		e.WhatsApp = "+62" + digits[1:]
+	case strings.HasPrefix(digits, "628") && len(digits) >= 11:
+		e.WhatsApp = "+" + digits
+	case strings.HasPrefix(raw, "+") && len(digits) >= 10:
+		e.WhatsApp = "+" + digits
+	case strings.HasPrefix(digits, "1") && len(digits) == 11:
+		// NANP
+		e.WhatsApp = "+" + digits
+	}
 }
 
 func (e *Entry) Validate() error {
@@ -270,6 +348,15 @@ func (e *Entry) CsvHeaders() []string {
 		"user_reviews",
 		"user_reviews_extended",
 		"emails",
+		"whatsapp",
+		"facebook",
+		"instagram",
+		"linkedin",
+		"twitter",
+		"tiktok",
+		"youtube",
+		"telegram",
+		"pinterest",
 	}
 }
 
@@ -311,6 +398,15 @@ func (e *Entry) CsvRow() []string {
 		stringify(e.UserReviews),
 		stringify(e.UserReviewsExtended),
 		stringSliceToString(e.Emails),
+		e.WhatsApp,
+		e.Facebook,
+		e.Instagram,
+		e.LinkedIn,
+		e.Twitter,
+		e.TikTok,
+		e.YouTube,
+		e.Telegram,
+		e.Pinterest,
 	}
 }
 
@@ -543,6 +639,9 @@ func EntryFromJSON(raw []byte, reviewCountOnly ...bool) (entry Entry, err error)
 			entry.UserReviews = make([]Review, 0)
 		}
 	}
+
+	// Maps 常把 Facebook/Instagram 填进 website；拆到社媒字段，避免只当「无效官网」丢掉
+	entry.PromoteSocialFromMapsFields()
 
 	return entry, nil
 }
