@@ -200,6 +200,7 @@
                       </div>
                       <p class="mode-desc">区域切块搜索<br/>结果更全但更慢</p>
                     </div>
+                    <p class="columns-note">深度模式且上限≥100 时也会自动开粗网格全量</p>
                   </div>
 
                   <!-- 网格密度 -->
@@ -614,23 +615,29 @@
         // 快速：稍低缩放 + 更大半径，后端还会自动粗网格扩量
         document.getElementById('zoom').value = mode === 'quick' ? '14' : '15';
         document.getElementById('radius').value = mode === 'quick' ? '25000' : '15000';
-        // 深度默认冲量目标 200；快速保持 50（可手改）
+        // 深度/全量默认冲量目标 200；后端对深度+高上限会自动开粗网格全量
         var maxEl = document.getElementById('maxresults');
         if (maxEl && (mode === 'standard' || mode === 'grid')) {
           if (!maxEl.value || maxEl.value === '50') maxEl.value = '200';
         }
+        // 深度模式也展示网格密度（高上限时后端会自动开网格）
+        document.getElementById('grid-density-section').classList.toggle('hidden', mode === 'quick');
+        if (mode === 'standard' && document.getElementById('gridcell')) {
+          // 深度自动网格用稍粗默认，避免格数过多
+          var gc = document.getElementById('gridcell');
+          if (gc.value === '1.5') gc.value = '2.0';
+        }
         document.getElementById('email').checked = true;
         var emailToggle = document.getElementById('email-toggle');
         if (emailToggle) emailToggle.classList.add('on');
-        document.getElementById('grid-density-section').classList.toggle('hidden', mode !== 'grid');
         // 快速模式只出必要字段；深度/全域模式展示字段自选区，默认全选保证 CSV 含联系方式
         document.getElementById('columns-section').classList.toggle('hidden', mode === 'quick');
         if (mode === 'standard' || mode === 'grid') {
           setAllColumns(true);
           syncColumnsHidden();
         }
-        // 选了网格模式时自动展开高级选项，让用户看到密度设置
-        if (mode === 'grid') {
+        // 深度/网格都展开高级选项，方便调网格密度与上限
+        if (mode === 'grid' || mode === 'standard') {
           document.getElementById('advanced-options').classList.add('open');
           document.getElementById('advanced-icon').classList.add('open');
         }

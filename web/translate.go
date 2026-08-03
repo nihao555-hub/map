@@ -83,6 +83,22 @@ var zhBusinessLexicon = map[string]map[string]string{
 	"照相馆":  {"en": "photo studio", "ja": "写真館", "ko": "사진관", "fr": "studio photo", "de": "Fotostudio"},
 	"干洗":   {"en": "dry cleaner", "ja": "クリーニング", "ko": "세탁소", "fr": "pressing", "de": "Reinigung"},
 	"洗衣店":  {"en": "laundry", "ja": "コインランドリー", "ko": "세탁소", "fr": "laverie", "de": "Wäscherei"},
+	// B2B / 外贸获客：中文品类在海外 Maps 几乎搜不到，必须落到英文/当地词
+	"采购商":  {"en": "importer", "id": "importir", "ms": "pengimport", "th": "ผู้นำเข้า", "vi": "nhà nhập khẩu", "ja": "輸入業者", "ko": "수입상", "fr": "importateur", "de": "Importeur", "es": "importador", "pt": "importador", "ar": "مستورد", "ru": "импортер"},
+	"买家":   {"en": "buyer", "id": "pembeli", "ms": "pembeli", "th": "ผู้ซื้อ", "vi": "người mua", "ja": "バイヤー", "ko": "바이어", "fr": "acheteur", "de": "Käufer", "es": "comprador"},
+	"进口商":  {"en": "importer", "id": "importir", "ms": "pengimport", "th": "ผู้นำเข้า", "vi": "nhà nhập khẩu", "ja": "輸入業者", "ko": "수입상", "fr": "importateur", "de": "Importeur", "es": "importador"},
+	"出口商":  {"en": "exporter", "id": "eksportir", "ms": "pengeksport", "th": "ผู้ส่งออก", "vi": "nhà xuất khẩu", "ja": "輸出業者", "ko": "수출상", "fr": "exportateur", "de": "Exporteur", "es": "exportador"},
+	"批发商":  {"en": "wholesaler", "id": "grosir", "ms": "pemborong", "th": "ร้านขายส่ง", "vi": "nhà bán buôn", "ja": "卸売業者", "ko": "도매상", "fr": "grossiste", "de": "Großhändler", "es": "mayorista"},
+	"批发":   {"en": "wholesale", "id": "grosir", "ms": "borong", "th": "ขายส่ง", "vi": "bán buôn", "ja": "卸売", "ko": "도매"},
+	"供应商":  {"en": "supplier", "id": "pemasok", "ms": "pembekal", "th": "ซัพพลายเออร์", "vi": "nhà cung cấp", "ja": "サプライヤー", "ko": "공급업체", "fr": "fournisseur", "de": "Lieferant", "es": "proveedor"},
+	"经销商":  {"en": "distributor", "id": "distributor", "ms": "pengedar", "th": "ตัวแทนจำหน่าย", "vi": "nhà phân phối", "ja": "販売代理店", "ko": "유통업체", "fr": "distributeur", "de": "Händler", "es": "distribuidor"},
+	"贸易公司": {"en": "trading company", "id": "perusahaan dagang", "ms": "syarikat perdagangan", "th": "บริษัทการค้า", "vi": "công ty thương mại", "ja": "商社", "ko": "무역회사", "fr": "société de trading", "de": "Handelsunternehmen"},
+	"贸易":   {"en": "trading company", "id": "perusahaan dagang", "ms": "syarikat perdagangan", "ja": "商社", "ko": "무역"},
+	"工厂":   {"en": "factory", "id": "pabrik", "ms": "kilang", "th": "โรงงาน", "vi": "nhà máy", "ja": "工場", "ko": "공장", "fr": "usine", "de": "Fabrik", "es": "fábrica"},
+	"制造商":  {"en": "manufacturer", "id": "produsen", "ms": "pengilang", "th": "ผู้ผลิต", "vi": "nhà sản xuất", "ja": "メーカー", "ko": "제조사", "fr": "fabricant", "de": "Hersteller"},
+	"生产厂家": {"en": "manufacturer", "id": "produsen", "ms": "pengilang", "ja": "メーカー", "ko": "제조사"},
+	"商家":   {"en": "business", "id": "bisnis", "ms": "perniagaan", "th": "ธุรกิจ", "vi": "doanh nghiệp", "ja": "事業者", "ko": "업체"},
+	"公司":   {"en": "company", "id": "perusahaan", "ms": "syarikat", "th": "บริษัท", "vi": "công ty", "ja": "会社", "ko": "회사"},
 }
 
 // zhPlaceLexicon 常见中文地名 → Google Maps 更友好的英文/当地写法
@@ -241,17 +257,23 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 		keywords = append(keywords, searchK)
 	}
 
-	// 全部被跳过时回退：用英文机翻拼一条，避免任务直接失败
+	// 全部被跳过时回退：英文机翻 / 词典英文；仍含汉字则丢弃（绝不把中文丢给海外 Maps）
 	if len(keywords) == 0 && len(rawKeywords) > 0 && targetLang != "zh" {
 		k := strings.TrimSpace(rawKeywords[0])
+		fallback := ""
 		if t, err := translateText(ctx, k, "zh", "en"); err == nil && t != "" && !containsChinese(t) {
-			k = normalizeMT(t)
+			fallback = normalizeMT(t)
+		} else if t, ok := translateBusinessTerm(k, "en"); ok {
+			fallback = t
 		}
-		if searchLocation != "" {
-			k = k + " in " + searchLocation
+		if fallback != "" && !containsChinese(fallback) {
+			if searchLocation != "" {
+				fallback = fallback + " in " + searchLocation
+			}
+			keywords = append(keywords, fallback)
+			translated = true
 		}
-		keywords = append(keywords, k)
-		translated = true
+		// 仍译不出：返回空列表，由调用方报错，避免「采购商 in Jakarta」只命中 1～2 家杂店
 	}
 
 	return keywords, searchLocation, translated

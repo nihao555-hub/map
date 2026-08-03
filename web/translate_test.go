@@ -30,6 +30,12 @@ func TestTranslateBusinessTerm(t *testing.T) {
 		{"书店", "en", "bookstore"},
 		// 后缀回退：词典只有「美甲」时，「美甲店」也可命中
 		{"咖啡馆", "en", "cafe"},
+		// B2B：印尼等优先英文品类，避免中文「采购商」直接进 Maps
+		{"采购商", "en", "importer"},
+		{"采购商", "id", "importer"},
+		{"批发商", "en", "wholesaler"},
+		{"进口商", "id", "importer"},
+		{"贸易公司", "en", "trading company"},
 	}
 
 	for _, tt := range tests {
@@ -37,6 +43,27 @@ func TestTranslateBusinessTerm(t *testing.T) {
 		if !ok || got != tt.want {
 			t.Fatalf("translateBusinessTerm(%q,%q)=(%q,%v) want %q", tt.term, tt.lang, got, ok, tt.want)
 		}
+	}
+}
+
+func TestLocalizeSearchQueryBuyerNeverShipsChinese(t *testing.T) {
+	// 模拟机翻全挂：词典仍须把「采购商」落到英文，绝不能出现汉字
+	orig := myMemoryTranslateURL
+	myMemoryTranslateURL = "http://127.0.0.1:1" // 强制失败
+	defer func() { myMemoryTranslateURL = orig }()
+
+	kws, _, did := localizeSearchQuery(context.Background(), []string{"采购商"}, "Bojongsari Baru, Bojongsari", "id")
+	if !did {
+		t.Fatal("expected translation via lexicon")
+	}
+	if len(kws) != 1 {
+		t.Fatalf("keywords=%v", kws)
+	}
+	if containsChinese(kws[0]) {
+		t.Fatalf("must not ship chinese to maps: %q", kws[0])
+	}
+	if kws[0] != "importer in Bojongsari Baru, Bojongsari" {
+		t.Fatalf("keywords=%v", kws)
 	}
 }
 

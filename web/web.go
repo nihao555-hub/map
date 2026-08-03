@@ -421,6 +421,24 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 深度模式目标量大（≥100 或不限）时自动开粗网格，否则单点+偏移仍远达不到「全量」。
+	// 必须在解析 maxresults 之后；用户点了「全域全量」时已是 GridMode，这里只补「深度 + 高上限」。
+	if !newJob.Data.FastMode && !newJob.Data.GridMode &&
+		(newJob.Data.MaxResults == 0 || newJob.Data.MaxResults >= 100) {
+		newJob.Data.GridMode = true
+		if newJob.Data.GridCellKm <= 0 {
+			newJob.Data.GridCellKm = 2.0 // 深度走浏览器，格子稍粗以免格数爆炸
+		}
+		if newJob.Data.Radius <= 0 || newJob.Data.Radius > 15000 {
+			newJob.Data.Radius = 15000 // ±7.5km
+		}
+		if newJob.Data.Locations == "" {
+			newJob.Data.Locations = locationsStr
+		}
+		log.Printf("深度模式目标量大(max=%d)，自动启用粗网格全量 cell=%.1fkm radius=%dm",
+			newJob.Data.MaxResults, newJob.Data.GridCellKm, newJob.Data.Radius)
+	}
+
 	// 用户显式选择的目标国家（优先于地理编码推断）
 	countryCode := strings.ToLower(strings.TrimSpace(r.Form.Get("country_code")))
 	countryName := strings.TrimSpace(r.Form.Get("country_name"))
@@ -492,9 +510,27 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		cancel()
 
 		if len(localized) == 0 {
-			http.Error(w, "missing keywords", http.StatusUnprocessableEntity)
+			http.Error(w, "无法将中文关键词译成目标国可搜词（机翻不可用）。请改用英文/当地语言品类，或勾选 AI 翻译后重试", http.StatusUnprocessableEntity)
 
 			return
+		}
+
+		// 二次保险：海外任务绝不带汉字进 Google Maps（否则常只命中 1～2 家无关店）
+		if newJob.Data.Lang != "zh" {
+			clean := make([]string, 0, len(localized))
+			for _, kw := range localized {
+				if containsChinese(kw) {
+					log.Printf("丢弃仍含中文的查询: %q", kw)
+					continue
+				}
+				clean = append(clean, kw)
+			}
+			if len(clean) == 0 {
+				http.Error(w, "关键词仍含中文，无法在目标国 Google Maps 有效搜索。请填写英文品类（如 importer / cafe）或勾选 AI 翻译", http.StatusUnprocessableEntity)
+
+				return
+			}
+			localized = clean
 		}
 
 		newJob.Data.Keywords = localized
