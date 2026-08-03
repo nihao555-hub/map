@@ -9,10 +9,10 @@ import (
 // 多渠道联系方式（不只邮箱）：官网/Maps 电话、WhatsApp、社媒；并据此补决策人可触达字段与组织架构。
 
 var (
-	waMeFindRe = regexp.MustCompile(`(?i)(?:https?://)?(?:wa\.me/|api\.whatsapp\.com/send\?[^"'>\s]*phone=)(\+?\d{8,15})`)
-	waLabelRe  = regexp.MustCompile(`(?i)whatsapp[^0-9+]{0,24}(\+?\d[\d\s\-().]{7,18}\d)`)
+	waMeFindRe  = regexp.MustCompile(`(?i)(?:https?://)?(?:wa\.me/|api\.whatsapp\.com/send\?[^"'>\s]*phone=)(\+?\d{8,15})`)
+	waLabelRe   = regexp.MustCompile(`(?i)whatsapp[^0-9+]{0,24}(\+?\d[\d\s\-().]{7,18}\d)`)
 	socialURLRe = regexp.MustCompile(`(?i)https?://(?:www\.)?(?:instagram\.com|facebook\.com|fb\.com|linkedin\.com/(?:in|company)|t\.me|telegram\.me|twitter\.com|x\.com|tiktok\.com|youtube\.com|youtu\.be)/[^\s"'<>]+`)
-	telLinkRe  = regexp.MustCompile(`(?i)tel:(\+?[\d\s\-().]{7,20})`)
+	telLinkRe   = regexp.MustCompile(`(?i)tel:(\+?[\d\s\-().]{7,20})`)
 )
 
 // harvestContactChannelsFromHTML 从页面抽取电话 / WhatsApp / 社媒（外贸触达不只靠邮箱）。
@@ -198,34 +198,8 @@ func enrichMultiChannelContacts(intel *PlaceIntel, place Place) {
 		}
 	}
 
-	intel.OrgStructure = mergeOrgUnits(intel.OrgStructure, orgUnitsFromChannels(intel, place.Title))
-}
-
-func orgUnitsFromChannels(intel *PlaceIntel, company string) []OrgUnit {
-	company = strings.TrimSpace(company)
-	var out []OrgUnit
-	if intel.Socials != nil {
-		if u := intel.Socials["linkedin"]; u != "" {
-			role := "linkedin-company"
-			if strings.Contains(strings.ToLower(u), "/in/") {
-				role = "linkedin-people"
-			}
-			out = append(out, OrgUnit{Name: company, Role: role, Evidence: u})
-		}
-		if intel.Socials["facebook"] != "" {
-			out = append(out, OrgUnit{Name: company, Role: "social-facebook", Evidence: intel.Socials["facebook"]})
-		}
-		if intel.Socials["instagram"] != "" {
-			out = append(out, OrgUnit{Name: company, Role: "social-instagram", Evidence: intel.Socials["instagram"]})
-		}
-	}
-	if len(intel.Phones) > 0 || (intel.Socials != nil && intel.Socials["whatsapp"] != "") {
-		out = append(out, OrgUnit{Name: company, Role: "contact-center", Evidence: "phone/whatsapp channel"})
-	}
-	if len(intel.ExtraEmails) > 0 {
-		out = append(out, OrgUnit{Name: company, Role: "email-channel", Evidence: "public email inbox"})
-	}
-	return out
+	// 联系渠道不是组织架构：以前把「店名 = contact-center / email-channel」当节点，
+	// 实测 720 个节点里 670 个只是店名自己，架构 Tab 全是占位。渠道已在联系方式里展示。
 }
 
 func whatsappLink(digits string) string {

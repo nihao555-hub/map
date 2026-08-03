@@ -915,20 +915,7 @@ func looksLikeRealPerson(d DecisionMaker) bool {
 	if isJunkPersonName(name) {
 		return false
 	}
-	if strings.Contains(name, "@") {
-		return false
-	}
-	// 邮箱 local 被当成 Name 的情况
-	if d.Email != "" {
-		local := d.Email
-		if i := strings.Index(d.Email, "@"); i > 0 {
-			local = d.Email[:i]
-		}
-		if strings.EqualFold(name, local) {
-			return false
-		}
-	}
-	if isLikelyPersonName(name) {
+	if IsValidPersonName(name) {
 		return true
 	}
 	// Wikidata/AHU 高置信单段名

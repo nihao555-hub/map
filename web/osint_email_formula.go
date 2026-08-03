@@ -541,26 +541,39 @@ func attachMapsContactsToMakers(makers []DecisionMaker, place Place) []DecisionM
 	return makers
 }
 
+// orgUnitsFromDecisionMakers 只为「有真名的决策人」生成岗位节点。
+//
+// 以前对每个联系人条目都建一个以店名为名的节点，实测 354 家里造出 84 个
+// 「店名 = executive，证据 = Pemilik」的自指节点，架构 Tab 全是占位。
 func orgUnitsFromDecisionMakers(makers []DecisionMaker, company string) []OrgUnit {
 	company = strings.TrimSpace(company)
-	buckets := map[string]string{} // role -> evidence name
+	buckets := map[string]string{} // role -> 真名
+
 	for _, d := range makers {
+		if !QualifiesAsDecisionMaker(d, company) {
+			continue
+		}
+
 		role := classifyOrgRole(firstNonEmpty(d.Title, d.Headline))
 		if role == "" {
 			continue
 		}
+
 		if _, ok := buckets[role]; !ok {
-			buckets[role] = firstNonEmpty(d.Name, firstNonEmpty(d.Email, d.Title))
+			buckets[role] = d.Name
 		}
 	}
+
 	var out []OrgUnit
-	for role, ev := range buckets {
+
+	for role, name := range buckets {
 		out = append(out, OrgUnit{
-			Name:     firstNonEmpty(company, role),
+			Name:     name,
 			Role:     role,
-			Evidence: "decision-maker title: " + ev,
+			Evidence: "named decision maker at " + company,
 		})
 	}
+
 	return out
 }
 

@@ -66,7 +66,11 @@ func TestExtractEmailsFromHTML(t *testing.T) {
 }
 
 func TestAttachMapsContactsAndOrg(t *testing.T) {
-	makers := []DecisionMaker{{Name: "A", Title: "Purchasing Manager"}, {Name: "B", Title: "CEO"}}
+	// 岗位节点只从通过人名闸门的决策人生成，所以这里必须用真人形态的姓名。
+	makers := []DecisionMaker{
+		{Name: "Feriska Febrina", Title: "Purchasing Manager"},
+		{Name: "Hermann Krone", Title: "CEO"},
+	}
 	place := Place{Phone: "+62111", WhatsApp: "+62111"}
 	makers = attachMapsContactsToMakers(makers, place)
 	if makers[0].WhatsApp != "+62111" || makers[1].Phone != "+62111" {

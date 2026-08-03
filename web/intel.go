@@ -3,8 +3,6 @@ package web
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -849,6 +847,10 @@ func filterOrgUnits(in []OrgUnit, evidenceLow string) []OrgUnit {
 	return out
 }
 
+// scoreConfidence 只按可核验的东西打分。
+//
+// high 必须有「通过闸门的真人 + 可触达渠道」；只有门店电话/职能邮箱最多 medium。
+// 实测里 84 家标了 high 却一个真人都没有，销售据此判断会被误导。
 func scoreConfidence(intel *PlaceIntel) string {
 	score := 0
 	named := countNamedPeople(intel.DecisionMakers)
@@ -895,7 +897,8 @@ func scoreConfidence(intel *PlaceIntel) string {
 		}
 	}
 	switch {
-	case score >= 6 && (named > 0 || contactable > 0):
+	// high 门槛：必须真有具名决策人，且该人可触达
+	case score >= 6 && named > 0 && contactable > 0:
 		return "high"
 	case score >= 3:
 		return "medium"
@@ -1191,7 +1194,9 @@ func filterOrgStructureQuality(in []OrgUnit, place Place) []OrgUnit {
 			o.Role == "domain" || o.Role == "registrant" {
 			continue
 		}
-		if strings.EqualFold(o.Name, place.Title) && (o.Role == place.Category || o.Evidence == "inferred (unverified)") {
+		// 以店名自身为节点说明不了任何架构（实测 671/720 节点属于这类），
+		// 除非它明确挂在某个上级下面（如「本店 → 母公司」）。
+		if o.Parent == "" && NameEchoesBusiness(o.Name, place.Title) && !isPersonOrgNode(o) {
 			continue
 		}
 		if strings.Contains(strings.ToLower(o.Evidence), "unverified") && o.Parent == "" {
@@ -1264,16 +1269,9 @@ func sanitizeDecisionMakers(in []DecisionMaker, place Place) []DecisionMaker {
 		if isJunkPersonName(d.Name) {
 			d.Name = ""
 		}
-		// 邮箱 local 当人名 → 清空名，保留邮箱（仅真人邮箱）
 		if d.Email != "" {
 			local := emailLocal(d.Email)
-			if strings.EqualFold(d.Name, local) {
-				d.Name = nameFromEmailLocal(local)
-				if d.Title == "" || d.Title == "Contact" || isJunkTitle(d.Title) {
-					d.Title = roleFromEmailLocal(local)
-				}
-			}
-			// 全球办公室邮箱：有真名决策人时直接丢掉；单独留下时最多保留为无姓名渠道
+			// 职能/办公室邮箱只作渠道，绝不冠人名
 			if isGenericOfficeEmailLocal(local) {
 				d.Name = ""
 				if d.Title == "" || isJunkTitle(d.Title) || d.Title == "General inquiry" || d.Title == "Email contact" {
@@ -1282,16 +1280,20 @@ func sanitizeDecisionMakers(in []DecisionMaker, place Place) []DecisionMaker {
 				d.Confidence = "low"
 			}
 		}
-		// 公司名当人名（含「店名 (Pemilik)」这类只是加了角色后缀的写法）
-		if d.Name != "" && isBusinessNameNotPerson(d.Name, place.Title) {
-			d.Name = ""
-			if d.Title == "" || isJunkTitle(d.Title) {
-				d.Title = "Business contact"
-			}
-		}
 		// 域名注册商 / 建站平台的联系人不是这家商家的人
 		if isRegistrarContact(d.Email) {
 			continue
+		}
+		// 统一闸门：过不了就退成无名渠道，不允许「疑似人名」流到前台。
+		// 邮箱前缀、店名回声、句子片段、模板占位都在这里被清掉。
+		if d.Name != "" && !QualifiesAsDecisionMaker(d, place.Title) {
+			d.Name = ""
+			if d.Title == "" || isJunkTitle(d.Title) || !isRoleTitle(d.Title) {
+				d.Title = channelTitleFor(d)
+			}
+			if d.Confidence == "high" {
+				d.Confidence = "low"
+			}
 		}
 		// 仅对「本来就有渠道或真名」的联系人补门店 WhatsApp/电话，避免假决策人继承成空壳
 		if d.Name != "" || hadOwnChannel {
@@ -1502,19 +1504,16 @@ func looksLikeWhatsApp(s string) bool {
 	return strings.HasPrefix(d, "+") || (len(d) >= 10 && strings.HasPrefix(d, "62"))
 }
 
+// enrichDecisionMakerAvatars 只填真实头像。
+//
+// 以前无图时回落 Gravatar identicon / ui-avatars 字母图，导致「头像覆盖率」看着满格
+// 其实一张真脸都没有。占位图交给前端按首字母渲染，数据里不再假装有头像。
 func enrichDecisionMakerAvatars(makers []DecisionMaker) {
-	// 1) 有 /in/ 主页时，免费拉 LinkedIn 公开页 og:image（真头像）+ og:title（职位）
 	enrichLinkedInPublicProfiles(makers)
+
 	for i := range makers {
-		if isRealAvatarURL(makers[i].Avatar) {
-			continue
-		}
-		if makers[i].Email != "" {
-			makers[i].Avatar = gravatarURL(makers[i].Email)
-			continue
-		}
-		if makers[i].Name != "" {
-			makers[i].Avatar = uiAvatarURL(makers[i].Name)
+		if !isRealAvatarURL(makers[i].Avatar) {
+			makers[i].Avatar = ""
 		}
 	}
 }
@@ -1659,16 +1658,6 @@ func fetchLinkedInPublicHTML(profileURL string) string {
 		return ""
 	}
 	return string(raw)
-}
-
-func gravatarURL(email string) string {
-	e := strings.TrimSpace(strings.ToLower(email))
-	sum := md5.Sum([]byte(e))
-	return "https://www.gravatar.com/avatar/" + hex.EncodeToString(sum[:]) + "?d=identicon&s=96"
-}
-
-func uiAvatarURL(name string) string {
-	return "https://ui-avatars.com/api/?name=" + url.QueryEscape(name) + "&background=3b82f6&color=fff&size=96"
 }
 
 func sortDecisionMakersForOutreach(makers []DecisionMaker) {

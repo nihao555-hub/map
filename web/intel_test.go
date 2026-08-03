@@ -84,8 +84,9 @@ func TestSanitizeDecisionMakersDropsJunk(t *testing.T) {
 	if out[0].Name != "Alice Tan" {
 		t.Fatalf("expected Alice first for outreach, got %+v", out[0])
 	}
-	if out[0].Avatar == "" {
-		t.Fatal("expected avatar")
+	// 头像只能来自真实公开档案；抓不到就留空，由前端渲染首字母，不再造 identicon。
+	if out[0].Avatar != "" && !isRealAvatarURL(out[0].Avatar) {
+		t.Fatalf("only real profile images may be set, got %q", out[0].Avatar)
 	}
 }
 
