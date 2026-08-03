@@ -1150,8 +1150,13 @@ func (s *Server) apiOSINTStatus(w http.ResponseWriter, r *http.Request) {
 		"wikidata":           st.Wikidata,
 		"ahu":                st.AHU,
 		"ahu_proxy":          st.AHUProxyConfigured,
+		"rdap":               st.RDAP,
+		"crtsh":              st.CRTSH,
+		"wayback":            st.Wayback,
+		"wikipedia":          st.Wikipedia,
+		"duckduckgo":         st.DuckDuckGo,
 		"max_radius_km":      MaxRadiusKm(),
-		"hint":               "bash tools/install_osint.sh；可选 HUNTER_API_KEY / AHU_PROXY",
+		"hint":               "bash tools/install_osint.sh；公开源已启用；可选 HUNTER_API_KEY / AHU_PROXY",
 	})
 }
 

@@ -61,11 +61,16 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 		mu.Unlock()
 	}
 
-	// 与 CLI 第一波并行：Hunter/katana/GitHub/GLEIF/Wikidata/AHU（共用 mu）
+	// 与 CLI 第一波并行：Hunter/katana/GitHub/GLEIF/Wikidata/AHU + 免 key 公开源
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		runEnrichmentSources(budget, intel, place, st, &mu, addNote)
+	}()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runPublicEnrichment(budget, intel, place, &mu)
 	}()
 
 	// 第一波：域名/官网类（跳过最慢的 Maigret，噪音大且易超预算）
@@ -188,13 +193,18 @@ type OSINTStatus struct {
 	Photon            bool `json:"photon"`
 	Amass             bool `json:"amass"`
 	OpenCorporatesAPI bool `json:"opencorporates_api"`
-	Hunter            bool `json:"hunter"`
-	Katana            bool `json:"katana"`
-	GitHubCommits     bool `json:"github_commits"`
-	GLEIF             bool `json:"gleif"`
-	Wikidata          bool `json:"wikidata"`
-	AHU               bool `json:"ahu"`
+	Hunter             bool `json:"hunter"`
+	Katana             bool `json:"katana"`
+	GitHubCommits      bool `json:"github_commits"`
+	GLEIF              bool `json:"gleif"`
+	Wikidata           bool `json:"wikidata"`
+	AHU                bool `json:"ahu"`
 	AHUProxyConfigured bool `json:"ahu_proxy_configured"`
+	RDAP               bool `json:"rdap"`
+	CRTSH              bool `json:"crtsh"`
+	Wayback            bool `json:"wayback"`
+	Wikipedia          bool `json:"wikipedia"`
+	DuckDuckGo         bool `json:"duckduckgo"`
 }
 
 func osintExtraPython() string {
@@ -311,6 +321,11 @@ func probeOSINTToolsUncached() OSINTStatus {
 	st.Wikidata = true
 	st.AHU = fileExists(ahuScriptPath())
 	st.AHUProxyConfigured = ahuProxyURL() != ""
+	st.RDAP = true
+	st.CRTSH = true
+	st.Wayback = true
+	st.Wikipedia = true
+	st.DuckDuckGo = true
 	return st
 }
 
@@ -348,11 +363,11 @@ func runTheHarvester(ctx context.Context, domain string) (*harvesterOut, error) 
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
-	// Hunter 走独立 API（HUNTER_API_KEY）；此处保持免 key 被动源，避免 MissingKey 拖慢。
+	// 尽量用免 key 源；Hunter 走独立 API。超时由 ctx 控制。
 	full := append(append([]string{}, args...),
 		"-d", domain,
-		"-b", "crtsh,hackertarget",
-		"-l", "20",
+		"-b", "crtsh,hackertarget,urlscan,rapiddns,otx,certspotter",
+		"-l", "30",
 		"-f", outBase,
 	)
 	var stderr bytes.Buffer

@@ -802,15 +802,23 @@
         var flags = [
           ['theHarvester', t.theharvester],
           ['SpiderFoot', t.spiderfoot],
-          ['holehe', t.holehe],
-          ['maigret', t.maigret],
-          ['blackbird', t.blackbird],
           ['Photon', t.photon],
-          ['amass', t.amass]
+          ['katana', t.katana],
+          ['amass', t.amass],
+          ['holehe', t.holehe],
+          ['RDAP', t.rdap],
+          ['crt.sh', t.crtsh],
+          ['Wayback', t.wayback],
+          ['Wikipedia', t.wikipedia],
+          ['Wikidata', t.wikidata],
+          ['GLEIF', t.gleif],
+          ['DDG', t.duckduckgo],
+          ['Hunter', t.hunter],
+          ['AHU', t.ahu && t.ahu_proxy_configured]
         ];
-        note.textContent = '依赖：' + flags.map(function (x) {
+        note.textContent = '公开/开源依赖：' + flags.map(function (x) {
           return x[0] + (x[1] ? ' ✓' : ' ✗');
-        }).join(' · ');
+        }).join(' · ') + (st.hint ? ' · ' + st.hint : '');
       }).catch(function () {});
     </script>
 </body>

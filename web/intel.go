@@ -186,7 +186,7 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		Status:      IntelRunning,
 		GeneratedAt: time.Now().UTC(),
 		Provider:    "website",
-		Note:        "证据驱动：官网 + OSINT CLI + Hunter/katana/GitHub/GLEIF/Wikidata/AHU(可选)；不编造决策人。",
+		Note:        "证据驱动：官网+OSINT CLI+公开源(RDAP/crt.sh/Wayback/Wikipedia/DDG/GLEIF/Wikidata)+Hunter/AHU(可选)；不编造决策人。",
 		Socials:     map[string]string{},
 	}
 	_ = s.saveIntel(jobID, intel)
@@ -313,7 +313,7 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 			if len(aiOut.DecisionMakers) > 0 {
 				intel.DecisionMakers = filterDecisionMakers(aiOut.DecisionMakers, evidenceBlob, intel.ExtraEmails)
 			}
-			intel.Provider = "grsai+" + grsaiModel() + "+osint"
+			intel.Provider = strings.Trim(intel.Provider+"+grsai:"+grsaiModel(), "+")
 		} else if err != nil {
 			intel.Note = intel.Note + " AI：" + err.Error()
 		}
@@ -648,7 +648,10 @@ func filterPublicEmails(in []string, domain string) []string {
 			strings.HasSuffix(e, ".png") || strings.HasSuffix(e, ".jpg") ||
 			strings.HasSuffix(e, ".gif") || strings.HasSuffix(e, ".svg") ||
 			strings.HasSuffix(e, ".webp") || strings.Contains(e, "@2x.") ||
-			strings.Contains(e, "noreply") || strings.Contains(e, "no-reply") {
+			strings.Contains(e, "noreply") || strings.Contains(e, "no-reply") ||
+			strings.HasPrefix(e, "abuse@") || strings.Contains(e, "@namecheap.") ||
+			strings.Contains(e, "@godaddy.") || strings.Contains(e, "@cloudflare.") ||
+			strings.Contains(e, "@domainsbyproxy.") || strings.Contains(e, "@privacy") {
 			continue
 		}
 		if domain != "" && !strings.HasSuffix(e, "@"+domain) {

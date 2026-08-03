@@ -10,10 +10,16 @@
 | [Photon](https://github.com/s0md3v/Photon) | ~11k | `tools/Photon` | 官网浅爬邮箱/社媒 |
 | [Amass](https://github.com/owasp-amass/amass) | ~15k | `~/go/bin/amass` | 被动子域名 |
 | [katana](https://github.com/projectdiscovery/katana) | ~17k | `~/go/bin/katana` | about/team 深链 + 人名抽取 |
-| Hunter.io API | — | `HUNTER_API_KEY` | **带姓名的工作邮箱** |
+| Hunter.io API | — | `HUNTER_API_KEY` | **带姓名的工作邮箱**（可选） |
 | GLEIF LEI API | — | Go 直连 | 法人主体核验（有 LEI 时） |
 | Wikidata | — | Go 直连 | 公开创始人/CEO（大品牌） |
-| AHU (`ahu_lookup.py`) | — | `AHU_PROXY` + Playwright/civic-stack | **印尼董事/监事真名** |
+| Wikipedia (en/id) | — | Go 直连 | 条目摘要中的创始人/CEO |
+| RDAP / [who-dat](https://github.com/Lissy93/who-dat) | — | Go 直连 | 域名注册人/联系邮箱 |
+| crt.sh | — | Go 直连 | 证书透明度主机/邮箱 |
+| Wayback CDX | — | Go 直连 | 历史 about/team/contact 页 |
+| DuckDuckGo HTML | — | Go 直连 | 公开摘要中的高管提及 |
+| DNS TXT | — | Go resolver | TXT 中的公开邮箱 |
+| AHU (`ahu_lookup.py`) | — | `AHU_PROXY` + Playwright/civic-stack | **印尼董事/监事真名**（可选） |
 | OpenCorporates API | — | Go 直连 | 公司主体（印尼覆盖弱） |
 
 ```bash
