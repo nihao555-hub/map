@@ -21,6 +21,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// jsonJS 把值编成可安全嵌入 <script> 的 JSON（带引号的字符串/数组/对象）
+func jsonJS(v any) (template.JS, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+
+	return template.JS(b), nil
+}
+
 //go:embed static
 var static embed.FS
 
@@ -126,6 +136,8 @@ func New(svc *Service, addr string) (*Server, error) {
 	})
 
 	mux.HandleFunc("/api/v1/geocode", ans.apiGeocode)
+	mux.HandleFunc("/api/v1/ai-translate", ans.apiAITranslate)
+	mux.HandleFunc("/api/v1/ai-status", ans.apiAIStatus)
 
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
@@ -408,6 +420,16 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 用户显式选择的目标国家（优先于地理编码推断）
+	countryCode := strings.ToLower(strings.TrimSpace(r.Form.Get("country_code")))
+	countryName := strings.TrimSpace(r.Form.Get("country_name"))
+	useAI := r.Form.Get("ai_translate") == "on" || r.Form.Get("ai_translate") == "true"
+	if countryCode != "" {
+		if hl := langForCountryCode(countryCode); hl != "" {
+			newJob.Data.Lang = hl
+		}
+	}
+
 	// 地理锚定 + 海外中文查询本地化：
 	// 1) 锚定经纬度 / 按国家校正 hl
 	// 2) 把「咖啡 in 纽约」译成「coffee in New York」再交给 Google Maps
@@ -415,7 +437,7 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	if locationsStr != "" {
 		geoCtx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 
-		point, geoErr := GeocodeLang(geoCtx, locationsStr, "en")
+		point, geoErr := GeocodeInCountry(geoCtx, locationsStr, "en", countryCode)
 
 		cancel()
 
@@ -428,11 +450,14 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 				log.Printf("地点 %q 锚定到 %s,%s", locationsStr, newJob.Data.Lat, newJob.Data.Lon)
 			}
 
-			if hl := langForCountryCode(point.CountryCode); hl != "" && hl != newJob.Data.Lang {
-				log.Printf("地点 %q 国家代码 %s，hl 从 %s 调整为 %s",
-					locationsStr, point.CountryCode, newJob.Data.Lang, hl)
+			// 未选手动国家时，才用地理编码结果校正语言
+			if countryCode == "" {
+				if hl := langForCountryCode(point.CountryCode); hl != "" && hl != newJob.Data.Lang {
+					log.Printf("地点 %q 国家代码 %s，hl 从 %s 调整为 %s",
+						locationsStr, point.CountryCode, newJob.Data.Lang, hl)
 
-				newJob.Data.Lang = hl
+					newJob.Data.Lang = hl
+				}
 			}
 
 			// 海外中文地名：优先词典/英文展示名，避免 Maps 吃中文地点
@@ -449,10 +474,17 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	// 任务名始终由服务端用当前关键词+地点生成，避免前端隐藏域残留导致「名实不符」
 	newJob.Name = buildJobName(rawKeywords, locationsStr)
 
-	// 关键词本地化：中文品类 → 目标国语言；地点用英文/当地名
+	// 关键词本地化：中文品类 → 目标国语言；地点用英文/当地名（词典 → AI → 机翻）
 	{
-		locCtx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
-		localized, locUsed, did := localizeSearchQuery(locCtx, rawKeywords, searchLocation, newJob.Data.Lang)
+		locTimeout := 12 * time.Second
+		if useAI && AITranslateEnabled() {
+			locTimeout = 55 * time.Second
+		}
+		locCtx, cancel := context.WithTimeout(r.Context(), locTimeout)
+		localized, locUsed, did := localizeSearchQuery(locCtx, rawKeywords, searchLocation, newJob.Data.Lang, localizeOpts{
+			CountryName: countryName,
+			UseAI:       useAI,
+		})
 		cancel()
 
 		if len(localized) == 0 {
@@ -463,8 +495,8 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 		newJob.Data.Keywords = localized
 		if did {
-			log.Printf("中文查询已本地化: name=%q lang=%s loc=%q -> %v",
-				newJob.Name, newJob.Data.Lang, locUsed, localized)
+			log.Printf("中文查询已本地化: name=%q lang=%s country=%s ai=%v loc=%q -> %v",
+				newJob.Name, newJob.Data.Lang, countryCode, useAI && AITranslateEnabled(), locUsed, localized)
 		}
 	}
 
@@ -617,6 +649,66 @@ func (s *Server) redocHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	_ = tmpl.Execute(w, nil)
+}
+
+// apiAIStatus 告诉前端 AI 翻译是否已配置（不暴露密钥）
+func (s *Server) apiAIStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"enabled": AITranslateEnabled(),
+		"model":   grsaiModel(),
+	})
+}
+
+// apiAITranslate 用配置的 Gemini 兼容接口把中文关键词译成目标国搜索词
+func (s *Server) apiAITranslate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+
+		return
+	}
+
+	if !AITranslateEnabled() {
+		renderJSON(w, http.StatusServiceUnavailable, apiError{
+			Code:    http.StatusServiceUnavailable,
+			Message: "AI translate not configured (set GRSAI_API_KEY)",
+		})
+
+		return
+	}
+
+	var req struct {
+		Text        string `json:"text"`
+		CountryName string `json:"country_name"`
+		Lang        string `json:"lang"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{Code: http.StatusBadRequest, Message: err.Error()})
+
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 50*time.Second)
+	defer cancel()
+
+	out, err := AITranslateKeyword(ctx, req.Text, req.CountryName, req.Lang)
+	if err != nil {
+		renderJSON(w, http.StatusBadGateway, apiError{Code: http.StatusBadGateway, Message: err.Error()})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"translated": out,
+		"lang":       req.Lang,
+		"country":    req.CountryName,
+	})
 }
 
 // apiGeocode 供前端「在哪里」预取坐标：支持中文海外地名（纽约/东京等），
@@ -866,10 +958,22 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 		status = job.Status
 	}
 
+	// 必须 JSON 编码后再嵌入 <script>：直接 {{ .Places }} 会输出 Go 结构体文本，
+	// 有结果时 JS 直接语法错误，导致弹窗右侧/左侧地图整段脚本不执行。
+	placesJS, err := jsonJS(places)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+
+		return
+	}
+
+	jobIDJS, _ := jsonJS(id.String())
+	statusJS, _ := jsonJS(status)
+
 	viewData := map[string]any{
-		"JobID":  id.String(),
-		"Status": status,
-		"Places": places,
+		"JobIDJSON":  jobIDJS,
+		"StatusJSON": statusJS,
+		"PlacesJSON": placesJS,
 	}
 
 	var buf bytes.Buffer

@@ -120,28 +120,72 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 	log.Info("Processing email job", "url", j.URL)
 
 	emails := collectEmailsFromResponse(resp)
+	whatsapp := ""
+	if resp != nil {
+		whatsapp = extractWhatsApp(resp.Body)
+	}
 
 	baseURL := j.URL
 	if resp != nil && resp.URL != "" {
 		baseURL = resp.URL
 	}
 
-	// 首页失败（409/403/超时）或没有邮箱时：尝试 https 升级 + contact/about 等路径
-	if len(emails) == 0 {
+	// 首页失败（409/403/超时）或没有邮箱/WhatsApp 时：尝试 https 升级 + contact/about 等路径
+	needFollow := len(emails) == 0 || whatsapp == ""
+	if needFollow {
 		followURLs := alternateEmailURLs(baseURL)
 		if resp == nil || resp.Error == nil {
 			followURLs = append(followURLs, discoverEmailFollowURLs(baseURL, resp)...)
 		}
 		followURLs = uniqueURLs(followURLs)
 		if len(followURLs) > 0 {
-			extra := fetchEmailsFromURLs(ctx, followURLs)
-			emails = mergeEmails(emails, extra)
+			extraMails, extraWA := fetchContactsFromURLs(ctx, followURLs)
+			emails = mergeEmails(emails, extraMails)
+			if whatsapp == "" {
+				whatsapp = extraWA
+			}
 		}
 	}
 
 	j.Entry.Emails = filterEmails(emails)
+	j.Entry.WhatsApp = whatsapp
 
 	return j.Entry, nil, nil
+}
+
+var (
+	waMeRe     = regexp.MustCompile(`(?i)(?:https?://)?(?:wa\.me/|api\.whatsapp\.com/send\?[^"'>\s]*phone=)(\+?\d{8,15})`)
+	waDigitsRe = regexp.MustCompile(`(?i)whatsapp[^0-9+]{0,24}(\+?\d[\d\s\-()]{7,18}\d)`)
+)
+
+func extractWhatsApp(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+
+	if m := waMeRe.FindSubmatch(body); len(m) >= 2 {
+		return normalizeWhatsApp(string(m[1]))
+	}
+	if m := waDigitsRe.FindSubmatch(body); len(m) >= 2 {
+		return normalizeWhatsApp(string(m[1]))
+	}
+
+	return ""
+}
+
+func normalizeWhatsApp(raw string) string {
+	var b strings.Builder
+	for _, r := range raw {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	digits := b.String()
+	if len(digits) < 8 || len(digits) > 15 {
+		return ""
+	}
+
+	return "+" + digits
 }
 
 // alternateEmailURLs 在官网首页拉失败时仍值得一试的候选地址
@@ -527,8 +571,15 @@ func sameHost(a, b string) bool {
 }
 
 func fetchEmailsFromURLs(ctx context.Context, urls []string) []string {
+	mails, _ := fetchContactsFromURLs(ctx, urls)
+
+	return mails
+}
+
+// fetchContactsFromURLs 拉取联系页，同时提取邮箱与 WhatsApp
+func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string) {
 	if len(urls) == 0 {
-		return nil
+		return nil, ""
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, emailFollowBudget)
@@ -546,11 +597,12 @@ func fetchEmailsFromURLs(ctx context.Context, urls []string) []string {
 	}
 
 	var emails []string
+	whatsapp := ""
 
 	for _, raw := range urls {
 		select {
 		case <-ctx.Done():
-			return emails
+			return emails, whatsapp
 		default:
 		}
 
@@ -567,13 +619,16 @@ func fetchEmailsFromURLs(ctx context.Context, urls []string) []string {
 			emails = mergeEmails(emails, docEmailExtractor(doc))
 		}
 
-		if len(filterEmails(emails)) > 0 {
-			// Stop early once we have at least one clean email.
-			return emails
+		if whatsapp == "" {
+			whatsapp = extractWhatsApp(body)
+		}
+
+		if len(filterEmails(emails)) > 0 && whatsapp != "" {
+			return emails, whatsapp
 		}
 	}
 
-	return emails
+	return emails, whatsapp
 }
 
 func fetchURLBody(ctx context.Context, client *http.Client, raw string) ([]byte, error) {

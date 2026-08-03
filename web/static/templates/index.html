@@ -48,6 +48,35 @@
           >
             <!-- 隐藏字段：任务名称 = 关键词+地点 -->
             <input type="hidden" id="name" name="name" value="">
+            <input type="hidden" id="country_code" name="country_code" value="">
+            <input type="hidden" id="country_name" name="country_name" value="">
+            <input type="hidden" id="ai_translate" name="ai_translate" value="on">
+
+            <!-- 目标国家：决定语言 + AI 翻译目标（写在「在哪里」之前） -->
+            <div class="field-group">
+              <label class="field-label" for="country-search">目标国家</label>
+              <div class="country-picker" id="country-picker">
+                <div class="input-field">
+                  <i data-lucide="globe-2" class="w-4 h-4 input-icon icon-blue"></i>
+                  <input
+                    type="text"
+                    id="country-search"
+                    placeholder="搜索或选择国家，如：印尼 / Indonesia"
+                    autocomplete="off"
+                    aria-autocomplete="list"
+                    aria-controls="country-dropdown"
+                  />
+                  <button type="button" class="clear-btn" id="country-clear" title="清除">&times;</button>
+                </div>
+                <div id="country-dropdown" class="country-dropdown hidden" role="listbox"></div>
+              </div>
+              <label class="ai-toggle-row" id="ai-toggle-row">
+                <input type="checkbox" id="ai-translate-check" checked />
+                <span>AI 译成目标国搜索词</span>
+                <span class="ai-badge" id="ai-badge">词典备用</span>
+              </label>
+              <p class="field-hint" id="country-hint">先选国家，再用中文填地点/关键词；未配置 AI 时走词典+机翻</p>
+            </div>
 
             <!-- 在哪里 -->
             <div class="field-group">
@@ -58,11 +87,11 @@
                   type="text"
                   id="locations"
                   name="locations"
-                  placeholder="请输入地点，如：深圳市南山区科技园"
+                  placeholder="请输入地点，如：雅加达 / 纽约曼哈顿"
                   autocomplete="off"
                 />
               </div>
-              <p class="field-hint">支持输入关键词搜索和地图选点两种方式</p>
+              <p class="field-hint">支持中文地名；会按目标国家锚定地图</p>
             </div>
 
             <!-- 找什么 -->
@@ -79,6 +108,7 @@
                 />
                 <button type="button" class="clear-btn" id="keywords-clear" title="清除">&times;</button>
               </div>
+              <p class="field-hint" id="ai-preview-hint">可用中文；提交时 AI/词典译成目标国语言</p>
             </div>
 
             <!-- 热门搜索 -->
@@ -335,7 +365,7 @@
 
       // 结果字段定义（深度模式可勾选；系统保留字段不在此列，始终包含）
       var ALL_COLUMNS = [
-        ['address', '地址', true], ['phone', '电话', true], ['emails', '邮箱', true],
+        ['address', '地址', true], ['whatsapp', 'WhatsApp', true], ['emails', '邮箱', true], ['phone', '电话', true],
         ['website', '网站', true], ['category', '类别', true], ['review_rating', '评分', true],
         ['review_count', '评论数', true], ['reviews_per_rating', '各星级评论数', false],
         ['open_hours', '营业时间', true], ['popular_times', '客流高峰', false],
@@ -350,7 +380,162 @@
         ['order_online', '在线下单', false], ['street_view_url', '街景', false],
         ['data_id', '数据ID', false]
       ];
-      var ESSENTIAL_COLUMN_KEYS = ['address', 'phone', 'emails', 'website', 'review_rating', 'review_count', 'category'];
+      var ESSENTIAL_COLUMN_KEYS = ['address', 'whatsapp', 'emails', 'phone', 'website', 'review_rating', 'review_count', 'category'];
+
+      // 目标国家（可搜索）。code=ISO2, lang=Google hl, zh=中文名
+      var COUNTRY_LIST = [
+        {code:'id', lang:'id', zh:'印度尼西亚', en:'Indonesia'},
+        {code:'th', lang:'th', zh:'泰国', en:'Thailand'},
+        {code:'vn', lang:'vi', zh:'越南', en:'Vietnam'},
+        {code:'my', lang:'ms', zh:'马来西亚', en:'Malaysia'},
+        {code:'sg', lang:'en', zh:'新加坡', en:'Singapore'},
+        {code:'ph', lang:'en', zh:'菲律宾', en:'Philippines'},
+        {code:'jp', lang:'ja', zh:'日本', en:'Japan'},
+        {code:'kr', lang:'ko', zh:'韩国', en:'South Korea'},
+        {code:'us', lang:'en', zh:'美国', en:'United States'},
+        {code:'gb', lang:'en', zh:'英国', en:'United Kingdom'},
+        {code:'au', lang:'en', zh:'澳大利亚', en:'Australia'},
+        {code:'nz', lang:'en', zh:'新西兰', en:'New Zealand'},
+        {code:'ca', lang:'en', zh:'加拿大', en:'Canada'},
+        {code:'de', lang:'de', zh:'德国', en:'Germany'},
+        {code:'fr', lang:'fr', zh:'法国', en:'France'},
+        {code:'es', lang:'es', zh:'西班牙', en:'Spain'},
+        {code:'it', lang:'it', zh:'意大利', en:'Italy'},
+        {code:'pt', lang:'pt', zh:'葡萄牙', en:'Portugal'},
+        {code:'br', lang:'pt', zh:'巴西', en:'Brazil'},
+        {code:'mx', lang:'es', zh:'墨西哥', en:'Mexico'},
+        {code:'ae', lang:'ar', zh:'阿联酋', en:'United Arab Emirates'},
+        {code:'sa', lang:'ar', zh:'沙特阿拉伯', en:'Saudi Arabia'},
+        {code:'tr', lang:'tr', zh:'土耳其', en:'Turkey'},
+        {code:'ru', lang:'ru', zh:'俄罗斯', en:'Russia'},
+        {code:'in', lang:'en', zh:'印度', en:'India'},
+        {code:'cn', lang:'zh', zh:'中国', en:'China'},
+        {code:'hk', lang:'zh', zh:'中国香港', en:'Hong Kong'},
+        {code:'tw', lang:'zh', zh:'中国台湾', en:'Taiwan'},
+        {code:'nl', lang:'nl', zh:'荷兰', en:'Netherlands'},
+        {code:'pl', lang:'pl', zh:'波兰', en:'Poland'},
+        {code:'se', lang:'sv', zh:'瑞典', en:'Sweden'}
+      ];
+      var selectedCountry = null;
+      var aiTranslateEnabled = false;
+
+      function countryLabel(c) {
+        return c.zh + ' · ' + c.en;
+      }
+
+      function filterCountries(q) {
+        q = (q || '').trim().toLowerCase();
+        if (!q) return COUNTRY_LIST.slice();
+        return COUNTRY_LIST.filter(function (c) {
+          return c.zh.toLowerCase().indexOf(q) !== -1 ||
+            c.en.toLowerCase().indexOf(q) !== -1 ||
+            c.code.indexOf(q) !== -1;
+        });
+      }
+
+      function renderCountryDropdown(list) {
+        var dd = document.getElementById('country-dropdown');
+        dd.innerHTML = '';
+        if (!list.length) {
+          dd.innerHTML = '<div class="country-empty">无匹配国家</div>';
+          dd.classList.remove('hidden');
+          return;
+        }
+        list.forEach(function (c) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'country-option';
+          btn.setAttribute('role', 'option');
+          btn.innerHTML = '<span class="country-zh">' + c.zh + '</span><span class="country-en">' + c.en + '</span>';
+          btn.addEventListener('click', function () { selectCountry(c); });
+          dd.appendChild(btn);
+        });
+        dd.classList.remove('hidden');
+      }
+
+      function selectCountry(c) {
+        selectedCountry = c;
+        document.getElementById('country_code').value = c.code;
+        document.getElementById('country_name').value = c.en;
+        document.getElementById('country-search').value = countryLabel(c);
+        document.getElementById('lang').value = c.lang;
+        document.getElementById('country-dropdown').classList.add('hidden');
+        updateAIPreviewHint();
+      }
+
+      function clearCountry() {
+        selectedCountry = null;
+        document.getElementById('country_code').value = '';
+        document.getElementById('country_name').value = '';
+        document.getElementById('country-search').value = '';
+        document.getElementById('country-dropdown').classList.add('hidden');
+        updateAIPreviewHint();
+      }
+
+      function syncAITranslateHidden() {
+        var on = document.getElementById('ai-translate-check').checked;
+        document.getElementById('ai_translate').value = on ? 'on' : '';
+      }
+
+      function updateAIPreviewHint() {
+        var hint = document.getElementById('ai-preview-hint');
+        var badge = document.getElementById('ai-badge');
+        var c = selectedCountry;
+        if (aiTranslateEnabled && document.getElementById('ai-translate-check').checked) {
+          badge.textContent = 'AI 已就绪';
+          badge.classList.add('on');
+          hint.textContent = c
+            ? ('提交时 AI 将中文译成「' + c.zh + '」本地搜索词（词典优先）')
+            : '请先选目标国家；AI 会把中文译成当地搜索词';
+        } else {
+          badge.textContent = aiTranslateEnabled ? 'AI 已关' : '词典+机翻';
+          badge.classList.remove('on');
+          hint.textContent = c
+            ? ('可用中文；提交时译成「' + c.zh + '」搜索词（词典/机翻）')
+            : '可用中文；提交时按地点推断国家并翻译';
+        }
+      }
+
+      function initCountryPicker() {
+        var input = document.getElementById('country-search');
+        var dd = document.getElementById('country-dropdown');
+        var clearBtn = document.getElementById('country-clear');
+
+        input.addEventListener('focus', function () {
+          renderCountryDropdown(filterCountries(input.value));
+        });
+        input.addEventListener('input', function () {
+          // 手动改字时视为未选定，避免旧 country_code 残留
+          if (selectedCountry && input.value !== countryLabel(selectedCountry)) {
+            selectedCountry = null;
+            document.getElementById('country_code').value = '';
+            document.getElementById('country_name').value = '';
+          }
+          renderCountryDropdown(filterCountries(input.value));
+        });
+        clearBtn.addEventListener('click', function () {
+          clearCountry();
+          input.focus();
+        });
+        document.addEventListener('click', function (e) {
+          if (!document.getElementById('country-picker').contains(e.target)) {
+            dd.classList.add('hidden');
+          }
+        });
+        document.getElementById('ai-translate-check').addEventListener('change', function () {
+          syncAITranslateHidden();
+          updateAIPreviewHint();
+        });
+        syncAITranslateHidden();
+
+        fetch('/api/v1/ai-status').then(function (r) { return r.json(); }).then(function (d) {
+          aiTranslateEnabled = !!(d && d.enabled);
+          updateAIPreviewHint();
+        }).catch(function () {
+          aiTranslateEnabled = false;
+          updateAIPreviewHint();
+        });
+      }
 
       function buildColumnsPicker() {
         var grid = document.getElementById('columns-grid');
@@ -461,11 +646,14 @@
         document.getElementById('name').value = name;
 
         const langInput = document.getElementById('lang');
-        // 语言优先用地图定位回填的目标国语言；没有时再默认 en（勿因中文地名误设 zh）
-        if (!langInput.value) {
+        // 语言：已选国家 > 已有值 > 默认 en（勿因中文地名误设 zh）
+        if (selectedCountry && selectedCountry.lang) {
+          langInput.value = selectedCountry.lang;
+        } else if (!langInput.value) {
           langInput.value = 'en';
         }
 
+        syncAITranslateHidden();
         // 组装结果字段参数
         syncColumnsHidden();
 
@@ -473,6 +661,9 @@
         if (params) {
           params['name'] = name;
           params['lang'] = langInput.value;
+          params['country_code'] = document.getElementById('country_code').value;
+          params['country_name'] = document.getElementById('country_name').value;
+          params['ai_translate'] = document.getElementById('ai_translate').value;
           params['columns'] = document.getElementById('columns').value;
           params['latitude'] = document.getElementById('latitude').value;
           params['longitude'] = document.getElementById('longitude').value;
@@ -539,10 +730,10 @@
         }
       });
 
-      // 构建结果字段选择器（脚本末尾执行，确保 ALL_COLUMNS 已就绪；
-      // 默认全域全量模式 -> 展示自选区）
+      // 初始化：国家选择器 + 字段勾选 + 默认快速模式
       buildColumnsPicker();
-      document.getElementById('columns-section').classList.remove('hidden');
+      initCountryPicker();
+      selectMode('quick');
     </script>
 </body>
 </html>

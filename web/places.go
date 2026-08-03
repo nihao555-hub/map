@@ -30,6 +30,7 @@ type Place struct {
 	ReviewRating float64 `json:"review_rating"`
 	ReviewCount  int     `json:"review_count"`
 	Emails       string  `json:"emails"`
+	WhatsApp     string  `json:"whatsapp"`
 }
 
 // GetPlaces locates the job's CSV output and parses it into mappable places.
@@ -137,10 +138,11 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 			ReviewRating: rating,
 			ReviewCount:  reviewCount,
 			Emails:       get(row, "emails"),
+			WhatsApp:     get(row, "whatsapp"),
 		})
 	}
 
-	// 获客优先：有邮箱 > 仅有电话 > 都没有；同档再按评分/评论数
+	// 获客优先：WhatsApp > 邮箱 > 电话；同档再按评分/评论数
 	sort.SliceStable(places, func(i, j int) bool {
 		si, sj := contactScore(places[i]), contactScore(places[j])
 		if si != sj {
@@ -156,9 +158,12 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 	return places, nil
 }
 
-// contactScore 邮箱权重大于电话（印尼等市场获客更看邮箱）
+// contactScore WhatsApp > 邮箱 > 电话（印尼等市场更看即时通讯）
 func contactScore(p Place) int {
 	score := 0
+	if strings.TrimSpace(p.WhatsApp) != "" {
+		score += 1000
+	}
 	if strings.TrimSpace(p.Emails) != "" {
 		score += 100
 	}

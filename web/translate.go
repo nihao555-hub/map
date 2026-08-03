@@ -157,13 +157,26 @@ var zhPlaceLexicon = map[string]string{
 
 var camelSplitRE = regexp.MustCompile(`([a-z])([A-Z])`)
 
+// localizeOpts 控制是否走 AI 翻译（词典未命中时）
+type localizeOpts struct {
+	CountryName string // 目标国家英文/中文名，给 AI 提示用
+	UseAI       bool   // 用户勾选且服务端已配置 GRSAI_API_KEY
+}
+
 // localizeSearchQuery 把中文「找什么 / 在哪里」转成目标国可搜的查询。
+// 优先级：业务词典 → AI（可选）→ MyMemory → 英文回退。
 // 返回：用于 Google Maps 的关键词列表、搜索用地名、是否发生了翻译。
-func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations string, targetLang string) (keywords []string, searchLocation string, translated bool) {
+func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations string, targetLang string, opts ...localizeOpts) (keywords []string, searchLocation string, translated bool) {
 	targetLang = strings.ToLower(strings.TrimSpace(targetLang))
 	if targetLang == "" {
 		targetLang = "en"
 	}
+
+	var opt localizeOpts
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+	useAI := opt.UseAI && AITranslateEnabled()
 
 	searchLocation = strings.TrimSpace(locations)
 	if searchLocation != "" && containsChinese(searchLocation) && targetLang != "zh" {
@@ -173,9 +186,17 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 		} else if loc, ok := fuzzyPlaceLexicon(searchLocation); ok {
 			searchLocation = loc
 			translated = true
-		} else if name, err := translateText(ctx, searchLocation, "zh", "en"); err == nil && name != "" && !containsChinese(name) {
-			searchLocation = name
-			translated = true
+		} else if useAI {
+			if name, err := AITranslateKeyword(ctx, searchLocation, opt.CountryName, "en"); err == nil && name != "" {
+				searchLocation = name
+				translated = true
+			}
+		}
+		if containsChinese(searchLocation) {
+			if name, err := translateText(ctx, searchLocation, "zh", "en"); err == nil && name != "" && !containsChinese(name) {
+				searchLocation = name
+				translated = true
+			}
 		}
 	}
 
@@ -190,13 +211,21 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 			if t, ok := translateBusinessTerm(k, targetLang); ok {
 				searchK = t
 				translated = true
-			} else if t, err := translateText(ctx, k, "zh", targetLang); err == nil && t != "" {
-				searchK = normalizeMT(t)
-				translated = true
-			} else if t, err := translateText(ctx, k, "zh", "en"); err == nil && t != "" {
-				// 目标语翻译失败时至少落到英文，避免把残缺中文直接丢给 Google
-				searchK = normalizeMT(t)
-				translated = true
+			} else if useAI {
+				if t, err := AITranslateKeyword(ctx, k, opt.CountryName, targetLang); err == nil && t != "" {
+					searchK = t
+					translated = true
+				}
+			}
+			if containsChinese(searchK) {
+				if t, err := translateText(ctx, k, "zh", targetLang); err == nil && t != "" {
+					searchK = normalizeMT(t)
+					translated = true
+				} else if t, err := translateText(ctx, k, "zh", "en"); err == nil && t != "" {
+					// 目标语翻译失败时至少落到英文，避免把残缺中文直接丢给 Google
+					searchK = normalizeMT(t)
+					translated = true
+				}
 			}
 		}
 

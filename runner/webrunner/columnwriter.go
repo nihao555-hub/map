@@ -24,7 +24,7 @@ var forcedColumns = map[string]bool{
 
 // 快速模式必要列（对客户有用的核心字段）
 var essentialColumns = []string{
-	"title", "address", "emails", "phone",
+	"title", "address", "whatsapp", "emails", "phone",
 	"review_rating", "review_count", "website",
 }
 

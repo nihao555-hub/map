@@ -47,6 +47,11 @@ func Geocode(ctx context.Context, query string) (GeoPoint, error) {
 
 // GeocodeLang 同 Geocode，可指定 accept-language（如 en）以拿到英文地名供海外搜索。
 func GeocodeLang(ctx context.Context, query, acceptLang string) (GeoPoint, error) {
+	return GeocodeInCountry(ctx, query, acceptLang, "")
+}
+
+// GeocodeInCountry 同 GeocodeLang，可用 ISO2 countrycodes 把结果锚定到目标国（如 id/th）。
+func GeocodeInCountry(ctx context.Context, query, acceptLang, countryCode string) (GeoPoint, error) {
 	if strings.TrimSpace(query) == "" {
 		return GeoPoint{}, fmt.Errorf("empty query")
 	}
@@ -58,6 +63,9 @@ func GeocodeLang(ctx context.Context, query, acceptLang string) (GeoPoint, error
 	)
 	if lang := strings.TrimSpace(acceptLang); lang != "" {
 		apiURL += "&accept-language=" + url.QueryEscape(lang)
+	}
+	if cc := strings.ToLower(strings.TrimSpace(countryCode)); cc != "" && len(cc) == 2 {
+		apiURL += "&countrycodes=" + url.QueryEscape(cc)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)

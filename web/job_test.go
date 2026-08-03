@@ -51,11 +51,12 @@ func TestJobRowTemplateShowsGeoAnchor(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 
-	if !strings.Contains(buf.String(), "锚定坐标 13.756331, 100.501765") {
-		t.Fatalf("expected anchored coords in card, got:\n%s", buf.String())
+	// 任务卡通过 data-lat/data-lon 把锚定坐标交给地图同步（不再展示文案行）
+	if !strings.Contains(buf.String(), `data-lat="13.756331"`) ||
+		!strings.Contains(buf.String(), `data-lon="100.501765"`) {
+		t.Fatalf("expected anchored coords in card data attrs, got:\n%s", buf.String())
 	}
 
-	// 未锚定（表单默认 0,0）的任务卡片不展示坐标
 	job.Data.Lat = "0"
 	job.Data.Lon = "0"
 
@@ -65,7 +66,7 @@ func TestJobRowTemplateShowsGeoAnchor(t *testing.T) {
 		t.Fatalf("execute: %v", err)
 	}
 
-	if strings.Contains(buf.String(), "锚定坐标") {
-		t.Fatalf("expected no anchor line for 0,0 coords, got:\n%s", buf.String())
+	if !strings.Contains(buf.String(), `data-lat="0"`) || !strings.Contains(buf.String(), `data-lon="0"`) {
+		t.Fatalf("expected default 0,0 coords in data attrs, got:\n%s", buf.String())
 	}
 }
