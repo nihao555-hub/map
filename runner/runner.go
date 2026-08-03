@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -148,6 +149,18 @@ func ParseConfig() *Config {
 	flag.BoolVar(&cfg.Version, "version", false, "returns the version of the tool")
 
 	flag.Parse()
+
+	// Web 部署常用环境变量（docker-compose 的 GMS_WEB_*）。
+	// 旧版只写了 env、没接到 -c，2 核机器会落到 Concurrency=1，速度崩到 2 家/分钟。
+	if v := envInt("GMS_WEB_CONCURRENCY"); v > 0 {
+		cfg.Concurrency = v
+	}
+	if v := envInt("GMS_WEB_BROWSER_POOL_SIZE"); v > 0 {
+		cfg.BrowserPoolSize = v
+	}
+	if v := envInt("GMS_WEB_PAGES_PER_BROWSER"); v > 0 {
+		cfg.MaxPagesPerBrowser = v
+	}
 
 	if cfg.Version {
 		info, ok := debug.ReadBuildInfo()
@@ -348,6 +361,20 @@ func AppendBrowserCapacityOptions(opts []func(*scrapemateapp.Config) error, cfg 
 	}
 
 	return opts
+}
+
+func envInt(name string) int {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return 0
+	}
+
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0
+	}
+
+	return n
 }
 
 func Banner() {

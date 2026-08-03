@@ -12,8 +12,8 @@ export NODE="${NODE:-新加坡-优化3-Gemini}"
 export GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
 export PLAYWRIGHT_DOWNLOAD_HOST="${PLAYWRIGHT_DOWNLOAD_HOST:-https://cdn.npmmirror.com/binaries/playwright}"
 export APT_MIRROR="${APT_MIRROR:-mirrors.tencentyun.com}"
-export GMS_WEB_CONCURRENCY="${GMS_WEB_CONCURRENCY:-4}"
-export GMS_WEB_BROWSER_POOL_SIZE="${GMS_WEB_BROWSER_POOL_SIZE:-1}"
+export GMS_WEB_CONCURRENCY="${GMS_WEB_CONCURRENCY:-16}"
+export GMS_WEB_BROWSER_POOL_SIZE="${GMS_WEB_BROWSER_POOL_SIZE:-4}"
 export GMS_WEB_PAGES_PER_BROWSER="${GMS_WEB_PAGES_PER_BROWSER:-4}"
 
 if [ -z "${SUB_URL:-}" ]; then
