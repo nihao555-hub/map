@@ -135,7 +135,7 @@
               <label class="field-label" for="maxresults">目标客户数量上限</label>
               <div class="input-field">
                 <i data-lucide="target" class="w-4 h-4 input-icon"></i>
-                <input type="number" id="maxresults" name="maxresults" min="0" step="1" value="0" placeholder="0 或留空 = 不限，抓到全域全量为止"/>
+                <input type="number" id="maxresults" name="maxresults" min="0" step="1" value="50" placeholder="0 或留空 = 不限，抓到全域全量为止"/>
               </div>
               <p class="columns-note">可填任意正整数（如 30 / 50 / 100）；0 或不填 = 不限</p>
             </div>
@@ -183,11 +183,11 @@
                     </select>
                   </div>
 
-                  <!-- 抓取邮箱开关 -->
+                  <!-- 抓取邮箱：获客刚需，快速/深度均强制开启 -->
                   <div class="switch-row">
-                    <span class="switch-label"><i data-lucide="mail" class="w-4 h-4"></i>抓取邮箱</span>
+                    <span class="switch-label"><i data-lucide="mail" class="w-4 h-4"></i>抓取邮箱（必开）</span>
                     <input type="checkbox" id="email" name="email" checked class="hidden">
-                    <div class="toggle-switch on" id="email-toggle" onclick="toggleSwitch(this, 'email')"></div>
+                    <div class="toggle-switch on" id="email-toggle" title="邮箱为必要字段，已锁定开启" aria-disabled="true"></div>
                   </div>
 
                   <!-- 语言 -->
@@ -223,13 +223,13 @@
                   </div>
 
                   <!-- 隐藏的后端参数 -->
-                  <input type="hidden" id="zoom" name="zoom" value="15">
+                  <input type="hidden" id="zoom" name="zoom" value="14">
                   <input type="hidden" id="latitude" name="latitude" value="0">
                   <input type="hidden" id="longitude" name="longitude" value="0">
                   <input type="hidden" id="fastmode" name="fastmode" value="">
                   <input type="hidden" id="gridmode" name="gridmode" value="on">
                   <input type="hidden" id="gridbbox" name="gridbbox" value="">
-                  <input type="hidden" id="radius" name="radius" value="10000">
+                  <input type="hidden" id="radius" name="radius" value="25000">
                   <input type="hidden" id="columns" name="columns" value="">
 
                   <!-- 代理设置 -->
@@ -402,6 +402,12 @@
         });
         document.getElementById('fastmode').value = mode === 'quick' ? 'on' : '';
         document.getElementById('gridmode').value = mode === 'grid' ? 'on' : '';
+        // 快速：稍低缩放 + 更大半径，后端还会自动粗网格扩量
+        document.getElementById('zoom').value = mode === 'quick' ? '14' : '15';
+        document.getElementById('radius').value = mode === 'quick' ? '25000' : '15000';
+        document.getElementById('email').checked = true;
+        var emailToggle = document.getElementById('email-toggle');
+        if (emailToggle) emailToggle.classList.add('on');
         document.getElementById('grid-density-section').classList.toggle('hidden', mode !== 'grid');
         // 快速模式只出必要字段；深度/全域模式展示字段自选区
         document.getElementById('columns-section').classList.toggle('hidden', mode === 'quick');
@@ -472,6 +478,9 @@
           params['longitude'] = document.getElementById('longitude').value;
           params['fastmode'] = document.getElementById('fastmode').value;
           params['gridmode'] = document.getElementById('gridmode').value;
+          // 邮箱刚需：始终提交 on（与隐藏 checkbox 状态无关）
+          params['email'] = 'on';
+          document.getElementById('email').checked = true;
         }
       });
 

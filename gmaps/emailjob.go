@@ -21,7 +21,7 @@ import (
 const (
 	emailJobTimeout       = 12 * time.Second
 	emailFollowBudget     = 10 * time.Second
-	emailMaxFollowPages   = 4
+	emailMaxFollowPages   = 6
 	emailMaxResponseBytes = 512 << 10
 )
 
@@ -42,6 +42,7 @@ var (
 		"yelp.com", "tripadvisor", "squarespace", "godaddy", "latofonts",
 		"indiantypefoundry", "impallari@", "mysite.com", "test.com",
 		"user@domain", "name@email", "johndoe", "john.doe", "example@",
+		"abc@xyz", "email@email", "test@test", "foo@bar",
 	}
 	emailJunkSuffixes = []string{
 		".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".css", ".js", ".map",
@@ -120,13 +121,18 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 
 	emails := collectEmailsFromResponse(resp)
 
-	if len(emails) == 0 && resp.Error == nil {
-		baseURL := j.URL
-		if resp.URL != "" {
-			baseURL = resp.URL
-		}
+	baseURL := j.URL
+	if resp != nil && resp.URL != "" {
+		baseURL = resp.URL
+	}
 
-		followURLs := discoverEmailFollowURLs(baseURL, resp)
+	// 首页失败（409/403/超时）或没有邮箱时：尝试 https 升级 + contact/about 等路径
+	if len(emails) == 0 {
+		followURLs := alternateEmailURLs(baseURL)
+		if resp == nil || resp.Error == nil {
+			followURLs = append(followURLs, discoverEmailFollowURLs(baseURL, resp)...)
+		}
+		followURLs = uniqueURLs(followURLs)
 		if len(followURLs) > 0 {
 			extra := fetchEmailsFromURLs(ctx, followURLs)
 			emails = mergeEmails(emails, extra)
@@ -136,6 +142,60 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 	j.Entry.Emails = filterEmails(emails)
 
 	return j.Entry, nil, nil
+}
+
+// alternateEmailURLs 在官网首页拉失败时仍值得一试的候选地址
+func alternateEmailURLs(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return nil
+	}
+
+	host := parsed.Host
+	var out []string
+
+	// http → https
+	if strings.EqualFold(parsed.Scheme, "http") {
+		u := *parsed
+		u.Scheme = "https"
+		out = append(out, u.String())
+	}
+
+	// 去 www / 加 www
+	bare := strings.TrimPrefix(strings.ToLower(host), "www.")
+	for _, h := range []string{bare, "www." + bare} {
+		for _, path := range contactPathHints {
+			out = append(out, "https://"+h+path)
+		}
+		out = append(out, "https://"+h+"/")
+	}
+
+	return out
+}
+
+func uniqueURLs(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+
+	for _, u := range in {
+		key := strings.TrimRight(strings.ToLower(strings.TrimSpace(u)), "/")
+		if key == "" || seen[key] {
+			continue
+		}
+
+		seen[key] = true
+		out = append(out, u)
+		if len(out) >= emailMaxFollowPages+4 {
+			break
+		}
+	}
+
+	return out
 }
 
 // ProcessOnFetchError keeps the place result even when the website fetch fails.
@@ -323,8 +383,28 @@ func isJunkEmail(email string) bool {
 	}
 
 	local := lower[:at]
-	if len(local) >= 32 && isHexish(local) {
-		return true // likely analytics / sentry-style ids
+	domain := lower[at+1:]
+
+	// 过长本地部分 / 含大量无意义字符：常见于追踪像素伪造邮箱
+	if len(local) >= 32 {
+		compact := strings.Map(func(r rune) rune {
+			if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') {
+				return r
+			}
+			return -1
+		}, local)
+		if len(compact) >= 24 {
+			return true
+		}
+	}
+	if len(local) >= 40 {
+		return true
+	}
+
+	// 域名过怪（无点、或 TLD 不像常规邮箱）
+	if !strings.Contains(domain, ".") || strings.HasSuffix(domain, ".nacsi") ||
+		strings.Contains(domain, "w-whpeg") {
+		return true
 	}
 
 	return false

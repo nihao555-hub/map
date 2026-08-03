@@ -10,6 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestIsJunkEmailRejectsTrackerStyle(t *testing.T) {
+	junk := "vr_zlobu8u45qxfyyqgbjze26cm7jrdk1adimt9ov3xhs+@w-whpegfnpktl.nacsi"
+	if !isJunkEmail(junk) {
+		t.Fatalf("expected junk email rejected: %s", junk)
+	}
+	if isJunkEmail("info@cafe-example.org") {
+		t.Fatal("valid email should pass")
+	}
+}
+
 func TestFilterEmailsRemovesJunk(t *testing.T) {
 	t.Parallel()
 

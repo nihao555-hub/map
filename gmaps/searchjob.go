@@ -134,7 +134,7 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 	// 避免退出监控在翻页中途误判任务完成。
 	const (
 		searchPageSize = 20
-		maxSearchPages = 5
+		maxSearchPages = 10 // 扩页：单点/单格尽量多拿，配合网格覆盖更大区域
 	)
 
 	rawCount := len(entries)

@@ -361,7 +361,8 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newJob.Data.Email = r.Form.Get("email") == "on"
+	// 邮箱为获客刚需：快速/深度/网格一律开启，忽略前端关闭
+	newJob.Data.Email = true
 
 	// 网格全量模式
 	if r.Form.Get("gridmode") == "on" {
@@ -381,6 +382,20 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 			newJob.Data.GridBBox = bbox
 		}
 		// 快速模式已原生支持网格（纯 HTTP 搜索接口按格取数），不再强制关闭
+	}
+
+	// 快速模式单点搜索结果很少：自动开粗网格扩量（仍走纯 HTTP）。
+	// 格子边长/半径加以限制，避免上百格拖慢「抓满即停」的收尾。
+	if newJob.Data.FastMode && !newJob.Data.GridMode {
+		newJob.Data.GridMode = true
+		newJob.Data.GridCellKm = 2.5
+		if newJob.Data.Radius <= 0 || newJob.Data.Radius > 10000 {
+			newJob.Data.Radius = 10000 // ±5km → 大约十几格
+		}
+		if newJob.Data.Locations == "" {
+			newJob.Data.Locations = locationsStr
+		}
+		log.Printf("快速模式自动启用粗网格扩量 cell=%.1fkm radius=%dm", newJob.Data.GridCellKm, newJob.Data.Radius)
 	}
 
 	// 结果列配置（快速模式可不选；深度/网格模式用户自选表头）
@@ -407,7 +422,7 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		if geoErr != nil {
 			log.Printf("地理编码 %q 失败: %v，回退为未锚定搜索", locationsStr, geoErr)
 		} else {
-			if !newJob.Data.GridMode && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+			if !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
 				newJob.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
 				newJob.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
 				log.Printf("地点 %q 锚定到 %s,%s", locationsStr, newJob.Data.Lat, newJob.Data.Lon)
@@ -431,10 +446,8 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 任务名始终用用户输入的中文（体验不变）
-	if newJob.Name == "" {
-		newJob.Name = buildJobName(rawKeywords, locationsStr)
-	}
+	// 任务名始终由服务端用当前关键词+地点生成，避免前端隐藏域残留导致「名实不符」
+	newJob.Name = buildJobName(rawKeywords, locationsStr)
 
 	// 关键词本地化：中文品类 → 目标国语言；地点用英文/当地名
 	{
