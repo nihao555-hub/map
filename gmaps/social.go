@@ -51,15 +51,6 @@ func classifySocialURL(raw string) (kind, normalized string) {
 
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
-		// 宽松匹配：整串包含 host
-		for _, s := range socialHosts {
-			for _, n := range s.needles {
-				if strings.Contains(lower, n) {
-					return s.field, strings.TrimSpace(raw)
-				}
-			}
-		}
-
 		return "", ""
 	}
 
@@ -68,10 +59,36 @@ func classifySocialURL(raw string) (kind, normalized string) {
 	host = strings.TrimPrefix(host, "m.")
 	host = strings.TrimPrefix(host, "mobile.")
 
+	path := strings.Trim(u.Path, "/")
+	lowerPath := strings.ToLower(path)
+
+	// 丢掉分享/意图/空壳链接，只保留可点击的主页/主页型 path
+	junkPathHints := []string{
+		"sharer.php", "share.php", "share?", "/share/", "intent/",
+		"login", "signup", "dialog/", "plugins/", "tr?",
+	}
+	for _, j := range junkPathHints {
+		if strings.Contains(lowerPath, strings.Trim(j, "/?")) || strings.Contains(lower, j) {
+			return "", ""
+		}
+	}
+
 	for _, s := range socialHosts {
 		for _, n := range s.needles {
-			if host == n || strings.HasSuffix(host, "."+n) || strings.Contains(host, n) {
-				// 规范化：保留 https + host + path
+			if host == n || strings.HasSuffix(host, "."+n) {
+				if path == "" {
+					return "", "" // 仅域名无账号
+				}
+				// Instagram/TikTok 单条帖子噪音大，优先只要账号页
+				if s.field == "instagram" && (strings.HasPrefix(lowerPath, "p/") || strings.HasPrefix(lowerPath, "reel/") || strings.HasPrefix(lowerPath, "stories/")) {
+					return "", ""
+				}
+				if s.field == "tiktok" && strings.HasPrefix(lowerPath, "video/") {
+					return "", ""
+				}
+				if s.field == "facebook" && (lowerPath == "sharer.php" || strings.HasPrefix(lowerPath, "share")) {
+					return "", ""
+				}
 				u.Scheme = "https"
 				u.RawQuery = ""
 				u.Fragment = ""

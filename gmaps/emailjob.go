@@ -43,6 +43,8 @@ var (
 		"indiantypefoundry", "impallari@", "mysite.com", "test.com",
 		"user@domain", "name@email", "johndoe", "john.doe", "example@",
 		"abc@xyz", "email@email", "test@test", "foo@bar",
+		"yoursite.com", "anthropic.com", "gdprlocal.com", "linktr.ee",
+		"wix.com", "sentry.io", "noreply@", "no-reply@",
 	}
 	emailJunkSuffixes = []string{
 		".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".css", ".js", ".map",
