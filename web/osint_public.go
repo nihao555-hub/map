@@ -587,7 +587,6 @@ func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]Decision
 					Name: name, Title: firstNonEmpty(role, "LinkedIn profile"),
 					LinkedIn: clean, Source: "linkedin:xray",
 					Evidence: truncateRunes(label, 140), Confidence: conf,
-					Avatar: uiAvatarURL(name),
 				})
 			}
 		}
@@ -612,7 +611,6 @@ func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]Decision
 			makers = append(makers, DecisionMaker{
 				Name: name, Title: "LinkedIn profile", LinkedIn: clean,
 				Source: "linkedin:xray", Evidence: clean, Confidence: "low",
-				Avatar: uiAvatarURL(name),
 			})
 		}
 	}

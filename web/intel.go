@@ -7,11 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -65,6 +67,8 @@ type OrgUnit struct {
 type DecisionMaker struct {
 	Name       string `json:"name"`
 	Title      string `json:"title,omitempty"`
+	Headline   string `json:"headline,omitempty"` // LinkedIn 公开页标题行
+	Location   string `json:"location,omitempty"`
 	Email      string `json:"email,omitempty"`
 	Phone      string `json:"phone,omitempty"`
 	WhatsApp   string `json:"whatsapp,omitempty"`
@@ -1399,8 +1403,10 @@ func looksLikeWhatsApp(s string) bool {
 }
 
 func enrichDecisionMakerAvatars(makers []DecisionMaker) {
+	// 1) 有 /in/ 主页时，免费拉 LinkedIn 公开页 og:image（真头像）+ og:title（职位）
+	enrichLinkedInPublicProfiles(makers)
 	for i := range makers {
-		if makers[i].Avatar != "" {
+		if isRealAvatarURL(makers[i].Avatar) {
 			continue
 		}
 		if makers[i].Email != "" {
@@ -1411,6 +1417,148 @@ func enrichDecisionMakerAvatars(makers []DecisionMaker) {
 			makers[i].Avatar = uiAvatarURL(makers[i].Name)
 		}
 	}
+}
+
+func isRealAvatarURL(u string) bool {
+	u = strings.ToLower(strings.TrimSpace(u))
+	if u == "" {
+		return false
+	}
+	if strings.Contains(u, "ui-avatars.com") {
+		return false
+	}
+	// Gravatar identicon 也算占位；有 licdn 真图优先
+	if strings.Contains(u, "media.licdn.com") || strings.Contains(u, "licdn.com/dms/") {
+		return true
+	}
+	if strings.Contains(u, "gravatar.com") && strings.Contains(u, "d=identicon") {
+		return false
+	}
+	return strings.HasPrefix(u, "http")
+}
+
+// enrichLinkedInPublicProfiles 不登录抓公开档案：头像(og:image) + 标题行(og:title)。
+// 不做浏览器自动化、不需 cookie；比接入 joeyism/linkedin_scraper 等登录爬虫更稳妥。
+func enrichLinkedInPublicProfiles(makers []DecisionMaker) {
+	type job struct{ i int }
+	var jobs []job
+	for i := range makers {
+		li := strings.TrimSpace(makers[i].LinkedIn)
+		low := strings.ToLower(li)
+		if li == "" || !strings.Contains(low, "linkedin.com/in/") || strings.Contains(low, "/search/") {
+			continue
+		}
+		if isRealAvatarURL(makers[i].Avatar) && makers[i].Headline != "" {
+			continue
+		}
+		jobs = append(jobs, job{i: i})
+		if len(jobs) >= 6 { // 控制并发与耗时
+			break
+		}
+	}
+	if len(jobs) == 0 {
+		return
+	}
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 3)
+	for _, j := range jobs {
+		j := j
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			avatar, headline, loc := fetchLinkedInPublicMeta(makers[j.i].LinkedIn)
+			if avatar != "" {
+				makers[j.i].Avatar = avatar
+			}
+			if headline != "" {
+				makers[j.i].Headline = headline
+				if makers[j.i].Title == "" || makers[j.i].Title == "LinkedIn profile" || makers[j.i].Title == "LinkedIn contact" {
+					makers[j.i].Title = headline
+				}
+			}
+			if loc != "" && makers[j.i].Location == "" {
+				makers[j.i].Location = loc
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+var (
+	ogImageRe = regexp.MustCompile(`(?is)<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']|content=["']([^"']+)["'][^>]+property=["']og:image["']`)
+	ogTitleRe = regexp.MustCompile(`(?is)<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']|content=["']([^"']+)["'][^>]+property=["']og:title["']`)
+	liPhotoRe = regexp.MustCompile(`(?i)https://media\.licdn\.com/dms/image/[^"'\s<>]*profile-displayphoto[^"'\s<>]*`)
+)
+
+func fetchLinkedInPublicMeta(profileURL string) (avatar, headline, location string) {
+	profileURL = strings.Split(strings.TrimSpace(profileURL), "?")[0]
+	if profileURL == "" {
+		return "", "", ""
+	}
+	htmlBody := fetchLinkedInPublicHTML(profileURL)
+	if htmlBody == "" {
+		return "", "", ""
+	}
+	if m := ogImageRe.FindStringSubmatch(htmlBody); len(m) > 0 {
+		avatar = html.UnescapeString(firstNonEmpty(m[1], m[2]))
+	}
+	if avatar == "" {
+		if m := liPhotoRe.FindString(htmlBody); m != "" {
+			avatar = html.UnescapeString(m)
+		}
+	}
+	avatar = strings.ReplaceAll(avatar, "&amp;", "&")
+	if m := ogTitleRe.FindStringSubmatch(htmlBody); len(m) > 0 {
+		title := html.UnescapeString(firstNonEmpty(m[1], m[2]))
+		title = strings.TrimSpace(strings.Split(title, "|")[0])
+		parts := regexp.MustCompile(`\s+[-–—]\s+`).Split(title, -1)
+		if len(parts) >= 2 {
+			headline = strings.TrimSpace(parts[1])
+		} else if title != "" {
+			headline = title
+		}
+	}
+	return avatar, headline, location
+}
+
+func fetchLinkedInPublicHTML(profileURL string) string {
+	chromeUA := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+	// LinkedIn 常对 Go net/http 指纹返回 999 authwall；curl 更接近浏览器，作免费兜底。
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "curl", "-sL", "--max-time", "10",
+		"-A", chromeUA,
+		"-H", "Accept: text/html,application/xhtml+xml",
+		"-H", "Accept-Language: en-US,en;q=0.9",
+		profileURL,
+	)
+	out, err := cmd.Output()
+	if err == nil && len(out) > 2000 && !strings.Contains(strings.ToLower(string(out)), "authwall") {
+		return string(out)
+	}
+	// 再试 Go HTTP（部分地区/网络可用）
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, profileURL, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", chromeUA)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return ""
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 800<<10))
+	if strings.Contains(strings.ToLower(string(raw)), "authwall") {
+		return ""
+	}
+	return string(raw)
 }
 
 func gravatarURL(email string) string {

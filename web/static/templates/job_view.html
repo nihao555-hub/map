@@ -301,6 +301,7 @@
                 '<div class="intel-person-head">' + avatar +
                 '<div class="intel-person-meta"><strong>' + escapeHtml(name) + '</strong>' +
                 (d.title ? '<div class="intel-muted">' + escapeHtml(d.title) + '</div>' : '') +
+                (d.location ? '<div class="intel-muted">' + escapeHtml(d.location) + '</div>' : '') +
                 confBadge(d.confidence) + '</div></div>' +
                 (d.email ? kv('邮箱', '<a href="mailto:' + encodeURIComponent(d.email) + '">' + escapeHtml(d.email) + '</a>') : '') +
                 (d.phone ? kv('电话', escapeHtml(d.phone)) : '') +

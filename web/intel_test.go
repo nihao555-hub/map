@@ -164,3 +164,17 @@ func TestPublicFacingNoteNoOSINTNoise(t *testing.T) {
 		t.Fatalf("unexpected note: %s", note)
 	}
 }
+
+func TestParseLinkedInPublicMetaFromHTML(t *testing.T) {
+	// 用正则直接测样本，避免依赖外网
+	htmlBody := `<html><head>
+<meta property="og:title" content="Alice Tan - Purchasing Manager - Acme | LinkedIn"/>
+<meta property="og:image" content="https://media.licdn.com/dms/image/v2/ABC/profile-displayphoto-shrink_200_200/0/1"/>
+</head></body></html>`
+	if m := ogImageRe.FindStringSubmatch(htmlBody); len(m) < 2 || m[1] == "" && m[2] == "" {
+		t.Fatalf("og:image not matched: %#v", m)
+	}
+	if m := ogTitleRe.FindStringSubmatch(htmlBody); len(m) < 2 {
+		t.Fatal("og:title not matched")
+	}
+}
