@@ -72,7 +72,8 @@ type EmailExtractJob struct {
 
 // NewEmailJob creates an email extraction job for the merchant website.
 func NewEmailJob(parentID string, entry *Entry, opts ...EmailExtractJobOptions) *EmailExtractJob {
-	const defaultPrio = scrapemate.PriorityHigh
+	// 低优先级：不要抢搜索/地点 worker，否则吞吐会掉到个位数家/分钟。
+	const defaultPrio = scrapemate.PriorityLow
 
 	job := EmailExtractJob{
 		Job: scrapemate.Job{

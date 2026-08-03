@@ -388,8 +388,12 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 		// 提速：并发 = 配置的并发数；页面复用从 2 提到 20，浏览器复用从 200 提到 1000
 		opts := []func(*scrapemateapp.Config) error{
 			scrapemateapp.WithConcurrency(cfg.Concurrency),
-			// 地点完成后应尽快收尾；邮箱异步补字段，不再用 10 分钟空闲拖着
-			scrapemateapp.WithExitOnInactivity(time.Second * 45),
+		}
+		// 快速：HTTP 搜索，空闲可短收尾；深度：浏览器冷启动+滚动常 >45s，过短会误杀整单。
+		if job.Data.FastMode {
+			opts = append(opts, scrapemateapp.WithExitOnInactivity(90*time.Second))
+		} else {
+			opts = append(opts, scrapemateapp.WithExitOnInactivity(3*time.Minute))
 		}
 
 		if !job.Data.FastMode {
