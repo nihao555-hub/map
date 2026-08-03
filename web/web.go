@@ -443,6 +443,10 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	countryCode := strings.ToLower(strings.TrimSpace(r.Form.Get("country_code")))
 	countryName := strings.TrimSpace(r.Form.Get("country_name"))
 	useAI := r.Form.Get("ai_translate") == "on" || r.Form.Get("ai_translate") == "true"
+	if useAI && !AITranslateEnabled() {
+		log.Printf("已勾选 AI 翻译但未配置 GRSAI_API_KEY，将回退词典/机翻")
+		useAI = false
+	}
 	newJob.Data.CountryCode = countryCode
 	newJob.Data.CountryName = countryName
 	newJob.Data.RawKeywords = append([]string(nil), rawKeywords...)
@@ -450,21 +454,6 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		if hl := langForCountryCode(countryCode); hl != "" {
 			newJob.Data.Lang = hl
 		}
-	}
-
-	// 勾了 AI、关键词含中文，但服务端未配密钥：直接拒绝，避免中文进 Maps 只出 1～2 家
-	needAI := useAI && newJob.Data.Lang != "zh"
-	hasChineseKW := false
-	for _, k := range rawKeywords {
-		if containsChinese(k) {
-			hasChineseKW = true
-			break
-		}
-	}
-	if needAI && hasChineseKW && !AITranslateEnabled() {
-		http.Error(w, "已勾选 AI 翻译，但服务端未配置 GRSAI_API_KEY，无法把中文品类译成可搜词。请在 .env 配置密钥后重启，或改用英文关键词", http.StatusServiceUnavailable)
-
-		return
 	}
 
 	// 地理锚定 + 海外中文查询本地化：
