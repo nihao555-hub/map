@@ -153,7 +153,7 @@ func TestBatchIntelUncommonSMBs(t *testing.T) {
 		rows []row
 		wg   sync.WaitGroup
 	)
-	sem := make(chan struct{}, 3)
+	sem := make(chan struct{}, 4)
 	for i, f := range targets {
 		f := f
 		i := i
@@ -170,7 +170,7 @@ func TestBatchIntelUncommonSMBs(t *testing.T) {
 				PlaceID:  fmt.Sprintf("id_batch_%02d", i+1),
 			}
 			start := time.Now()
-			ctx, cancel := context.WithTimeout(context.Background(), 160*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			intel, err := svc.BuildPlaceIntel(ctx, "batch-indonesia", place)
 			cancel()
 			r := row{Title: f.Title, Website: f.Website, Seconds: time.Since(start).Seconds()}

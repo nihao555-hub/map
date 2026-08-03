@@ -10,8 +10,180 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
+
+// runCmdGroup 启动进程组，context 取消时杀掉整组（避免 uv/python 子进程残留挂死）。
+func runCmdGroup(ctx context.Context, stdout, stderr *bytes.Buffer, name string, args ...string) error {
+	cmd := exec.Command(name, args...) //nolint:gosec // OSINT CLI wrappers with fixed binaries
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if stdout != nil {
+		cmd.Stdout = stdout
+	}
+	if stderr != nil {
+		cmd.Stderr = stderr
+	} else if stdout != nil {
+		cmd.Stderr = stdout
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case <-ctx.Done():
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		<-done
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
+}
+
+// runOSINTEnrichment 并行跑已安装工具，单店总预算约 70s。
+func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st OSINTStatus) {
+	budget, cancel := context.WithTimeout(ctx, 70*time.Second)
+	defer cancel()
+
+	var (
+		mu       sync.Mutex
+		notes    []string
+		wg       sync.WaitGroup
+	)
+	addNote := func(s string) {
+		mu.Lock()
+		notes = append(notes, s)
+		mu.Unlock()
+	}
+
+	if intel.Domain != "" && st.TheHarvester {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			h, err := runTheHarvester(budget, intel.Domain)
+			if err != nil {
+				addNote("theHarvester：" + truncateRunes(err.Error(), 60))
+				return
+			}
+			mu.Lock()
+			applyHarvester(intel, h)
+			mu.Unlock()
+		}()
+	}
+	if intel.Domain != "" && st.SpiderFoot {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ev, err := runSpiderfootLite(budget, intel.Domain)
+			if err != nil {
+				addNote("SpiderFoot：" + truncateRunes(err.Error(), 60))
+				return
+			}
+			mu.Lock()
+			applySpiderfoot(intel, ev)
+			mu.Unlock()
+		}()
+	}
+	if place.Website != "" && st.Photon {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			emails, socials, err := runPhoton(budget, place.Website)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			applyPhoton(intel, emails, socials)
+			mu.Unlock()
+		}()
+	}
+	if intel.Domain != "" && st.Amass {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			hosts, err := runAmassPassive(budget, intel.Domain)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			applyAmass(intel, hosts)
+			mu.Unlock()
+		}()
+	}
+
+	wg.Wait()
+
+	// 邮箱类工具依赖上面挖到的邮箱，再跑第二波
+	seedEmails := append([]string{}, intel.ExtraEmails...)
+	if place.Emails != "" {
+		for _, e := range strings.Split(place.Emails, ",") {
+			if e = strings.TrimSpace(e); e != "" {
+				seedEmails = append(seedEmails, e)
+			}
+		}
+	}
+	seedEmails = uniqueStrings(seedEmails)
+	if len(seedEmails) == 0 {
+		if len(notes) > 0 {
+			intel.Note = strings.TrimSpace(intel.Note + " " + strings.Join(notes, " "))
+		}
+		return
+	}
+	em := seedEmails[0]
+	var wg2 sync.WaitGroup
+	if st.Holehe {
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			sites, err := runHolehe(budget, em)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			applyAccountHits(intel, "holehe", sites)
+			mu.Unlock()
+		}()
+	}
+	if st.Blackbird {
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			hits, err := runBlackbirdEmail(budget, em)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			applyAccountHits(intel, "blackbird", hits)
+			mu.Unlock()
+		}()
+	}
+	local := em
+	if i := strings.Index(em, "@"); i > 0 {
+		local = em[:i]
+	}
+	skipLocal := map[string]bool{"info": true, "hello": true, "contact": true, "admin": true, "cs": true, "support": true}
+	if st.Maigret && local != "" && !skipLocal[strings.ToLower(local)] {
+		wg2.Add(1)
+		go func() {
+			defer wg2.Done()
+			hits, err := runMaigretLite(budget, local)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			applyAccountHits(intel, "maigret", hits)
+			mu.Unlock()
+		}()
+	}
+	wg2.Wait()
+	if len(notes) > 0 {
+		intel.Note = strings.TrimSpace(intel.Note + " " + strings.Join(notes, " "))
+	}
+}
 
 // OSINTStatus 本地已安装的 OSINT 工具探测结果。
 type OSINTStatus struct {
@@ -153,20 +325,17 @@ func runTheHarvester(ctx context.Context, domain string) (*harvesterOut, error) 
 	defer os.RemoveAll(tmpDir)
 	outBase := filepath.Join(tmpDir, "out")
 
-	ctx, cancel := context.WithTimeout(ctx, 75*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 
 	full := append(append([]string{}, args...),
 		"-d", domain,
 		"-b", "crtsh,hackertarget",
-		"-l", "40",
+		"-l", "30",
 		"-f", outBase,
 	)
-	cmd := exec.CommandContext(ctx, bin, full...)
 	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	cmd.Stdout = &stderr
-	_ = cmd.Run()
+	_ = runCmdGroup(ctx, &stderr, nil, bin, full...)
 
 	raw, err := os.ReadFile(outBase + ".json")
 	if err != nil {
@@ -204,19 +373,16 @@ func runSpiderfootLite(ctx context.Context, domain string) ([]spiderEvent, error
 		"sfp_company", "sfp_names", "sfp_email", "sfp_opencorporates",
 	}, ",")
 
-	ctx, cancel := context.WithTimeout(ctx, 55*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, py, sf,
+	var stdout, stderr bytes.Buffer
+	err := runCmdGroup(ctx, &stdout, &stderr, py, sf,
 		"-s", domain,
 		"-m", modules,
 		"-o", "json",
 		"-q",
 	)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
 	raw := strings.TrimSpace(stdout.String())
 	if raw == "" {
 		return nil, fmt.Errorf("spiderfoot empty: %v %s", err, truncateRunes(stderr.String(), 160))
@@ -250,18 +416,15 @@ func runPhoton(ctx context.Context, website string) (emails []string, socials ma
 	}
 	defer os.RemoveAll(tmpDir)
 
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, py, script,
+	var stderr bytes.Buffer
+	_ = runCmdGroup(ctx, &stderr, nil, py, script,
 		"-u", website,
 		"-l", "1",
 		"-t", "6",
 		"-o", tmpDir,
 	)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	cmd.Stdout = &stderr
-	_ = cmd.Run()
 
 	socials = map[string]string{}
 	// Photon 输出：emails.txt / social.txt / intel.txt 等
@@ -301,14 +464,10 @@ func runHolehe(ctx context.Context, email string) ([]string, error) {
 		return nil, fmt.Errorf("bad email")
 	}
 	py := osintExtraPython()
-	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	// holehe CLI writes colored output; parse [+] lines
-	cmd := exec.CommandContext(ctx, filepath.Join(filepath.Dir(py), "holehe"), "--only-used", "--no-color", "-NP", email)
 	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	_ = cmd.Run()
+	_ = runCmdGroup(ctx, &out, nil, filepath.Join(filepath.Dir(py), "holehe"), "--only-used", "--no-color", "-NP", email)
 	var sites []string
 	for _, line := range strings.Split(out.String(), "\n") {
 		line = strings.TrimSpace(line)
@@ -340,9 +499,10 @@ func runBlackbirdEmail(ctx context.Context, email string) ([]string, error) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	ctx, cancel := context.WithTimeout(ctx, 50*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, py, script,
+	var out bytes.Buffer
+	cmd := exec.Command(py, script, //nolint:gosec
 		"--email", email,
 		"--json",
 		"--no-nsfw",
@@ -350,10 +510,19 @@ func runBlackbirdEmail(ctx context.Context, email string) ([]string, error) {
 		"--max-concurrent-requests", "20",
 	)
 	cmd.Dir = tmpDir
-	var out bytes.Buffer
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	_ = cmd.Run()
+	if err := cmd.Start(); err == nil {
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case <-ctx.Done():
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			<-done
+		case <-done:
+		}
+	}
 
 	// blackbird 常把 json 写到 results/ 目录
 	var hits []string
@@ -417,13 +586,10 @@ func runAmassPassive(ctx context.Context, domain string) ([]string, error) {
 	} else if p := filepath.Join(os.Getenv("HOME"), "go", "bin", "amass"); fileExists(p) {
 		amass = p
 	}
-	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, amass, "enum", "-passive", "-d", domain, "-nocolor")
 	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	_ = cmd.Run()
+	_ = runCmdGroup(ctx, &out, nil, amass, "enum", "-passive", "-d", domain, "-nocolor")
 	var hosts []string
 	for _, line := range strings.Split(out.String(), "\n") {
 		line = strings.TrimSpace(line)
@@ -449,14 +615,15 @@ func runMaigretLite(ctx context.Context, username string) ([]string, error) {
 		return nil, fmt.Errorf("bad username")
 	}
 	py := osintExtraPython()
-	ctx, cancel := context.WithTimeout(ctx, 55*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()
 	tmpDir, err := os.MkdirTemp("", "maigret-*")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(tmpDir)
-	cmd := exec.CommandContext(ctx, filepath.Join(filepath.Dir(py), "maigret"),
+	var out bytes.Buffer
+	_ = runCmdGroup(ctx, &out, nil, filepath.Join(filepath.Dir(py), "maigret"),
 		username,
 		"--timeout", "8",
 		"-n", "20",
@@ -465,10 +632,6 @@ func runMaigretLite(ctx context.Context, username string) ([]string, error) {
 		"-fo", tmpDir,
 		"--json", "simple",
 	)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	_ = cmd.Run()
 	var hits []string
 	_ = filepath.Walk(tmpDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {

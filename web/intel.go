@@ -242,9 +242,12 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		intel.Phones = mergeUnique(intel.Phones, []string{place.WhatsApp})
 	}
 
-	// MX（可投域）
+	// MX（必须带 context，避免坏 DNS 永久挂死）
 	if intel.Domain != "" {
-		mx, err := net.LookupMX(intel.Domain)
+		rctx, rcancel := context.WithTimeout(ctx, 5*time.Second)
+		resolver := &net.Resolver{}
+		mx, err := resolver.LookupMX(rctx, intel.Domain)
+		rcancel()
 		if err == nil && len(mx) > 0 {
 			intel.HasMX = true
 			for i, m := range mx {
@@ -256,64 +259,9 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		}
 	}
 
-	// 真正调用已安装的 OSINT 工具链
+	// OSINT 工具并行（总预算受限，避免串行叠满数分钟）
 	st := ProbeOSINTTools()
-	if intel.Domain != "" && st.TheHarvester {
-		if h, err := runTheHarvester(ctx, intel.Domain); err == nil {
-			applyHarvester(intel, h)
-		} else {
-			intel.Note = intel.Note + " theHarvester：" + truncateRunes(err.Error(), 80)
-		}
-	}
-	if intel.Domain != "" && st.SpiderFoot {
-		if ev, err := runSpiderfootLite(ctx, intel.Domain); err == nil {
-			applySpiderfoot(intel, ev)
-		} else {
-			intel.Note = intel.Note + " SpiderFoot：" + truncateRunes(err.Error(), 80)
-		}
-	}
-	if place.Website != "" && st.Photon {
-		if emails, socials, err := runPhoton(ctx, place.Website); err == nil {
-			applyPhoton(intel, emails, socials)
-		}
-	}
-	if intel.Domain != "" && st.Amass {
-		if hosts, err := runAmassPassive(ctx, intel.Domain); err == nil {
-			applyAmass(intel, hosts)
-		}
-	}
-	// 有邮箱时：holehe / blackbird 查注册足迹
-	seedEmails := append([]string{}, intel.ExtraEmails...)
-	if place.Emails != "" {
-		for _, e := range strings.Split(place.Emails, ",") {
-			if e = strings.TrimSpace(e); e != "" {
-				seedEmails = append(seedEmails, e)
-			}
-		}
-	}
-	seedEmails = uniqueStrings(seedEmails)
-	if len(seedEmails) > 0 {
-		em := seedEmails[0]
-		if st.Holehe {
-			if sites, err := runHolehe(ctx, em); err == nil {
-				applyAccountHits(intel, "holehe", sites)
-			}
-		}
-		if st.Blackbird {
-			if hits, err := runBlackbirdEmail(ctx, em); err == nil {
-				applyAccountHits(intel, "blackbird", hits)
-			}
-		}
-		local := em
-		if i := strings.Index(em, "@"); i > 0 {
-			local = em[:i]
-		}
-		if st.Maigret && local != "" && local != "info" && local != "hello" && local != "contact" && local != "admin" {
-			if hits, err := runMaigretLite(ctx, local); err == nil {
-				applyAccountHits(intel, "maigret", hits)
-			}
-		}
-	}
+	runOSINTEnrichment(ctx, intel, place, st)
 
 	// OpenCorporates HTTP API
 	if hit := lookupOpenCorporates(ctx, place.Title, place.Address); hit != nil {
@@ -580,7 +528,8 @@ func lookupOpenCorporates(ctx context.Context, name, address string) *CompanyHit
 		return nil
 	}
 	req.Header.Set("User-Agent", "gmaps-intel/1.0")
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil
 	}
@@ -671,6 +620,8 @@ func filterPublicEmails(in []string, domain string) []string {
 		if e == "" || strings.Contains(e, "example.") || strings.Contains(e, "sentry") ||
 			strings.Contains(e, "wixpress") || strings.Contains(e, "schema.org") ||
 			strings.HasSuffix(e, ".png") || strings.HasSuffix(e, ".jpg") ||
+			strings.HasSuffix(e, ".gif") || strings.HasSuffix(e, ".svg") ||
+			strings.HasSuffix(e, ".webp") || strings.Contains(e, "@2x.") ||
 			strings.Contains(e, "noreply") || strings.Contains(e, "no-reply") {
 			continue
 		}
@@ -688,11 +639,21 @@ func filterPublicEmails(in []string, domain string) []string {
 func filterPhones(in []string) []string {
 	var out []string
 	for _, p := range in {
-		digits := regexp.MustCompile(`\d`).FindAllString(p, -1)
+		p = strings.TrimSpace(p)
+		// 印尼电商价格常被误识别成电话（如 130.000 - 15）
+		if strings.Count(p, ".") >= 2 || strings.Contains(p, "000 -") {
+			continue
+		}
+		digitRe := regexp.MustCompile(`\d`)
+		digits := digitRe.FindAllString(p, -1)
 		if len(digits) < 8 || len(digits) > 15 {
 			continue
 		}
-		out = append(out, strings.TrimSpace(p))
+		joined := strings.Join(digits, "")
+		if !(strings.HasPrefix(joined, "62") || strings.HasPrefix(joined, "0") || strings.Contains(p, "+")) {
+			continue
+		}
+		out = append(out, p)
 	}
 	return uniqueStrings(out)
 }
