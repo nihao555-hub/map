@@ -132,6 +132,12 @@ type Entry struct {
 	UserReviewsExtended []Review     `json:"user_reviews_extended"`
 	Emails              []string     `json:"emails"`
 	WhatsApp            string       `json:"whatsapp"`
+	Facebook            string       `json:"facebook"`
+	Instagram           string       `json:"instagram"`
+	LinkedIn            string       `json:"linkedin"`
+	Twitter             string       `json:"twitter"`
+	TikTok              string       `json:"tiktok"`
+	YouTube             string       `json:"youtube"`
 }
 
 // entryAlias is used inside Marshal/UnmarshalJSON to avoid infinite recursion
@@ -293,6 +299,12 @@ func (e *Entry) CsvHeaders() []string {
 		"user_reviews_extended",
 		"emails",
 		"whatsapp",
+		"facebook",
+		"instagram",
+		"linkedin",
+		"twitter",
+		"tiktok",
+		"youtube",
 	}
 }
 
@@ -335,6 +347,12 @@ func (e *Entry) CsvRow() []string {
 		stringify(e.UserReviewsExtended),
 		stringSliceToString(e.Emails),
 		e.WhatsApp,
+		e.Facebook,
+		e.Instagram,
+		e.LinkedIn,
+		e.Twitter,
+		e.TikTok,
+		e.YouTube,
 	}
 }
 
@@ -567,6 +585,9 @@ func EntryFromJSON(raw []byte, reviewCountOnly ...bool) (entry Entry, err error)
 			entry.UserReviews = make([]Review, 0)
 		}
 	}
+
+	// Maps 常把 Facebook/Instagram 填进 website；拆到社媒字段，避免只当「无效官网」丢掉
+	entry.PromoteSocialFromMapsFields()
 
 	return entry, nil
 }

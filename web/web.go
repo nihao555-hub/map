@@ -136,6 +136,7 @@ func New(svc *Service, addr string) (*Server, error) {
 	})
 
 	mux.HandleFunc("/api/v1/geocode", ans.apiGeocode)
+	mux.HandleFunc("/api/v1/reverse-geocode", ans.apiReverseGeocode)
 	mux.HandleFunc("/api/v1/ai-translate", ans.apiAITranslate)
 	mux.HandleFunc("/api/v1/ai-status", ans.apiAIStatus)
 
@@ -746,12 +747,61 @@ func (s *Server) apiGeocode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	display := point.DisplayName
+	if display == "" {
+		display = q
+	}
+
 	renderJSON(w, http.StatusOK, map[string]any{
 		"lat":          point.Lat,
 		"lon":          point.Lon,
 		"country_code": point.CountryCode,
 		"lang":         langForCountryCode(point.CountryCode),
-		"display_name": q,
+		"display_name": display,
+	})
+}
+
+// apiReverseGeocode 地图点选：经纬度 → 地点文案 + 国家（同步左侧表单）
+func (s *Server) apiReverseGeocode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	lat, err1 := strconv.ParseFloat(strings.TrimSpace(r.URL.Query().Get("lat")), 64)
+	lon, err2 := strconv.ParseFloat(strings.TrimSpace(r.URL.Query().Get("lon")), 64)
+	if err1 != nil || err2 != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "invalid lat/lon",
+		})
+
+		return
+	}
+
+	geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	point, err := ReverseGeocode(geoCtx, lat, lon)
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"lat":          point.Lat,
+		"lon":          point.Lon,
+		"country_code": point.CountryCode,
+		"lang":         langForCountryCode(point.CountryCode),
+		"display_name": point.DisplayName,
 	})
 }
 

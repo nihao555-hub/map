@@ -121,8 +121,10 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 
 	emails := collectEmailsFromResponse(resp)
 	whatsapp := ""
+	var social SocialLinks
 	if resp != nil {
 		whatsapp = extractWhatsApp(resp.Body)
+		social = extractSocialFromHTML(resp.Body)
 	}
 
 	baseURL := j.URL
@@ -139,16 +141,36 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 		}
 		followURLs = uniqueURLs(followURLs)
 		if len(followURLs) > 0 {
-			extraMails, extraWA := fetchContactsFromURLs(ctx, followURLs)
+			extraMails, extraWA, extraSocial := fetchContactsFromURLs(ctx, followURLs)
 			emails = mergeEmails(emails, extraMails)
 			if whatsapp == "" {
 				whatsapp = extraWA
+			}
+			if social.Facebook == "" {
+				social.Facebook = extraSocial.Facebook
+			}
+			if social.Instagram == "" {
+				social.Instagram = extraSocial.Instagram
+			}
+			if social.LinkedIn == "" {
+				social.LinkedIn = extraSocial.LinkedIn
+			}
+			if social.Twitter == "" {
+				social.Twitter = extraSocial.Twitter
+			}
+			if social.TikTok == "" {
+				social.TikTok = extraSocial.TikTok
+			}
+			if social.YouTube == "" {
+				social.YouTube = extraSocial.YouTube
 			}
 		}
 	}
 
 	j.Entry.Emails = filterEmails(emails)
 	j.Entry.WhatsApp = whatsapp
+	j.Entry.PromoteSocialFromMapsFields()
+	j.Entry.mergeSocial(social)
 
 	return j.Entry, nil, nil
 }
@@ -571,15 +593,16 @@ func sameHost(a, b string) bool {
 }
 
 func fetchEmailsFromURLs(ctx context.Context, urls []string) []string {
-	mails, _ := fetchContactsFromURLs(ctx, urls)
+	mails, _, _ := fetchContactsFromURLs(ctx, urls)
 
 	return mails
 }
 
-// fetchContactsFromURLs 拉取联系页，同时提取邮箱与 WhatsApp
-func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string) {
+// fetchContactsFromURLs 拉取联系页，同时提取邮箱、WhatsApp 与社媒链接
+func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string, SocialLinks) {
+	var social SocialLinks
 	if len(urls) == 0 {
-		return nil, ""
+		return nil, "", social
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, emailFollowBudget)
@@ -602,7 +625,7 @@ func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string
 	for _, raw := range urls {
 		select {
 		case <-ctx.Done():
-			return emails, whatsapp
+			return emails, whatsapp, social
 		default:
 		}
 
@@ -623,12 +646,32 @@ func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string
 			whatsapp = extractWhatsApp(body)
 		}
 
+		pageSocial := extractSocialFromHTML(body)
+		if social.Facebook == "" {
+			social.Facebook = pageSocial.Facebook
+		}
+		if social.Instagram == "" {
+			social.Instagram = pageSocial.Instagram
+		}
+		if social.LinkedIn == "" {
+			social.LinkedIn = pageSocial.LinkedIn
+		}
+		if social.Twitter == "" {
+			social.Twitter = pageSocial.Twitter
+		}
+		if social.TikTok == "" {
+			social.TikTok = pageSocial.TikTok
+		}
+		if social.YouTube == "" {
+			social.YouTube = pageSocial.YouTube
+		}
+
 		if len(filterEmails(emails)) > 0 && whatsapp != "" {
-			return emails, whatsapp
+			return emails, whatsapp, social
 		}
 	}
 
-	return emails, whatsapp
+	return emails, whatsapp, social
 }
 
 func fetchURLBody(ctx context.Context, client *http.Client, raw string) ([]byte, error) {

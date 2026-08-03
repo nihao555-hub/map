@@ -366,7 +366,10 @@
       // 结果字段定义（深度模式可勾选；系统保留字段不在此列，始终包含）
       var ALL_COLUMNS = [
         ['address', '地址', true], ['whatsapp', 'WhatsApp', true], ['emails', '邮箱', true], ['phone', '电话', true],
-        ['website', '网站', true], ['category', '类别', true], ['review_rating', '评分', true],
+        ['website', '网站', true],
+        ['facebook', 'Facebook', true], ['instagram', 'Instagram', true], ['linkedin', 'LinkedIn', true],
+        ['twitter', 'Twitter/X', false], ['tiktok', 'TikTok', false], ['youtube', 'YouTube', false],
+        ['category', '类别', true], ['review_rating', '评分', true],
         ['review_count', '评论数', true], ['reviews_per_rating', '各星级评论数', false],
         ['open_hours', '营业时间', true], ['popular_times', '客流高峰', false],
         ['price_range', '价格区间', true], ['status', '营业状态', true],
@@ -380,7 +383,7 @@
         ['order_online', '在线下单', false], ['street_view_url', '街景', false],
         ['data_id', '数据ID', false]
       ];
-      var ESSENTIAL_COLUMN_KEYS = ['address', 'whatsapp', 'emails', 'phone', 'website', 'review_rating', 'review_count', 'category'];
+      var ESSENTIAL_COLUMN_KEYS = ['address', 'whatsapp', 'emails', 'phone', 'website', 'facebook', 'instagram', 'linkedin', 'review_rating', 'review_count', 'category'];
 
       // 目标国家（可搜索）。code=ISO2, lang=Google hl, zh=中文名
       var COUNTRY_LIST = [
@@ -462,6 +465,26 @@
         document.getElementById('country-dropdown').classList.add('hidden');
         updateAIPreviewHint();
       }
+
+      // 供地图点选 / 地理编码回调：按 ISO2 同步左侧「目标国家」
+      window.selectCountryByCode = function (code) {
+        code = String(code || '').toLowerCase();
+        if (!code) return false;
+        for (var i = 0; i < COUNTRY_LIST.length; i++) {
+          if (COUNTRY_LIST[i].code === code) {
+            selectCountry(COUNTRY_LIST[i]);
+            return true;
+          }
+        }
+        // 列表外国家：至少写入 code + lang 隐藏域
+        document.getElementById('country_code').value = code;
+        document.getElementById('country_name').value = code.toUpperCase();
+        document.getElementById('country-search').value = code.toUpperCase();
+        var hl = document.getElementById('lang');
+        if (hl && !hl.value) hl.value = 'en';
+        updateAIPreviewHint();
+        return false;
+      };
 
       function clearCountry() {
         selectedCountry = null;

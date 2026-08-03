@@ -146,23 +146,45 @@
     pickProgrammatic = false;
   }
 
-  // 选点后立即回填坐标；随后尝试逆地理编码升级为可读地址（失败保留坐标）
+  // 选点后立即回填坐标；随后逆地理编码同步「在哪里」+ 目标国家
   function syncLocationInput(lat, lng) {
     var coordText = lat + ', ' + lng;
     setLocationText(coordText);
 
     var ctrl = new AbortController();
-    var timer = setTimeout(function () { ctrl.abort(); }, 3500);
-    fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=zh&lat=' + lat + '&lon=' + lng, { signal: ctrl.signal })
+    var timer = setTimeout(function () { ctrl.abort(); }, 5000);
+    // 走后端代理：避免浏览器直连 Nominatim 被 CSP/限流拦掉
+    fetch('/api/v1/reverse-geocode?lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng), {
+      signal: ctrl.signal
+    })
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (data) {
         clearTimeout(timer);
+        if (!data) return;
         // 仅当用户未再次手动改动输入框时才升级显示
-        if (data && data.display_name && document.getElementById('locations').value === coordText) {
-          setLocationText(data.display_name);
+        if (data.display_name && document.getElementById('locations').value === coordText) {
+          // 优先短地名（城市级），便于搜索；过长则截断到前两段
+          var name = shortenDisplayName(data.display_name);
+          setLocationText(name || data.display_name);
         }
+        if (data.country_code && window.selectCountryByCode) {
+          window.selectCountryByCode(data.country_code);
+        } else if (data.lang) {
+          var langInput = document.getElementById('lang');
+          if (langInput) langInput.value = data.lang;
+        }
+        showTip('已同步地点与国家');
       })
       .catch(function () { clearTimeout(timer); });
+  }
+
+  function shortenDisplayName(display) {
+    if (!display) return '';
+    var parts = display.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (parts.length <= 2) return parts.join(', ');
+    // 取前两段 + 国家（最后一段），避免整段 OSM 长地址塞进输入框
+    var country = parts[parts.length - 1];
+    return parts[0] + ', ' + parts[1] + (country && country !== parts[1] ? ', ' + country : '');
   }
 
   // 用户手动编辑「在哪里」时，清除地图选点锚定，以输入文本为准；
@@ -193,8 +215,10 @@
         if (cur !== text) return;
         document.getElementById('latitude').value = lat.toFixed(6);
         document.getElementById('longitude').value = lon.toFixed(6);
-        // 海外中文地名：按国家校正 hl，避免误用 zh
-        if (data.lang) {
+        // 海外中文地名：按国家同步左侧「目标国家」与 hl
+        if (data.country_code && window.selectCountryByCode) {
+          window.selectCountryByCode(data.country_code);
+        } else if (data.lang) {
           var langInput = document.getElementById('lang');
           if (langInput) langInput.value = data.lang;
         }

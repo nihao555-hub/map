@@ -25,7 +25,8 @@ var forcedColumns = map[string]bool{
 // 快速模式必要列（对客户有用的核心字段）
 var essentialColumns = []string{
 	"title", "address", "whatsapp", "emails", "phone",
-	"review_rating", "review_count", "website",
+	"website", "facebook", "instagram", "linkedin",
+	"review_rating", "review_count",
 }
 
 // columnWriter 按任务配置过滤 CSV 输出列：

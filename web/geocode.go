@@ -15,6 +15,9 @@ import (
 // 声明为变量方便测试时替换
 var nominatimSearchURL = "https://nominatim.openstreetmap.org/search"
 
+// nominatimReverseURL 逆地理编码：经纬度 → 地址/国家
+var nominatimReverseURL = "https://nominatim.openstreetmap.org/reverse"
+
 // GeoPoint 是一次地理编码的结果
 type GeoPoint struct {
 	Lat         float64
@@ -101,6 +104,51 @@ func GeocodeInCountry(ctx context.Context, query, acceptLang, countryCode string
 	}
 
 	return results[0].geoPoint()
+}
+
+// ReverseGeocode 把经纬度解析成可读地址与国家代码（地图点选同步左侧表单用）
+func ReverseGeocode(ctx context.Context, lat, lon float64) (GeoPoint, error) {
+	apiURL := fmt.Sprintf(
+		"%s?lat=%s&lon=%s&format=jsonv2&addressdetails=1&accept-language=zh",
+		nominatimReverseURL,
+		url.QueryEscape(strconv.FormatFloat(lat, 'f', 6, 64)),
+		url.QueryEscape(strconv.FormatFloat(lon, 'f', 6, 64)),
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return GeoPoint{}, err
+	}
+
+	req.Header.Set("User-Agent", "google-maps-scraper/1.0")
+	req.Header.Set("Accept-Language", "zh")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return GeoPoint{}, fmt.Errorf("reverse geocode request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return GeoPoint{}, fmt.Errorf("reverse geocode returned status %d", resp.StatusCode)
+	}
+
+	var result nominatimResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return GeoPoint{}, fmt.Errorf("reverse geocode decode failed: %w", err)
+	}
+
+	// reverse 接口不返回 lat/lon 时用请求坐标
+	if strings.TrimSpace(result.Lat) == "" {
+		result.Lat = strconv.FormatFloat(lat, 'f', 6, 64)
+	}
+	if strings.TrimSpace(result.Lon) == "" {
+		result.Lon = strconv.FormatFloat(lon, 'f', 6, 64)
+	}
+
+	return result.geoPoint()
 }
 
 func (r *nominatimResult) geoPoint() (GeoPoint, error) {
