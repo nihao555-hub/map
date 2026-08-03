@@ -74,6 +74,9 @@ func ParseSearchResults(raw []byte) ([]*Entry, error) {
 
 		entry.PlusCode = olc.Encode(entry.Latitude, entry.Longtitude, 10)
 
+		// 快速搜索结果也拆出社媒（website 常是 Instagram/Facebook）
+		entry.PromoteSocialFromMapsFields()
+
 		entries = append(entries, &entry)
 	}
 

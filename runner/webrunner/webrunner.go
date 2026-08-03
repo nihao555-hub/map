@@ -286,6 +286,11 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			coords = job.Data.Lat + "," + job.Data.Lon
 		}
 
+		radius := float64(10000)
+		if job.Data.Radius > 0 {
+			radius = float64(job.Data.Radius)
+		}
+
 		var err error
 		seedJobs, err = runner.CreateSeedJobs(
 			job.Data.FastMode,
@@ -295,13 +300,7 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			job.Data.Email,
 			coords,
 			job.Data.Zoom,
-			func() float64 {
-				if job.Data.Radius <= 0 {
-					return 10000 // 10 km
-				}
-
-				return float64(job.Data.Radius)
-			}(),
+			radius,
 			dedup,
 			exitMonitor,
 			w.cfg.ExtraReviews || job.Data.ExtraReviews,
@@ -313,6 +312,22 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			}
 
 			return err
+		}
+
+		// 深度模式单点列表常卡在 ~120：目标≥100 且有坐标时，再开 4 个偏移点搜索扩量
+		// （仍走详情页，质量不变；靠共享 deduper 去重）
+		if !job.Data.FastMode && job.Data.MaxResults >= 100 && coords != "" {
+			extra := deepSearchFanoutSeeds(
+				job,
+				radius,
+				dedup,
+				exitMonitor,
+				w.cfg.ExtraReviews || job.Data.ExtraReviews,
+			)
+			if len(extra) > 0 {
+				seedJobs = append(seedJobs, extra...)
+				log.Printf("deep mode fan-out: +%d offset searches for max_results=%d", len(extra), job.Data.MaxResults)
+			}
 		}
 	}
 
@@ -337,6 +352,17 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			} else {
 				allowedSeconds = int(job.Data.MaxTime.Seconds())
 			}
+		}
+
+		// 深度+抓邮箱：预留联系方式补齐时间，避免 MaxTime 一到就砍掉邮箱队列
+		if !job.Data.FastMode && job.Data.Email {
+			contactBudget := 300 // 至少再留 5 分钟给官网补齐
+			if job.Data.MaxResults > 0 {
+				// 约每条 2s 官网（并发下），上限 20 分钟
+				contactBudget = max(contactBudget, min(1200, job.Data.MaxResults*2))
+			}
+			allowedSeconds = max(allowedSeconds, int(job.Data.MaxTime.Seconds())+contactBudget)
+			log.Printf("deep+email: extended time budget +%ds → %ds total", contactBudget, allowedSeconds)
 		}
 
 		log.Printf("running job %s with %d seed jobs and %d allowed seconds", job.ID, len(seedJobs), allowedSeconds)
@@ -373,7 +399,13 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 		// 提速：并发 = 配置的并发数；页面复用从 2 提到 20，浏览器复用从 200 提到 1000
 		opts := []func(*scrapemateapp.Config) error{
 			scrapemateapp.WithConcurrency(cfg.Concurrency),
-			scrapemateapp.WithExitOnInactivity(time.Minute * 10),
+		}
+		// 快速：HTTP 搜索，空闲可短收尾；深度：浏览器冷启动+滚动常 >45s，过短会误杀整单。
+		if job.Data.FastMode {
+			opts = append(opts, scrapemateapp.WithExitOnInactivity(90*time.Second))
+		} else {
+			// 深度：浏览器冷启动 + 官网联系方式补齐，需要更长空闲窗口
+			opts = append(opts, scrapemateapp.WithExitOnInactivity(5*time.Minute))
 		}
 
 		if !job.Data.FastMode {
@@ -421,7 +453,12 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 		log.Printf("job %s has proxy: %v", job.ID, hasProxy)
 
 		// 按任务配置过滤输出列：快速=必要列，深度=用户自选列（内部列强制保留）
-		csvWriter := newColumnWriter(csv.NewWriter(writer), job.Data.FastMode, job.Data.Columns)
+		// 传入 *os.File 以支持「地点先写、邮箱后补」的 upsert，避免超时丢行/重复行
+		var outFile *os.File
+		if f, ok := writer.(*os.File); ok {
+			outFile = f
+		}
+		csvWriter := newColumnWriter(csv.NewWriter(writer), job.Data.FastMode, job.Data.Columns, outFile)
 
 		writers := []scrapemate.ResultWriter{csvWriter}
 
@@ -435,4 +472,50 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 
 		return scrapemateapp.NewScrapeMateApp(matecfg)
 	}
+}
+
+// deepSearchFanoutSeeds 在中心点四周再开偏移搜索，突破 Google 单列表 ~120 的上限。
+// 偏移约 3km，详情仍走浏览器 PlaceJob，质量与单点深度一致。
+func deepSearchFanoutSeeds(
+	job *web.Job,
+	radius float64,
+	dedup deduper.Deduper,
+	exitMonitor exiter.Exiter,
+	extraReviews bool,
+) []scrapemate.IJob {
+	lat, err1 := strconv.ParseFloat(strings.TrimSpace(job.Data.Lat), 64)
+	lon, err2 := strconv.ParseFloat(strings.TrimSpace(job.Data.Lon), 64)
+	if err1 != nil || err2 != nil {
+		return nil
+	}
+
+	const delta = 0.028 // ≈3km
+	offsets := [][2]float64{
+		{delta, 0}, {-delta, 0}, {0, delta}, {0, -delta},
+	}
+
+	var out []scrapemate.IJob
+	for _, o := range offsets {
+		coords := fmt.Sprintf("%.6f,%.6f", lat+o[0], lon+o[1])
+		jobs, err := runner.CreateSeedJobs(
+			false,
+			job.Data.Lang,
+			strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
+			job.Data.Depth,
+			job.Data.Email,
+			coords,
+			job.Data.Zoom,
+			radius,
+			dedup,
+			exitMonitor,
+			extraReviews,
+		)
+		if err != nil {
+			log.Printf("deep fan-out seed at %s failed: %v", coords, err)
+			continue
+		}
+		out = append(out, jobs...)
+	}
+
+	return out
 }

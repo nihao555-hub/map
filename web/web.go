@@ -21,6 +21,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// jsonJS 把值编成可安全嵌入 <script> 的 JSON（带引号的字符串/数组/对象）
+func jsonJS(v any) (template.JS, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+
+	return template.JS(b), nil
+}
+
 //go:embed static
 var static embed.FS
 
@@ -124,6 +134,11 @@ func New(svc *Service, addr string) (*Server, error) {
 
 		ans.apiGetPlaces(w, r)
 	})
+
+	mux.HandleFunc("/api/v1/geocode", ans.apiGeocode)
+	mux.HandleFunc("/api/v1/reverse-geocode", ans.apiReverseGeocode)
+	mux.HandleFunc("/api/v1/ai-translate", ans.apiAITranslate)
+	mux.HandleFunc("/api/v1/ai-status", ans.apiAIStatus)
 
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
@@ -286,7 +301,7 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 	newJob := Job{
 		ID:     uuid.New().String(),
-		Name:   r.Form.Get("name"),
+		Name:   strings.TrimSpace(r.Form.Get("name")),
 		Date:   time.Now().UTC(),
 		Status: StatusPending,
 		Data:   JobData{},
@@ -319,19 +334,14 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	locationsStr := r.Form.Get("locations")
 	locationsStr = strings.TrimSpace(locationsStr)
 
-	keywords := strings.Split(keywordsStr[0], "\n")
-	for _, k := range keywords {
+	// 先保留用户原始中文关键词；海外搜索时再译成当地语言拼进 Maps 查询
+	var rawKeywords []string
+	for _, k := range strings.Split(keywordsStr[0], "\n") {
 		k = strings.TrimSpace(k)
 		if k == "" {
 			continue
 		}
-
-		// 如果有地点，把地点拼到关键词后面（加 in 前缀）
-		if locationsStr != "" {
-			k = k + " in " + locationsStr
-		}
-
-		newJob.Data.Keywords = append(newJob.Data.Keywords, k)
+		rawKeywords = append(rawKeywords, k)
 	}
 
 	newJob.Data.Lang = r.Form.Get("lang")
@@ -364,7 +374,8 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newJob.Data.Email = r.Form.Get("email") == "on"
+	// 邮箱为获客刚需：快速/深度/网格一律开启，忽略前端关闭
+	newJob.Data.Email = true
 
 	// 网格全量模式
 	if r.Form.Get("gridmode") == "on" {
@@ -386,6 +397,20 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		// 快速模式已原生支持网格（纯 HTTP 搜索接口按格取数），不再强制关闭
 	}
 
+	// 快速模式单点搜索结果很少：自动开粗网格扩量（仍走纯 HTTP）。
+	// 格子边长/半径加以限制，避免上百格拖慢「抓满即停」的收尾。
+	if newJob.Data.FastMode && !newJob.Data.GridMode {
+		newJob.Data.GridMode = true
+		newJob.Data.GridCellKm = 2.5
+		if newJob.Data.Radius <= 0 || newJob.Data.Radius > 10000 {
+			newJob.Data.Radius = 10000 // ±5km → 大约十几格
+		}
+		if newJob.Data.Locations == "" {
+			newJob.Data.Locations = locationsStr
+		}
+		log.Printf("快速模式自动启用粗网格扩量 cell=%.1fkm radius=%dm", newJob.Data.GridCellKm, newJob.Data.Radius)
+	}
+
 	// 结果列配置（快速模式可不选；深度/网格模式用户自选表头）
 	newJob.Data.Columns = strings.TrimSpace(r.Form.Get("columns"))
 
@@ -396,32 +421,138 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 地理锚定：普通模式（非网格）下，用户只填了地点没填有效经纬度时，
-	// 先地理编码一次，把搜索锚定到目标地，并让 hl 与目标地语言匹配，
-	// 避免 Google 按代理出口/浏览器环境本地化结果。
-	// 地理编码失败只告警，回退为原来的未锚定搜索，不让任务失败
-	if !newJob.Data.GridMode && locationsStr != "" && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
-		geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	// 深度模式目标量大（≥100 或不限）时自动开粗网格，否则单点+偏移仍远达不到「全量」。
+	// 必须在解析 maxresults 之后；用户点了「全域全量」时已是 GridMode，这里只补「深度 + 高上限」。
+	if !newJob.Data.FastMode && !newJob.Data.GridMode &&
+		(newJob.Data.MaxResults == 0 || newJob.Data.MaxResults >= 100) {
+		newJob.Data.GridMode = true
+		if newJob.Data.GridCellKm <= 0 {
+			newJob.Data.GridCellKm = 2.0 // 深度走浏览器，格子稍粗以免格数爆炸
+		}
+		if newJob.Data.Radius <= 0 || newJob.Data.Radius > 15000 {
+			newJob.Data.Radius = 15000 // ±7.5km
+		}
+		if newJob.Data.Locations == "" {
+			newJob.Data.Locations = locationsStr
+		}
+		log.Printf("深度模式目标量大(max=%d)，自动启用粗网格全量 cell=%.1fkm radius=%dm",
+			newJob.Data.MaxResults, newJob.Data.GridCellKm, newJob.Data.Radius)
+	}
 
-		point, geoErr := Geocode(geoCtx, locationsStr)
+	// 用户显式选择的目标国家（优先于地理编码推断）
+	countryCode := strings.ToLower(strings.TrimSpace(r.Form.Get("country_code")))
+	countryName := strings.TrimSpace(r.Form.Get("country_name"))
+	useAI := r.Form.Get("ai_translate") == "on" || r.Form.Get("ai_translate") == "true"
+	if useAI && !AITranslateEnabled() {
+		log.Printf("已勾选 AI 翻译但未配置 GRSAI_API_KEY，将回退词典/机翻")
+		useAI = false
+	}
+	newJob.Data.CountryCode = countryCode
+	newJob.Data.CountryName = countryName
+	newJob.Data.RawKeywords = append([]string(nil), rawKeywords...)
+	if countryCode != "" {
+		if hl := langForCountryCode(countryCode); hl != "" {
+			newJob.Data.Lang = hl
+		}
+	}
+
+	// 地理锚定 + 海外中文查询本地化：
+	// 1) 锚定经纬度 / 按国家校正 hl
+	// 2) 把「咖啡 in 纽约」译成「coffee in New York」再交给 Google Maps
+	searchLocation := locationsStr
+	if locationsStr != "" {
+		geoCtx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+
+		point, geoErr := GeocodeInCountry(geoCtx, locationsStr, "en", countryCode)
 
 		cancel()
 
 		if geoErr != nil {
 			log.Printf("地理编码 %q 失败: %v，回退为未锚定搜索", locationsStr, geoErr)
 		} else {
-			newJob.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
-			newJob.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
-
-			if hl := langForCountryCode(point.CountryCode); hl != "" && hl != newJob.Data.Lang {
-				log.Printf("地点 %q 国家代码 %s，hl 从 %s 调整为 %s",
-					locationsStr, point.CountryCode, newJob.Data.Lang, hl)
-
-				newJob.Data.Lang = hl
+			if !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+				newJob.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
+				newJob.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
+				log.Printf("地点 %q 锚定到 %s,%s", locationsStr, newJob.Data.Lat, newJob.Data.Lon)
 			}
 
-			log.Printf("地点 %q 锚定到 %s,%s", locationsStr, newJob.Data.Lat, newJob.Data.Lon)
+			// 未选手动国家时，才用地理编码结果校正语言
+			if countryCode == "" {
+				if hl := langForCountryCode(point.CountryCode); hl != "" && hl != newJob.Data.Lang {
+					log.Printf("地点 %q 国家代码 %s，hl 从 %s 调整为 %s",
+						locationsStr, point.CountryCode, newJob.Data.Lang, hl)
+
+					newJob.Data.Lang = hl
+				}
+			}
+
+			// 海外中文地名：优先词典/英文展示名，避免 Maps 吃中文地点
+			if containsChinese(locationsStr) && newJob.Data.Lang != "zh" {
+				if loc, ok := zhPlaceLexicon[locationsStr]; ok {
+					searchLocation = loc
+				} else if short := shortDisplayName(point.DisplayName); short != "" && !containsChinese(short) {
+					searchLocation = short
+				}
+			}
 		}
+	}
+
+	// 任务名始终由服务端用当前关键词+地点生成，避免前端隐藏域残留导致「名实不符」
+	newJob.Name = buildJobName(rawKeywords, locationsStr)
+
+	// 关键词本地化：中文品类 → 目标国语言；地点用英文/当地名（词典 → AI → 机翻）
+	{
+		locTimeout := 12 * time.Second
+		if useAI && AITranslateEnabled() {
+			locTimeout = 55 * time.Second
+		}
+		locCtx, cancel := context.WithTimeout(r.Context(), locTimeout)
+		localized, locUsed, did := localizeSearchQuery(locCtx, rawKeywords, searchLocation, newJob.Data.Lang, localizeOpts{
+			CountryName: countryName,
+			UseAI:       useAI,
+		})
+		cancel()
+
+		if len(localized) == 0 {
+			http.Error(w, "无法将中文关键词译成目标国可搜词（机翻不可用）。请改用英文/当地语言品类，或勾选 AI 翻译后重试", http.StatusUnprocessableEntity)
+
+			return
+		}
+
+		// 二次保险：海外任务绝不带汉字进 Google Maps（否则常只命中 1～2 家无关店）
+		if newJob.Data.Lang != "zh" {
+			clean := make([]string, 0, len(localized))
+			for _, kw := range localized {
+				if containsChinese(kw) {
+					log.Printf("丢弃仍含中文的查询: %q", kw)
+					continue
+				}
+				clean = append(clean, kw)
+			}
+			if len(clean) == 0 {
+				http.Error(w, "关键词仍含中文，无法在目标国 Google Maps 有效搜索。请填写英文品类（如 importer / cafe）或勾选 AI 翻译", http.StatusUnprocessableEntity)
+
+				return
+			}
+			localized = clean
+		}
+
+		newJob.Data.Keywords = localized
+		if did {
+			log.Printf("中文查询已本地化: name=%q lang=%s country=%s ai=%v loc=%q -> %v",
+				newJob.Name, newJob.Data.Lang, countryCode, useAI && AITranslateEnabled(), locUsed, localized)
+		}
+	}
+
+	if newJob.Data.Locations == "" && locationsStr != "" {
+		newJob.Data.Locations = locationsStr
+	}
+
+	// 快速模式必须有真实地理锚点，否则会落到 (0,0) 而不是用户选的国家/城市
+	if newJob.Data.FastMode && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+		http.Error(w, "快速模式需要有效地点：请选择国家并在地图上选点，或等待地点解析完成后再提交", http.StatusUnprocessableEntity)
+
+		return
 	}
 
 	// 提交前校验代理：格式非法、缺用户名密码认证的立即拒绝，
@@ -441,6 +572,12 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	log.Printf("任务意图 name=%q raw=%v search=%v country=%s(%s) lang=%s loc=%q geo=%s,%s fast=%v grid=%v",
+		newJob.Name, newJob.Data.RawKeywords, newJob.Data.Keywords,
+		newJob.Data.CountryName, newJob.Data.CountryCode, newJob.Data.Lang,
+		newJob.Data.Locations, newJob.Data.Lat, newJob.Data.Lon,
+		newJob.Data.FastMode, newJob.Data.GridMode)
 
 	err = s.svc.Create(r.Context(), &newJob)
 	if err != nil {
@@ -569,6 +706,181 @@ func (s *Server) redocHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	_ = tmpl.Execute(w, nil)
+}
+
+// apiAIStatus 告诉前端 AI 翻译是否已配置（不暴露密钥）
+func (s *Server) apiAIStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"enabled": AITranslateEnabled(),
+		"model":   grsaiModel(),
+	})
+}
+
+// apiAITranslate 用配置的 Gemini 兼容接口把中文关键词译成目标国搜索词
+func (s *Server) apiAITranslate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+
+		return
+	}
+
+	if !AITranslateEnabled() {
+		renderJSON(w, http.StatusServiceUnavailable, apiError{
+			Code:    http.StatusServiceUnavailable,
+			Message: "AI translate not configured (set GRSAI_API_KEY)",
+		})
+
+		return
+	}
+
+	var req struct {
+		Text        string `json:"text"`
+		CountryName string `json:"country_name"`
+		Lang        string `json:"lang"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{Code: http.StatusBadRequest, Message: err.Error()})
+
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 50*time.Second)
+	defer cancel()
+
+	out, err := AITranslateKeyword(ctx, req.Text, req.CountryName, req.Lang)
+	if err != nil {
+		renderJSON(w, http.StatusBadGateway, apiError{Code: http.StatusBadGateway, Message: err.Error()})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"translated": out,
+		"lang":       req.Lang,
+		"country":    req.CountryName,
+	})
+}
+
+// apiGeocode 供前端「在哪里」预取坐标：支持中文海外地名（纽约/东京等），
+// 走服务端 Nominatim，避免浏览器直连被限流或 CSP/CORS 拦住。
+func (s *Server) apiGeocode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "missing q",
+		})
+
+		return
+	}
+
+	geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	point, err := Geocode(geoCtx, q)
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	display := point.DisplayName
+	if display == "" {
+		display = q
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"lat":          point.Lat,
+		"lon":          point.Lon,
+		"country_code": point.CountryCode,
+		"lang":         langForCountryCode(point.CountryCode),
+		"display_name": display,
+	})
+}
+
+// apiReverseGeocode 地图点选：经纬度 → 地点文案 + 国家（同步左侧表单）
+func (s *Server) apiReverseGeocode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	lat, err1 := strconv.ParseFloat(strings.TrimSpace(r.URL.Query().Get("lat")), 64)
+	lon, err2 := strconv.ParseFloat(strings.TrimSpace(r.URL.Query().Get("lon")), 64)
+	if err1 != nil || err2 != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "invalid lat/lon",
+		})
+
+		return
+	}
+
+	geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	point, err := ReverseGeocode(geoCtx, lat, lon)
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"lat":          point.Lat,
+		"lon":          point.Lon,
+		"country_code": point.CountryCode,
+		"lang":         langForCountryCode(point.CountryCode),
+		"display_name": point.DisplayName,
+	})
+}
+
+// buildJobName 用关键词与地点拼任务显示名（取第一条关键词的原始词，去掉 " in 地点" 后缀）
+func buildJobName(keywords []string, locations string) string {
+	kw := ""
+	if len(keywords) > 0 {
+		kw = keywords[0]
+		if locations != "" {
+			kw = strings.TrimSuffix(kw, " in "+locations)
+		}
+		kw = strings.TrimSpace(kw)
+	}
+
+	locations = strings.TrimSpace(locations)
+	switch {
+	case kw != "" && locations != "":
+		return locations + " · " + kw
+	case kw != "":
+		return kw
+	default:
+		return locations
+	}
 }
 
 func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
@@ -752,10 +1064,22 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 		status = job.Status
 	}
 
+	// 必须 JSON 编码后再嵌入 <script>：直接 {{ .Places }} 会输出 Go 结构体文本，
+	// 有结果时 JS 直接语法错误，导致弹窗右侧/左侧地图整段脚本不执行。
+	placesJS, err := jsonJS(places)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+
+		return
+	}
+
+	jobIDJS, _ := jsonJS(id.String())
+	statusJS, _ := jsonJS(status)
+
 	viewData := map[string]any{
-		"JobID":  id.String(),
-		"Status": status,
-		"Places": places,
+		"JobIDJSON":  jobIDJS,
+		"StatusJSON": statusJS,
+		"PlacesJSON": placesJS,
 	}
 
 	var buf bytes.Buffer
@@ -814,13 +1138,15 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; "+
-			"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
-			"worker-src 'self' blob:; "+
-			"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
-			"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org *.is.autonavi.com; "+
-			"font-src 'self' fonts.gstatic.com; "+
-			"connect-src 'self'")
+			"default-src 'self'; "+
+				"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
+				"worker-src 'self' blob:; "+
+				"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
+				"img-src 'self' data: blob: cdn.redoc.ly cdnjs.cloudflare.com unpkg.com "+
+				"*.tile.openstreetmap.org tile.openstreetmap.org "+
+				"*.basemaps.cartocdn.com basemaps.cartocdn.com *.is.autonavi.com; "+
+				"font-src 'self' fonts.gstatic.com; "+
+				"connect-src 'self' nominatim.openstreetmap.org")
 
 		next.ServeHTTP(w, r)
 	})

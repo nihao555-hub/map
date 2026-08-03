@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"os"
 	"reflect"
 	"sync"
 
@@ -13,36 +14,47 @@ import (
 // 内部强制保留列：结果地图与 places 接口解析 CSV 时依赖它们，
 // 即使用户在深度模式里取消勾选也必须写出，否则前端表格/地图会失效。
 var forcedColumns = map[string]bool{
-	"input_id": true,
-	"link":     true,
-	"title":    true,
-	"latitude": true,
+	"input_id":  true,
+	"link":      true,
+	"title":     true,
+	"latitude":  true,
 	"longitude": true,
-	"cid":      true,
-	"place_id": true,
+	"cid":       true,
+	"place_id":  true,
 }
 
 // 快速模式必要列（对客户有用的核心字段）
 var essentialColumns = []string{
-	"title", "address", "phone", "emails",
-	"review_rating", "review_count", "website",
+	"title", "address", "whatsapp", "emails", "phone",
+	"website", "facebook", "instagram", "linkedin",
+	"review_rating", "review_count",
 }
 
 // columnWriter 按任务配置过滤 CSV 输出列：
 //   - 快速模式：必要列 + 内部强制列
 //   - 深度/网格模式：默认全部列；用户选了 columns 时 = 选中列 + 内部强制列
+// 同一 place_id/cid 再次写入时 upsert（地点先落盘、邮箱任务稍后补联系方式）。
 type columnWriter struct {
 	w          *csv.Writer
-	selected   map[string]bool // nil 表示全部列
+	file       *os.File // 非 nil 时支持按 key 重写整表
+	selected   map[string]bool
 	wroteHead  bool
 	headerOnce sync.Once
+	mu         sync.Mutex
+	headers    []string
+	colIdx     []int
+	rows       map[string][]string
+	order      []string
 }
 
-func newColumnWriter(w *csv.Writer, fastMode bool, columnsCSV string) *columnWriter {
-	cw := &columnWriter{w: w}
+func newColumnWriter(w *csv.Writer, fastMode bool, columnsCSV string, file *os.File) *columnWriter {
+	cw := &columnWriter{
+		w:    w,
+		file: file,
+		rows: make(map[string][]string),
+	}
 
 	if columnsCSV != "" {
-		// 用户自选列（深度模式）
 		cw.selected = map[string]bool{}
 		for _, c := range splitCSV(columnsCSV) {
 			cw.selected[c] = true
@@ -51,7 +63,6 @@ func newColumnWriter(w *csv.Writer, fastMode bool, columnsCSV string) *columnWri
 			cw.selected[c] = true
 		}
 	} else if fastMode {
-		// 快速模式：只要必要列
 		cw.selected = map[string]bool{}
 		for _, c := range essentialColumns {
 			cw.selected[c] = true
@@ -61,7 +72,6 @@ func newColumnWriter(w *csv.Writer, fastMode bool, columnsCSV string) *columnWri
 		}
 	}
 
-	// columnsCSV 为空且非快速模式：selected = nil → 输出全部列
 	return cw
 }
 
@@ -108,10 +118,95 @@ func (c *columnWriter) filterRow(headers []string, row []string) ([]int, []strin
 	return idx, out
 }
 
+func rowKey(headers, row []string) string {
+	get := func(name string) string {
+		for i, h := range headers {
+			if h == name && i < len(row) {
+				return row[i]
+			}
+		}
+
+		return ""
+	}
+
+	if id := get("place_id"); id != "" {
+		return "pid:" + id
+	}
+	if id := get("cid"); id != "" {
+		return "cid:" + id
+	}
+	if id := get("data_id"); id != "" {
+		return "did:" + id
+	}
+
+	return fmt.Sprintf("geo:%s|%s|%s", get("title"), get("latitude"), get("longitude"))
+}
+
+// mergeRow 邮箱任务回写时：空字段不覆盖已有非空值（避免详情被冲掉）。
+// 联系方式列两边都有值时保留更「完整」的一侧（更长），防止并发写丢 WA/邮箱。
+func mergeRow(old, neu []string) []string {
+	if old == nil {
+		return neu
+	}
+
+	out := make([]string, max(len(neu), len(old)))
+	for i := range out {
+		var n, o string
+		if i < len(neu) {
+			n = neu[i]
+		}
+		if i < len(old) {
+			o = old[i]
+		}
+		switch {
+		case n == "" && o != "":
+			out[i] = o
+		case n != "" && o == "":
+			out[i] = n
+		case n != "" && o != "":
+			if len(o) > len(n) {
+				out[i] = o
+			} else {
+				out[i] = n
+			}
+		default:
+			out[i] = n
+		}
+	}
+
+	return out
+}
+
+func (c *columnWriter) rewriteLocked() error {
+	if c.file == nil {
+		return nil
+	}
+
+	if _, err := c.file.Seek(0, 0); err != nil {
+		return err
+	}
+	if err := c.file.Truncate(0); err != nil {
+		return err
+	}
+
+	c.w = csv.NewWriter(c.file)
+	if err := c.w.Write(c.headers); err != nil {
+		return err
+	}
+
+	for _, key := range c.order {
+		if err := c.w.Write(c.rows[key]); err != nil {
+			return err
+		}
+	}
+
+	c.w.Flush()
+
+	return c.w.Error()
+}
+
 // Run implements scrapemate.ResultWriter.
 func (c *columnWriter) Run(_ context.Context, in <-chan scrapemate.Result) error {
-	var colIdx []int
-
 	for result := range in {
 		elements, err := getCsvCapable(result.Data)
 		if err != nil {
@@ -122,34 +217,68 @@ func (c *columnWriter) Run(_ context.Context, in <-chan scrapemate.Result) error
 			continue
 		}
 
+		c.mu.Lock()
+
 		c.headerOnce.Do(func() {
-			headers := elements[0].CsvHeaders()
-			var head []string
-			colIdx, head = c.filterRow(headers, headers)
-			_ = c.w.Write(head)
+			rawHeaders := elements[0].CsvHeaders()
+			c.colIdx, c.headers = c.filterRow(rawHeaders, rawHeaders)
+			c.wroteHead = true
+			if c.file == nil {
+				_ = c.w.Write(c.headers)
+			}
 		})
 
 		for _, element := range elements {
-			row := element.CsvRow()
-
-			filtered := make([]string, 0, len(colIdx))
-			for _, i := range colIdx {
-				if i < len(row) {
-					filtered = append(filtered, row[i])
+			raw := element.CsvRow()
+			filtered := make([]string, 0, len(c.colIdx))
+			for _, i := range c.colIdx {
+				if i < len(raw) {
+					filtered = append(filtered, raw[i])
 				} else {
 					filtered = append(filtered, "")
 				}
 			}
 
-			if err := c.w.Write(filtered); err != nil {
-				return err
+			key := rowKey(c.headers, filtered)
+			if prev, ok := c.rows[key]; ok {
+				c.rows[key] = mergeRow(prev, filtered)
+			} else {
+				c.rows[key] = filtered
+				c.order = append(c.order, key)
 			}
 		}
 
-		c.w.Flush()
+		if c.file != nil {
+			err = c.rewriteLocked()
+		} else {
+			// 无文件句柄时退化为追加（可能重复行）
+			for _, element := range elements {
+				raw := element.CsvRow()
+				filtered := make([]string, 0, len(c.colIdx))
+				for _, i := range c.colIdx {
+					if i < len(raw) {
+						filtered = append(filtered, raw[i])
+					} else {
+						filtered = append(filtered, "")
+					}
+				}
+				if err = c.w.Write(filtered); err != nil {
+					c.mu.Unlock()
+					return err
+				}
+			}
+			c.w.Flush()
+			err = c.w.Error()
+		}
+
+		c.mu.Unlock()
+
+		if err != nil {
+			return err
+		}
 	}
 
-	return c.w.Error()
+	return nil
 }
 
 // getCsvCapable mirrors csvwriter 的类型展开逻辑（单值或切片）。

@@ -2,7 +2,6 @@ package nethttp
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
@@ -71,22 +70,12 @@ func (o *httpFetch) Fetch(ctx context.Context, job scrapemate.IJob) scrapemate.R
 		ans.Headers[k] = v
 	}
 
-	var reader io.ReadCloser
-
-	switch resp.Header.Get("Content-Encoding") {
-	case "gzip":
-		reader, err = gzip.NewReader(resp.Body)
-		if err != nil {
-			ans.Error = err
-			return ans
-		}
-		defer reader.Close()
-	default:
-		reader = resp.Body
+	// DefaultTransport 已自动解压 gzip 并去掉 Content-Encoding；
+	// 再按 header 解压会把明文当 gzip 读成乱码，导致邮箱/WhatsApp 正则全失效。
+	ans.Body, ans.Error = io.ReadAll(resp.Body)
+	if resp.Request != nil && resp.Request.URL != nil {
+		ans.URL = resp.Request.URL.String()
 	}
-
-	ans.Body, ans.Error = io.ReadAll(reader)
-	ans.URL = resp.Request.URL.String()
 
 	return ans
 }
