@@ -68,7 +68,17 @@
             var el = document.getElementById('job-map');
             if (!el) return null;
 
-            var map = L.map(el, { zoomControl: true });
+            // 标记图标走 cdnjs（CSP 已放行）；默认 unpkg 路径会被 img-src 拦掉
+            if (L.Icon && L.Icon.Default) {
+                L.Icon.Default.imagePath = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/';
+            }
+
+            // 必须先给 center/zoom，否则弹窗布局完成前 Leaflet 不发瓦片请求
+            var map = L.map(el, {
+                zoomControl: true,
+                center: [20, 0],
+                zoom: 2
+            });
             // 与主界面一致：全球 Carto 底图（高德海外无图；OSM 官方瓦片易被拦）
             L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
                 subdomains: 'abcd',
@@ -274,6 +284,15 @@
             if (places.length > 0) {
                 ensureTable();
                 renderBatch(places);
+                // 布局稳定后再 fit：弹窗刚插入时偶发 0 尺寸导致灰底不补瓦片
+                setTimeout(function () {
+                    refreshMapSize(map);
+                    try {
+                        if (markersLayer && markersLayer.getLayers().length) {
+                            map.fitBounds(markersLayer.getBounds(), { padding: [30, 30], maxZoom: 15 });
+                        }
+                    } catch (e) {}
+                }, 120);
             } else if (streamActive) {
                 ensureTable();
                 updateTitle();

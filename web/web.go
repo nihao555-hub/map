@@ -1036,9 +1036,9 @@ func securityHeaders(next http.Handler) http.Handler {
 				"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
 				"worker-src 'self' blob:; "+
 				"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
-				"img-src 'self' data: blob: cdn.redoc.ly cdnjs.cloudflare.com "+
+				"img-src 'self' data: blob: cdn.redoc.ly cdnjs.cloudflare.com unpkg.com "+
 				"*.tile.openstreetmap.org tile.openstreetmap.org "+
-				"*.basemaps.cartocdn.com *.is.autonavi.com; "+
+				"*.basemaps.cartocdn.com basemaps.cartocdn.com *.is.autonavi.com; "+
 				"font-src 'self' fonts.gstatic.com; "+
 				"connect-src 'self' nominatim.openstreetmap.org")
 

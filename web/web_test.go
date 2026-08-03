@@ -92,6 +92,7 @@ func TestSecurityHeadersAllowMapResources(t *testing.T) {
 		"tile.openstreetmap.org",
 		"cdnjs.cloudflare.com",
 		"basemaps.cartocdn.com",
+		"unpkg.com",
 		"nominatim.openstreetmap.org",
 		"*.is.autonavi.com",
 	} {
