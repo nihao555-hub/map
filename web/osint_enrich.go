@@ -862,7 +862,7 @@ func looksLikeRealPerson(d DecisionMaker) bool {
 	if name == "" {
 		return false
 	}
-	if strings.Contains(name, "核实") || strings.Contains(name, "（") {
+	if isJunkPersonName(name) {
 		return false
 	}
 	if strings.Contains(name, "@") {

@@ -269,56 +269,70 @@
             return escapeHtml(String(v));
         }
 
+        function waLink(phone) {
+            if (!phone) return '';
+            var digits = String(phone).replace(/[^\d+]/g, '');
+            if (!digits) return '';
+            var href = digits.indexOf('http') === 0 ? digits
+                : 'https://wa.me/' + digits.replace(/^\+/, '');
+            return '<a class="intel-act intel-act-wa" href="' + encodeURI(href) + '" target="_blank" rel="noopener noreferrer">WhatsApp</a>';
+        }
+
+        function personCard(d) {
+            var name = d.name || '渠道联系人';
+            var avatar = d.avatar
+                ? '<img class="intel-avatar" src="' + encodeURI(d.avatar) + '" alt="" loading="lazy" referrerpolicy="no-referrer">'
+                : '<div class="intel-avatar intel-avatar-fallback">' + escapeHtml((name || '?').charAt(0).toUpperCase()) + '</div>';
+            var actions = [];
+            if (d.email) {
+                actions.push('<a class="intel-act" href="mailto:' + encodeURIComponent(d.email) + '">邮件</a>');
+            }
+            if (d.whatsapp || d.phone) {
+                actions.push(waLink(d.whatsapp || d.phone));
+            }
+            if (d.phone && d.phone !== d.whatsapp) {
+                actions.push('<a class="intel-act" href="tel:' + encodeURIComponent(String(d.phone).replace(/\s+/g, '')) + '">电话</a>');
+            }
+            if (d.linkedin) {
+                var liLabel = String(d.linkedin).indexOf('/search/') >= 0 ? '搜 LinkedIn' : 'LinkedIn';
+                actions.push('<a class="intel-act intel-act-li" href="' + encodeURI(d.linkedin) + '" target="_blank" rel="noopener noreferrer">' + liLabel + '</a>');
+            }
+            return '<article class="intel-person">' +
+                '<div class="intel-person-head">' + avatar +
+                '<div class="intel-person-meta"><strong>' + escapeHtml(name) + '</strong>' +
+                (d.title ? '<div class="intel-muted">' + escapeHtml(d.title) + '</div>' : '') +
+                confBadge(d.confidence) + '</div></div>' +
+                (d.email ? kv('邮箱', '<a href="mailto:' + encodeURIComponent(d.email) + '">' + escapeHtml(d.email) + '</a>') : '') +
+                (d.phone ? kv('电话', escapeHtml(d.phone)) : '') +
+                (d.whatsapp && d.whatsapp !== d.phone ? kv('WhatsApp', escapeHtml(d.whatsapp)) : '') +
+                (actions.length ? '<div class="intel-acts">' + actions.join('') + '</div>' : '') +
+                (d.evidence ? '<div class="intel-muted">证据：' + escapeHtml(d.evidence) + '</div>' : '') +
+                '</article>';
+        }
+
         function buildTabs(place, intel) {
             var tabs = [];
-            tabs.push({
-                id: 'overview',
-                label: '概览',
-                html: [
-                    kv('置信度', confBadge(intel.confidence)),
-                    kv('摘要', escapeHtml(intel.summary || '')),
-                    kv('域名', escapeHtml(intel.domain || '—')),
-                    kv('网站', linkOrText(intel.website || place.website)),
-                    kv('MX', intel.has_mx ? escapeHtml((intel.mx_hosts || []).join(', ') || '有') : '未检测到'),
-                    kv('说明', escapeHtml(intel.note || ''))
-                ].filter(Boolean).join('') || emptyBlock('暂无概览')
-            });
-
             var dms = intel.decision_makers || [];
-            tabs.push({
-                id: 'people',
-                label: '决策人' + (dms.length ? ' (' + dms.length + ')' : ''),
-                html: dms.length ? dms.map(function (d) {
-                    return '<article class="intel-card">' +
-                        '<div class="intel-card-top"><strong>' + escapeHtml(d.name || '（未具名）') + '</strong>' +
-                        confBadge(d.confidence) + '</div>' +
-                        kv('职位', escapeHtml(d.title || '')) +
-                        kv('邮箱', d.email ? '<a href="mailto:' + encodeURIComponent(d.email) + '">' + escapeHtml(d.email) + '</a>' : '') +
-                        kv('电话', escapeHtml(d.phone || '')) +
-                        kv('LinkedIn', linkOrText(d.linkedin || '')) +
-                        kv('证据', escapeHtml(d.evidence || d.source || '')) +
-                        '</article>';
-                }).join('') : emptyBlock('未在公开页面找到可核验的决策人（不会编造姓名）')
-            });
-
-            var orgs = intel.org_structure || [];
-            tabs.push({
-                id: 'org',
-                label: '架构' + (orgs.length ? ' (' + orgs.length + ')' : ''),
-                html: orgs.length ? '<ul class="intel-org-list">' + orgs.map(function (o) {
-                    return '<li><strong>' + escapeHtml(o.name || '') + '</strong>' +
-                        (o.role ? ' · ' + escapeHtml(o.role) : '') +
-                        (o.parent ? '<div class="intel-muted">上级：' + escapeHtml(o.parent) + '</div>' : '') +
-                        (o.evidence ? '<div class="intel-muted">证据：' + escapeHtml(o.evidence) + '</div>' : '') +
-                        '</li>';
-                }).join('') + '</ul>' : emptyBlock('暂无架构信息')
-            });
-
+            var emails = intel.extra_emails || [];
+            var phones = intel.phones || [];
             var socials = intel.socials || {};
             var socialKeys = Object.keys(socials).filter(function (k) { return socials[k]; });
+
+            // 1) 可联系：一键触达
             var contactHtml = '';
-            contactHtml += '<h4 class="intel-sub">邮箱</h4>' + listChips(intel.extra_emails || []);
-            contactHtml += '<h4 class="intel-sub">电话 / WhatsApp</h4>' + listChips(intel.phones || []);
+            contactHtml += '<p class="intel-lead">' + escapeHtml(intel.note || '整理可触达渠道，优先邮件 / WhatsApp / LinkedIn。') + '</p>';
+            if (dms.length) {
+                contactHtml += '<h4 class="intel-sub">优先联系人</h4>' + dms.map(personCard).join('');
+            }
+            contactHtml += '<h4 class="intel-sub">公开邮箱</h4>' + listChips(emails);
+            contactHtml += '<h4 class="intel-sub">电话 / WhatsApp</h4>';
+            if (phones.length) {
+                contactHtml += '<div class="intel-chips">' + phones.map(function (p) {
+                    return '<span class="intel-chip">' + escapeHtml(p) + ' ' + waLink(p) + '</span>';
+                }).join('') + '</div>';
+            } else {
+                contactHtml += emptyBlock('暂无电话');
+            }
             contactHtml += '<h4 class="intel-sub">社媒</h4>';
             if (socialKeys.length) {
                 contactHtml += socialKeys.map(function (k) {
@@ -327,14 +341,55 @@
             } else {
                 contactHtml += emptyBlock('暂无社媒');
             }
-            tabs.push({ id: 'contacts', label: '联系方式', html: contactHtml });
+            tabs.push({
+                id: 'contacts',
+                label: '可联系' + (dms.length || emails.length || phones.length ? ' (' + (dms.length || emails.length || phones.length) + ')' : ''),
+                html: contactHtml
+            });
 
+            // 2) 公司简介（去掉 MX「未检测到」噪声与技术 note）
+            var overviewBits = [
+                kv('触达信心', confBadge(intel.confidence)),
+                kv('摘要', escapeHtml(intel.summary || '')),
+                kv('域名', escapeHtml(intel.domain || '—')),
+                kv('网站', linkOrText(intel.website || place.website))
+            ];
+            if (intel.has_mx && intel.mx_hosts && intel.mx_hosts.length) {
+                overviewBits.push(kv('企业邮箱 MX', escapeHtml(intel.mx_hosts.join(', '))));
+            }
+            tabs.push({
+                id: 'overview',
+                label: '公司',
+                html: overviewBits.filter(Boolean).join('') || emptyBlock('暂无公司信息')
+            });
+
+            // 3) 架构
+            var orgs = intel.org_structure || [];
+            var usefulOrgs = orgs.filter(function (o) {
+                return o && o.name && String(o.evidence || '') !== 'Google Maps category';
+            });
+            if (!usefulOrgs.length && orgs.length) usefulOrgs = orgs.slice(0, 1);
+            tabs.push({
+                id: 'org',
+                label: '架构' + (usefulOrgs.length ? ' (' + usefulOrgs.length + ')' : ''),
+                html: usefulOrgs.length ? '<ul class="intel-org-list">' + usefulOrgs.map(function (o) {
+                    return '<li><strong>' + escapeHtml(o.name || '') + '</strong>' +
+                        (o.role ? ' · ' + escapeHtml(o.role) : '') +
+                        (o.parent ? '<div class="intel-muted">上级：' + escapeHtml(o.parent) + '</div>' : '') +
+                        (o.evidence ? '<div class="intel-muted">证据：' + escapeHtml(o.evidence) + '</div>' : '') +
+                        '</li>';
+                }).join('') + '</ul>' : emptyBlock('暂无可用架构（官网未公开组织信息）')
+            });
+
+            // 4) 主体（可选）
             var reg = intel.company_registry;
-            var techHtml = '';
-            techHtml += '<h4 class="intel-sub">检测到的技术</h4>' + listChips(intel.technologies || []);
-            techHtml += '<h4 class="intel-sub">主体登记（OpenCorporates）</h4>';
+            var tech = (intel.technologies || []).filter(function (t) {
+                return t && !/^hosts:\d+/i.test(t) && t !== 'WHOIS';
+            });
+            var domainHtml = '';
+            domainHtml += '<h4 class="intel-sub">主体登记</h4>';
             if (reg && reg.name) {
-                techHtml += [
+                domainHtml += [
                     kv('名称', escapeHtml(reg.name)),
                     kv('编号', escapeHtml(reg.company_number || '')),
                     kv('辖区', escapeHtml(reg.jurisdiction || '')),
@@ -343,10 +398,14 @@
                     kv('链接', linkOrText(reg.registry_url || ''))
                 ].filter(Boolean).join('');
             } else {
-                techHtml += emptyBlock('未匹配到公开主体（接口限流或名称差异属正常）');
+                domainHtml += emptyBlock('未匹配公开主体');
             }
-            tabs.push({ id: 'domain', label: '域名/主体', html: techHtml });
+            if (tech.length) {
+                domainHtml += '<h4 class="intel-sub">网站技术</h4>' + listChips(tech);
+            }
+            tabs.push({ id: 'domain', label: '主体', html: domainHtml });
 
+            // 5) 来源
             var sources = intel.sources || [];
             tabs.push({
                 id: 'sources',
@@ -358,7 +417,6 @@
                     : emptyBlock('无网页来源（可能无官网）')
             });
 
-            // 只展示有实质内容或总是展示的核心 Tab；空的次要 Tab 仍保留但标注
             return tabs;
         }
 

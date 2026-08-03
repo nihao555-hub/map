@@ -3,6 +3,8 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -57,13 +60,15 @@ type OrgUnit struct {
 	Evidence string `json:"evidence,omitempty"`
 }
 
-// DecisionMaker 决策人 / 关键联系人（须有证据；无姓名时用角色+邮箱）
+// DecisionMaker 决策人 / 关键联系人（须有证据；优先可触达：邮箱/电话/WhatsApp/LinkedIn）。
 type DecisionMaker struct {
 	Name       string `json:"name"`
 	Title      string `json:"title,omitempty"`
 	Email      string `json:"email,omitempty"`
 	Phone      string `json:"phone,omitempty"`
+	WhatsApp   string `json:"whatsapp,omitempty"`
 	LinkedIn   string `json:"linkedin,omitempty"`
+	Avatar     string `json:"avatar,omitempty"`
 	Source     string `json:"source,omitempty"`
 	Evidence   string `json:"evidence,omitempty"`
 	Confidence string `json:"confidence,omitempty"`
@@ -186,7 +191,7 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		Status:      IntelRunning,
 		GeneratedAt: time.Now().UTC(),
 		Provider:    "website",
-		Note:        "证据驱动：官网+OSINT CLI+公开源(RDAP/crt.sh/Wayback/Wikipedia/DDG/GLEIF/Wikidata)+Hunter/AHU(可选)；不编造决策人。",
+		Note:        "背调中",
 		Socials:     map[string]string{},
 	}
 	_ = s.saveIntel(jobID, intel)
@@ -314,16 +319,19 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 				intel.DecisionMakers = filterDecisionMakers(aiOut.DecisionMakers, evidenceBlob, intel.ExtraEmails)
 			}
 			intel.Provider = strings.Trim(intel.Provider+"+grsai:"+grsaiModel(), "+")
-		} else if err != nil {
-			intel.Note = intel.Note + " AI：" + err.Error()
 		}
+		// AI 失败不污染对外说明
 	}
 
 	if countNamedPeople(intel.DecisionMakers) == 0 {
-		// 无真名时再用邮箱/头衔启发式补联系人；已有 Wikidata/Hunter/AHU 真名则不覆盖
+		// 无真名时再用邮箱角色启发式补「可联系渠道」（不再伪造人名）
 		intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, heuristicDecisionMakers(pageTexts, intel.ExtraEmails, place))
 	}
 	intel.DecisionMakers = dedupeDecisionMakers(intel.DecisionMakers)
+	intel.DecisionMakers = attachLinkedInSearchHints(intel.DecisionMakers, place.Title)
+	intel.DecisionMakers = sanitizeDecisionMakers(intel.DecisionMakers, place)
+	enrichDecisionMakerAvatars(intel.DecisionMakers)
+	sortDecisionMakersForOutreach(intel.DecisionMakers)
 	if intel.Summary == "" {
 		intel.Summary = fmt.Sprintf("%s（%s）", place.Title, strings.TrimSpace(place.Category+" · "+place.Address))
 	}
@@ -331,6 +339,7 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		intel.OrgStructure = []OrgUnit{{Name: place.Title, Role: place.Category, Evidence: "Google Maps category"}}
 	}
 
+	intel.Note = publicFacingNote(intel)
 	intel.Confidence = scoreConfidence(intel)
 	intel.Status = IntelReady
 	intel.GeneratedAt = time.Now().UTC()
@@ -805,21 +814,13 @@ func filterOrgUnits(in []OrgUnit, evidenceLow string) []OrgUnit {
 
 func scoreConfidence(intel *PlaceIntel) string {
 	score := 0
-	if len(intel.Sources) > 0 {
-		score += 2
-	}
-	if len(intel.ExtraEmails) > 0 {
-		score++
-	}
-	if intel.HasMX {
-		score++
-	}
-	if intel.CompanyRegistry != nil {
-		score += 2
-	}
 	named := countNamedPeople(intel.DecisionMakers)
+	contactable := 0
 	highDM := 0
 	for _, d := range intel.DecisionMakers {
+		if d.Email != "" || d.Phone != "" || d.WhatsApp != "" || d.LinkedIn != "" {
+			contactable++
+		}
 		if d.Confidence == "high" && looksLikeRealPerson(d) {
 			highDM++
 		}
@@ -828,11 +829,33 @@ func scoreConfidence(intel *PlaceIntel) string {
 		score += 3
 	} else if named > 0 {
 		score += 2
-	} else if len(intel.DecisionMakers) > 0 {
+	}
+	if contactable > 0 {
+		score += 2
+	}
+	if len(intel.ExtraEmails) > 0 {
 		score++
 	}
+	if len(intel.Phones) > 0 || (intel.Socials != nil && intel.Socials["whatsapp"] != "") {
+		score++
+	}
+	if intel.Socials != nil && intel.Socials["linkedin"] != "" {
+		score++
+	}
+	if intel.CompanyRegistry != nil {
+		score += 2
+	}
+	if len(intel.Sources) >= 3 {
+		score++
+	}
+	// 没有可联系渠道时，不允许标 high（外贸实战无用）
+	if contactable == 0 && len(intel.ExtraEmails) == 0 && len(intel.Phones) == 0 {
+		if score > 2 {
+			score = 2
+		}
+	}
 	switch {
-	case score >= 6:
+	case score >= 6 && (named > 0 || contactable > 0):
 		return "high"
 	case score >= 3:
 		return "medium"
@@ -843,59 +866,309 @@ func scoreConfidence(intel *PlaceIntel) string {
 
 func heuristicDecisionMakers(pages []string, emails []string, place Place) []DecisionMaker {
 	var out []DecisionMaker
-	blob := strings.Join(pages, " ")
-	if nameTitleRe.MatchString(blob) {
-		out = append(out, DecisionMaker{
-			Name:       "（页面提及管理/创始相关头衔，需人工核实）",
-			Title:      "Management / Founder mention",
-			Source:     "heuristic",
-			Evidence:   "title keyword in page text",
-			Confidence: "low",
-		})
-	}
+	// 邮箱角色线索：不当成人名，Name 留空，仅作可触达联系人
 	for _, e := range emails {
-		local := e
-		if i := strings.Index(e, "@"); i > 0 {
-			local = e[:i]
+		e = strings.TrimSpace(e)
+		if e == "" || !strings.Contains(e, "@") {
+			continue
 		}
-		title := "Contact"
-		low := strings.ToLower(local)
-		conf := "medium"
-		switch {
-		case strings.Contains(low, "ceo"), strings.Contains(low, "founder"):
-			title = "Executive contact"
-			conf = "high"
-		case strings.Contains(low, "owner"), strings.Contains(low, "direktur"):
-			title = "Owner / Director"
-			conf = "high"
-		case strings.Contains(low, "sales"), strings.Contains(low, "marketing"):
-			title = "Sales / Marketing"
-		case strings.Contains(low, "info"), strings.Contains(low, "hello"), strings.Contains(low, "contact"):
-			title = "General inquiry"
-			conf = "low"
-		}
+		local := e[:strings.Index(e, "@")]
+		title := roleFromEmailLocal(local)
 		out = append(out, DecisionMaker{
-			Name:       local,
+			Name:       "",
 			Title:      title,
 			Email:      e,
-			Phone:      place.Phone,
+			Phone:      firstNonEmpty(place.WhatsApp, place.Phone),
+			WhatsApp:   place.WhatsApp,
 			Source:     "email-pattern",
-			Evidence:   "email harvested from public page/maps",
-			Confidence: conf,
+			Evidence:   "public email on website/maps",
+			Confidence: emailRoleConfidence(local),
 		})
 	}
-	if len(out) == 0 && (place.Phone != "" || place.WhatsApp != "" || place.Emails != "") {
-		out = append(out, DecisionMaker{
-			Name:       place.Title,
-			Title:      "Primary business contact",
-			Email:      firstCSV(place.Emails),
-			Phone:      firstNonEmpty(place.WhatsApp, place.Phone),
-			Source:     "maps",
-			Evidence:   "Google Maps listing fields",
-			Confidence: "medium",
-		})
+	if len(out) == 0 {
+		phone := firstNonEmpty(place.WhatsApp, place.Phone)
+		email := firstCSV(place.Emails)
+		if phone != "" || email != "" {
+			out = append(out, DecisionMaker{
+				Name:       "",
+				Title:      "Business contact",
+				Email:      email,
+				Phone:      phone,
+				WhatsApp:   place.WhatsApp,
+				LinkedIn:   place.LinkedIn,
+				Source:     "maps",
+				Evidence:   "Google Maps listing contact fields",
+				Confidence: "medium",
+			})
+		}
 	}
 	return out
+}
+
+func roleFromEmailLocal(local string) string {
+	low := strings.ToLower(local)
+	switch {
+	case strings.Contains(low, "purchas"), strings.Contains(low, "procure"), strings.Contains(low, "buyer"), strings.Contains(low, "sourcing"):
+		return "Purchasing / Sourcing"
+	case strings.Contains(low, "ceo"), strings.Contains(low, "founder"), strings.Contains(low, "owner"):
+		return "Owner / Executive"
+	case strings.Contains(low, "direktur"), strings.Contains(low, "director"):
+		return "Director"
+	case strings.Contains(low, "sales"), strings.Contains(low, "marketing"), strings.Contains(low, "export"), strings.Contains(low, "import"):
+		return "Sales / Trade"
+	case strings.Contains(low, "info"), strings.Contains(low, "hello"), strings.Contains(low, "contact"), strings.Contains(low, "admin"), strings.Contains(low, "office"):
+		return "General inquiry"
+	default:
+		return "Email contact"
+	}
+}
+
+func emailRoleConfidence(local string) string {
+	low := strings.ToLower(local)
+	switch {
+	case strings.Contains(low, "purchas"), strings.Contains(low, "procure"), strings.Contains(low, "ceo"), strings.Contains(low, "founder"), strings.Contains(low, "owner"), strings.Contains(low, "direktur"):
+		return "high"
+	case strings.Contains(low, "info"), strings.Contains(low, "hello"), strings.Contains(low, "contact"), strings.Contains(low, "admin"):
+		return "low"
+	default:
+		return "medium"
+	}
+}
+
+// sanitizeDecisionMakers 去掉假人名 / 占位文案，补齐 WhatsApp，并给可联人打分。
+func sanitizeDecisionMakers(in []DecisionMaker, place Place) []DecisionMaker {
+	var out []DecisionMaker
+	for _, d := range in {
+		d.Name = strings.TrimSpace(d.Name)
+		d.Title = strings.TrimSpace(d.Title)
+		d.Email = strings.TrimSpace(d.Email)
+		d.Phone = strings.TrimSpace(d.Phone)
+		d.WhatsApp = strings.TrimSpace(d.WhatsApp)
+		d.LinkedIn = strings.Split(strings.TrimSpace(d.LinkedIn), "?")[0]
+		hadOwnChannel := d.Email != "" || d.Phone != "" || d.WhatsApp != "" || d.LinkedIn != ""
+		// 丢弃占位 / 垃圾名（先清名，再决定是否继承门店电话）
+		if isJunkPersonName(d.Name) {
+			d.Name = ""
+		}
+		// 邮箱 local 当人名 → 清空名，保留邮箱
+		if d.Email != "" {
+			local := d.Email
+			if i := strings.Index(d.Email, "@"); i > 0 {
+				local = d.Email[:i]
+			}
+			if strings.EqualFold(d.Name, local) {
+				d.Name = ""
+				if d.Title == "" || d.Title == "Contact" || isJunkTitle(d.Title) {
+					d.Title = roleFromEmailLocal(local)
+				}
+			}
+		}
+		// 公司名当人名
+		if d.Name != "" && place.Title != "" && strings.EqualFold(d.Name, strings.TrimSpace(place.Title)) {
+			d.Name = ""
+			if d.Title == "" || isJunkTitle(d.Title) {
+				d.Title = "Business contact"
+			}
+		}
+		// 仅对「本来就有渠道或真名」的联系人补门店 WhatsApp/电话，避免假决策人继承成空壳
+		if d.Name != "" || hadOwnChannel {
+			if d.WhatsApp == "" && looksLikeWhatsApp(d.Phone) {
+				d.WhatsApp = d.Phone
+			}
+			if d.WhatsApp == "" && place.WhatsApp != "" && (d.Email != "" || d.Name == "") {
+				d.WhatsApp = place.WhatsApp
+			}
+			if d.Phone == "" {
+				d.Phone = firstNonEmpty(d.WhatsApp, place.Phone)
+			}
+		}
+		if d.Name == "" && d.Email == "" && d.Phone == "" && d.WhatsApp == "" && d.LinkedIn == "" {
+			continue
+		}
+		// 清名后无真名且原本无任何渠道 → 丢（假「需人工核实」类）
+		if d.Name == "" && !hadOwnChannel {
+			continue
+		}
+		if d.Name == "" && d.Title == "" {
+			d.Title = "Contact"
+		}
+		// 垃圾职称清理
+		if isJunkTitle(d.Title) {
+			if d.Email != "" {
+				local := d.Email
+				if i := strings.Index(d.Email, "@"); i > 0 {
+					local = d.Email[:i]
+				}
+				d.Title = roleFromEmailLocal(local)
+			} else if d.LinkedIn != "" {
+				d.Title = "LinkedIn contact"
+			} else {
+				d.Title = "Contact"
+			}
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+func isJunkTitle(title string) bool {
+	low := strings.ToLower(strings.TrimSpace(title))
+	if low == "" {
+		return false
+	}
+	junk := []string{
+		"management / founder mention", "mentioned officer", "name from osint",
+		"primary business contact", "title keyword",
+	}
+	for _, j := range junk {
+		if low == j || strings.Contains(low, j) {
+			return true
+		}
+	}
+	return false
+}
+
+// attachLinkedInSearchHints 给有真名但无个人主页的联系人补 LinkedIn 搜人链接，方便一键建联。
+func attachLinkedInSearchHints(makers []DecisionMaker, company string) []DecisionMaker {
+	company = strings.TrimSpace(company)
+	for i := range makers {
+		if makers[i].LinkedIn != "" {
+			continue
+		}
+		if !looksLikeRealPerson(makers[i]) {
+			continue
+		}
+		q := makers[i].Name
+		if company != "" {
+			q += " " + company
+		}
+		makers[i].LinkedIn = "https://www.linkedin.com/search/results/people/?keywords=" + url.QueryEscape(q)
+		if makers[i].Evidence == "" {
+			makers[i].Evidence = "LinkedIn people search hint"
+		}
+	}
+	return makers
+}
+
+func isJunkPersonName(name string) bool {
+	n := strings.TrimSpace(name)
+	if n == "" {
+		return false
+	}
+	low := strings.ToLower(n)
+	if strings.Contains(n, "核实") || strings.Contains(n, "（") || strings.Contains(n, "(") && strings.Contains(low, "mention") {
+		return true
+	}
+	if strings.Contains(low, "management / founder") || strings.Contains(low, "primary business contact") {
+		return true
+	}
+	if strings.Contains(low, "mentioned officer") && len(strings.Fields(n)) < 2 {
+		return true
+	}
+	junkExact := map[string]bool{
+		"contact": true, "admin": true, "info": true, "sales": true, "owner": true,
+		"manager": true, "unknown": true, "n/a": true, "-": true,
+	}
+	return junkExact[low]
+}
+
+func looksLikeWhatsApp(s string) bool {
+	d := regexp.MustCompile(`[^\d+]`).ReplaceAllString(s, "")
+	return strings.HasPrefix(d, "+") || (len(d) >= 10 && strings.HasPrefix(d, "62"))
+}
+
+func enrichDecisionMakerAvatars(makers []DecisionMaker) {
+	for i := range makers {
+		if makers[i].Avatar != "" {
+			continue
+		}
+		if makers[i].Email != "" {
+			makers[i].Avatar = gravatarURL(makers[i].Email)
+			continue
+		}
+		if makers[i].Name != "" {
+			makers[i].Avatar = uiAvatarURL(makers[i].Name)
+		}
+	}
+}
+
+func gravatarURL(email string) string {
+	e := strings.TrimSpace(strings.ToLower(email))
+	sum := md5.Sum([]byte(e))
+	return "https://www.gravatar.com/avatar/" + hex.EncodeToString(sum[:]) + "?d=identicon&s=96"
+}
+
+func uiAvatarURL(name string) string {
+	return "https://ui-avatars.com/api/?name=" + url.QueryEscape(name) + "&background=3b82f6&color=fff&size=96"
+}
+
+func sortDecisionMakersForOutreach(makers []DecisionMaker) {
+	score := func(d DecisionMaker) int {
+		s := 0
+		if looksLikeRealPerson(d) {
+			s += 50
+		}
+		if d.Email != "" {
+			s += 20
+		}
+		if d.WhatsApp != "" || d.Phone != "" {
+			s += 15
+		}
+		if d.LinkedIn != "" {
+			s += 15
+		}
+		switch strings.ToLower(d.Confidence) {
+		case "high":
+			s += 10
+		case "medium":
+			s += 5
+		}
+		title := strings.ToLower(d.Title)
+		for _, kw := range []string{"purchas", "procure", "buyer", "sourcing", "owner", "ceo", "founder", "direktur", "director", "import", "export"} {
+			if strings.Contains(title, kw) {
+				s += 8
+				break
+			}
+		}
+		return s
+	}
+	sort.SliceStable(makers, func(i, j int) bool {
+		return score(makers[i]) > score(makers[j])
+	})
+}
+
+// publicFacingNote 只保留对销售有用的一句话，去掉 OSINT/SpiderFoot 调试噪声。
+func publicFacingNote(intel *PlaceIntel) string {
+	named := countNamedPeople(intel.DecisionMakers)
+	emails := len(intel.ExtraEmails)
+	for _, d := range intel.DecisionMakers {
+		if d.Email != "" {
+			emails++
+		}
+	}
+	phones := len(intel.Phones)
+	li := 0
+	if intel.Socials != nil && intel.Socials["linkedin"] != "" {
+		li++
+	}
+	for _, d := range intel.DecisionMakers {
+		if d.LinkedIn != "" {
+			li++
+		}
+		if d.Phone != "" || d.WhatsApp != "" {
+			phones++
+		}
+	}
+	switch {
+	case named > 0 && (emails > 0 || phones > 0 || li > 0):
+		return fmt.Sprintf("已找到 %d 位可核验联系人，可直接邮件/WhatsApp/LinkedIn 触达。", named)
+	case emails > 0 || phones > 0:
+		return "暂无具名决策人，但已拿到公开邮箱/电话，可先用渠道邮箱触达。"
+	case li > 0:
+		return "已定位 LinkedIn 线索，建议先加决策人再建联。"
+	default:
+		return "公开源暂未挖到可核验决策人；可改深度模式或配置 HUNTER_API_KEY / AHU_PROXY。"
+	}
 }
 
 func firstCSV(s string) string {
@@ -920,15 +1193,14 @@ func AICompanyIntel(ctx context.Context, place Place, pageText string, knownEmai
 		return nil, fmt.Errorf("AI disabled")
 	}
 
-	system := `You are a B2B sales intelligence analyst. From public website text and Google Maps business fields, extract:
-1) A 2-3 sentence company summary
-2) Org structure units (departments / brands) ONLY if mentioned
-3) Decision makers or key contacts (name, title, email, phone, linkedin) ONLY if evidenced in the text.
-CRITICAL: Do NOT invent people, titles, or emails. If unsure, omit. Prefer empty arrays over guesses.
-Every decision_maker must include evidence (short quote or field name).
-Return STRICT JSON:
-{"summary":"...","org_structure":[{"name":"...","role":"...","parent":"...","evidence":"..."}],"decision_makers":[{"name":"...","title":"...","email":"...","phone":"...","linkedin":"...","source":"...","evidence":"...","confidence":"high|medium|low"}]}
-No markdown.`
+	system := `You are a B2B export sales intelligence analyst (外贸获客). From public website/Google Maps text, extract ONLY evidenced facts useful for outreach:
+1) One short company summary (2 sentences max: what they buy/sell, market, location).
+2) Org units only if explicitly named on the page.
+3) Decision makers / key contacts: prefer Purchasing Manager, Procurement, Buyer, Owner, Director, Founder, Direktur, Import/Export Manager. Include name, title, email, phone, linkedin ONLY if present in the text.
+NEVER invent people. NEVER use email local-parts as names. If only a generic email exists, omit decision_makers.
+Every decision_maker must include evidence (short quote or field name). Prefer empty arrays over guesses.
+Return STRICT JSON only (no markdown):
+{"summary":"...","org_structure":[{"name":"...","role":"...","parent":"...","evidence":"..."}],"decision_makers":[{"name":"...","title":"...","email":"...","phone":"...","linkedin":"...","source":"...","evidence":"...","confidence":"high|medium|low"}]}`
 
 	user := fmt.Sprintf(`Business: %s
 Category: %s

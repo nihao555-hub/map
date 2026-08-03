@@ -119,6 +119,30 @@ func runPublicEnrichment(ctx context.Context, intel *PlaceIntel, place Place, mu
 			}
 			mu.Unlock()
 		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			people, coURL, err := lookupLinkedInPeople(budget, title, domain)
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			if len(people) > 0 {
+				intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, people)
+				intel.Sources = mergeUnique(intel.Sources, []string{"linkedin:ddg"})
+				intel.Provider = strings.Trim(intel.Provider+"+linkedin", "+")
+			}
+			if coURL != "" {
+				if intel.Socials == nil {
+					intel.Socials = map[string]string{}
+				}
+				if intel.Socials["linkedin"] == "" {
+					intel.Socials["linkedin"] = coURL
+				}
+			}
+			mu.Unlock()
+		}()
 	}
 
 	wg.Wait()
@@ -425,7 +449,7 @@ func applyWikipedia(intel *PlaceIntel, makers []DecisionMaker, extract string) {
 }
 
 func lookupDuckDuckGoOfficers(ctx context.Context, title string) ([]DecisionMaker, error) {
-	q := fmt.Sprintf(`"%s" (CEO OR founder OR "direktur utama" OR pendiri OR pemilik)`, title)
+	q := fmt.Sprintf(`"%s" (CEO OR founder OR "direktur utama" OR pendiri OR pemilik OR purchasing OR buyer OR procurement)`, title)
 	u := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(q)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -453,7 +477,7 @@ func lookupDuckDuckGoOfficers(ctx context.Context, title string) ([]DecisionMake
 			continue
 		}
 		makers = append(makers, DecisionMaker{
-			Name: name, Title: "Mentioned officer", Source: "duckduckgo",
+			Name: name, Title: "Officer", Source: "duckduckgo",
 			Evidence: truncateRunes(m[0], 140), Confidence: "low",
 		})
 	}
@@ -467,6 +491,271 @@ func lookupDuckDuckGoOfficers(ctx context.Context, title string) ([]DecisionMake
 		out = out[:5]
 	}
 	return out, nil
+}
+
+var (
+	ddgLinkedInInRe = regexp.MustCompile(`(?i)(?:https?://(?:[a-z]+\.)?linkedin\.com/in/[a-z0-9\-_%]+|uddg=[^&]*linkedin\.com%2Fin%2F[a-z0-9\-_%]+)`)
+	ddgLinkedInCoRe = regexp.MustCompile(`(?i)(?:https?://(?:[a-z]+\.)?linkedin\.com/company/[a-z0-9\-_%]+|uddg=[^&]*linkedin\.com%2Fcompany%2F[a-z0-9\-_%]+)`)
+	ddgResultARe    = regexp.MustCompile(`(?is)<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>`)
+	liTitleSplitRe  = regexp.MustCompile(`(?i)\s*[-|–—]\s*|\s*\|\s*| · | • `)
+	liSlugHexRe     = regexp.MustCompile(`^[0-9a-f]{5,}$`)
+	liSlugDigitsRe  = regexp.MustCompile(`^\d+$`)
+)
+
+// lookupLinkedInPeople 用 DDG 搜 LinkedIn 个人/公司页，优先采购/老板相关头衔。
+func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]DecisionMaker, string, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, "", fmt.Errorf("empty title")
+	}
+	queries := []string{
+		fmt.Sprintf(`site:linkedin.com/in "%s" (Purchasing OR Procurement OR Buyer OR "Import" OR Direktur OR Director OR Owner OR Founder OR CEO)`, title),
+		fmt.Sprintf(`site:linkedin.com/company "%s"`, title),
+	}
+	if domain != "" {
+		queries = append(queries, fmt.Sprintf(`site:linkedin.com/in "%s"`, domain))
+	}
+
+	var makers []DecisionMaker
+	coURL := ""
+	seenIn := map[string]bool{}
+
+	for _, q := range queries {
+		html, err := fetchDDGHTML(ctx, q)
+		if err != nil || html == "" {
+			continue
+		}
+		for _, m := range ddgResultARe.FindAllStringSubmatch(html, -1) {
+			if len(m) < 3 {
+				continue
+			}
+			href := decodeDDGHref(m[1])
+			label := strings.TrimSpace(tagStripRe.ReplaceAllString(m[2], " "))
+			label = strings.Join(strings.Fields(label), " ")
+			lowHref := strings.ToLower(href)
+			switch {
+			case strings.Contains(lowHref, "linkedin.com/company/"):
+				clean := cleanLinkedInURL(href)
+				if coURL == "" && clean != "" {
+					coURL = clean
+				}
+			case strings.Contains(lowHref, "linkedin.com/in/"):
+				clean := cleanLinkedInURL(href)
+				if clean == "" || seenIn[strings.ToLower(clean)] {
+					continue
+				}
+				seenIn[strings.ToLower(clean)] = true
+				name, role := parseLinkedInResultTitle(label, title)
+				if name == "" {
+					name = linkedInSlugToName(clean)
+				}
+				if name == "" {
+					continue
+				}
+				conf := "medium"
+				if role != "" {
+					conf = "high"
+				}
+				makers = append(makers, DecisionMaker{
+					Name: name, Title: firstNonEmpty(role, "LinkedIn profile"),
+					LinkedIn: clean, Source: "linkedin:ddg",
+					Evidence: truncateRunes(label, 140), Confidence: conf,
+					Avatar: uiAvatarURL(name),
+				})
+			}
+		}
+		// fallback: raw URL scrape if result__a missing
+		if coURL == "" {
+			for _, m := range ddgLinkedInCoRe.FindAllString(html, -1) {
+				if u := cleanLinkedInURL(decodeDDGHref(m)); u != "" {
+					coURL = u
+					break
+				}
+			}
+		}
+		for _, m := range ddgLinkedInInRe.FindAllString(html, -1) {
+			clean := cleanLinkedInURL(decodeDDGHref(m))
+			if clean == "" || seenIn[strings.ToLower(clean)] {
+				continue
+			}
+			seenIn[strings.ToLower(clean)] = true
+			name := linkedInSlugToName(clean)
+			if name == "" {
+				continue
+			}
+			makers = append(makers, DecisionMaker{
+				Name: name, Title: "LinkedIn profile", LinkedIn: clean,
+				Source: "linkedin:ddg", Evidence: clean, Confidence: "low",
+				Avatar: uiAvatarURL(name),
+			})
+		}
+	}
+	out := dedupeDecisionMakers(makers)
+	if len(out) > 8 {
+		out = out[:8]
+	}
+	return out, coURL, nil
+}
+
+func fetchDDGHTML(ctx context.Context, q string) (string, error) {
+	u := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(q)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; gmaps-intel/1.0)")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 400<<10))
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("ddg status %d", resp.StatusCode)
+	}
+	return string(raw), nil
+}
+
+func decodeDDGHref(href string) string {
+	href = strings.TrimSpace(href)
+	if href == "" {
+		return ""
+	}
+	// DDG redirect: /l/?uddg=https%3A%2F%2F...
+	if strings.Contains(href, "uddg=") {
+		if u, err := url.Parse(href); err == nil {
+			if v := u.Query().Get("uddg"); v != "" {
+				if dec, err := url.QueryUnescape(v); err == nil {
+					return dec
+				}
+				return v
+			}
+		}
+		if i := strings.Index(href, "uddg="); i >= 0 {
+			part := href[i+5:]
+			if amp := strings.Index(part, "&"); amp >= 0 {
+				part = part[:amp]
+			}
+			if dec, err := url.QueryUnescape(part); err == nil {
+				return dec
+			}
+			return part
+		}
+	}
+	if strings.HasPrefix(href, "//") {
+		return "https:" + href
+	}
+	return href
+}
+
+func cleanLinkedInURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	raw = strings.Split(raw, "?")[0]
+	raw = strings.TrimRight(raw, "/")
+	low := strings.ToLower(raw)
+	if !strings.Contains(low, "linkedin.com/in/") && !strings.Contains(low, "linkedin.com/company/") {
+		return ""
+	}
+	if strings.HasPrefix(low, "http") {
+		return raw
+	}
+	if strings.HasPrefix(low, "linkedin.com") {
+		return "https://www." + raw
+	}
+	return raw
+}
+
+func linkedInSlugToName(profileURL string) string {
+	low := strings.ToLower(profileURL)
+	idx := strings.Index(low, "/in/")
+	if idx < 0 {
+		return ""
+	}
+	slug := profileURL[idx+4:]
+	if i := strings.IndexAny(slug, "/?#"); i >= 0 {
+		slug = slug[:i]
+	}
+	slug, _ = url.PathUnescape(slug)
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return ""
+	}
+	// john-tan-a1b2c3 → John Tan（丢掉末尾看似 ID 的片段）
+	parts := strings.Split(slug, "-")
+	var words []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if liSlugHexRe.MatchString(strings.ToLower(p)) {
+			continue
+		}
+		if liSlugDigitsRe.MatchString(p) {
+			continue
+		}
+		words = append(words, strings.ToUpper(p[:1])+strings.ToLower(p[1:]))
+	}
+	if len(words) < 2 {
+		return ""
+	}
+	name := strings.Join(words, " ")
+	if !isLikelyPersonName(name) {
+		return ""
+	}
+	return name
+}
+
+func parseLinkedInResultTitle(label, company string) (name, role string) {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return "", ""
+	}
+	// 常见：Name - Title - Company | LinkedIn
+	label = strings.ReplaceAll(label, "| LinkedIn", "")
+	label = strings.ReplaceAll(label, "- LinkedIn", "")
+	label = strings.TrimSpace(label)
+	parts := liTitleSplitRe.Split(label, -1)
+	var cleaned []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" || strings.EqualFold(p, "LinkedIn") {
+			continue
+		}
+		cleaned = append(cleaned, p)
+	}
+	if len(cleaned) == 0 {
+		return "", ""
+	}
+	cand := cleaned[0]
+	if isLikelyPersonName(cand) {
+		name = cand
+	}
+	roleKeys := []string{"purchas", "procure", "buyer", "direktur", "director", "owner", "founder", "ceo", "import", "export", "manager", "head"}
+	for i, p := range cleaned {
+		if i == 0 && name != "" {
+			continue
+		}
+		low := strings.ToLower(p)
+		if company != "" && strings.Contains(strings.ToLower(p), strings.ToLower(company)) {
+			continue
+		}
+		for _, k := range roleKeys {
+			if strings.Contains(low, k) {
+				role = p
+				break
+			}
+		}
+		if role != "" {
+			break
+		}
+	}
+	return name, role
 }
 
 func firstStringDeep(v any, keys ...string) string {

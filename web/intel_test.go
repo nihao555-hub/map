@@ -56,3 +56,59 @@ func TestFilterDecisionMakersDropsHallucinations(t *testing.T) {
 		t.Fatalf("want 2 verified makers, got %d: %+v", len(out), out)
 	}
 }
+
+func TestSanitizeDecisionMakersDropsJunk(t *testing.T) {
+	place := Place{Title: "PT Acme", Phone: "+62211234567", WhatsApp: "+62211234567"}
+	in := []DecisionMaker{
+		{Name: "（页面提及管理/创始相关头衔，需人工核实）", Title: "Management / Founder mention", Confidence: "low"},
+		{Name: "athangemilangperkasa", Title: "Contact", Email: "athangemilangperkasa@gmail.com"},
+		{Name: "PT Acme", Title: "Primary business contact", Email: "info@acme.id", Phone: "+62211234567"},
+		{Name: "Alice Tan", Title: "Purchasing Manager", Email: "alice@acme.id", LinkedIn: "https://linkedin.com/in/alice-tan"},
+	}
+	out := sanitizeDecisionMakers(in, place)
+	if len(out) != 3 {
+		t.Fatalf("want 3 usable contacts, got %d: %+v", len(out), out)
+	}
+	for _, d := range out {
+		if strings.Contains(d.Name, "核实") || strings.EqualFold(d.Name, "athangemilangperkasa") || strings.EqualFold(d.Name, "PT Acme") {
+			t.Fatalf("junk name survived: %+v", d)
+		}
+		if d.Email == "athangemilangperkasa@gmail.com" && d.Name != "" {
+			t.Fatalf("email local still used as name: %+v", d)
+		}
+	}
+	enrichDecisionMakerAvatars(out)
+	sortDecisionMakersForOutreach(out)
+	if out[0].Name != "Alice Tan" {
+		t.Fatalf("expected Alice first for outreach, got %+v", out[0])
+	}
+	if out[0].Avatar == "" {
+		t.Fatal("expected avatar")
+	}
+}
+
+func TestLinkedInSlugToName(t *testing.T) {
+	name := linkedInSlugToName("https://www.linkedin.com/in/alice-tan-a1b2c3")
+	if name != "Alice Tan" {
+		t.Fatalf("got %q", name)
+	}
+	if linkedInSlugToName("https://www.linkedin.com/in/x") != "" {
+		t.Fatal("single token should be empty")
+	}
+}
+
+func TestPublicFacingNoteNoOSINTNoise(t *testing.T) {
+	note := publicFacingNote(&PlaceIntel{
+		ExtraEmails: []string{"info@acme.id"},
+		Phones:      []string{"+6221"},
+		DecisionMakers: []DecisionMaker{
+			{Name: "Alice Tan", Email: "alice@acme.id", Confidence: "high"},
+		},
+	})
+	if strings.Contains(note, "SpiderFoot") || strings.Contains(note, "证据驱动") {
+		t.Fatalf("noise in note: %s", note)
+	}
+	if !strings.Contains(note, "可核验") {
+		t.Fatalf("unexpected note: %s", note)
+	}
+}

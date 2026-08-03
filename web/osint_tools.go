@@ -141,9 +141,8 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 	}
 	seedEmails = uniqueStrings(seedEmails)
 	if len(seedEmails) == 0 {
-		if len(notes) > 0 {
-			intel.Note = strings.TrimSpace(intel.Note + " " + strings.Join(notes, " "))
-		}
+			// OSINT 调试信息只进 provider，不污染对外 note
+		_ = notes
 		return
 	}
 
@@ -178,9 +177,8 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 		}()
 	}
 	wg2.Wait()
-	if len(notes) > 0 {
-		intel.Note = strings.TrimSpace(intel.Note + " " + strings.Join(notes, " "))
-	}
+	// notes 仅调试，不写入对外 Note（由 publicFacingNote 覆盖）
+	_ = notes
 }
 
 // OSINTStatus 本地已安装的 OSINT 工具探测结果。
@@ -720,16 +718,15 @@ func applyHarvester(intel *PlaceIntel, h *harvesterOut) {
 	}
 	intel.ExtraEmails = mergeUnique(intel.ExtraEmails, filterPublicEmails(h.Emails, intel.Domain))
 	if len(h.Hosts) > 0 {
-		intel.Technologies = mergeUnique(intel.Technologies, []string{fmt.Sprintf("hosts:%d (theHarvester)", len(h.Hosts))})
 		intel.Sources = mergeUnique(intel.Sources, []string{"theHarvester:crtsh,hackertarget"})
 	}
 	for _, p := range h.People {
 		p = strings.TrimSpace(p)
-		if p == "" {
+		if p == "" || !isLikelyPersonName(p) {
 			continue
 		}
 		intel.DecisionMakers = append(intel.DecisionMakers, DecisionMaker{
-			Name: p, Title: "Name from OSINT", Source: "theHarvester",
+			Name: p, Title: "Person (OSINT)", Source: "theHarvester",
 			Evidence: "theHarvester people result", Confidence: "low",
 		})
 	}
@@ -748,7 +745,7 @@ func applySpiderfoot(intel *PlaceIntel, events []spiderEvent) {
 			intel.ExtraEmails = mergeUnique(intel.ExtraEmails, filterPublicEmails([]string{e.Data}, intel.Domain))
 		case "Human Name", "Person":
 			name := strings.TrimSpace(e.Data)
-			if name != "" {
+			if name != "" && isLikelyPersonName(name) {
 				intel.DecisionMakers = append(intel.DecisionMakers, DecisionMaker{
 					Name: name, Source: "spiderfoot:" + e.Module, Evidence: e.Type, Confidence: "low",
 				})
