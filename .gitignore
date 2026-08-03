@@ -16,7 +16,10 @@ deploy/xray/config.json
 
 # OSINT tool installs (clone via tools/install_osint.sh)
 tools/osint-venv/
+tools/osint-extra-venv/
 tools/spiderfoot-venv/
 tools/theHarvester/
 tools/spiderfoot/
+tools/blackbird/
+tools/Photon/
 deploy/xray/__pycache__/

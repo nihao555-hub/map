@@ -186,7 +186,7 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		Status:      IntelRunning,
 		GeneratedAt: time.Now().UTC(),
 		Provider:    "website",
-		Note:        "证据驱动：官网抓取 + theHarvester/SpiderFoot（若已安装）+ OpenCorporates；不编造决策人。",
+		Note:        "证据驱动：官网 + theHarvester/SpiderFoot/Photon/Amass/holehe/maigret/blackbird/OpenCorporates；不编造决策人。",
 		Socials:     map[string]string{},
 	}
 	_ = s.saveIntel(jobID, intel)
@@ -256,20 +256,62 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		}
 	}
 
-	// 真正调用已安装的 theHarvester / SpiderFoot（有域名时）
-	harvesterOK, spiderOK := OSINTToolsAvailable()
-	if intel.Domain != "" && harvesterOK {
+	// 真正调用已安装的 OSINT 工具链
+	st := ProbeOSINTTools()
+	if intel.Domain != "" && st.TheHarvester {
 		if h, err := runTheHarvester(ctx, intel.Domain); err == nil {
 			applyHarvester(intel, h)
 		} else {
-			intel.Note = intel.Note + " theHarvester：" + truncateRunes(err.Error(), 100)
+			intel.Note = intel.Note + " theHarvester：" + truncateRunes(err.Error(), 80)
 		}
 	}
-	if intel.Domain != "" && spiderOK {
+	if intel.Domain != "" && st.SpiderFoot {
 		if ev, err := runSpiderfootLite(ctx, intel.Domain); err == nil {
 			applySpiderfoot(intel, ev)
 		} else {
-			intel.Note = intel.Note + " SpiderFoot：" + truncateRunes(err.Error(), 100)
+			intel.Note = intel.Note + " SpiderFoot：" + truncateRunes(err.Error(), 80)
+		}
+	}
+	if place.Website != "" && st.Photon {
+		if emails, socials, err := runPhoton(ctx, place.Website); err == nil {
+			applyPhoton(intel, emails, socials)
+		}
+	}
+	if intel.Domain != "" && st.Amass {
+		if hosts, err := runAmassPassive(ctx, intel.Domain); err == nil {
+			applyAmass(intel, hosts)
+		}
+	}
+	// 有邮箱时：holehe / blackbird 查注册足迹
+	seedEmails := append([]string{}, intel.ExtraEmails...)
+	if place.Emails != "" {
+		for _, e := range strings.Split(place.Emails, ",") {
+			if e = strings.TrimSpace(e); e != "" {
+				seedEmails = append(seedEmails, e)
+			}
+		}
+	}
+	seedEmails = uniqueStrings(seedEmails)
+	if len(seedEmails) > 0 {
+		em := seedEmails[0]
+		if st.Holehe {
+			if sites, err := runHolehe(ctx, em); err == nil {
+				applyAccountHits(intel, "holehe", sites)
+			}
+		}
+		if st.Blackbird {
+			if hits, err := runBlackbirdEmail(ctx, em); err == nil {
+				applyAccountHits(intel, "blackbird", hits)
+			}
+		}
+		local := em
+		if i := strings.Index(em, "@"); i > 0 {
+			local = em[:i]
+		}
+		if st.Maigret && local != "" && local != "info" && local != "hello" && local != "contact" && local != "admin" {
+			if hits, err := runMaigretLite(ctx, local); err == nil {
+				applyAccountHits(intel, "maigret", hits)
+			}
 		}
 	}
 
@@ -485,9 +527,11 @@ func fetchIntelPage(ctx context.Context, rawURL string) ([]byte, http.Header, er
 	if err != nil {
 		return nil, nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; gmaps-intel/1.0; +https://github.com/gosom/google-maps-scraper)")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml")
-	client := &http.Client{Timeout: 10 * time.Second}
+	// 浏览器 UA：部分 .co.id / WAF（Sucuri 等）会拦自定义爬虫标识
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
+	client := &http.Client{Timeout: 12 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, err

@@ -1132,13 +1132,19 @@ func (s *Server) apiOSINTStatus(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
 		return
 	}
-	h, sf := OSINTToolsAvailable()
+	st := ProbeOSINTTools()
 	renderJSON(w, http.StatusOK, map[string]any{
-		"theharvester": h,
-		"spiderfoot":   sf,
-		"opencorporates_api": true,
-		"max_radius_km": MaxRadiusKm(),
-		"hint": "bash tools/install_osint.sh",
+		"tools":          st,
+		"theharvester":   st.TheHarvester,
+		"spiderfoot":     st.SpiderFoot,
+		"holehe":         st.Holehe,
+		"maigret":        st.Maigret,
+		"blackbird":      st.Blackbird,
+		"photon":         st.Photon,
+		"amass":          st.Amass,
+		"opencorporates_api": st.OpenCorporatesAPI,
+		"max_radius_km":  MaxRadiusKm(),
+		"hint":           "bash tools/install_osint.sh",
 	})
 }
 

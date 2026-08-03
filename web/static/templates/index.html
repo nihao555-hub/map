@@ -798,11 +798,19 @@
       fetch('/api/v1/osint-status').then(function (r) { return r.ok ? r.json() : null; }).then(function (st) {
         var note = document.getElementById('osint-status-note');
         if (!note || !st) return;
-        var parts = [];
-        parts.push(st.theharvester ? 'theHarvester ✓' : 'theHarvester ✗');
-        parts.push(st.spiderfoot ? 'SpiderFoot ✓' : 'SpiderFoot ✗');
-        parts.push('OpenCorporates API ✓');
-        note.textContent = '依赖：' + parts.join(' · ') + (st.theharvester && st.spiderfoot ? '' : '（缺省请在服务器执行 bash tools/install_osint.sh）');
+        var t = st.tools || st;
+        var flags = [
+          ['theHarvester', t.theharvester],
+          ['SpiderFoot', t.spiderfoot],
+          ['holehe', t.holehe],
+          ['maigret', t.maigret],
+          ['blackbird', t.blackbird],
+          ['Photon', t.photon],
+          ['amass', t.amass]
+        ];
+        note.textContent = '依赖：' + flags.map(function (x) {
+          return x[0] + (x[1] ? ' ✓' : ' ✗');
+        }).join(' · ');
       }).catch(function () {});
     </script>
 </body>
