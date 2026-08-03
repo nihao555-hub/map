@@ -283,6 +283,11 @@
 
             if (places.length > 0) {
                 ensureTable();
+                // 先落到首条坐标，避免长时间停在世界视图
+                var first = places[0];
+                if (first && isFinite(first.latitude) && isFinite(first.longitude)) {
+                    map.setView([first.latitude, first.longitude], 13);
+                }
                 renderBatch(places);
                 // 布局稳定后再 fit：弹窗刚插入时偶发 0 尺寸导致灰底不补瓦片
                 setTimeout(function () {
@@ -290,6 +295,8 @@
                     try {
                         if (markersLayer && markersLayer.getLayers().length) {
                             map.fitBounds(markersLayer.getBounds(), { padding: [30, 30], maxZoom: 15 });
+                        } else if (first && isFinite(first.latitude) && isFinite(first.longitude)) {
+                            map.setView([first.latitude, first.longitude], 14);
                         }
                     } catch (e) {}
                 }, 120);
