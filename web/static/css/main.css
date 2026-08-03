@@ -1154,7 +1154,7 @@ svg.lucide { flex-shrink: 0; }
   background: #fafbfd;
   display: flex;
   flex-direction: column;
-  transition: flex-basis 0.22s ease, max-width 0.22s ease, opacity 0.18s ease;
+  transition: flex-basis 0.18s ease, max-width 0.18s ease, opacity 0.15s ease;
 }
 
 .job-intel-drawer.open {
@@ -1163,6 +1163,38 @@ svg.lucide { flex-shrink: 0; }
   max-width: min(380px, 38vw);
   opacity: 1;
   border-left-width: 1px;
+}
+
+/* 右侧背调小窗：浮层卡片，不硬挤布局 */
+.job-intel-drawer.job-intel-popup {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 30;
+  flex: none !important;
+  width: min(360px, 42vw);
+  max-width: min(360px, 92vw);
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.16);
+  background: #fff;
+  transform: translateX(12px);
+  pointer-events: none;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.job-intel-drawer.job-intel-popup.open {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+  border-left-width: 1px;
+}
+
+.job-view-body {
+  position: relative;
 }
 
 .intel-drawer-head {

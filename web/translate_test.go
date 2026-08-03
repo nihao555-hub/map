@@ -67,10 +67,10 @@ func TestLocalizeSearchQueryBuyerNeverShipsChinese(t *testing.T) {
 	}
 }
 
-func TestLocalizeSearchQueryAIPreferredOverLexicon(t *testing.T) {
+func TestLocalizeSearchQueryLexiconPreferredOverAI(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"choices":[{"message":{"content":"importir"}}]}`)
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"buyer company"}}]}`)
 	}))
 	defer srv.Close()
 
@@ -83,10 +83,34 @@ func TestLocalizeSearchQueryAIPreferredOverLexicon(t *testing.T) {
 		UseAI:       true,
 	})
 	if !did {
-		t.Fatal("expected AI translation")
+		t.Fatal("expected translation")
 	}
-	if len(kws) != 1 || kws[0] != "importir in Jakarta" {
-		t.Fatalf("AI should win over lexicon importer; got %v", kws)
+	// 词典优先：id 市场偏好英文品类 importer（获客更容易出官网邮箱）
+	if len(kws) != 1 || kws[0] != "importer in Jakarta" {
+		t.Fatalf("lexicon should win; got %v", kws)
+	}
+}
+
+func TestLocalizeSearchQueryAIWhenLexiconMiss(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"custom niche shop"}}]}`)
+	}))
+	defer srv.Close()
+
+	t.Setenv("GRSAI_API_KEY", "test-key")
+	t.Setenv("GRSAI_API_HOST", srv.URL)
+	t.Setenv("GRSAI_MODEL", "gemini-3.1-flash-lite")
+
+	kws, _, did := localizeSearchQuery(context.Background(), []string{"冷门细分词xyz"}, "Jakarta", "id", localizeOpts{
+		CountryName: "Indonesia",
+		UseAI:       true,
+	})
+	if !did {
+		t.Fatal("expected AI translation for lexicon miss")
+	}
+	if len(kws) != 1 || kws[0] != "custom niche shop in Jakarta" {
+		t.Fatalf("AI should fill lexicon miss; got %v", kws)
 	}
 }
 

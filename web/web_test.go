@@ -32,6 +32,7 @@ func TestViewJobRendersPlaces(t *testing.T) {
 
 	srv := newTestServer(t, dir)
 
+	// 默认 lite：壳子快开，places 由前端 API 拉取
 	req := requestWithID(httptest.NewRequest(http.MethodGet, "/view?id="+id, http.NoBody))
 	rec := httptest.NewRecorder()
 	srv.viewJob(rec, req)
@@ -41,9 +42,23 @@ func TestViewJobRendersPlaces(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{`id="map-modal"`, `initJobMap()`, `"title":"Place"`, `"latitude":1.5`} {
+	for _, want := range []string{`id="map-modal"`, `initJobMap()`, `var places = [];`, `LITE_MODE = true`, `job-intel-popup`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q:\n%s", want, body)
+		}
+	}
+
+	// lite=0 仍可嵌入全量 places（兼容）
+	reqFull := requestWithID(httptest.NewRequest(http.MethodGet, "/view?id="+id+"&lite=0", http.NoBody))
+	recFull := httptest.NewRecorder()
+	srv.viewJob(recFull, reqFull)
+	if recFull.Code != http.StatusOK {
+		t.Fatalf("lite=0 expected 200, got %d", recFull.Code)
+	}
+	full := recFull.Body.String()
+	for _, want := range []string{`"title":"Place"`, `"latitude":1.5`, `LITE_MODE = false`} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("lite=0 body missing %q:\n%s", want, full)
 		}
 	}
 }

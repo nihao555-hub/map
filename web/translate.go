@@ -197,19 +197,17 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 
 	searchLocation = strings.TrimSpace(locations)
 	if searchLocation != "" && containsChinese(searchLocation) && targetLang != "zh" {
-		// 地名：AI 优先，再用词典/机翻落到英文（Maps 对英文地名最稳）
-		if useAI {
+		// 地名：词典优先，再 AI / 机翻落到英文（Maps 对英文地名最稳）
+		if loc, ok := zhPlaceLexicon[searchLocation]; ok {
+			searchLocation = loc
+			translated = true
+		} else if loc, ok := fuzzyPlaceLexicon(searchLocation); ok {
+			searchLocation = loc
+			translated = true
+		}
+		if containsChinese(searchLocation) && useAI {
 			if name, err := AITranslateKeyword(ctx, searchLocation, opt.CountryName, "en"); err == nil && name != "" {
 				searchLocation = name
-				translated = true
-			}
-		}
-		if containsChinese(searchLocation) {
-			if loc, ok := zhPlaceLexicon[searchLocation]; ok {
-				searchLocation = loc
-				translated = true
-			} else if loc, ok := fuzzyPlaceLexicon(searchLocation); ok {
-				searchLocation = loc
 				translated = true
 			}
 		}
@@ -229,15 +227,13 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 
 		searchK := k
 		if containsChinese(k) && targetLang != "zh" {
-			// 品类：勾选 AI 时只信 AI，不再抢词典（避免「采购商」等未收录词被机翻/漏译）
-			if useAI {
-				if t, err := AITranslateKeyword(ctx, k, opt.CountryName, targetLang); err == nil && t != "" {
-					searchK = t
-					translated = true
-				}
+			// 品类：词典优先（毫秒级），未命中再走 AI / 机翻
+			if t, ok := translateBusinessTerm(k, targetLang); ok {
+				searchK = t
+				translated = true
 			}
-			if containsChinese(searchK) {
-				if t, ok := translateBusinessTerm(k, targetLang); ok {
+			if containsChinese(searchK) && useAI {
+				if t, err := AITranslateKeyword(ctx, k, opt.CountryName, targetLang); err == nil && t != "" {
 					searchK = t
 					translated = true
 				}

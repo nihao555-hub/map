@@ -483,8 +483,10 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	// 1) 锚定经纬度 / 按国家校正 hl
 	// 2) 把「咖啡 in 纽约」译成「coffee in New York」再交给 Google Maps
 	searchLocation := locationsStr
-	if locationsStr != "" {
-		geoCtx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	// 前端已锚定 lat/lon 且选定国家时，跳过二次地理编码（可省数秒）
+	skipGeocode := hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) && countryCode != ""
+	if locationsStr != "" && !skipGeocode {
+		geoCtx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 
 		point, geoErr := GeocodeInCountry(geoCtx, locationsStr, "en", countryCode)
 
@@ -518,16 +520,23 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+	} else if locationsStr != "" && skipGeocode {
+		if containsChinese(locationsStr) && newJob.Data.Lang != "zh" {
+			if loc, ok := zhPlaceLexicon[locationsStr]; ok {
+				searchLocation = loc
+			}
+		}
+		log.Printf("跳过地理编码：已有锚点 %s,%s country=%s", newJob.Data.Lat, newJob.Data.Lon, countryCode)
 	}
 
 	// 任务名始终由服务端用当前关键词+地点生成，避免前端隐藏域残留导致「名实不符」
 	newJob.Name = buildJobName(rawKeywords, locationsStr)
 
-	// 关键词本地化：中文品类 → 目标国语言；地点用英文/当地名（词典 → AI → 机翻）
+	// 关键词本地化：词典优先；仅未命中时短超时走 AI
 	{
-		locTimeout := 12 * time.Second
+		locTimeout := 6 * time.Second
 		if useAI && AITranslateEnabled() {
-			locTimeout = 55 * time.Second
+			locTimeout = 10 * time.Second
 		}
 		locCtx, cancel := context.WithTimeout(r.Context(), locTimeout)
 		localized, locUsed, did := localizeSearchQuery(locCtx, rawKeywords, searchLocation, newJob.Data.Lang, localizeOpts{
@@ -1184,17 +1193,21 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	places, err := s.svc.GetPlaces(r.Context(), id.String())
-
-	if err != nil {
-		if !errors.Is(err, ErrPlacesNotFound) {
-			log.Printf("view job %s: %v", id, err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-
-			return
+	// 轻量打开：默认不嵌入全量 places（前端 API 流式拉），大幅加快弹窗首屏
+	lite := r.URL.Query().Get("lite") != "0"
+	var places []Place
+	if !lite {
+		var err error
+		places, err = s.svc.GetPlaces(r.Context(), id.String())
+		if err != nil {
+			if !errors.Is(err, ErrPlacesNotFound) {
+				log.Printf("view job %s: %v", id, err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			places = []Place{}
 		}
-
-		// No CSV yet: render the modal with an empty state rather than an error.
+	} else {
 		places = []Place{}
 	}
 
@@ -1225,12 +1238,14 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 	jobIDJS, _ := jsonJS(id.String())
 	statusJS, _ := jsonJS(status)
 	enableIntelJS, _ := jsonJS(enableIntel)
+	liteJS, _ := jsonJS(lite)
 
 	viewData := map[string]any{
-		"JobIDJSON":        jobIDJS,
-		"StatusJSON":       statusJS,
-		"PlacesJSON":       placesJS,
-		"EnableIntelJSON":  enableIntelJS,
+		"JobIDJSON":       jobIDJS,
+		"StatusJSON":      statusJS,
+		"PlacesJSON":      placesJS,
+		"EnableIntelJSON": enableIntelJS,
+		"LiteJSON":        liteJS,
 	}
 
 	var buf bytes.Buffer

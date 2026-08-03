@@ -392,14 +392,44 @@
     document.getElementById('result-mode').textContent = '（' + modeLabel + '）';
   }
 
-  // 打开结果详情（底部表 + 右侧背调）；仅任务坞点击后调用
+  // 打开结果详情（底部表 + 右侧背调小窗）；仅任务坞点击后调用
   window.openJobView = function (jobId) {
     if (!jobId) return;
     detailUnlocked = true;
-    htmx.ajax('GET', '/view?id=' + encodeURIComponent(jobId), {
-      target: '#map-modal-container',
-      swap: 'innerHTML'
-    });
+    var container = document.getElementById('map-modal-container');
+    if (container) {
+      // 立即显示骨架，避免点任务后空白等待
+      container.innerHTML =
+        '<div id="map-modal" class="map-modal" role="dialog" aria-modal="true">' +
+          '<div class="map-modal-content job-view-shell job-view-fast">' +
+            '<div class="map-modal-header"><h2>采集结果加载中…</h2>' +
+            '<button type="button" class="map-modal-close" onclick="document.getElementById(\'map-modal-container\').innerHTML=\'\'">&times;</button></div>' +
+            '<div class="map-modal-body job-view-body">' +
+              '<div class="job-view-main"><div class="places-skeleton open-skel">' +
+                '<div class="sk-row"></div><div class="sk-row"></div><div class="sk-row"></div>' +
+                '<div class="sk-row"></div><div class="sk-row"></div></div></div>' +
+            '</div></div></div>';
+    }
+    // 轻量壳 + 并行拉 places（默认 lite）
+    fetch('/view?id=' + encodeURIComponent(jobId) + '&lite=1', { credentials: 'same-origin' })
+      .then(function (res) { return res.ok ? res.text() : Promise.reject(new Error('view ' + res.status)); })
+      .then(function (html) {
+        if (!container) return;
+        container.innerHTML = html;
+        // 执行内联脚本（innerHTML 不会自动跑 script）
+        container.querySelectorAll('script').forEach(function (old) {
+          var s = document.createElement('script');
+          s.textContent = old.textContent;
+          old.parentNode.replaceChild(s, old);
+        });
+      })
+      .catch(function () {
+        // 回退 HTMX
+        htmx.ajax('GET', '/view?id=' + encodeURIComponent(jobId) + '&lite=1', {
+          target: '#map-modal-container',
+          swap: 'innerHTML'
+        });
+      });
   };
 
   document.addEventListener('DOMContentLoaded', function () {
