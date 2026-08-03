@@ -20,6 +20,8 @@ type SocialLinks struct {
 
 var (
 	hrefSocialRe = regexp.MustCompile(`(?i)href=["'](https?://[^"']+)["']`)
+	// 裸链：JSON / 文本里的社媒 URL（linktr.ee 等常不在 href 里）
+	bareSocialRe = regexp.MustCompile(`(?i)https?://(?:(?:www|m|mobile)\.)?(?:instagram\.com|facebook\.com|fb\.com|linkedin\.com|tiktok\.com|twitter\.com|x\.com|youtube\.com|youtu\.be|t\.me|telegram\.me|pinterest\.com)/[^\s"'<>\\]+`)
 	socialHosts  = []struct {
 		needles []string
 		field   string
@@ -174,14 +176,15 @@ func extractSocialFromHTML(body []byte) SocialLinks {
 		return out
 	}
 
+	text := string(body)
+	text = strings.ReplaceAll(text, "\\/", "/")
+	text = strings.ReplaceAll(text, "&amp;", "&")
+
 	seen := map[string]bool{}
-	for _, m := range hrefSocialRe.FindAllSubmatch(body, -1) {
-		if len(m) < 2 {
-			continue
-		}
-		kind, link := classifySocialURL(string(m[1]))
+	apply := func(raw string) {
+		kind, link := classifySocialURL(raw)
 		if kind == "" || link == "" || seen[kind] {
-			continue
+			return
 		}
 		seen[kind] = true
 		switch kind {
@@ -202,6 +205,15 @@ func extractSocialFromHTML(body []byte) SocialLinks {
 		case "pinterest":
 			out.Pinterest = link
 		}
+	}
+
+	for _, m := range hrefSocialRe.FindAllStringSubmatch(text, -1) {
+		if len(m) >= 2 {
+			apply(m[1])
+		}
+	}
+	for _, m := range bareSocialRe.FindAllString(text, -1) {
+		apply(m)
 	}
 
 	return out

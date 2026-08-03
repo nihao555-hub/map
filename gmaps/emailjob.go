@@ -192,13 +192,22 @@ func extractWhatsApp(body []byte) string {
 	}
 
 	text := string(body)
+	// 解码常见 HTML/URL 转义，才能匹配 api.whatsapp.com%2Fsend%3Fphone%3D62…
+	text = strings.ReplaceAll(text, "&amp;", "&")
+	text = strings.ReplaceAll(text, "%2F", "/")
+	text = strings.ReplaceAll(text, "%2f", "/")
+	text = strings.ReplaceAll(text, "%3F", "?")
+	text = strings.ReplaceAll(text, "%3f", "?")
+	text = strings.ReplaceAll(text, "%3D", "=")
+	text = strings.ReplaceAll(text, "%3d", "=")
+	text = strings.ReplaceAll(text, "%20", "")
+	text = strings.ReplaceAll(text, "%2B", "+")
+	text = strings.ReplaceAll(text, "%2b", "+")
+
 	lower := strings.ToLower(text)
 	// 群邀请链接不含个人手机号，避免把 invite code 数字当成 WA
 	if strings.Contains(lower, "chat.whatsapp.com/") {
-		text = waMeRe.ReplaceAllString(text, "")
-		// 仍允许同页其它 wa.me；去掉 chat 群链后再扫
-		lower = strings.ToLower(text)
-		_ = lower
+		text = regexp.MustCompile(`(?i)https?://chat\.whatsapp\.com/[^\s"'<>]+`).ReplaceAllString(text, "")
 	}
 
 	if m := waMeRe.FindStringSubmatch(text); len(m) >= 2 {

@@ -107,3 +107,10 @@ func TestIsWebsiteValidForEmailDenylist(t *testing.T) {
 		require.Equal(t, tc.want, e.IsWebsiteValidForEmail(), tc.url)
 	}
 }
+
+func TestExtractWhatsAppURLEncoded(t *testing.T) {
+	t.Parallel()
+	body := []byte(`href="https://www.google.com/url?q=https://api.whatsapp.com%2Fsend%3Fphone%3D6282110006661&amp;sa=D"`)
+	got := extractWhatsApp(body)
+	require.Equal(t, "+6282110006661", got)
+}
