@@ -44,15 +44,16 @@ func runCmdGroup(ctx context.Context, stdout, stderr *bytes.Buffer, name string,
 	}
 }
 
-// runOSINTEnrichment 并行跑已安装工具，单店总预算约 70s。
+// runOSINTEnrichment 并行跑已安装工具 + 增强源。
+// 目标：整段背调 ≤50s，这里第一波 ≤22s，第二波邮箱工具 ≤12s。
 func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st OSINTStatus) {
-	budget, cancel := context.WithTimeout(ctx, 70*time.Second)
+	budget, cancel := context.WithTimeout(ctx, 22*time.Second)
 	defer cancel()
 
 	var (
-		mu       sync.Mutex
-		notes    []string
-		wg       sync.WaitGroup
+		mu    sync.Mutex
+		notes []string
+		wg    sync.WaitGroup
 	)
 	addNote := func(s string) {
 		mu.Lock()
@@ -60,6 +61,14 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 		mu.Unlock()
 	}
 
+	// 与 CLI 第一波并行：Hunter/katana/GitHub/GLEIF/Wikidata/AHU（共用 mu）
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runEnrichmentSources(budget, intel, place, st, &mu, addNote)
+	}()
+
+	// 第一波：域名/官网类（跳过最慢的 Maigret，噪音大且易超预算）
 	if intel.Domain != "" && st.TheHarvester {
 		wg.Add(1)
 		go func() {
@@ -117,7 +126,6 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 
 	wg.Wait()
 
-	// 邮箱类工具依赖上面挖到的邮箱，再跑第二波
 	seedEmails := append([]string{}, intel.ExtraEmails...)
 	if place.Emails != "" {
 		for _, e := range strings.Split(place.Emails, ",") {
@@ -133,13 +141,16 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 		}
 		return
 	}
+
+	emBudget, emCancel := context.WithTimeout(ctx, 12*time.Second)
+	defer emCancel()
 	em := seedEmails[0]
 	var wg2 sync.WaitGroup
 	if st.Holehe {
 		wg2.Add(1)
 		go func() {
 			defer wg2.Done()
-			sites, err := runHolehe(budget, em)
+			sites, err := runHolehe(emBudget, em)
 			if err != nil {
 				return
 			}
@@ -152,30 +163,12 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 		wg2.Add(1)
 		go func() {
 			defer wg2.Done()
-			hits, err := runBlackbirdEmail(budget, em)
+			hits, err := runBlackbirdEmail(emBudget, em)
 			if err != nil {
 				return
 			}
 			mu.Lock()
 			applyAccountHits(intel, "blackbird", hits)
-			mu.Unlock()
-		}()
-	}
-	local := em
-	if i := strings.Index(em, "@"); i > 0 {
-		local = em[:i]
-	}
-	skipLocal := map[string]bool{"info": true, "hello": true, "contact": true, "admin": true, "cs": true, "support": true}
-	if st.Maigret && local != "" && !skipLocal[strings.ToLower(local)] {
-		wg2.Add(1)
-		go func() {
-			defer wg2.Done()
-			hits, err := runMaigretLite(budget, local)
-			if err != nil {
-				return
-			}
-			mu.Lock()
-			applyAccountHits(intel, "maigret", hits)
 			mu.Unlock()
 		}()
 	}
@@ -187,14 +180,21 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 
 // OSINTStatus 本地已安装的 OSINT 工具探测结果。
 type OSINTStatus struct {
-	TheHarvester bool `json:"theharvester"`
-	SpiderFoot   bool `json:"spiderfoot"`
-	Holehe       bool `json:"holehe"`
-	Maigret      bool `json:"maigret"`
-	Blackbird    bool `json:"blackbird"`
-	Photon       bool `json:"photon"`
-	Amass        bool `json:"amass"`
+	TheHarvester      bool `json:"theharvester"`
+	SpiderFoot        bool `json:"spiderfoot"`
+	Holehe            bool `json:"holehe"`
+	Maigret           bool `json:"maigret"`
+	Blackbird         bool `json:"blackbird"`
+	Photon            bool `json:"photon"`
+	Amass             bool `json:"amass"`
 	OpenCorporatesAPI bool `json:"opencorporates_api"`
+	Hunter            bool `json:"hunter"`
+	Katana            bool `json:"katana"`
+	GitHubCommits     bool `json:"github_commits"`
+	GLEIF             bool `json:"gleif"`
+	Wikidata          bool `json:"wikidata"`
+	AHU               bool `json:"ahu"`
+	AHUProxyConfigured bool `json:"ahu_proxy_configured"`
 }
 
 func osintExtraPython() string {
@@ -247,8 +247,20 @@ func repoRoot() string {
 	return "/workspace"
 }
 
-// ProbeOSINTTools 探测全部背调依赖是否可用。
+// ProbeOSINTTools 探测全部背调依赖是否可用（进程内缓存，避免每次背调都 spawn CLI）。
 func ProbeOSINTTools() OSINTStatus {
+	osintProbeOnce.Do(func() {
+		osintProbeCached = probeOSINTToolsUncached()
+	})
+	return osintProbeCached
+}
+
+var (
+	osintProbeOnce   sync.Once
+	osintProbeCached OSINTStatus
+)
+
+func probeOSINTToolsUncached() OSINTStatus {
 	st := OSINTStatus{OpenCorporatesAPI: true}
 	bin, args := theHarvesterCmd()
 	thDir := filepath.Join(repoRoot(), "tools", "theHarvester")
@@ -291,6 +303,14 @@ func ProbeOSINTTools() OSINTStatus {
 	st.Amass = exec.CommandContext(ctx, amass, "-version").Run() == nil ||
 		exec.CommandContext(ctx, amass, "version").Run() == nil
 	cancel()
+
+	st.Hunter = hunterAPIKey() != ""
+	st.Katana = katanaBin() != ""
+	st.GitHubCommits = true // 公共 GitHub commit search（无 token 也可用，限额较低）
+	st.GLEIF = true
+	st.Wikidata = true
+	st.AHU = fileExists(ahuScriptPath())
+	st.AHUProxyConfigured = ahuProxyURL() != ""
 	return st
 }
 
@@ -325,13 +345,14 @@ func runTheHarvester(ctx context.Context, domain string) (*harvesterOut, error) 
 	defer os.RemoveAll(tmpDir)
 	outBase := filepath.Join(tmpDir, "out")
 
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
+	// Hunter 走独立 API（HUNTER_API_KEY）；此处保持免 key 被动源，避免 MissingKey 拖慢。
 	full := append(append([]string{}, args...),
 		"-d", domain,
 		"-b", "crtsh,hackertarget",
-		"-l", "30",
+		"-l", "20",
 		"-f", outBase,
 	)
 	var stderr bytes.Buffer
@@ -373,7 +394,7 @@ func runSpiderfootLite(ctx context.Context, domain string) ([]spiderEvent, error
 		"sfp_company", "sfp_names", "sfp_email", "sfp_opencorporates",
 	}, ",")
 
-	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 18*time.Second)
 	defer cancel()
 
 	var stdout, stderr bytes.Buffer
@@ -416,7 +437,7 @@ func runPhoton(ctx context.Context, website string) (emails []string, socials ma
 	}
 	defer os.RemoveAll(tmpDir)
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	var stderr bytes.Buffer
 	_ = runCmdGroup(ctx, &stderr, nil, py, script,
@@ -464,7 +485,7 @@ func runHolehe(ctx context.Context, email string) ([]string, error) {
 		return nil, fmt.Errorf("bad email")
 	}
 	py := osintExtraPython()
-	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	var out bytes.Buffer
 	_ = runCmdGroup(ctx, &out, nil, filepath.Join(filepath.Dir(py), "holehe"), "--only-used", "--no-color", "-NP", email)
@@ -499,15 +520,15 @@ func runBlackbirdEmail(ctx context.Context, email string) ([]string, error) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	var out bytes.Buffer
 	cmd := exec.Command(py, script, //nolint:gosec
 		"--email", email,
 		"--json",
 		"--no-nsfw",
-		"--timeout", "8",
-		"--max-concurrent-requests", "20",
+		"--timeout", "5",
+		"--max-concurrent-requests", "25",
 	)
 	cmd.Dir = tmpDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -586,7 +607,7 @@ func runAmassPassive(ctx context.Context, domain string) ([]string, error) {
 	} else if p := filepath.Join(os.Getenv("HOME"), "go", "bin", "amass"); fileExists(p) {
 		amass = p
 	}
-	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	var out bytes.Buffer
 	_ = runCmdGroup(ctx, &out, nil, amass, "enum", "-passive", "-d", domain, "-nocolor")

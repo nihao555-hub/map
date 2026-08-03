@@ -186,7 +186,7 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		Status:      IntelRunning,
 		GeneratedAt: time.Now().UTC(),
 		Provider:    "website",
-		Note:        "证据驱动：官网 + theHarvester/SpiderFoot/Photon/Amass/holehe/maigret/blackbird/OpenCorporates；不编造决策人。",
+		Note:        "证据驱动：官网 + OSINT CLI + Hunter/katana/GitHub/GLEIF/Wikidata/AHU(可选)；不编造决策人。",
 		Socials:     map[string]string{},
 	}
 	_ = s.saveIntel(jobID, intel)
@@ -203,24 +203,48 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 	rawBodies := []string{}
 	if place.Website != "" {
 		urls := teamURLs(place.Website)
-		for _, u := range urls {
-			body, headers, err := fetchIntelPage(ctx, u)
-			if err != nil || len(body) < 80 {
+		if len(urls) > 10 {
+			urls = urls[:10]
+		}
+		type pageHit struct {
+			u       string
+			body    []byte
+			headers http.Header
+		}
+		hits := make([]pageHit, len(urls))
+		var pageWg sync.WaitGroup
+		for i, u := range urls {
+			pageWg.Add(1)
+			go func(i int, u string) {
+				defer pageWg.Done()
+				body, headers, err := fetchIntelPage(ctx, u)
+				if err != nil || len(body) < 80 {
+					return
+				}
+				hits[i] = pageHit{u: u, body: body, headers: headers}
+			}(i, u)
+		}
+		pageWg.Wait()
+		nPages := 0
+		for _, h := range hits {
+			if len(h.body) == 0 {
 				continue
 			}
-			sources = append(sources, u)
-			rawBodies = append(rawBodies, string(body))
-			text := stripTags(string(body))
+			sources = append(sources, h.u)
+			rawBodies = append(rawBodies, string(h.body))
+			text := stripTags(string(h.body))
 			pageTexts = append(pageTexts, truncateRunes(text, 6000))
-			intel.ExtraEmails = mergeUnique(intel.ExtraEmails, filterPublicEmails(emailFindRe.FindAllString(string(body), -1), intel.Domain))
+			intel.ExtraEmails = mergeUnique(intel.ExtraEmails, filterPublicEmails(emailFindRe.FindAllString(string(h.body), -1), intel.Domain))
 			intel.Phones = mergeUnique(intel.Phones, filterPhones(phoneFindRe.FindAllString(text, -1)))
-			for _, li := range linkedinRe.FindAllString(string(body), -1) {
+			for _, li := range linkedinRe.FindAllString(string(h.body), -1) {
 				if intel.Socials["linkedin"] == "" {
 					intel.Socials["linkedin"] = strings.Split(li, "?")[0]
 				}
 			}
-			intel.Technologies = mergeUnique(intel.Technologies, detectTech(string(body), headers))
-			if len(pageTexts) >= 4 {
+			intel.Technologies = mergeUnique(intel.Technologies, detectTech(string(h.body), h.headers))
+			intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, extractPeopleFromText(text, h.u))
+			nPages++
+			if nPages >= 6 {
 				break
 			}
 		}
@@ -295,9 +319,11 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		}
 	}
 
-	if len(intel.DecisionMakers) == 0 {
-		intel.DecisionMakers = heuristicDecisionMakers(pageTexts, intel.ExtraEmails, place)
+	if countNamedPeople(intel.DecisionMakers) == 0 {
+		// 无真名时再用邮箱/头衔启发式补联系人；已有 Wikidata/Hunter/AHU 真名则不覆盖
+		intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, heuristicDecisionMakers(pageTexts, intel.ExtraEmails, place))
 	}
+	intel.DecisionMakers = dedupeDecisionMakers(intel.DecisionMakers)
 	if intel.Summary == "" {
 		intel.Summary = fmt.Sprintf("%s（%s）", place.Title, strings.TrimSpace(place.Category+" · "+place.Address))
 	}
@@ -751,13 +777,16 @@ func scoreConfidence(intel *PlaceIntel) string {
 	if intel.CompanyRegistry != nil {
 		score += 2
 	}
+	named := countNamedPeople(intel.DecisionMakers)
 	highDM := 0
 	for _, d := range intel.DecisionMakers {
-		if d.Confidence == "high" || (d.Email != "" && d.Name != "" && !strings.Contains(d.Name, "核实")) {
+		if d.Confidence == "high" && looksLikeRealPerson(d) {
 			highDM++
 		}
 	}
 	if highDM > 0 {
+		score += 3
+	} else if named > 0 {
 		score += 2
 	} else if len(intel.DecisionMakers) > 0 {
 		score++

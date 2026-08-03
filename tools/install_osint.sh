@@ -67,6 +67,14 @@ if ! command -v amass >/dev/null && [[ ! -x "${HOME}/go/bin/amass" ]]; then
 fi
 echo "[ok] amass (PATH or ~/go/bin/amass)"
 
+# --- katana（官网深链发现，配合 about/team 页抽人名）---
+if ! command -v katana >/dev/null && [[ ! -x "${HOME}/go/bin/katana" ]]; then
+  go install -v github.com/projectdiscovery/katana/cmd/katana@latest || true
+fi
+echo "[ok] katana (PATH or ~/go/bin/katana)"
+
+chmod +x "${ROOT}/ahu_lookup.py" 2>/dev/null || true
+
 cat <<EOF
 
 已覆盖：
@@ -77,6 +85,9 @@ cat <<EOF
 - blackbird (~6k) 邮箱/用户名社媒搜索
 - Photon (~11k) 网站爬虫抽邮箱/社媒
 - amass (~15k) 被动子域名
-- OpenCorporates API 公司主体
+- katana (~17k) about/team 深链
+- OpenCorporates / GLEIF / Wikidata（Go 直连）
+- Hunter.io（可选 env HUNTER_API_KEY）
+- AHU 董事（可选 env AHU_PROXY + tools/ahu_lookup.py）
 
 EOF

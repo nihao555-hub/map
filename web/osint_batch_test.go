@@ -110,21 +110,29 @@ func TestBatchIntelUncommonSMBs(t *testing.T) {
 	}
 
 	type row struct {
-		Title      string  `json:"title"`
-		Website    string  `json:"website"`
-		OK         bool    `json:"ok"`
-		Status     string  `json:"status"`
-		Emails     int     `json:"emails"`
-		Phones     int     `json:"phones"`
-		Socials    int     `json:"socials"`
-		Makers     int     `json:"decision_makers"`
-		Org        int     `json:"org_units"`
-		Registry   bool    `json:"registry"`
-		Sources    int     `json:"sources"`
-		Confidence string  `json:"confidence"`
-		Provider   string  `json:"provider"`
-		Err        string  `json:"err,omitempty"`
-		Seconds    float64 `json:"seconds"`
+		Title       string   `json:"title"`
+		Website     string   `json:"website"`
+		OK          bool     `json:"ok"`
+		Status      string   `json:"status"`
+		Emails      int      `json:"emails"`
+		Phones      int      `json:"phones"`
+		Socials     int      `json:"socials"`
+		Makers      int      `json:"decision_makers"`
+		NamedPeople int      `json:"named_people"`
+		NamedNames  []string `json:"named_names,omitempty"`
+		Org         int      `json:"org_units"`
+		Registry    bool     `json:"registry"`
+		RegistrySrc string   `json:"registry_source,omitempty"`
+		Sources     int      `json:"sources"`
+		HasHunter   bool     `json:"has_hunter"`
+		HasWikidata bool     `json:"has_wikidata"`
+		HasKatana   bool     `json:"has_katana"`
+		HasGLEIF    bool     `json:"has_gleif"`
+		HasAHU      bool     `json:"has_ahu"`
+		Confidence  string   `json:"confidence"`
+		Provider    string   `json:"provider"`
+		Err         string   `json:"err,omitempty"`
+		Seconds     float64  `json:"seconds"`
 	}
 
 	dir := t.TempDir()
@@ -183,17 +191,32 @@ func TestBatchIntelUncommonSMBs(t *testing.T) {
 				r.Phones = len(intel.Phones)
 				r.Socials = len(intel.Socials)
 				r.Makers = len(intel.DecisionMakers)
+				r.NamedPeople = countNamedPeople(intel.DecisionMakers)
+				for _, d := range intel.DecisionMakers {
+					if looksLikeRealPerson(d) {
+						r.NamedNames = append(r.NamedNames, d.Name+"|"+d.Source)
+					}
+				}
 				r.Org = len(intel.OrgStructure)
 				r.Registry = intel.CompanyRegistry != nil
+				if intel.CompanyRegistry != nil {
+					r.RegistrySrc = intel.CompanyRegistry.Source
+				}
 				r.Sources = len(intel.Sources)
+				blob := strings.ToLower(strings.Join(intel.Sources, " ") + " " + intel.Provider)
+				r.HasHunter = strings.Contains(blob, "hunter")
+				r.HasWikidata = strings.Contains(blob, "wikidata")
+				r.HasKatana = strings.Contains(blob, "katana")
+				r.HasGLEIF = strings.Contains(blob, "gleif")
+				r.HasAHU = strings.Contains(blob, "ahu")
 				r.Confidence = intel.Confidence
 				r.Provider = intel.Provider
 			}
 			mu.Lock()
 			rows = append(rows, r)
 			mu.Unlock()
-			t.Logf("[%02d] %s ok=%v conf=%s emails=%d socials=%d makers=%d org=%d registry=%v sources=%d (%.0fs) provider=%s err=%s",
-				i+1, f.Title, r.OK, r.Confidence, r.Emails, r.Socials, r.Makers, r.Org, r.Registry, r.Sources, r.Seconds, r.Provider, r.Err)
+			t.Logf("[%02d] %s ok=%v conf=%s emails=%d socials=%d makers=%d named=%d org=%d registry=%v sources=%d (%.0fs) provider=%s names=%v err=%s",
+				i+1, f.Title, r.OK, r.Confidence, r.Emails, r.Socials, r.Makers, r.NamedPeople, r.Org, r.Registry, r.Sources, r.Seconds, r.Provider, r.NamedNames, r.Err)
 		}()
 	}
 	wg.Wait()
@@ -203,7 +226,9 @@ func TestBatchIntelUncommonSMBs(t *testing.T) {
 	_ = os.WriteFile(outPath, b, 0o644)
 	t.Logf("wrote %s", outPath)
 
-	okN, emailN, makerN, socialN, regN := 0, 0, 0, 0, 0
+	okN, emailN, makerN, namedN, socialN, regN := 0, 0, 0, 0, 0, 0
+	wikiN, katanaN, gleifN, hunterN, ahuN := 0, 0, 0, 0, 0
+	var secs []float64
 	conf := map[string]int{}
 	for _, r := range rows {
 		if r.OK {
@@ -215,16 +240,38 @@ func TestBatchIntelUncommonSMBs(t *testing.T) {
 		if r.Makers > 0 {
 			makerN++
 		}
+		if r.NamedPeople > 0 {
+			namedN++
+		}
 		if r.Socials > 0 {
 			socialN++
 		}
 		if r.Registry {
 			regN++
 		}
+		if r.HasWikidata {
+			wikiN++
+		}
+		if r.HasKatana {
+			katanaN++
+		}
+		if r.HasGLEIF {
+			gleifN++
+		}
+		if r.HasHunter {
+			hunterN++
+		}
+		if r.HasAHU {
+			ahuN++
+		}
+		secs = append(secs, r.Seconds)
 		conf[r.Confidence]++
 	}
-	summary := fmt.Sprintf("n=%d ok=%d email>0=%d makers>0=%d socials>0=%d registry=%d conf=%v",
-		len(rows), okN, emailN, makerN, socialN, regN, conf)
+	avg, p50, p95 := durationStats(secs)
+	summary := fmt.Sprintf(
+		"n=%d ok=%d email>0=%d makers>0=%d named_people>0=%d socials>0=%d registry=%d wiki=%d katana=%d gleif=%d hunter=%d ahu=%d conf=%v avg=%.1fs p50=%.1fs p95=%.1fs",
+		len(rows), okN, emailN, makerN, namedN, socialN, regN, wikiN, katanaN, gleifN, hunterN, ahuN, conf, avg, p50, p95,
+	)
 	t.Log(summary)
 	_ = os.WriteFile(filepath.Join(os.TempDir(), "intel-batch-indonesia-summary.txt"), []byte(summary+"\n"), 0o644)
 
@@ -234,6 +281,27 @@ func TestBatchIntelUncommonSMBs(t *testing.T) {
 	if emailN+socialN == 0 {
 		t.Fatalf("no emails/socials across batch: %s", summary)
 	}
+}
+
+func durationStats(secs []float64) (avg, p50, p95 float64) {
+	if len(secs) == 0 {
+		return 0, 0, 0
+	}
+	sum := 0.0
+	cp := append([]float64{}, secs...)
+	for i := 0; i < len(cp); i++ {
+		sum += cp[i]
+		for j := i + 1; j < len(cp); j++ {
+			if cp[j] < cp[i] {
+				cp[i], cp[j] = cp[j], cp[i]
+			}
+		}
+	}
+	avg = sum / float64(len(cp))
+	p50 = cp[len(cp)/2]
+	idx := int(float64(len(cp)-1) * 0.95)
+	p95 = cp[idx]
+	return avg, p50, p95
 }
 
 func TestBatchIntelSkipsGiants(t *testing.T) {

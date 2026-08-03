@@ -23,3 +23,4 @@ tools/spiderfoot/
 tools/blackbird/
 tools/Photon/
 deploy/xray/__pycache__/
+tools/logs/

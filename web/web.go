@@ -1134,17 +1134,24 @@ func (s *Server) apiOSINTStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	st := ProbeOSINTTools()
 	renderJSON(w, http.StatusOK, map[string]any{
-		"tools":          st,
-		"theharvester":   st.TheHarvester,
-		"spiderfoot":     st.SpiderFoot,
-		"holehe":         st.Holehe,
-		"maigret":        st.Maigret,
-		"blackbird":      st.Blackbird,
-		"photon":         st.Photon,
-		"amass":          st.Amass,
+		"tools":              st,
+		"theharvester":       st.TheHarvester,
+		"spiderfoot":         st.SpiderFoot,
+		"holehe":             st.Holehe,
+		"maigret":            st.Maigret,
+		"blackbird":          st.Blackbird,
+		"photon":             st.Photon,
+		"amass":              st.Amass,
 		"opencorporates_api": st.OpenCorporatesAPI,
-		"max_radius_km":  MaxRadiusKm(),
-		"hint":           "bash tools/install_osint.sh",
+		"hunter":             st.Hunter,
+		"katana":             st.Katana,
+		"github_commits":     st.GitHubCommits,
+		"gleif":              st.GLEIF,
+		"wikidata":           st.Wikidata,
+		"ahu":                st.AHU,
+		"ahu_proxy":          st.AHUProxyConfigured,
+		"max_radius_km":      MaxRadiusKm(),
+		"hint":               "bash tools/install_osint.sh；可选 HUNTER_API_KEY / AHU_PROXY",
 	})
 }
 
