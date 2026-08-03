@@ -35,6 +35,7 @@ type PlaceIntel struct {
 	Socials         map[string]string `json:"socials,omitempty"`
 	Technologies    []string          `json:"technologies,omitempty"`
 	CompanyRegistry *CompanyHit       `json:"company_registry,omitempty"`
+	Trade           *TradeIntel       `json:"trade,omitempty"` // 美国海关提单（ImportYeti）
 	MXHosts         []string          `json:"mx_hosts,omitempty"`
 	HasMX           bool              `json:"has_mx,omitempty"`
 	Confidence      string            `json:"confidence,omitempty"` // high|medium|low
@@ -857,6 +858,9 @@ func scoreConfidence(intel *PlaceIntel) string {
 	if intel.CompanyRegistry != nil {
 		score += 2
 	}
+	if intel.Trade != nil && intel.Trade.TotalShipments > 0 {
+		score += 2
+	}
 	if len(intel.Sources) >= 3 {
 		score++
 	}
@@ -1479,6 +1483,8 @@ func publicFacingNote(intel *PlaceIntel) string {
 	switch {
 	case named > 0 && (emails > 0 || phones > 0 || li > 0):
 		return fmt.Sprintf("已找到 %d 位可核验联系人，可直接邮件/WhatsApp/LinkedIn 触达。", named)
+	case intel.Trade != nil && intel.Trade.TotalShipments > 0:
+		return "海关提单已锁定该公司贸易活动；建议用领英公式继续挖采购决策人。"
 	case emails > 0 || phones > 0:
 		return "暂无具名决策人，但已拿到公开邮箱/电话，可先用渠道邮箱触达。"
 	case li > 0:

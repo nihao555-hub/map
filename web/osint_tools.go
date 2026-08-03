@@ -203,6 +203,8 @@ type OSINTStatus struct {
 	Wayback            bool `json:"wayback"`
 	Wikipedia          bool `json:"wikipedia"`
 	DuckDuckGo         bool `json:"duckduckgo"`
+	ImportYeti         bool `json:"importyeti"`
+	Kirchner           bool `json:"kirchner"`
 }
 
 func osintExtraPython() string {
@@ -324,6 +326,8 @@ func probeOSINTToolsUncached() OSINTStatus {
 	st.Wayback = true
 	st.Wikipedia = true
 	st.DuckDuckGo = true
+	st.ImportYeti = importYetiEnabled()
+	st.Kirchner = strings.TrimSpace(os.Getenv("KIRCHNER_DISABLE")) != "1"
 	return st
 }
 

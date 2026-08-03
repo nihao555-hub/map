@@ -401,6 +401,61 @@
                 html: overviewBits.filter(Boolean).join('') || emptyBlock('暂无公司信息')
             });
 
+            // 2.5) 海关提单（ImportYeti）— 外贸公式「海关定公司」
+            var trade = intel.trade;
+            if (trade && (trade.total_shipments || (trade.top_suppliers || []).length || (trade.top_hs_codes || []).length)) {
+                var tradeHtml = '';
+                tradeHtml += '<p class="intel-lead">' + escapeHtml(trade.summary || '美国海关海运提单记录（免费源：ImportYeti / Kirchner）') + '</p>';
+                tradeHtml += [
+                    kv('数据源', escapeHtml(trade.source || '—')),
+                    kv('角色', escapeHtml(trade.role === 'supplier' ? '对美出口供应商' : '美国进口商')),
+                    kv('主体', escapeHtml(trade.name || '')),
+                    kv('提单数', trade.total_shipments ? String(trade.total_shipments) : ''),
+                    kv('区间', escapeHtml(((trade.date_start || '') + ' – ' + (trade.date_end || '')).replace(/^\s–\s$/, ''))),
+                    kv('国家', escapeHtml(trade.country || '')),
+                    kv('地址', escapeHtml(trade.address || '')),
+                    kv('电话', escapeHtml(trade.phone || '')),
+                    kv('档案', linkOrText(trade.profile_url || ''))
+                ].filter(Boolean).join('');
+                var sups = trade.top_suppliers || [];
+                if (sups.length) {
+                    tradeHtml += '<h4 class="intel-sub">主要贸易伙伴</h4><ul class="intel-org-list">' + sups.map(function (s) {
+                        return '<li><strong>' + escapeHtml(s.name || '') + '</strong>' +
+                            (s.country ? ' · ' + escapeHtml(s.country) : '') +
+                            (s.shipments ? ' · ' + s.shipments + '票' : '') +
+                            (s.profile_url ? '<div class="intel-muted">' + linkOrText(s.profile_url) + '</div>' : '') +
+                            '</li>';
+                    }).join('') + '</ul>';
+                }
+                var hs = trade.top_hs_codes || [];
+                if (hs.length) {
+                    tradeHtml += '<h4 class="intel-sub">HS 编码</h4><div class="intel-chips">' + hs.map(function (h) {
+                        return '<span class="intel-chip">' + escapeHtml(h.code || '') +
+                            (h.description ? ' ' + escapeHtml(h.description) : '') +
+                            (h.shipments ? ' (' + h.shipments + ')' : '') + '</span>';
+                    }).join('') + '</div>';
+                }
+                var bols = trade.recent_bols || [];
+                if (bols.length) {
+                    tradeHtml += '<h4 class="intel-sub">近期提单</h4><ul class="intel-org-list">' + bols.map(function (b) {
+                        return '<li>' + escapeHtml(b.date || '') + ' · ' +
+                            escapeHtml(b.shipper || '') + ' → ' + escapeHtml(b.consignee || '') +
+                            (b.hs_code ? ' · HS ' + escapeHtml(b.hs_code) : '') +
+                            (b.product ? '<div class="intel-muted">' + escapeHtml(b.product) + '</div>' : '') +
+                            '</li>';
+                    }).join('') + '</ul>';
+                }
+                var tradeBrand = trade.name || place.title || '';
+                var tradeXray = 'https://www.google.com/search?q=' + encodeURIComponent('site:linkedin.com/in "' + tradeBrand + '" ("Purchasing Manager" OR Buyer OR Procurement OR Direktur OR Owner OR CEO)');
+                tradeHtml += '<div class="intel-acts" style="margin-top:10px">' +
+                    '<a class="intel-act intel-act-li" href="' + tradeXray + '" target="_blank" rel="noopener noreferrer">海关锁定后：搜 LinkedIn 采购决策人</a></div>';
+                tabs.push({
+                    id: 'customs',
+                    label: '海关' + (trade.total_shipments ? ' (' + trade.total_shipments + ')' : ''),
+                    html: tradeHtml
+                });
+            }
+
             // 3) 架构（无实质内容则不假装有架构）
             var orgs = intel.org_structure || [];
             var usefulOrgs = orgs.filter(function (o) {

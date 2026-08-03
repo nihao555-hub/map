@@ -143,6 +143,13 @@ func runPublicEnrichment(ctx context.Context, intel *PlaceIntel, place Place, mu
 			}
 			mu.Unlock()
 		}()
+
+		// 海关定公司 → 领英定人（ImportYeti / 美国提单开放数据）
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runCustomsEnrichment(budget, intel, place, mu)
+		}()
 	}
 
 	wg.Wait()

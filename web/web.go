@@ -1175,8 +1175,10 @@ func (s *Server) apiOSINTStatus(w http.ResponseWriter, r *http.Request) {
 		"wayback":            st.Wayback,
 		"wikipedia":          st.Wikipedia,
 		"duckduckgo":         st.DuckDuckGo,
+		"importyeti":         st.ImportYeti,
+		"kirchner":           st.Kirchner,
 		"max_radius_km":      MaxRadiusKm(),
-		"hint":               "bash tools/install_osint.sh；公开源已启用；可选 HUNTER_API_KEY / AHU_PROXY",
+		"hint":               "bash tools/install_osint.sh；公开源已启用；ImportYeti/Kirchner 美国海关提单；可选 IMPORTYETI_API_KEY / HUNTER_API_KEY / AHU_PROXY",
 	})
 }
 
