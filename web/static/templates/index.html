@@ -613,6 +613,11 @@
         // 快速：稍低缩放 + 更大半径，后端还会自动粗网格扩量
         document.getElementById('zoom').value = mode === 'quick' ? '14' : '15';
         document.getElementById('radius').value = mode === 'quick' ? '25000' : '15000';
+        // 深度默认冲量目标 200；快速保持 50（可手改）
+        var maxEl = document.getElementById('maxresults');
+        if (maxEl && (mode === 'standard' || mode === 'grid')) {
+          if (!maxEl.value || maxEl.value === '50') maxEl.value = '200';
+        }
         document.getElementById('email').checked = true;
         var emailToggle = document.getElementById('email-toggle');
         if (emailToggle) emailToggle.classList.add('on');

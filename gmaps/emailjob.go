@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -20,20 +21,25 @@ import (
 
 const (
 	emailJobTimeout       = 12 * time.Second
-	emailFollowBudget     = 10 * time.Second
-	emailMaxFollowPages   = 6
+	emailFollowBudget     = 12 * time.Second
+	emailMaxFollowPages   = 8
 	emailMaxResponseBytes = 512 << 10
+	emailBrowserUA        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
 
 var (
 	obfuscatedEmailRe = regexp.MustCompile(`(?i)([a-z0-9._%+\-]+)\s*(?:\[at\]|\(at\)|\{at\}|\sat\s)\s*([a-z0-9.\-]+)\s*(?:\[dot\]|\(dot\)|\{dot\}|\sdot\s)\s*([a-z]{2,})`)
 	cloudflareEmailRe = regexp.MustCompile(`data-cfemail=["']([0-9a-fA-F]+)["']`)
+	jsonLDEmailRe     = regexp.MustCompile(`(?i)"email"\s*:\s*"([^"]+@[^"]+)"`)
 	contactPathHints  = []string{
 		"/contact", "/contact-us", "/contactus", "/about", "/about-us", "/aboutus",
 		"/privacy", "/privacy-policy", "/impressum", "/imprint", "/support",
 		"/get-in-touch", "/reach-us", "/kontakt",
+		// 印尼/东南亚常见联系页
+		"/kontak", "/hubungi-kami", "/hubungi", "/contact-me",
+		"/contacto", "/contatti", "/nous-contacter",
 	}
-	contactLinkRe       = regexp.MustCompile(`(?i)contact|about|privacy|impressum|imprint|support|get-in-touch|kontakt|legal|team`)
+	contactLinkRe = regexp.MustCompile(`(?i)contact|about|privacy|impressum|imprint|support|get-in-touch|kontakt|kontak|hubungi|legal|team`)
 	emailJunkSubstrings = []string{
 		"sentry.io", "example.com", "domain.com", "email.com", "yourdomain",
 		"localhost", "schema.org", "w3.org", "googleapis", "gstatic.com",
@@ -64,10 +70,7 @@ type EmailExtractJob struct {
 
 // NewEmailJob creates an email extraction job for the merchant website.
 func NewEmailJob(parentID string, entry *Entry, opts ...EmailExtractJobOptions) *EmailExtractJob {
-	const (
-		defaultPrio       = scrapemate.PriorityHigh
-		defaultMaxRetries = 0
-	)
+	const defaultPrio = scrapemate.PriorityHigh
 
 	job := EmailExtractJob{
 		Job: scrapemate.Job{
@@ -75,9 +78,14 @@ func NewEmailJob(parentID string, entry *Entry, opts ...EmailExtractJobOptions) 
 			ParentID:   parentID,
 			Method:     "GET",
 			URL:        normalizeGoogleURL(entry.WebSite),
-			MaxRetries: defaultMaxRetries,
+			MaxRetries: 1, // 偶发 429/超时再试一次
 			Priority:   defaultPrio,
 			Timeout:    emailJobTimeout,
+			Headers: map[string]string{
+				"User-Agent":      emailBrowserUA,
+				"Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+				"Accept-Language": "en-US,en;q=0.9,id;q=0.8",
+			},
 		},
 	}
 
@@ -134,8 +142,8 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 		baseURL = resp.URL
 	}
 
-	// 首页失败（409/403/超时）或没有邮箱/WhatsApp 时：尝试 https 升级 + contact/about 等路径
-	needFollow := len(emails) == 0 || whatsapp == ""
+	// 无邮箱或首页失败时跟进联系页（已有邮箱不再为找 WA 拖慢整站）
+	needFollow := len(emails) == 0 || (resp != nil && resp.Error != nil)
 	if needFollow {
 		followURLs := alternateEmailURLs(baseURL)
 		if resp == nil || resp.Error == nil {
@@ -285,6 +293,32 @@ func collectEmailsFromResponse(resp *scrapemate.Response) []string {
 	emails = mergeEmails(emails, regexEmailExtractor(resp.Body))
 	emails = mergeEmails(emails, obfuscatedEmailExtractor(resp.Body))
 	emails = mergeEmails(emails, cloudflareEmailExtractor(resp.Body))
+	emails = mergeEmails(emails, jsonLDEmailExtractor(resp.Body))
+
+	return emails
+}
+
+func jsonLDEmailExtractor(body []byte) []string {
+	if len(body) == 0 {
+		return nil
+	}
+
+	matches := jsonLDEmailRe.FindAllSubmatch(body, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	seen := map[string]bool{}
+	var emails []string
+	for _, m := range matches {
+		if len(m) < 2 {
+			continue
+		}
+		if email, err := getValidEmail(string(m[1])); err == nil && !seen[email] {
+			emails = append(emails, email)
+			seen[email] = true
+		}
+	}
 
 	return emails
 }
@@ -600,7 +634,7 @@ func fetchEmailsFromURLs(ctx context.Context, urls []string) []string {
 	return mails
 }
 
-// fetchContactsFromURLs 拉取联系页，同时提取邮箱、WhatsApp 与社媒链接
+// fetchContactsFromURLs 并行拉取联系页，提取邮箱、WhatsApp 与社媒链接
 func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string, SocialLinks) {
 	var social SocialLinks
 	if len(urls) == 0 {
@@ -621,55 +655,86 @@ func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string
 		},
 	}
 
+	type pageHit struct {
+		emails   []string
+		whatsapp string
+		social   SocialLinks
+	}
+
+	workers := 3
+	if len(urls) < workers {
+		workers = len(urls)
+	}
+
+	jobs := make(chan string, len(urls))
+	hits := make(chan pageHit, len(urls))
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for raw := range jobs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				body, err := fetchURLBody(ctx, client, raw)
+				if err != nil || len(body) == 0 {
+					continue
+				}
+
+				var h pageHit
+				h.emails = mergeEmails(h.emails, regexEmailExtractor(body))
+				h.emails = mergeEmails(h.emails, obfuscatedEmailExtractor(body))
+				h.emails = mergeEmails(h.emails, cloudflareEmailExtractor(body))
+				h.emails = mergeEmails(h.emails, jsonLDEmailExtractor(body))
+				if doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(body))); err == nil {
+					h.emails = mergeEmails(h.emails, docEmailExtractor(doc))
+				}
+				h.whatsapp = extractWhatsApp(body)
+				h.social = extractSocialFromHTML(body)
+				hits <- h
+			}
+		}()
+	}
+
+	for _, u := range urls {
+		jobs <- u
+	}
+	close(jobs)
+
+	go func() {
+		wg.Wait()
+		close(hits)
+	}()
+
 	var emails []string
 	whatsapp := ""
-
-	for _, raw := range urls {
-		select {
-		case <-ctx.Done():
-			return emails, whatsapp, social
-		default:
-		}
-
-		body, err := fetchURLBody(ctx, client, raw)
-		if err != nil || len(body) == 0 {
-			continue
-		}
-
-		emails = mergeEmails(emails, regexEmailExtractor(body))
-		emails = mergeEmails(emails, obfuscatedEmailExtractor(body))
-		emails = mergeEmails(emails, cloudflareEmailExtractor(body))
-
-		if doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(body))); err == nil {
-			emails = mergeEmails(emails, docEmailExtractor(doc))
-		}
-
+	for h := range hits {
+		emails = mergeEmails(emails, h.emails)
 		if whatsapp == "" {
-			whatsapp = extractWhatsApp(body)
+			whatsapp = h.whatsapp
 		}
-
-		pageSocial := extractSocialFromHTML(body)
 		if social.Facebook == "" {
-			social.Facebook = pageSocial.Facebook
+			social.Facebook = h.social.Facebook
 		}
 		if social.Instagram == "" {
-			social.Instagram = pageSocial.Instagram
+			social.Instagram = h.social.Instagram
 		}
 		if social.LinkedIn == "" {
-			social.LinkedIn = pageSocial.LinkedIn
+			social.LinkedIn = h.social.LinkedIn
 		}
 		if social.Twitter == "" {
-			social.Twitter = pageSocial.Twitter
+			social.Twitter = h.social.Twitter
 		}
 		if social.TikTok == "" {
-			social.TikTok = pageSocial.TikTok
+			social.TikTok = h.social.TikTok
 		}
 		if social.YouTube == "" {
-			social.YouTube = pageSocial.YouTube
-		}
-
-		if len(filterEmails(emails)) > 0 && whatsapp != "" {
-			return emails, whatsapp, social
+			social.YouTube = h.social.YouTube
 		}
 	}
 
@@ -682,8 +747,9 @@ func fetchURLBody(ctx context.Context, client *http.Client, raw string) ([]byte,
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; GoogleMapsScraper/1.0)")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	req.Header.Set("User-Agent", emailBrowserUA)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,id;q=0.8")
 
 	resp, err := client.Do(req)
 	if err != nil {

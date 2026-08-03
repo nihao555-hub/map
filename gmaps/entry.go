@@ -214,6 +214,7 @@ func (e *Entry) IsWebsiteValidForEmail() bool {
 
 	lower := strings.ToLower(e.WebSite)
 
+	// 社媒主页本身几乎没有可抓邮箱；linktr.ee 常有真实邮箱/WA，允许抓取
 	needles := []string{
 		"facebook.com",
 		"fb.com",
@@ -235,7 +236,6 @@ func (e *Entry) IsWebsiteValidForEmail() bool {
 		"resy.com",
 		"yelp.com",
 		"tripadvisor.",
-		"linktr.ee",
 		"mobile-webview",
 	}
 

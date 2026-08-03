@@ -150,9 +150,10 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 
 		emailJob := NewEmailJob(j.ID, &entry, opts...)
 
-		j.UsageInResults = false
-
-		return nil, []scrapemate.IJob{emailJob}, nil
+		// 先写出地点详情，邮箱任务稍后 upsert 补联系方式。
+		// 旧逻辑等邮箱才写行：超时会丢整行，前端也看不到增量。
+		// ExitMonitor 由邮箱任务完成时 +1（无官网则走下面分支）。
+		return &entry, []scrapemate.IJob{emailJob}, nil
 	} else if j.ExitMonitor != nil && !j.WriterManagedCompletion {
 		j.ExitMonitor.IncrPlacesCompleted(1)
 	}
