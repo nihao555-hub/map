@@ -152,7 +152,9 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 			opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
 		}
 
-		emailJob := NewEmailJob(j.ID, &entry, opts...)
+		// 克隆 Entry：避免与地点结果并发写同一指针，导致 upsert 丢 WhatsApp/邮箱
+		entryCopy := entry
+		emailJob := NewEmailJob(j.ID, &entryCopy, opts...)
 
 		// 先写出地点详情（已含电话→WA），邮箱任务稍后 upsert 补邮箱/社媒。
 		return &entry, []scrapemate.IJob{emailJob}, nil

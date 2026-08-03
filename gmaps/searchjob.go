@@ -205,7 +205,8 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 					opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
 				}
 
-				emailJobs = append(emailJobs, NewEmailJob(j.ID, e, opts...))
+				cp := *e
+				emailJobs = append(emailJobs, NewEmailJob(j.ID, &cp, opts...))
 			} else {
 				completedNow++
 			}

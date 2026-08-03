@@ -167,10 +167,21 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 	}
 
 	j.Entry.Emails = filterEmails(emails)
-	j.Entry.WhatsApp = whatsapp
+	if whatsapp != "" {
+		j.Entry.WhatsApp = whatsapp
+	}
 	j.Entry.PromoteSocialFromMapsFields()
 	j.Entry.mergeSocial(social)
 	j.Entry.FillWhatsAppFromPhone()
+
+	if j.Entry.WhatsApp != "" || len(j.Entry.Emails) > 0 {
+		log.Info("email job contacts",
+			"url", j.URL,
+			"whatsapp", j.Entry.WhatsApp,
+			"emails", len(j.Entry.Emails),
+			"instagram", j.Entry.Instagram,
+		)
+	}
 
 	return j.Entry, nil, nil
 }

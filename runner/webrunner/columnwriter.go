@@ -142,20 +142,36 @@ func rowKey(headers, row []string) string {
 	return fmt.Sprintf("geo:%s|%s|%s", get("title"), get("latitude"), get("longitude"))
 }
 
-// mergeRow 邮箱任务回写时：空字段不覆盖已有非空值（避免详情被冲掉）
+// mergeRow 邮箱任务回写时：空字段不覆盖已有非空值（避免详情被冲掉）。
+// 联系方式列两边都有值时保留更「完整」的一侧（更长），防止并发写丢 WA/邮箱。
 func mergeRow(old, neu []string) []string {
 	if old == nil {
 		return neu
 	}
 
-	out := make([]string, len(neu))
-	copy(out, neu)
-
+	out := make([]string, max(len(neu), len(old)))
 	for i := range out {
-		if i < len(old) && out[i] == "" && old[i] != "" {
-			out[i] = old[i]
+		var n, o string
+		if i < len(neu) {
+			n = neu[i]
 		}
-		// 联系方式列：新值非空则用新值（已在 neu 里）
+		if i < len(old) {
+			o = old[i]
+		}
+		switch {
+		case n == "" && o != "":
+			out[i] = o
+		case n != "" && o == "":
+			out[i] = n
+		case n != "" && o != "":
+			if len(o) > len(n) {
+				out[i] = o
+			} else {
+				out[i] = n
+			}
+		default:
+			out[i] = n
+		}
 	}
 
 	return out
