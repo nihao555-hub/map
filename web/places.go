@@ -17,28 +17,52 @@ import (
 // exist. Callers use it to distinguish a missing job (404) from other errors.
 var ErrPlacesNotFound = errors.New("places not found")
 
-// Place is a single map-able result extracted from a job's CSV output.
+// Place is a single result row extracted from a job's CSV output for the UI table/map.
 type Place struct {
-	Title        string  `json:"title"`
-	Address      string  `json:"address"`
-	Latitude     float64 `json:"latitude"`
-	Longitude    float64 `json:"longitude"`
-	Link         string  `json:"link"`
-	Category     string  `json:"category"`
-	Phone        string  `json:"phone"`
-	Website      string  `json:"website"`
-	ReviewRating float64 `json:"review_rating"`
-	ReviewCount  int     `json:"review_count"`
-	Emails       string  `json:"emails"`
-	WhatsApp     string  `json:"whatsapp"`
-	Facebook     string  `json:"facebook"`
-	Instagram    string  `json:"instagram"`
-	LinkedIn     string  `json:"linkedin"`
-	Twitter      string  `json:"twitter"`
-	TikTok       string  `json:"tiktok"`
-	YouTube      string  `json:"youtube"`
-	Telegram     string  `json:"telegram"`
-	Pinterest    string  `json:"pinterest"`
+	Title                 string  `json:"title"`
+	Category              string  `json:"category"`
+	Address               string  `json:"address"`
+	CompleteAddress       string  `json:"complete_address"`
+	Latitude              float64 `json:"latitude"`
+	Longitude             float64 `json:"longitude"`
+	Link                  string  `json:"link"`
+	Phone                 string  `json:"phone"`
+	Website               string  `json:"website"`
+	ReviewRating          float64 `json:"review_rating"`
+	ReviewCount           int     `json:"review_count"`
+	ReviewsPerRating      string  `json:"reviews_per_rating"`
+	Emails                string  `json:"emails"`
+	WhatsApp              string  `json:"whatsapp"`
+	Facebook              string  `json:"facebook"`
+	Instagram             string  `json:"instagram"`
+	LinkedIn              string  `json:"linkedin"`
+	Twitter               string  `json:"twitter"`
+	TikTok                string  `json:"tiktok"`
+	YouTube               string  `json:"youtube"`
+	Telegram              string  `json:"telegram"`
+	Pinterest             string  `json:"pinterest"`
+	Status                string  `json:"status"`
+	OpenHours             string  `json:"open_hours"`
+	PopularTimes          string  `json:"popular_times"`
+	PriceRange            string  `json:"price_range"`
+	Descriptions          string  `json:"descriptions"`
+	About                 string  `json:"about"`
+	Menu                  string  `json:"menu"`
+	Owner                 string  `json:"owner"`
+	Images                string  `json:"images"`
+	Thumbnail             string  `json:"thumbnail"`
+	ReviewsLink           string  `json:"reviews_link"`
+	UserReviews           string  `json:"user_reviews"`
+	UserReviewsExtended   string  `json:"user_reviews_extended"`
+	PlusCode              string  `json:"plus_code"`
+	Timezone              string  `json:"timezone"`
+	CreditCardsAccepted   string  `json:"credit_cards_accepted"`
+	Reservations          string  `json:"reservations"`
+	OrderOnline           string  `json:"order_online"`
+	StreetViewURL         string  `json:"street_view_url"`
+	PlaceID               string  `json:"place_id"`
+	Cid                   string  `json:"cid"`
+	DataID                string  `json:"data_id"`
 }
 
 // GetPlaces locates the job's CSV output and parses it into mappable places.
@@ -135,26 +159,50 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 		reviewCount, _ := strconv.Atoi(get(row, "review_count"))
 
 		places = append(places, Place{
-			Title:        get(row, "title"),
-			Address:      get(row, "address"),
-			Latitude:     lat,
-			Longitude:    lon,
-			Link:         get(row, "link"),
-			Category:     get(row, "category"),
-			Phone:        get(row, "phone"),
-			Website:      get(row, "website"),
-			ReviewRating: rating,
-			ReviewCount:  reviewCount,
-			Emails:       get(row, "emails"),
-			WhatsApp:     get(row, "whatsapp"),
-			Facebook:     get(row, "facebook"),
-			Instagram:    get(row, "instagram"),
-			LinkedIn:     get(row, "linkedin"),
-			Twitter:      get(row, "twitter"),
-			TikTok:       get(row, "tiktok"),
-			YouTube:      get(row, "youtube"),
-			Telegram:     get(row, "telegram"),
-			Pinterest:    get(row, "pinterest"),
+			Title:               get(row, "title"),
+			Category:            get(row, "category"),
+			Address:             get(row, "address"),
+			CompleteAddress:     get(row, "complete_address"),
+			Latitude:            lat,
+			Longitude:           lon,
+			Link:                get(row, "link"),
+			Phone:               get(row, "phone"),
+			Website:             get(row, "website"),
+			ReviewRating:        rating,
+			ReviewCount:         reviewCount,
+			ReviewsPerRating:    get(row, "reviews_per_rating"),
+			Emails:              get(row, "emails"),
+			WhatsApp:            get(row, "whatsapp"),
+			Facebook:            get(row, "facebook"),
+			Instagram:           get(row, "instagram"),
+			LinkedIn:            get(row, "linkedin"),
+			Twitter:             get(row, "twitter"),
+			TikTok:              get(row, "tiktok"),
+			YouTube:             get(row, "youtube"),
+			Telegram:            get(row, "telegram"),
+			Pinterest:           get(row, "pinterest"),
+			Status:              get(row, "status"),
+			OpenHours:           get(row, "open_hours"),
+			PopularTimes:        get(row, "popular_times"),
+			PriceRange:          get(row, "price_range"),
+			Descriptions:        get(row, "descriptions"),
+			About:               get(row, "about"),
+			Menu:                get(row, "menu"),
+			Owner:               get(row, "owner"),
+			Images:              get(row, "images"),
+			Thumbnail:           get(row, "thumbnail"),
+			ReviewsLink:         get(row, "reviews_link"),
+			UserReviews:         get(row, "user_reviews"),
+			UserReviewsExtended: get(row, "user_reviews_extended"),
+			PlusCode:            get(row, "plus_code"),
+			Timezone:            get(row, "timezone"),
+			CreditCardsAccepted: get(row, "credit_cards_accepted"),
+			Reservations:        get(row, "reservations"),
+			OrderOnline:         get(row, "order_online"),
+			StreetViewURL:       get(row, "street_view_url"),
+			PlaceID:             get(row, "place_id"),
+			Cid:                 get(row, "cid"),
+			DataID:              get(row, "data_id"),
 		})
 	}
 
@@ -178,22 +226,18 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 func contactScore(p Place) int {
 	score := 0
 	if strings.TrimSpace(p.WhatsApp) != "" {
-		score += 1000
-	}
-	if strings.TrimSpace(p.Emails) != "" {
 		score += 100
 	}
-	if strings.TrimSpace(p.Phone) != "" {
+	if strings.TrimSpace(p.Emails) != "" {
 		score += 10
 	}
-	if strings.TrimSpace(p.Website) != "" {
+	if strings.TrimSpace(p.Phone) != "" {
 		score += 1
 	}
 
 	return score
 }
 
-// finite reports whether f is a usable, real number (not NaN or ±Inf).
-func finite(f float64) bool {
-	return !math.IsNaN(f) && !math.IsInf(f, 0)
+func finite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
 }

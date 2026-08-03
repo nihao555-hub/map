@@ -1198,13 +1198,23 @@ svg.lucide { flex-shrink: 0; }
 .places-table tbody tr.row-active { background: var(--bg-light-blue); box-shadow: inset 3px 0 0 var(--brand-primary); }
 
 .places-table .col-name { font-weight: 500; min-width: 140px; }
-.places-table .col-addr { color: var(--text-aux); min-width: 180px; }
+.places-table .col-addr { color: var(--text-aux); min-width: 180px; max-width: 280px; }
 .places-table .col-phone { white-space: nowrap; }
 .places-table .col-mail { color: var(--text-secondary); min-width: 150px; word-break: break-all; }
 .places-table .col-rating { color: var(--brand-warning); white-space: nowrap; }
 .places-table .col-reviews { text-align: right; white-space: nowrap; }
 .places-table .col-site a { color: var(--brand-primary); text-decoration: none; }
 .places-table .col-site a:hover { text-decoration: underline; }
+.places-table .col-social a { color: var(--brand-primary); text-decoration: none; word-break: break-all; }
+.places-table .col-social { min-width: 120px; max-width: 200px; }
+.places-table .col-json { min-width: 140px; max-width: 220px; color: var(--text-aux); word-break: break-word; }
+.places-table .col-desc { min-width: 160px; max-width: 260px; }
+.places-table .col-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; }
+.places-table .col-geo { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.places-table .col-cat,
+.places-table .col-status,
+.places-table .col-price { white-space: nowrap; }
+.places-table-wide { width: max-content; min-width: 100%; }
 
 .places-table .cell-empty { color: #c0c6d2; }
 

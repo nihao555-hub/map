@@ -93,21 +93,16 @@
 
         function placePopup(place) {
             var parts = ['<strong>' + escapeHtml(place.title || '未命名商家') + '</strong>'];
-            if (place.address) {
-                parts.push(escapeHtml(place.address));
-            }
-            if (place.whatsapp) {
-                parts.push('WhatsApp：' + escapeHtml(place.whatsapp));
-            }
-            if (place.emails) {
-                parts.push('邮箱：' + escapeHtml(place.emails));
-            }
-            if (place.phone) {
-                parts.push('电话：' + escapeHtml(place.phone));
-            }
-            if (place.review_rating) {
-                parts.push('评分：★ ' + escapeHtml(String(place.review_rating)));
-            }
+            if (place.category) parts.push(escapeHtml(place.category));
+            if (place.address) parts.push(escapeHtml(place.address));
+            if (place.whatsapp) parts.push('WhatsApp：' + escapeHtml(place.whatsapp));
+            if (place.emails) parts.push('邮箱：' + escapeHtml(place.emails));
+            if (place.phone) parts.push('电话：' + escapeHtml(place.phone));
+            if (place.instagram) parts.push('Instagram：' + escapeHtml(place.instagram));
+            if (place.facebook) parts.push('Facebook：' + escapeHtml(place.facebook));
+            if (place.linkedin) parts.push('LinkedIn：' + escapeHtml(place.linkedin));
+            if (place.website) parts.push('网站：' + escapeHtml(place.website));
+            if (place.review_rating) parts.push('评分：★ ' + escapeHtml(String(place.review_rating)));
             return parts.join('<br>');
         }
 
@@ -120,12 +115,84 @@
             return '<span class="cell-empty">—</span>';
         }
 
+        function linkCell(url, label) {
+            if (!url) return '<span class="cell-empty">—</span>';
+            var text = label || url;
+            if (/^https?:\/\//i.test(String(url))) {
+                try {
+                    if (!label) text = new URL(url).hostname.replace(/^www\./, '') + new URL(url).pathname;
+                } catch (e) {}
+                return '<a href="' + encodeURI(String(url)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">' +
+                    escapeHtml(String(text).slice(0, 48)) + '</a>';
+            }
+            return escapeHtml(String(url).slice(0, 80));
+        }
+
         function textCell(value) {
             if (value === null || value === undefined || value === '') {
                 return '<span class="cell-empty">—</span>';
             }
-            return escapeHtml(String(value));
+            var s = String(value);
+            // JSON-ish blobs: keep readable but truncate for table
+            if ((s.charAt(0) === '{' || s.charAt(0) === '[') && s.length > 60) {
+                s = s.slice(0, 57) + '…';
+            } else if (s.length > 120) {
+                s = s.slice(0, 117) + '…';
+            }
+            return escapeHtml(s);
         }
+
+        // 与深度模式可选字段对齐的结果表头（横向滚动查看全部）
+        var RESULT_COLUMNS = [
+            { key: 'title', label: '名称', cls: 'col-name', render: function (p) { return textCell(p.title); } },
+            { key: 'category', label: '类别', cls: 'col-cat', render: function (p) { return textCell(p.category); } },
+            { key: 'address', label: '地址', cls: 'col-addr', render: function (p) { return textCell(p.address); } },
+            { key: 'complete_address', label: '完整地址', cls: 'col-addr', render: function (p) { return textCell(p.complete_address); } },
+            { key: 'phone', label: '电话', cls: 'col-phone', render: function (p) { return textCell(p.phone); } },
+            { key: 'emails', label: '邮箱', cls: 'col-mail', render: function (p) { return textCell(p.emails); } },
+            { key: 'whatsapp', label: 'WhatsApp', cls: 'col-wa', render: function (p) { return waCell(p); } },
+            { key: 'website', label: '网站', cls: 'col-site', render: function (p) { return websiteCell(p); } },
+            { key: 'facebook', label: 'Facebook', cls: 'col-social', render: function (p) { return linkCell(p.facebook); } },
+            { key: 'instagram', label: 'Instagram', cls: 'col-social', render: function (p) { return linkCell(p.instagram); } },
+            { key: 'linkedin', label: 'LinkedIn', cls: 'col-social', render: function (p) { return linkCell(p.linkedin); } },
+            { key: 'twitter', label: 'Twitter/X', cls: 'col-social', render: function (p) { return linkCell(p.twitter); } },
+            { key: 'tiktok', label: 'TikTok', cls: 'col-social', render: function (p) { return linkCell(p.tiktok); } },
+            { key: 'youtube', label: 'YouTube', cls: 'col-social', render: function (p) { return linkCell(p.youtube); } },
+            { key: 'telegram', label: 'Telegram', cls: 'col-social', render: function (p) { return linkCell(p.telegram); } },
+            { key: 'pinterest', label: 'Pinterest', cls: 'col-social', render: function (p) { return linkCell(p.pinterest); } },
+            { key: 'review_rating', label: '评分', cls: 'col-rating', render: function (p) {
+                return p.review_rating ? ('★ ' + escapeHtml(String(p.review_rating))) : '<span class="cell-empty">—</span>';
+            }},
+            { key: 'review_count', label: '评论数', cls: 'col-reviews', render: function (p) {
+                return p.review_count ? escapeHtml(String(p.review_count)) : '<span class="cell-empty">—</span>';
+            }},
+            { key: 'reviews_per_rating', label: '各星级评论数', cls: 'col-json', render: function (p) { return textCell(p.reviews_per_rating); } },
+            { key: 'status', label: '营业状态', cls: 'col-status', render: function (p) { return textCell(p.status); } },
+            { key: 'open_hours', label: '营业时间', cls: 'col-json', render: function (p) { return textCell(p.open_hours); } },
+            { key: 'popular_times', label: '客流高峰', cls: 'col-json', render: function (p) { return textCell(p.popular_times); } },
+            { key: 'price_range', label: '价格区间', cls: 'col-price', render: function (p) { return textCell(p.price_range); } },
+            { key: 'descriptions', label: '商家简介', cls: 'col-desc', render: function (p) { return textCell(p.descriptions); } },
+            { key: 'about', label: '特色标签', cls: 'col-json', render: function (p) { return textCell(p.about); } },
+            { key: 'menu', label: '菜单', cls: 'col-json', render: function (p) { return textCell(p.menu); } },
+            { key: 'owner', label: '店主信息', cls: 'col-json', render: function (p) { return textCell(p.owner); } },
+            { key: 'thumbnail', label: '缩略图', cls: 'col-thumb', render: function (p) { return linkCell(p.thumbnail, '查看'); } },
+            { key: 'images', label: '图片', cls: 'col-json', render: function (p) { return textCell(p.images); } },
+            { key: 'reviews_link', label: '评论链接', cls: 'col-site', render: function (p) { return linkCell(p.reviews_link, '评论'); } },
+            { key: 'user_reviews', label: '用户评论', cls: 'col-json', render: function (p) { return textCell(p.user_reviews); } },
+            { key: 'user_reviews_extended', label: '扩展评论', cls: 'col-json', render: function (p) { return textCell(p.user_reviews_extended); } },
+            { key: 'plus_code', label: 'Plus Code', cls: 'col-code', render: function (p) { return textCell(p.plus_code); } },
+            { key: 'timezone', label: '时区', cls: 'col-code', render: function (p) { return textCell(p.timezone); } },
+            { key: 'credit_cards_accepted', label: '信用卡支付', cls: 'col-json', render: function (p) { return textCell(p.credit_cards_accepted); } },
+            { key: 'reservations', label: '预约方式', cls: 'col-json', render: function (p) { return textCell(p.reservations); } },
+            { key: 'order_online', label: '在线下单', cls: 'col-json', render: function (p) { return textCell(p.order_online); } },
+            { key: 'street_view_url', label: '街景', cls: 'col-site', render: function (p) { return linkCell(p.street_view_url, '街景'); } },
+            { key: 'link', label: '地图链接', cls: 'col-site', render: function (p) { return linkCell(p.link, 'Maps'); } },
+            { key: 'latitude', label: '纬度', cls: 'col-geo', render: function (p) { return textCell(p.latitude); } },
+            { key: 'longitude', label: '经度', cls: 'col-geo', render: function (p) { return textCell(p.longitude); } },
+            { key: 'place_id', label: 'Place ID', cls: 'col-code', render: function (p) { return textCell(p.place_id); } },
+            { key: 'cid', label: 'CID', cls: 'col-code', render: function (p) { return textCell(p.cid); } },
+            { key: 'data_id', label: '数据ID', cls: 'col-code', render: function (p) { return textCell(p.data_id); } }
+        ];
 
         // ============ 流式结果表格：初始渲染 + 运行中轮询增量追加 ============
         var map = null;
@@ -137,35 +204,9 @@
         var streamActive = (JOB_STATUS === 'working' || JOB_STATUS === 'pending');
 
         function rowHtml(place) {
-            // 联系方式权重：WhatsApp > 邮箱 > 电话；社媒一并展示
-            return '<td class="col-name">' + textCell(place.title) + '</td>' +
-                '<td class="col-addr">' + textCell(place.address) + '</td>' +
-                '<td class="col-wa">' + waCell(place) + '</td>' +
-                '<td class="col-mail">' + textCell(place.emails) + '</td>' +
-                '<td class="col-phone">' + textCell(place.phone) + '</td>' +
-                '<td class="col-social">' + socialCell(place) + '</td>' +
-                '<td class="col-rating">' + (place.review_rating ? '★ ' + escapeHtml(String(place.review_rating)) : '<span class="cell-empty">—</span>') + '</td>' +
-                '<td class="col-reviews">' + (place.review_count ? escapeHtml(String(place.review_count)) : '<span class="cell-empty">—</span>') + '</td>' +
-                '<td class="col-site">' + websiteCell(place) + '</td>';
-        }
-
-        function socialCell(place) {
-            var parts = [];
-            function add(label, url) {
-                if (!url) return;
-                parts.push('<a href="' + encodeURI(String(url)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">' +
-                    escapeHtml(label) + '</a>');
-            }
-            add('IG', place.instagram);
-            add('FB', place.facebook);
-            add('LI', place.linkedin);
-            add('X', place.twitter);
-            add('TT', place.tiktok);
-            add('YT', place.youtube);
-            add('TG', place.telegram);
-            add('Pin', place.pinterest);
-            if (!parts.length) return '<span class="cell-empty">—</span>';
-            return parts.join(' · ');
+            return RESULT_COLUMNS.map(function (col) {
+                return '<td class="' + col.cls + '">' + col.render(place) + '</td>';
+            }).join('');
         }
 
         function waCell(place) {
@@ -212,18 +253,11 @@
             listEl.innerHTML = '';
             var wrap = document.createElement('div');
             wrap.className = 'places-table-wrap';
-            wrap.innerHTML = '<table class="places-table">' +
-                '<thead><tr>' +
-                '<th class="col-name">名称</th>' +
-                '<th class="col-addr">地址</th>' +
-                '<th class="col-wa">WhatsApp</th>' +
-                '<th class="col-mail">邮箱</th>' +
-                '<th class="col-phone">电话</th>' +
-                '<th class="col-social">社媒</th>' +
-                '<th class="col-rating">评分</th>' +
-                '<th class="col-reviews">评论数</th>' +
-                '<th class="col-site">网站</th>' +
-                '</tr></thead><tbody></tbody></table>';
+            var ths = RESULT_COLUMNS.map(function (col) {
+                return '<th class="' + col.cls + '">' + escapeHtml(col.label) + '</th>';
+            }).join('');
+            wrap.innerHTML = '<table class="places-table places-table-wide">' +
+                '<thead><tr>' + ths + '</tr></thead><tbody></tbody></table>';
             listEl.appendChild(wrap);
             tbody = wrap.querySelector('tbody');
         }
