@@ -257,6 +257,15 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 			text := stripTags(string(h.body))
 			pageTexts = append(pageTexts, truncateRunes(text, 6000))
 			intel.ExtraEmails = mergeUnique(intel.ExtraEmails, extractEmailsFromHTML(string(h.body), intel.Domain))
+			phones, wa, socials := harvestContactChannelsFromHTML(string(h.body))
+			intel.Phones = mergeUnique(intel.Phones, phones)
+			if intel.Socials == nil {
+				intel.Socials = map[string]string{}
+			}
+			intel.Socials = mergeSocialMaps(intel.Socials, socials)
+			if wa != "" {
+				intel.Phones = mergeUnique(intel.Phones, []string{wa})
+			}
 			intel.Phones = mergeUnique(intel.Phones, filterPhones(phoneFindRe.FindAllString(text, -1)))
 			for _, li := range linkedinRe.FindAllString(string(h.body), -1) {
 				if intel.Socials["linkedin"] == "" {
@@ -342,6 +351,8 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 
 	// 外贸公式：Brave/@domain 公开邮箱 + MX 角色渠道 + 人名排列（公开命中）+ Maps 电话挂载
 	runContactFormulaPass(ctx, intel, place)
+	// 多渠道：电话 / WhatsApp / 社媒挂决策人，并补组织节点
+	enrichMultiChannelContacts(intel, place)
 
 	// 仅把「像真人邮箱」升成决策人；全球 info-* 办公室邮箱留在 ExtraEmails，不当决策人
 	intel.ExtraEmails = filterPlaceholderEmails(intel.ExtraEmails)
@@ -349,6 +360,7 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 	intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, heuristicDecisionMakers(pageTexts, intel.ExtraEmails, place))
 	intel.DecisionMakers = dedupeDecisionMakers(intel.DecisionMakers)
 	intel.DecisionMakers = attachMapsContactsToMakers(intel.DecisionMakers, place)
+	enrichMultiChannelContacts(intel, place)
 	intel.DecisionMakers = attachLinkedInSearchHints(intel.DecisionMakers, place.Title)
 	intel.DecisionMakers = sanitizeDecisionMakers(intel.DecisionMakers, place)
 	intel.DecisionMakers = pruneOfficeInboxesWhenPeopleExist(intel.DecisionMakers)
@@ -1637,13 +1649,13 @@ func publicFacingNote(intel *PlaceIntel) string {
 	}
 	switch {
 	case named > 0 && (emails > 0 || phones > 0 || li > 0):
-		return fmt.Sprintf("已找到 %d 位可核验联系人，可直接邮件/WhatsApp/LinkedIn 触达。", named)
+		return fmt.Sprintf("已找到 %d 位可核验联系人，可直接邮件/WhatsApp/电话/LinkedIn 触达。", named)
 	case intel.Trade != nil && intel.Trade.TotalShipments > 0:
 		return "海关提单已锁定该公司贸易活动；建议用领英公式继续挖采购决策人。"
 	case emails > 0 || phones > 0:
-		return "暂无具名决策人，但已用官网/公开检索拿到邮箱或电话，可先渠道触达。"
+		return "暂无具名决策人，但已拿到邮箱/电话/WhatsApp 等渠道，可先触达。"
 	case li > 0:
-		return "已定位 LinkedIn 线索，建议先加决策人再建联。"
+		return "已定位 LinkedIn/社媒线索，建议先加决策人再建联。"
 	default:
 		return "公开源暂未挖到可核验决策人；可改深度模式或配置 HUNTER_API_KEY / AHU_PROXY。"
 	}
