@@ -31,6 +31,14 @@ type Place struct {
 	ReviewCount  int     `json:"review_count"`
 	Emails       string  `json:"emails"`
 	WhatsApp     string  `json:"whatsapp"`
+	Facebook     string  `json:"facebook"`
+	Instagram    string  `json:"instagram"`
+	LinkedIn     string  `json:"linkedin"`
+	Twitter      string  `json:"twitter"`
+	TikTok       string  `json:"tiktok"`
+	YouTube      string  `json:"youtube"`
+	Telegram     string  `json:"telegram"`
+	Pinterest    string  `json:"pinterest"`
 }
 
 // GetPlaces locates the job's CSV output and parses it into mappable places.
@@ -139,6 +147,14 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 			ReviewCount:  reviewCount,
 			Emails:       get(row, "emails"),
 			WhatsApp:     get(row, "whatsapp"),
+			Facebook:     get(row, "facebook"),
+			Instagram:    get(row, "instagram"),
+			LinkedIn:     get(row, "linkedin"),
+			Twitter:      get(row, "twitter"),
+			TikTok:       get(row, "tiktok"),
+			YouTube:      get(row, "youtube"),
+			Telegram:     get(row, "telegram"),
+			Pinterest:    get(row, "pinterest"),
 		})
 	}
 

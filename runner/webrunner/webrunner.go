@@ -393,7 +393,8 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 		if job.Data.FastMode {
 			opts = append(opts, scrapemateapp.WithExitOnInactivity(90*time.Second))
 		} else {
-			opts = append(opts, scrapemateapp.WithExitOnInactivity(3*time.Minute))
+			// 深度：浏览器冷启动 + 官网联系方式补齐，需要更长空闲窗口
+			opts = append(opts, scrapemateapp.WithExitOnInactivity(5*time.Minute))
 		}
 
 		if !job.Data.FastMode {

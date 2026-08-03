@@ -137,15 +137,35 @@
         var streamActive = (JOB_STATUS === 'working' || JOB_STATUS === 'pending');
 
         function rowHtml(place) {
-            // 联系方式权重：WhatsApp > 邮箱 > 电话
+            // 联系方式权重：WhatsApp > 邮箱 > 电话；社媒一并展示
             return '<td class="col-name">' + textCell(place.title) + '</td>' +
                 '<td class="col-addr">' + textCell(place.address) + '</td>' +
                 '<td class="col-wa">' + waCell(place) + '</td>' +
                 '<td class="col-mail">' + textCell(place.emails) + '</td>' +
                 '<td class="col-phone">' + textCell(place.phone) + '</td>' +
+                '<td class="col-social">' + socialCell(place) + '</td>' +
                 '<td class="col-rating">' + (place.review_rating ? '★ ' + escapeHtml(String(place.review_rating)) : '<span class="cell-empty">—</span>') + '</td>' +
                 '<td class="col-reviews">' + (place.review_count ? escapeHtml(String(place.review_count)) : '<span class="cell-empty">—</span>') + '</td>' +
                 '<td class="col-site">' + websiteCell(place) + '</td>';
+        }
+
+        function socialCell(place) {
+            var parts = [];
+            function add(label, url) {
+                if (!url) return;
+                parts.push('<a href="' + encodeURI(String(url)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">' +
+                    escapeHtml(label) + '</a>');
+            }
+            add('IG', place.instagram);
+            add('FB', place.facebook);
+            add('LI', place.linkedin);
+            add('X', place.twitter);
+            add('TT', place.tiktok);
+            add('YT', place.youtube);
+            add('TG', place.telegram);
+            add('Pin', place.pinterest);
+            if (!parts.length) return '<span class="cell-empty">—</span>';
+            return parts.join(' · ');
         }
 
         function waCell(place) {
@@ -199,6 +219,7 @@
                 '<th class="col-wa">WhatsApp</th>' +
                 '<th class="col-mail">邮箱</th>' +
                 '<th class="col-phone">电话</th>' +
+                '<th class="col-social">社媒</th>' +
                 '<th class="col-rating">评分</th>' +
                 '<th class="col-reviews">评论数</th>' +
                 '<th class="col-site">网站</th>' +

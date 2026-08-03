@@ -72,7 +72,7 @@ type EmailExtractJob struct {
 
 // NewEmailJob creates an email extraction job for the merchant website.
 func NewEmailJob(parentID string, entry *Entry, opts ...EmailExtractJobOptions) *EmailExtractJob {
-	// 低优先级：不要抢搜索/地点 worker，否则吞吐会掉到个位数家/分钟。
+	// 低优先级：地点/搜索先跑；邮箱随后补齐，ExitMonitor 会等它们收尾。
 	const defaultPrio = scrapemate.PriorityLow
 
 	job := EmailExtractJob{
@@ -81,7 +81,7 @@ func NewEmailJob(parentID string, entry *Entry, opts ...EmailExtractJobOptions) 
 			ParentID:   parentID,
 			Method:     "GET",
 			URL:        normalizeGoogleURL(entry.WebSite),
-			MaxRetries: 1, // 偶发 429/超时再试一次
+			MaxRetries: 2,
 			Priority:   defaultPrio,
 			Timeout:    emailJobTimeout,
 			Headers: map[string]string{
@@ -145,8 +145,11 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 		baseURL = resp.URL
 	}
 
-	// 无邮箱或首页失败时跟进联系页（已有邮箱不再为找 WA 拖慢整站）
-	needFollow := len(emails) == 0 || (resp != nil && resp.Error != nil)
+	// 为联系方式覆盖率：缺邮箱 / WhatsApp / 任一社媒时都跟进联系页（不再因已有邮箱短路）
+	needFollow := len(emails) == 0 ||
+		whatsapp == "" ||
+		socialEmpty(social) ||
+		(resp != nil && resp.Error != nil)
 	if needFollow {
 		followURLs := alternateEmailURLs(baseURL)
 		if resp == nil || resp.Error == nil {
@@ -167,8 +170,15 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 	j.Entry.WhatsApp = whatsapp
 	j.Entry.PromoteSocialFromMapsFields()
 	j.Entry.mergeSocial(social)
+	j.Entry.FillWhatsAppFromPhone()
 
 	return j.Entry, nil, nil
+}
+
+func socialEmpty(s SocialLinks) bool {
+	return s.Facebook == "" && s.Instagram == "" && s.LinkedIn == "" &&
+		s.Twitter == "" && s.TikTok == "" && s.YouTube == "" &&
+		s.Telegram == "" && s.Pinterest == ""
 }
 
 var (

@@ -189,25 +189,31 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 		}
 	}
 
-	// 邮箱提取：先返回全部地点供立即落盘；有官网的再派邮箱任务 upsert 补联系方式。
-	// Web 路径地点立即算完成；不把 ExitMonitor 绑到邮箱任务上（否则会被官网超时拖成 2 家/分钟）。
+	// 邮箱提取：地点先落盘；有官网的派邮箱任务，并把 ExitMonitor 绑上去（Web 路径），
+	// 确保收尾前联系方式有机会 upsert，而不是被 cancel 掉。
 	if j.ExtractEmail {
 		var emailJobs []scrapemate.IJob
+		completedNow := 0
 
 		for _, e := range entries {
 			e.PromoteSocialFromMapsFields()
+			e.FillWhatsAppFromPhone()
 			if e.IsWebsiteValidForEmail() {
 				opts := []EmailExtractJobOptions{}
 				if j.WriterManagedCompletion {
 					opts = append(opts, WithEmailJobWriterManagedCompletion())
+				} else if j.ExitMonitor != nil {
+					opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
 				}
 
 				emailJobs = append(emailJobs, NewEmailJob(j.ID, e, opts...))
+			} else {
+				completedNow++
 			}
 		}
 
-		if j.ExitMonitor != nil && !j.WriterManagedCompletion {
-			j.ExitMonitor.IncrPlacesCompleted(len(entries))
+		if j.ExitMonitor != nil && !j.WriterManagedCompletion && completedNow > 0 {
+			j.ExitMonitor.IncrPlacesCompleted(completedNow)
 		}
 
 		return entries, append(nextJobs, emailJobs...), nil

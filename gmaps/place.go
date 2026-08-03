@@ -140,19 +140,24 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 
 	if j.ExtractEmail && entry.IsWebsiteValidForEmail() {
 		opts := []EmailExtractJobOptions{}
-		// SaaS writer 路径：完成计数由 writer 负责。
-		// Web 路径：地点一经解析就算完成，邮箱异步 upsert，避免 ExitMonitor 被官网爬取拖死。
+		// SaaS：完成计数由 writer 负责。
+		// Web：地点先落盘，但 ExitMonitor 绑到邮箱任务——等联系方式补完再收尾，
+		// 否则 job 一结束就会 context cancel 掉邮箱队列，邮箱/社媒覆盖率接近 0。
 		if j.WriterManagedCompletion {
 			opts = append(opts, WithEmailJobWriterManagedCompletion())
 		} else if j.ExitMonitor != nil {
-			j.ExitMonitor.IncrPlacesCompleted(1)
+			opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
 		}
 
 		emailJob := NewEmailJob(j.ID, &entry, opts...)
 
 		// 先写出地点详情，邮箱任务稍后 upsert 补联系方式。
 		return &entry, []scrapemate.IJob{emailJob}, nil
-	} else if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+	}
+
+	entry.PromoteSocialFromMapsFields()
+	entry.FillWhatsAppFromPhone()
+	if j.ExitMonitor != nil && !j.WriterManagedCompletion {
 		j.ExitMonitor.IncrPlacesCompleted(1)
 	}
 
