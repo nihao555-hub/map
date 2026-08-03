@@ -64,6 +64,20 @@ func runContactFormulaPass(ctx context.Context, intel *PlaceIntel, place Place) 
 
 	intel.DecisionMakers = attachMapsContactsToMakers(intel.DecisionMakers, place)
 	intel.OrgStructure = mergeOrgUnits(intel.OrgStructure, orgUnitsFromDecisionMakers(intel.DecisionMakers, place.Title))
+	if len(intel.Phones) == 0 && (intel.Socials == nil || intel.Socials["whatsapp"] == "") {
+		if phones, wa := lookupPublishedPhonesBrave(ctx, place.Title, intel.Domain); len(phones) > 0 || wa != "" {
+			intel.Phones = mergeUnique(intel.Phones, phones)
+			if wa != "" {
+				if intel.Socials == nil {
+					intel.Socials = map[string]string{}
+				}
+				intel.Socials["whatsapp"] = wa
+				intel.Phones = mergeUnique(intel.Phones, []string{wa})
+			}
+			intel.Sources = mergeUnique(intel.Sources, []string{"brave:phone"})
+			intel.Provider = strings.Trim(intel.Provider+"+brave-phone", "+")
+		}
+	}
 }
 
 func countUsableEmails(emails []string, domain string) int {
@@ -201,6 +215,42 @@ func lookupPublishedEmailsBrave(ctx context.Context, domain, title string) ([]st
 		return nil, ""
 	}
 	return found, "brave:email"
+}
+
+// lookupPublishedPhonesBrave 无 Maps/官网电话时，用公开检索补电话/WhatsApp。
+func lookupPublishedPhonesBrave(ctx context.Context, title, domain string) ([]string, string) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, ""
+	}
+	brand := companyBrandToken(title)
+	queries := []string{
+		fmt.Sprintf(`"%s" (phone OR WhatsApp OR "wa.me" OR Tel OR Telephone OR Hubungi)`, title),
+	}
+	if brand != "" && !strings.EqualFold(brand, title) {
+		queries = append(queries, fmt.Sprintf(`"%s" (phone OR WhatsApp OR "wa.me" OR "+62" OR "+60")`, brand))
+	}
+	if domain != "" {
+		queries = append(queries, fmt.Sprintf(`site:%s (phone OR WhatsApp OR "wa.me" OR tel:)`, domain))
+	}
+	var phones []string
+	wa := ""
+	for _, q := range queries {
+		html, err := fetchBraveHTML(ctx, q)
+		if err != nil || html == "" {
+			continue
+		}
+		p, w, _ := harvestContactChannelsFromHTML(html)
+		phones = mergeUnique(phones, p)
+		if wa == "" && w != "" {
+			wa = w
+		}
+	}
+	phones = filterPhones(phones)
+	if len(phones) > 5 {
+		phones = phones[:5]
+	}
+	return phones, wa
 }
 
 func extractDomainEmailsFromSearchHTML(html, domain string) []string {

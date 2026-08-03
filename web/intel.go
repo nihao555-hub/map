@@ -1172,6 +1172,8 @@ func prioritizeExtraEmails(place Place, emails []string) []string {
 // filterOrgStructureQuality 丢掉 RDAP 域名注册人 / Maps 类目等假「架构」。
 func filterOrgStructureQuality(in []OrgUnit, place Place) []OrgUnit {
 	var out []OrgUnit
+	roleCount := map[string]int{}
+	seenKey := map[string]bool{}
 	for _, o := range in {
 		o.Name = strings.TrimSpace(o.Name)
 		o.Role = strings.TrimSpace(o.Role)
@@ -1194,6 +1196,18 @@ func filterOrgStructureQuality(in []OrgUnit, place Place) []OrgUnit {
 		if strings.Contains(strings.ToLower(o.Evidence), "unverified") && o.Parent == "" {
 			continue
 		}
+		key := strings.ToLower(o.Role + "|" + o.Name)
+		if seenKey[key] {
+			continue
+		}
+		// 海关供应商节点最多保留 3 个，避免刷屏淹没真实架构
+		if strings.EqualFold(o.Role, "customs supplier") {
+			if roleCount["customs supplier"] >= 3 {
+				continue
+			}
+			roleCount["customs supplier"]++
+		}
+		seenKey[key] = true
 		out = append(out, o)
 	}
 	if len(out) > 8 {

@@ -566,10 +566,14 @@ func applyTradeIntel(intel *PlaceIntel, trade *TradeIntel) {
 	if trade.Website != "" && intel.Website == "" {
 		intel.Website = trade.Website
 	}
-	// 贸易伙伴写入架构（真实供应链，不是假部门）
+	// 贸易伙伴写入架构（真实供应链，不是假部门）；最多 3 家避免刷屏
+	nSup := 0
 	for _, s := range trade.TopSuppliers {
 		if s.Name == "" {
 			continue
+		}
+		if nSup >= 3 {
+			break
 		}
 		intel.OrgStructure = append(intel.OrgStructure, OrgUnit{
 			Name:     s.Name,
@@ -577,6 +581,7 @@ func applyTradeIntel(intel *PlaceIntel, trade *TradeIntel) {
 			Parent:   firstNonEmpty(trade.Name, intel.Title),
 			Evidence: fmt.Sprintf("US BOL via %s (%d shipments)", trade.Source, s.Shipments),
 		})
+		nSup++
 	}
 	if len(intel.OrgStructure) > 10 {
 		intel.OrgStructure = intel.OrgStructure[:10]
