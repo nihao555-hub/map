@@ -55,6 +55,12 @@ var nonPersonTokens = map[string]bool{
 	"doe": true, "lorem": true, "ipsum": true, "foo": true, "bar": true,
 	"test": true, "sample": true, "example": true, "dummy": true,
 	"nama": true, "name": true, "namamu": true,
+	// 安全/滥用告示（"Rtr Security Threats" 一类来自注册商与安全页）
+	"security": true, "threat": true, "threats": true, "abuse": true,
+	"phishing": true, "malware": true, "spam": true, "report": true,
+	"reports": true, "notice": true, "alert": true, "alerts": true,
+	"incident": true, "vulnerability": true, "rtr": true, "policy": true,
+	"privacy": true, "terms": true, "cookie": true, "cookies": true,
 }
 
 // templateFullNames 整体即模板占位的人名。

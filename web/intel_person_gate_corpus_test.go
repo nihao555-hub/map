@@ -27,6 +27,10 @@ func TestPersonGateRejectsRealNoise(t *testing.T) {
 		{"Management / Founder", "", "Any", "职能描述"},
 		{"Meet Our", "", "Any", "页面标题片段"},
 		{"Latest Blogs", "", "Any", "页面区块标题"},
+		{"Rtr Security Threats", "", "Corryndo Jaya", "注册商安全告示"},
+		{"Privacy Policy", "", "Any", "页面条款标题"},
+		{"Domain Operations", "", "PT Karya Utama Globalindo", "域名运维通道"},
+		{"Erinda Supplier", "", "Erinda Seafood Supplier", "店名+业务描述词"},
 
 		// 3) 模板占位
 		{"Aston Doe", "", "Toko Brilian Jaya Prima", "模板占位名"},
@@ -69,6 +73,13 @@ func TestPersonGateKeepsRealPeople(t *testing.T) {
 		{"Enristia P", "enristiap@gmail.com", "Aquatic Cafe"},
 		{"Edward Tirtanata", "", "Kopi Kenangan"},
 		{"Djoko Susanto", "", "Alfamart"},
+		// 公网复跑（雅加达批发商，半径 3km）真实留下的人名
+		{"Romlan Dumar", "", "BUANA KARPET JAKARTA"},
+		{"Sri Mulyati", "", "Alaidrous Indonesia"},
+		{"Intan Arfandy", "", "Alaidrous Indonesia"},
+		{"Linda Anggrea", "", "Alaidrous Indonesia"},
+		// 店名括注里写明的店主
+		{"Siti Hodijah", "", "Distributor OSB Jakarta (Siti Hodijah)"},
 	}
 
 	for _, tc := range real {
