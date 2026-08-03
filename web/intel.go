@@ -1281,12 +1281,16 @@ func sanitizeDecisionMakers(in []DecisionMaker, place Place) []DecisionMaker {
 				d.Confidence = "low"
 			}
 		}
-		// 公司名当人名
-		if d.Name != "" && place.Title != "" && strings.EqualFold(d.Name, strings.TrimSpace(place.Title)) {
+		// 公司名当人名（含「店名 (Pemilik)」这类只是加了角色后缀的写法）
+		if d.Name != "" && isBusinessNameNotPerson(d.Name, place.Title) {
 			d.Name = ""
 			if d.Title == "" || isJunkTitle(d.Title) {
 				d.Title = "Business contact"
 			}
+		}
+		// 域名注册商 / 建站平台的联系人不是这家商家的人
+		if isRegistrarContact(d.Email) {
+			continue
 		}
 		// 仅对「本来就有渠道或真名」的联系人补门店 WhatsApp/电话，避免假决策人继承成空壳
 		if d.Name != "" || hadOwnChannel {
@@ -1428,6 +1432,68 @@ func isJunkPersonName(name string) bool {
 		"manager": true, "unknown": true, "n/a": true, "-": true,
 	}
 	return junkExact[low]
+}
+
+// rolePartRe 匹配人名尾部的角色括注，如 "Cafe Ade (Pemilik)" / "Warung X - Owner"。
+var rolePartRe = regexp.MustCompile(`(?i)[\s\-–—]*[\(（]?\s*(pemilik|owner|pemesan|admin|manager|founder|ceo|direktur|proprietor)\s*[\)）]?\s*$`)
+
+// isBusinessNameNotPerson 判断这个「人名」其实只是店名（可能带角色后缀）。
+//
+// Maps 的店主字段常写成「Cafe Ade (Pemilik)」，直接当决策人会让销售以为找到了真人。
+func isBusinessNameNotPerson(name, placeTitle string) bool {
+	norm := func(s string) string {
+		s = rolePartRe.ReplaceAllString(strings.TrimSpace(s), "")
+		return strings.ToLower(strings.Join(strings.Fields(s), " "))
+	}
+
+	person := norm(name)
+	business := norm(placeTitle)
+
+	if person == "" {
+		return true
+	}
+
+	if business == "" {
+		// 没有店名可比时，只剩角色词的名字（如 "(Pemilik)"）同样不是人。
+		return len(strings.Fields(person)) == 0
+	}
+
+	return person == business || strings.Contains(business, person) || strings.Contains(person, business)
+}
+
+// registrarContactDomains 是域名注册商 / 建站平台，其公开联系人属于平台而非商家。
+var registrarContactDomains = []string{
+	"squarespace.", "godaddy.", "namecheap.", "wix.", "shopify.", "cloudflare.",
+	"domainsbyproxy.", "tucows.", "enom.", "gandi.", "ovh.", "hostinger.",
+	"networksolutions.", "register.com", "name.com", "porkbun.", "dynadot.",
+	"markmonitor.", "csc-global.", "whoisguard.", "withheldforprivacy.",
+	"identity-protect.", "contactprivacy.", "privacyprotect.",
+}
+
+// isRegistrarContact 判断邮箱是否来自注册商 / 隐私代理 / 滥用举报通道。
+func isRegistrarContact(email string) bool {
+	e := strings.ToLower(strings.TrimSpace(email))
+	if e == "" {
+		return false
+	}
+
+	local, domain, ok := strings.Cut(e, "@")
+	if !ok {
+		return false
+	}
+
+	if strings.HasPrefix(local, "abuse") || strings.HasPrefix(local, "whois") ||
+		strings.HasPrefix(local, "registrar") || strings.HasPrefix(local, "domainabuse") {
+		return true
+	}
+
+	for _, d := range registrarContactDomains {
+		if strings.HasPrefix(domain, d) || strings.Contains(domain, "."+d) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func looksLikeWhatsApp(s string) bool {
