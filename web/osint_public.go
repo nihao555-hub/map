@@ -502,18 +502,38 @@ var (
 	liSlugDigitsRe  = regexp.MustCompile(`^\d+$`)
 )
 
-// lookupLinkedInPeople 用 DDG 搜 LinkedIn 个人/公司页，优先采购/老板相关头衔。
+// lookupLinkedInPeople 用外贸常用 Google/DDG X-Ray 公式搜 LinkedIn 个人/公司页。
+// 公式参考：site:linkedin.com/in "公司" (Purchasing Manager OR Buyer OR Procurement OR Direktur OR Owner OR CEO)
 func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]DecisionMaker, string, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return nil, "", fmt.Errorf("empty title")
 	}
+	brand := companyBrandToken(title)
 	queries := []string{
-		fmt.Sprintf(`site:linkedin.com/in "%s" (Purchasing OR Procurement OR Buyer OR "Import" OR Direktur OR Director OR Owner OR Founder OR CEO)`, title),
+		// 外贸大神常用：公司 + 采购/老板头衔 + LinkedIn
+		fmt.Sprintf(`site:linkedin.com/in "%s" ("Purchasing Manager" OR "Procurement Manager" OR Buyer OR "Import Manager" OR "Supply Chain" OR Direktur OR Director OR Owner OR Founder OR CEO OR "General Manager")`, title),
 		fmt.Sprintf(`site:linkedin.com/company "%s"`, title),
 	}
+	if brand != "" && !strings.EqualFold(brand, title) {
+		queries = append(queries,
+			fmt.Sprintf(`site:linkedin.com/in "%s" ("Purchasing Manager" OR Buyer OR Procurement OR Direktur OR Owner OR Founder OR CEO)`, brand),
+			fmt.Sprintf(`site:linkedin.com/company "%s"`, brand),
+			// 非 LinkedIn 补充：公开页提及采购负责人
+			fmt.Sprintf(`"%s" ("Purchasing Manager" OR "Procurement" OR Buyer OR Direktur OR "Import Manager") (email OR contact OR LinkedIn OR "@")`, brand),
+		)
+	}
 	if domain != "" {
-		queries = append(queries, fmt.Sprintf(`site:linkedin.com/in "%s"`, domain))
+		queries = append(queries, fmt.Sprintf(`site:linkedin.com/in "%s" (Purchasing OR Buyer OR Direktur OR Owner OR CEO)`, domain))
+	}
+	// 印尼市场加本地头衔
+	lowTitle := strings.ToLower(title)
+	if strings.Contains(lowTitle, "indonesia") || strings.Contains(lowTitle, "pt ") || strings.HasPrefix(lowTitle, "pt") {
+		qBrand := brand
+		if qBrand == "" {
+			qBrand = title
+		}
+		queries = append(queries, fmt.Sprintf(`site:linkedin.com/in "%s" Indonesia (Direktur OR "General Manager" OR Purchasing OR Procurement OR Buyer OR Pemilik OR Owner)`, qBrand))
 	}
 
 	var makers []DecisionMaker
@@ -558,13 +578,12 @@ func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]Decision
 				}
 				makers = append(makers, DecisionMaker{
 					Name: name, Title: firstNonEmpty(role, "LinkedIn profile"),
-					LinkedIn: clean, Source: "linkedin:ddg",
+					LinkedIn: clean, Source: "linkedin:xray",
 					Evidence: truncateRunes(label, 140), Confidence: conf,
 					Avatar: uiAvatarURL(name),
 				})
 			}
 		}
-		// fallback: raw URL scrape if result__a missing
 		if coURL == "" {
 			for _, m := range ddgLinkedInCoRe.FindAllString(html, -1) {
 				if u := cleanLinkedInURL(decodeDDGHref(m)); u != "" {
@@ -585,7 +604,7 @@ func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]Decision
 			}
 			makers = append(makers, DecisionMaker{
 				Name: name, Title: "LinkedIn profile", LinkedIn: clean,
-				Source: "linkedin:ddg", Evidence: clean, Confidence: "low",
+				Source: "linkedin:xray", Evidence: clean, Confidence: "low",
 				Avatar: uiAvatarURL(name),
 			})
 		}
@@ -595,6 +614,33 @@ func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]Decision
 		out = out[:8]
 	}
 	return out, coURL, nil
+}
+
+// companyBrandToken 从 "PT Deugro Indonesia" 抽出品牌词 Deugro，供搜索公式使用。
+func companyBrandToken(title string) string {
+	t := strings.TrimSpace(title)
+	if t == "" {
+		return ""
+	}
+	// 去法人前缀/后缀
+	re := regexp.MustCompile(`(?i)\b(PT\.?|CV\.?|TBK\.?|Ltd\.?|Limited|Inc\.?|Corp\.?|LLC|GmbH|Sdn\.?\s*Bhd\.?|Pte\.?|Co\.?|Company|Group|Indonesia|Jakarta)\b`)
+	cleaned := strings.TrimSpace(re.ReplaceAllString(t, " "))
+	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	if cleaned == "" {
+		return t
+	}
+	parts := strings.Fields(cleaned)
+	// 取最长实义词，通常是品牌
+	best := parts[0]
+	for _, p := range parts {
+		if len(p) > len(best) {
+			best = p
+		}
+	}
+	if len(best) < 3 {
+		return cleaned
+	}
+	return best
 }
 
 func fetchDDGHTML(ctx context.Context, q string) (string, error) {

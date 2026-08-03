@@ -1415,6 +1415,15 @@ svg.lucide { flex-shrink: 0; }
   color: #0a66c2;
 }
 
+.intel-more {
+  margin: 8px 0;
+}
+.intel-more > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.intel-more > summary::-webkit-details-marker { display: none; }
+
 .intel-conf {
   display: inline-block;
   font-size: 11px;

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -66,15 +67,16 @@ func TestSanitizeDecisionMakersDropsJunk(t *testing.T) {
 		{Name: "Alice Tan", Title: "Purchasing Manager", Email: "alice@acme.id", LinkedIn: "https://linkedin.com/in/alice-tan"},
 	}
 	out := sanitizeDecisionMakers(in, place)
-	if len(out) != 3 {
-		t.Fatalf("want 3 usable contacts, got %d: %+v", len(out), out)
+	out = pruneOfficeInboxesWhenPeopleExist(out)
+	if len(out) < 2 {
+		t.Fatalf("want >=2 usable contacts, got %d: %+v", len(out), out)
 	}
 	for _, d := range out {
 		if strings.Contains(d.Name, "核实") || strings.EqualFold(d.Name, "athangemilangperkasa") || strings.EqualFold(d.Name, "PT Acme") {
 			t.Fatalf("junk name survived: %+v", d)
 		}
-		if d.Email == "athangemilangperkasa@gmail.com" && d.Name != "" {
-			t.Fatalf("email local still used as name: %+v", d)
+		if d.Email != "" && isGenericOfficeEmailLocal(emailLocal(d.Email)) && d.Name == "" {
+			t.Fatalf("office inbox should be pruned when named people exist: %+v", d)
 		}
 	}
 	enrichDecisionMakerAvatars(out)
@@ -84,6 +86,56 @@ func TestSanitizeDecisionMakersDropsJunk(t *testing.T) {
 	}
 	if out[0].Avatar == "" {
 		t.Fatal("expected avatar")
+	}
+}
+
+func TestDeugroStyleEmailFloodNotDecisionMakers(t *testing.T) {
+	place := Place{Title: "PT Deugro Indonesia", Address: "Jakarta, Indonesia"}
+	emails := []string{
+		"info-australia-milton@deugro.com",
+		"info-indonesia@deugro.com",
+		"info-china-shanghai@deugro.com",
+		"info@deugro.com",
+		"sarina.yance@deugro.com",
+		"lindo@deugro.com",
+		"deugro-airfreight-germany@deugro.com",
+		"infosec.privacy@deugro-group.com",
+	}
+	for i := 0; i < 40; i++ {
+		emails = append(emails, fmt.Sprintf("info-country%d@deugro.com", i))
+	}
+	prioritized := prioritizeExtraEmails(place, emails)
+	if len(prioritized) > 24 {
+		t.Fatalf("email flood not capped: %d", len(prioritized))
+	}
+	makers := heuristicDecisionMakers(nil, prioritized, place)
+	makers = sanitizeDecisionMakers(makers, place)
+	makers = pruneOfficeInboxesWhenPeopleExist(makers)
+	if len(makers) > 5 {
+		t.Fatalf("too many decision makers from email flood: %d %+v", len(makers), makers)
+	}
+	for _, d := range makers {
+		if strings.HasPrefix(strings.ToLower(emailLocal(d.Email)), "info-") {
+			t.Fatalf("info-* must not be decision maker when person emails exist: %+v", d)
+		}
+		if d.Name != "" && (strings.Contains(d.Name, "info") || strings.Contains(d.Name, "australia")) {
+			t.Fatalf("junk name: %+v", d)
+		}
+	}
+	hasSarina := false
+	for _, d := range makers {
+		if strings.Contains(strings.ToLower(d.Email), "sarina.yance") || d.Name == "Sarina Yance" {
+			hasSarina = true
+		}
+	}
+	if !hasSarina {
+		t.Fatalf("expected sarina.yance person contact, got %+v", makers)
+	}
+}
+
+func TestCompanyBrandToken(t *testing.T) {
+	if got := companyBrandToken("PT Deugro Indonesia"); got != "Deugro" {
+		t.Fatalf("got %q want Deugro", got)
 	}
 }
 

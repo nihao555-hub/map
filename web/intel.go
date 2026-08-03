@@ -176,6 +176,17 @@ func (s *Service) saveIntel(jobID string, intel *PlaceIntel) error {
 	return os.WriteFile(path, b, 0o600)
 }
 
+func (s *Service) deleteIntel(jobID, placeID string) error {
+	path, err := s.intelPath(jobID, placeID)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // BuildPlaceIntel 对单条商家做背调：官网 + theHarvester/SpiderFoot + OpenCorporates + AI。
 func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place) (*PlaceIntel, error) {
 	if cached, ok := s.loadIntel(jobID, place.PlaceID); ok {
@@ -323,19 +334,22 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		// AI 失败不污染对外说明
 	}
 
-	// 始终补邮箱/电话渠道联系人；有真名时合并，不覆盖
+	// 仅把「像真人邮箱」升成决策人；全球 info-* 办公室邮箱留在 ExtraEmails，不当决策人
+	intel.ExtraEmails = prioritizeExtraEmails(place, intel.ExtraEmails)
 	intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, heuristicDecisionMakers(pageTexts, intel.ExtraEmails, place))
 	intel.DecisionMakers = dedupeDecisionMakers(intel.DecisionMakers)
 	intel.DecisionMakers = attachLinkedInSearchHints(intel.DecisionMakers, place.Title)
 	intel.DecisionMakers = sanitizeDecisionMakers(intel.DecisionMakers, place)
+	intel.DecisionMakers = pruneOfficeInboxesWhenPeopleExist(intel.DecisionMakers)
 	enrichDecisionMakerAvatars(intel.DecisionMakers)
 	sortDecisionMakersForOutreach(intel.DecisionMakers)
+	if len(intel.DecisionMakers) > 12 {
+		intel.DecisionMakers = intel.DecisionMakers[:12]
+	}
 	if intel.Summary == "" {
 		intel.Summary = fmt.Sprintf("%s（%s）", place.Title, strings.TrimSpace(place.Category+" · "+place.Address))
 	}
-	if len(intel.OrgStructure) == 0 && place.Category != "" {
-		intel.OrgStructure = []OrgUnit{{Name: place.Title, Role: place.Category, Evidence: "Google Maps category"}}
-	}
+	intel.OrgStructure = filterOrgStructureQuality(intel.OrgStructure, place)
 
 	intel.Note = publicFacingNote(intel)
 	intel.Confidence = scoreConfidence(intel)
@@ -864,29 +878,66 @@ func scoreConfidence(intel *PlaceIntel) string {
 
 func heuristicDecisionMakers(pages []string, emails []string, place Place) []DecisionMaker {
 	var out []DecisionMaker
-	// 邮箱角色线索：不当成人名，Name 留空，仅作可触达联系人
+	var bestOffice string
 	for _, e := range emails {
-		e = strings.TrimSpace(e)
+		e = strings.TrimSpace(strings.ToLower(e))
 		if e == "" || !strings.Contains(e, "@") {
 			continue
 		}
 		local := e[:strings.Index(e, "@")]
-		title := roleFromEmailLocal(local)
+		if isGenericOfficeEmailLocal(local) {
+			// 仅保留与目标市场最相关的一条办公室邮箱作「分公司渠道」
+			if bestOffice == "" || officeEmailScore(e, place) > officeEmailScore(bestOffice, place) {
+				bestOffice = e
+			}
+			continue
+		}
+		if !isPersonLikeEmailLocal(local) {
+			continue
+		}
+		name := nameFromEmailLocal(local)
 		out = append(out, DecisionMaker{
-			Name:       "",
-			Title:      title,
+			Name:       name,
+			Title:      roleFromEmailLocal(local),
 			Email:      e,
 			Phone:      firstNonEmpty(place.WhatsApp, place.Phone),
 			WhatsApp:   place.WhatsApp,
 			Source:     "email-pattern",
-			Evidence:   "public email on website/maps",
+			Evidence:   "person-like email on public page/maps",
 			Confidence: emailRoleConfidence(local),
+		})
+	}
+	if len(out) == 0 && bestOffice != "" {
+		out = append(out, DecisionMaker{
+			Name:       "",
+			Title:      localOfficeTitle(bestOffice, place),
+			Email:      bestOffice,
+			Phone:      firstNonEmpty(place.WhatsApp, place.Phone),
+			WhatsApp:   place.WhatsApp,
+			Source:     "office-email",
+			Evidence:   "priority branch/office inbox (not a named decision maker)",
+			Confidence: "low",
 		})
 	}
 	if len(out) == 0 {
 		phone := firstNonEmpty(place.WhatsApp, place.Phone)
 		email := firstCSV(place.Emails)
-		if phone != "" || email != "" {
+		if email != "" && isGenericOfficeEmailLocal(emailLocal(email)) {
+			// maps 上的 info@ 不当决策人姓名，仅作渠道
+		}
+		if phone != "" || (email != "" && isPersonLikeEmailLocal(emailLocal(email))) {
+			out = append(out, DecisionMaker{
+				Name:       nameFromEmailLocal(emailLocal(email)),
+				Title:      "Business contact",
+				Email:      email,
+				Phone:      phone,
+				WhatsApp:   place.WhatsApp,
+				LinkedIn:   place.LinkedIn,
+				Source:     "maps",
+				Evidence:   "Google Maps listing contact fields",
+				Confidence: "medium",
+			})
+		} else if phone != "" || email != "" {
 			out = append(out, DecisionMaker{
 				Name:       "",
 				Title:      "Business contact",
@@ -899,6 +950,227 @@ func heuristicDecisionMakers(pages []string, emails []string, place Place) []Dec
 				Confidence: "medium",
 			})
 		}
+	}
+	_ = pages
+	return out
+}
+
+func emailLocal(e string) string {
+	e = strings.TrimSpace(strings.ToLower(e))
+	if i := strings.Index(e, "@"); i > 0 {
+		return e[:i]
+	}
+	return e
+}
+
+// isGenericOfficeEmailLocal 全球办公室/角色邮箱：绝不升成「决策人姓名」。
+func isGenericOfficeEmailLocal(local string) bool {
+	low := strings.ToLower(strings.TrimSpace(local))
+	if low == "" {
+		return true
+	}
+	generics := []string{
+		"info", "sales", "admin", "contact", "hello", "support", "office", "mail",
+		"enquiry", "inquiry", "enquiries", "privacy", "noreply", "no-reply",
+		"marketing", "press", "media", "webmaster", "postmaster", "billing",
+		"finance", "accounts", "helpdesk", "service", "customerservice", "cs",
+		"hr", "jobs", "career", "careers", "recruit", "legal", "compliance",
+		"infosec", "security", "newsletter", "subscribe", "team", "general",
+	}
+	for _, g := range generics {
+		if low == g || strings.HasPrefix(low, g+"-") || strings.HasPrefix(low, g+".") || strings.HasPrefix(low, g+"_") {
+			return true
+		}
+	}
+	// deugro-airfreight-germany 类部门/地区邮箱
+	deptHints := []string{"airfreight", "seafreight", "logistics", "warehouse", "branch", "privacy"}
+	for _, h := range deptHints {
+		if strings.Contains(low, h) {
+			return true
+		}
+	}
+	// info-china-shanghai / indonesia / usa-houston
+	geoBits := []string{
+		"australia", "bahrain", "belgium", "brazil", "canada", "chile", "china",
+		"czech", "denmark", "finland", "france", "germany", "india", "indonesia",
+		"italy", "japan", "korea", "malaysia", "mozambique", "netherlands", "oman",
+		"papua", "philippines", "poland", "qatar", "saudi", "singapore", "southafrica",
+		"spain", "sweden", "taiwan", "thailand", "uae", "dubai", "abudhabi", "uk",
+		"usa", "uruguay", "vietnam", "perth", "milton", "shanghai", "beijing",
+		"qingdao", "mumbai", "chennai", "kochi", "delhi", "tokyo", "busan", "seoul",
+		"hamburg", "bremen", "duisburg", "hanau", "stuttgart", "houston", "miami",
+		"erie", "greenville", "jeddah", "riyadh", "dammam", "saopaulo", "belohorizonte",
+		"riodejaneiro",
+	}
+	for _, g := range geoBits {
+		if strings.Contains(low, g) {
+			return true
+		}
+	}
+	return false
+}
+
+// isPersonLikeEmailLocal 像真人邮箱：sarina.yance / john_smith / lindo
+func isPersonLikeEmailLocal(local string) bool {
+	low := strings.ToLower(strings.TrimSpace(local))
+	if low == "" || isGenericOfficeEmailLocal(low) {
+		return false
+	}
+	if strings.ContainsAny(low, "0123456789") && !strings.Contains(low, ".") {
+		// 纯数字后缀工号邮箱降级：允许 first.last123，拒绝 abc12345 垃圾
+		alpha := regexp.MustCompile(`[a-z]+`).FindAllString(low, -1)
+		if len(alpha) == 0 {
+			return false
+		}
+	}
+	parts := regexp.MustCompile(`[._\-]+`).Split(low, -1)
+	var tokens []string
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		tokens = append(tokens, p)
+	}
+	if len(tokens) >= 2 {
+		ok := 0
+		for _, t := range tokens {
+			if len(t) >= 2 && regexp.MustCompile(`^[a-z]+$`).MatchString(t) && !isGenericOfficeEmailLocal(t) {
+				ok++
+			}
+		}
+		return ok >= 2
+	}
+	// 单词人名邮箱：至少 4 字母，非角色词
+	if len(tokens) == 1 && len(tokens[0]) >= 4 && regexp.MustCompile(`^[a-z]+$`).MatchString(tokens[0]) {
+		return true
+	}
+	return false
+}
+
+func nameFromEmailLocal(local string) string {
+	if !isPersonLikeEmailLocal(local) {
+		return ""
+	}
+	parts := regexp.MustCompile(`[._\-]+`).Split(strings.ToLower(local), -1)
+	var words []string
+	for _, p := range parts {
+		p = regexp.MustCompile(`[^a-z]`).ReplaceAllString(p, "")
+		if len(p) < 2 {
+			continue
+		}
+		words = append(words, strings.ToUpper(p[:1])+p[1:])
+	}
+	if len(words) == 0 {
+		return ""
+	}
+	if len(words) == 1 {
+		// 单词不当强人名展示，留给销售判断
+		return ""
+	}
+	return strings.Join(words, " ")
+}
+
+func officeEmailScore(email string, place Place) int {
+	low := strings.ToLower(email)
+	score := 0
+	blob := strings.ToLower(place.Title + " " + place.Address + " " + place.CompleteAddress)
+	prefs := []string{"indonesia", "jakarta", "id"}
+	for _, p := range prefs {
+		if strings.Contains(blob, p) && strings.Contains(low, p) {
+			score += 10
+		}
+	}
+	// 地址里出现的国家名命中邮箱
+	for _, tok := range []string{"singapore", "malaysia", "thailand", "vietnam", "china", "india", "uae", "dubai"} {
+		if strings.Contains(blob, tok) && strings.Contains(low, tok) {
+			score += 8
+		}
+	}
+	if strings.HasPrefix(emailLocal(email), "info@") || emailLocal(email) == "info" {
+		score += 3
+	}
+	if strings.Contains(low, "privacy") || strings.Contains(low, "infosec") {
+		score -= 20
+	}
+	return score
+}
+
+func localOfficeTitle(email string, place Place) string {
+	low := strings.ToLower(email)
+	if strings.Contains(low, "indonesia") {
+		return "Indonesia office inbox"
+	}
+	blob := strings.ToLower(place.Address + " " + place.Title)
+	if strings.Contains(blob, "indonesia") || strings.Contains(blob, "jakarta") {
+		return "Local office inbox"
+	}
+	return "Office inbox"
+}
+
+// prioritizeExtraEmails 办公室邮箱按目标市场排序，并限制数量，避免 60+ 全球 info 淹没 UI。
+func prioritizeExtraEmails(place Place, emails []string) []string {
+	emails = uniqueStrings(emails)
+	var people, localOffice, other []string
+	for _, e := range emails {
+		e = strings.ToLower(strings.TrimSpace(e))
+		if e == "" {
+			continue
+		}
+		local := emailLocal(e)
+		switch {
+		case isPersonLikeEmailLocal(local):
+			people = append(people, e)
+		case officeEmailScore(e, place) >= 8:
+			localOffice = append(localOffice, e)
+		default:
+			other = append(other, e)
+		}
+	}
+	sort.SliceStable(localOffice, func(i, j int) bool {
+		return officeEmailScore(localOffice[i], place) > officeEmailScore(localOffice[j], place)
+	})
+	out := append([]string{}, people...)
+	out = append(out, localOffice...)
+	// 全球办公室最多再留 8 条，避免 Deugro 式爆炸
+	if len(other) > 8 {
+		other = other[:8]
+	}
+	out = append(out, other...)
+	if len(out) > 24 {
+		out = out[:24]
+	}
+	return out
+}
+
+// filterOrgStructureQuality 丢掉 RDAP 域名注册人 / Maps 类目等假「架构」。
+func filterOrgStructureQuality(in []OrgUnit, place Place) []OrgUnit {
+	var out []OrgUnit
+	for _, o := range in {
+		o.Name = strings.TrimSpace(o.Name)
+		o.Role = strings.TrimSpace(o.Role)
+		o.Evidence = strings.TrimSpace(o.Evidence)
+		if o.Name == "" {
+			continue
+		}
+		ev := strings.ToLower(o.Evidence + " " + o.Role)
+		if strings.Contains(ev, "google maps category") ||
+			strings.Contains(ev, "domain-registrant") ||
+			strings.Contains(ev, "rdap") ||
+			strings.Contains(ev, "whois") ||
+			strings.Contains(ev, "registrant") ||
+			o.Role == "domain" || o.Role == "registrant" {
+			continue
+		}
+		if strings.EqualFold(o.Name, place.Title) && (o.Role == place.Category || o.Evidence == "inferred (unverified)") {
+			continue
+		}
+		if strings.Contains(strings.ToLower(o.Evidence), "unverified") && o.Parent == "" {
+			continue
+		}
+		out = append(out, o)
+	}
+	if len(out) > 8 {
+		out = out[:8]
 	}
 	return out
 }
@@ -914,10 +1186,10 @@ func roleFromEmailLocal(local string) string {
 		return "Director"
 	case strings.Contains(low, "sales"), strings.Contains(low, "marketing"), strings.Contains(low, "export"), strings.Contains(low, "import"):
 		return "Sales / Trade"
-	case strings.Contains(low, "info"), strings.Contains(low, "hello"), strings.Contains(low, "contact"), strings.Contains(low, "admin"), strings.Contains(low, "office"):
-		return "General inquiry"
+	case isGenericOfficeEmailLocal(low):
+		return "Office inbox"
 	default:
-		return "Email contact"
+		return "Contact"
 	}
 }
 
@@ -926,10 +1198,12 @@ func emailRoleConfidence(local string) string {
 	switch {
 	case strings.Contains(low, "purchas"), strings.Contains(low, "procure"), strings.Contains(low, "ceo"), strings.Contains(low, "founder"), strings.Contains(low, "owner"), strings.Contains(low, "direktur"):
 		return "high"
-	case strings.Contains(low, "info"), strings.Contains(low, "hello"), strings.Contains(low, "contact"), strings.Contains(low, "admin"):
+	case isPersonLikeEmailLocal(low):
+		return "medium"
+	case isGenericOfficeEmailLocal(low):
 		return "low"
 	default:
-		return "medium"
+		return "low"
 	}
 }
 
@@ -948,17 +1222,22 @@ func sanitizeDecisionMakers(in []DecisionMaker, place Place) []DecisionMaker {
 		if isJunkPersonName(d.Name) {
 			d.Name = ""
 		}
-		// 邮箱 local 当人名 → 清空名，保留邮箱
+		// 邮箱 local 当人名 → 清空名，保留邮箱（仅真人邮箱）
 		if d.Email != "" {
-			local := d.Email
-			if i := strings.Index(d.Email, "@"); i > 0 {
-				local = d.Email[:i]
-			}
+			local := emailLocal(d.Email)
 			if strings.EqualFold(d.Name, local) {
-				d.Name = ""
+				d.Name = nameFromEmailLocal(local)
 				if d.Title == "" || d.Title == "Contact" || isJunkTitle(d.Title) {
 					d.Title = roleFromEmailLocal(local)
 				}
+			}
+			// 全球办公室邮箱：有真名决策人时直接丢掉；单独留下时最多保留为无姓名渠道
+			if isGenericOfficeEmailLocal(local) {
+				d.Name = ""
+				if d.Title == "" || isJunkTitle(d.Title) || d.Title == "General inquiry" || d.Title == "Email contact" {
+					d.Title = "Office inbox"
+				}
+				d.Confidence = "low"
 			}
 		}
 		// 公司名当人名
@@ -1003,6 +1282,33 @@ func sanitizeDecisionMakers(in []DecisionMaker, place Place) []DecisionMaker {
 			} else {
 				d.Title = "Contact"
 			}
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+// pruneOfficeInboxesWhenPeopleExist 已有具名决策人时，不再把全球办公室邮箱列为「决策人」。
+func pruneOfficeInboxesWhenPeopleExist(makers []DecisionMaker) []DecisionMaker {
+	if countNamedPeople(makers) == 0 {
+		// 无真名时最多保留 2 条办公室渠道
+		n := 0
+		var out []DecisionMaker
+		for _, d := range makers {
+			if d.Email != "" && isGenericOfficeEmailLocal(emailLocal(d.Email)) && d.Name == "" {
+				if n >= 2 {
+					continue
+				}
+				n++
+			}
+			out = append(out, d)
+		}
+		return out
+	}
+	var out []DecisionMaker
+	for _, d := range makers {
+		if d.Email != "" && isGenericOfficeEmailLocal(emailLocal(d.Email)) && !looksLikeRealPerson(d) {
+			continue
 		}
 		out = append(out, d)
 	}

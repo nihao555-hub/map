@@ -1117,6 +1117,9 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
+	if refresh {
+		_ = s.svc.deleteIntel(id.String(), place.PlaceID)
+	}
 	intel, err := s.svc.BuildPlaceIntel(ctx, id.String(), place)
 	if err != nil {
 		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: err.Error()})

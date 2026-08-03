@@ -279,7 +279,7 @@
         }
 
         function personCard(d) {
-            var name = d.name || '渠道联系人';
+            var name = d.name || (d.email ? '渠道联系人' : '联系人');
             var avatar = d.avatar
                 ? '<img class="intel-avatar" src="' + encodeURI(d.avatar) + '" alt="" loading="lazy" referrerpolicy="no-referrer">'
                 : '<div class="intel-avatar intel-avatar-fallback">' + escapeHtml((name || '?').charAt(0).toUpperCase()) + '</div>';
@@ -305,9 +305,16 @@
                 (d.email ? kv('邮箱', '<a href="mailto:' + encodeURIComponent(d.email) + '">' + escapeHtml(d.email) + '</a>') : '') +
                 (d.phone ? kv('电话', escapeHtml(d.phone)) : '') +
                 (d.whatsapp && d.whatsapp !== d.phone ? kv('WhatsApp', escapeHtml(d.whatsapp)) : '') +
+                (d.linkedin ? kv('LinkedIn', linkOrText(d.linkedin)) : '') +
                 (actions.length ? '<div class="intel-acts">' + actions.join('') + '</div>' : '') +
                 (d.evidence ? '<div class="intel-muted">证据：' + escapeHtml(d.evidence) + '</div>' : '') +
                 '</article>';
+        }
+
+        function isGenericEmail(em) {
+            var local = String(em || '').split('@')[0].toLowerCase();
+            return /^(info|sales|admin|contact|hello|support|office|mail|privacy|noreply)/.test(local) ||
+                /^(info|sales)[-_.]/.test(local);
         }
 
         function buildTabs(place, intel) {
@@ -318,36 +325,67 @@
             var socials = intel.socials || {};
             var socialKeys = Object.keys(socials).filter(function (k) { return socials[k]; });
 
-            // 1) 可联系：一键触达
-            var contactHtml = '';
-            contactHtml += '<p class="intel-lead">' + escapeHtml(intel.note || '整理可触达渠道，优先邮件 / WhatsApp / LinkedIn。') + '</p>';
+            // 决策人邮箱集合，避免下方再重复列出
+            var dmEmails = {};
+            dms.forEach(function (d) { if (d.email) dmEmails[String(d.email).toLowerCase()] = true; });
+            var personEmails = emails.filter(function (e) { return !isGenericEmail(e); });
+            var officeEmails = emails.filter(function (e) { return isGenericEmail(e) && !dmEmails[String(e).toLowerCase()]; });
+            var localOffice = officeEmails.filter(function (e) {
+                var blob = ((place.title || '') + ' ' + (place.address || '')).toLowerCase();
+                var em = String(e).toLowerCase();
+                return (blob.indexOf('indonesia') >= 0 && em.indexOf('indonesia') >= 0) ||
+                    (blob.indexOf('jakarta') >= 0 && em.indexOf('indonesia') >= 0) ||
+                    /^info@/.test(em);
+            });
+            var otherOffice = officeEmails.filter(function (e) { return localOffice.indexOf(e) < 0; });
+
+            // 1) 决策人 + 联系方式合并（外贸触达主视图）
+            var peopleHtml = '';
+            peopleHtml += '<p class="intel-lead">' + escapeHtml(intel.note || '优先展示可核验决策人及其邮箱/WhatsApp/LinkedIn。') + '</p>';
             if (dms.length) {
-                contactHtml += '<h4 class="intel-sub">优先联系人</h4>' + dms.map(personCard).join('');
+                peopleHtml += '<h4 class="intel-sub">决策人 / 关键联系人</h4>' + dms.map(personCard).join('');
+            } else {
+                peopleHtml += emptyBlock('暂无具名决策人；下方为可触达办公室渠道（不会把 info-* 当成决策人）');
             }
-            contactHtml += '<h4 class="intel-sub">公开邮箱</h4>' + listChips(emails);
-            contactHtml += '<h4 class="intel-sub">电话 / WhatsApp</h4>';
+            if (personEmails.length) {
+                var leftover = personEmails.filter(function (e) { return !dmEmails[String(e).toLowerCase()]; });
+                if (leftover.length) {
+                    peopleHtml += '<h4 class="intel-sub">疑似个人邮箱</h4>' + listChips(leftover);
+                }
+            }
+            peopleHtml += '<h4 class="intel-sub">电话 / WhatsApp</h4>';
             if (phones.length) {
-                contactHtml += '<div class="intel-chips">' + phones.map(function (p) {
+                peopleHtml += '<div class="intel-chips">' + phones.slice(0, 6).map(function (p) {
                     return '<span class="intel-chip">' + escapeHtml(p) + ' ' + waLink(p) + '</span>';
                 }).join('') + '</div>';
             } else {
-                contactHtml += emptyBlock('暂无电话');
+                peopleHtml += emptyBlock('暂无电话');
             }
-            contactHtml += '<h4 class="intel-sub">社媒</h4>';
+            if (localOffice.length) {
+                peopleHtml += '<h4 class="intel-sub">本地/总机邮箱</h4>' + listChips(localOffice.slice(0, 5));
+            }
+            if (otherOffice.length) {
+                peopleHtml += '<details class="intel-more"><summary class="intel-sub">全球办公室邮箱（' + otherOffice.length + '，默认折叠）</summary>' +
+                    listChips(otherOffice.slice(0, 20)) + '</details>';
+            }
             if (socialKeys.length) {
-                contactHtml += socialKeys.map(function (k) {
+                peopleHtml += '<h4 class="intel-sub">社媒</h4>' + socialKeys.map(function (k) {
                     return kv(k, linkOrText(socials[k]));
                 }).join('');
-            } else {
-                contactHtml += emptyBlock('暂无社媒');
             }
+            // 一键打开外贸公式搜 LinkedIn
+            var brand = (place.title || '').replace(/\b(PT\.?|CV\.?|TBK\.?|Indonesia|Jakarta|Ltd\.?|Limited)\b/ig, ' ').replace(/\s+/g, ' ').trim();
+            var xray = 'https://www.google.com/search?q=' + encodeURIComponent('site:linkedin.com/in "' + (brand || place.title || '') + '" ("Purchasing Manager" OR Buyer OR Procurement OR Direktur OR Owner OR CEO)');
+            peopleHtml += '<div class="intel-acts" style="margin-top:10px">' +
+                '<a class="intel-act intel-act-li" href="' + xray + '" target="_blank" rel="noopener noreferrer">用外贸公式搜 LinkedIn 决策人</a></div>';
+
             tabs.push({
-                id: 'contacts',
-                label: '可联系' + (dms.length || emails.length || phones.length ? ' (' + (dms.length || emails.length || phones.length) + ')' : ''),
-                html: contactHtml
+                id: 'people',
+                label: '决策人' + (dms.length ? ' (' + dms.length + ')' : ''),
+                html: peopleHtml
             });
 
-            // 2) 公司简介（去掉 MX「未检测到」噪声与技术 note）
+            // 2) 公司简介
             var overviewBits = [
                 kv('触达信心', confBadge(intel.confidence)),
                 kv('摘要', escapeHtml(intel.summary || '')),
@@ -363,12 +401,15 @@
                 html: overviewBits.filter(Boolean).join('') || emptyBlock('暂无公司信息')
             });
 
-            // 3) 架构
+            // 3) 架构（无实质内容则不假装有架构）
             var orgs = intel.org_structure || [];
             var usefulOrgs = orgs.filter(function (o) {
-                return o && o.name && String(o.evidence || '') !== 'Google Maps category';
+                if (!o || !o.name) return false;
+                var ev = String(o.evidence || '') + ' ' + String(o.role || '');
+                if (/google maps category|domain-registrant|rdap|whois|registrant/i.test(ev)) return false;
+                if (o.role === 'domain' || o.role === 'registrant') return false;
+                return true;
             });
-            if (!usefulOrgs.length && orgs.length) usefulOrgs = orgs.slice(0, 1);
             tabs.push({
                 id: 'org',
                 label: '架构' + (usefulOrgs.length ? ' (' + usefulOrgs.length + ')' : ''),
@@ -378,10 +419,10 @@
                         (o.parent ? '<div class="intel-muted">上级：' + escapeHtml(o.parent) + '</div>' : '') +
                         (o.evidence ? '<div class="intel-muted">证据：' + escapeHtml(o.evidence) + '</div>' : '') +
                         '</li>';
-                }).join('') + '</ul>' : emptyBlock('暂无可用架构（官网未公开组织信息）')
+                }).join('') + '</ul>' : emptyBlock('官网未公开组织架构（不会用域名注册人冒充架构）')
             });
 
-            // 4) 主体（可选）
+            // 4) 主体
             var reg = intel.company_registry;
             var tech = (intel.technologies || []).filter(function (t) {
                 return t && !/^hosts:\d+/i.test(t) && t !== 'WHOIS';
