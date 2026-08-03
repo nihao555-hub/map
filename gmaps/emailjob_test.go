@@ -96,6 +96,10 @@ func TestIsWebsiteValidForEmailDenylist(t *testing.T) {
 		{"https://www.instagram.com/shop", false},
 		{"https://order.toasttab.com/shop", false},
 		{"http://foo.mobile-webview4.com/", false},
+		{"http://wa.me/6281234567890", false},
+		{"https://chat.whatsapp.com/AbCdEf", false},
+		{"https://shopee.co.id/shop", false},
+		{"https://linktr.ee/shop", true},
 	}
 
 	for _, tc := range cases {

@@ -354,6 +354,17 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			}
 		}
 
+		// 深度+抓邮箱：预留联系方式补齐时间，避免 MaxTime 一到就砍掉邮箱队列
+		if !job.Data.FastMode && job.Data.Email {
+			contactBudget := 300 // 至少再留 5 分钟给官网补齐
+			if job.Data.MaxResults > 0 {
+				// 约每条 2s 官网（并发下），上限 20 分钟
+				contactBudget = max(contactBudget, min(1200, job.Data.MaxResults*2))
+			}
+			allowedSeconds = max(allowedSeconds, int(job.Data.MaxTime.Seconds())+contactBudget)
+			log.Printf("deep+email: extended time budget +%ds → %ds total", contactBudget, allowedSeconds)
+		}
+
 		log.Printf("running job %s with %d seed jobs and %d allowed seconds", job.ID, len(seedJobs), allowedSeconds)
 
 		mateCtx, cancel := context.WithTimeout(ctx, time.Duration(allowedSeconds)*time.Second)

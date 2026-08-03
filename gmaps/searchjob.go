@@ -196,8 +196,7 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 		completedNow := 0
 
 		for _, e := range entries {
-			e.PromoteSocialFromMapsFields()
-			e.FillWhatsAppFromPhone()
+			e.EnrichContactsFromMapsFields()
 			if e.IsWebsiteValidForEmail() {
 				opts := []EmailExtractJobOptions{}
 				if j.WriterManagedCompletion {

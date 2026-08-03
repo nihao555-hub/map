@@ -139,6 +139,9 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 	}
 
 	if j.ExtractEmail && entry.IsWebsiteValidForEmail() {
+		// 先补 Maps 侧联系方式再落盘，避免官网任务被取消后 WA/社媒全空
+		entry.EnrichContactsFromMapsFields()
+
 		opts := []EmailExtractJobOptions{}
 		// SaaS：完成计数由 writer 负责。
 		// Web：地点先落盘，但 ExitMonitor 绑到邮箱任务——等联系方式补完再收尾，
@@ -151,12 +154,11 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 
 		emailJob := NewEmailJob(j.ID, &entry, opts...)
 
-		// 先写出地点详情，邮箱任务稍后 upsert 补联系方式。
+		// 先写出地点详情（已含电话→WA），邮箱任务稍后 upsert 补邮箱/社媒。
 		return &entry, []scrapemate.IJob{emailJob}, nil
 	}
 
-	entry.PromoteSocialFromMapsFields()
-	entry.FillWhatsAppFromPhone()
+	entry.EnrichContactsFromMapsFields()
 	if j.ExitMonitor != nil && !j.WriterManagedCompletion {
 		j.ExitMonitor.IncrPlacesCompleted(1)
 	}

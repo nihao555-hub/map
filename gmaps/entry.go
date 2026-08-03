@@ -244,6 +244,14 @@ func (e *Entry) IsWebsiteValidForEmail() bool {
 		"telegram.org",
 		"pinterest.com",
 		"pin.it",
+		"wa.me/",
+		"api.whatsapp.com",
+		"chat.whatsapp.com",
+		"shopee.",
+		"shp.ee",
+		"tokopedia.",
+		"lazada.",
+		"bukalapak.",
 		"doordash.com",
 		"ubereats.com",
 		"grubhub.com",
@@ -267,6 +275,7 @@ func (e *Entry) IsWebsiteValidForEmail() bool {
 }
 
 // FillWhatsAppFromPhone 在官网未暴露 WA 时，用公开电话推断移动端 WhatsApp（印尼 08→62 等）。
+// 只认移动号段，避免把座机（+62 21 / +62 251）误标成 WhatsApp。
 func (e *Entry) FillWhatsAppFromPhone() {
 	if e == nil || e.WhatsApp != "" || strings.TrimSpace(e.Phone) == "" {
 		return
@@ -286,15 +295,87 @@ func (e *Entry) FillWhatsAppFromPhone() {
 
 	switch {
 	case strings.HasPrefix(digits, "08") && len(digits) >= 10:
-		// Indonesia mobile
+		// Indonesia mobile local format
 		e.WhatsApp = "+62" + digits[1:]
 	case strings.HasPrefix(digits, "628") && len(digits) >= 11:
 		e.WhatsApp = "+" + digits
-	case strings.HasPrefix(raw, "+") && len(digits) >= 10:
-		e.WhatsApp = "+" + digits
+	case strings.HasPrefix(digits, "62") && !strings.HasPrefix(digits, "628"):
+		// 印尼座机（621/622/251…）不能当 WhatsApp
+		return
 	case strings.HasPrefix(digits, "1") && len(digits) == 11:
 		// NANP
 		e.WhatsApp = "+" + digits
+	case strings.HasPrefix(raw, "+") && len(digits) >= 10:
+		e.WhatsApp = "+" + digits
+	}
+}
+
+// EnrichContactsFromMapsFields 在写盘/发邮箱任务前，先从 Maps 已有字段补社媒与 WhatsApp。
+// 这样即便官网抓取被取消，电话→WA、wa.me 官网链接、IG 官网等也不会丢。
+func (e *Entry) EnrichContactsFromMapsFields() {
+	if e == nil {
+		return
+	}
+
+	e.PromoteSocialFromMapsFields()
+	e.applyContactsFromWebsiteURL()
+	e.FillWhatsAppFromPhone()
+}
+
+// applyContactsFromWebsiteURL 当「官网」其实是 WA/社媒链接时，直接拆到对应字段。
+func (e *Entry) applyContactsFromWebsiteURL() {
+	site := strings.TrimSpace(e.WebSite)
+	if site == "" {
+		return
+	}
+
+	lower := strings.ToLower(site)
+
+	// wa.me / api.whatsapp.com → WhatsApp
+	if e.WhatsApp == "" && (strings.Contains(lower, "wa.me/") || strings.Contains(lower, "api.whatsapp.com")) {
+		if wa := extractWhatsApp([]byte(site)); wa != "" {
+			e.WhatsApp = wa
+		} else if wa := extractWhatsAppFromURL(site); wa != "" {
+			e.WhatsApp = wa
+		}
+	}
+
+	// 社媒主页挂在 website 字段时，提升到对应列
+	if kind, norm := classifySocialURL(site); kind != "" && norm != "" {
+		switch kind {
+		case "instagram":
+			if e.Instagram == "" {
+				e.Instagram = norm
+			}
+		case "facebook":
+			if e.Facebook == "" {
+				e.Facebook = norm
+			}
+		case "linkedin":
+			if e.LinkedIn == "" {
+				e.LinkedIn = norm
+			}
+		case "twitter":
+			if e.Twitter == "" {
+				e.Twitter = norm
+			}
+		case "tiktok":
+			if e.TikTok == "" {
+				e.TikTok = norm
+			}
+		case "youtube":
+			if e.YouTube == "" {
+				e.YouTube = norm
+			}
+		case "telegram":
+			if e.Telegram == "" {
+				e.Telegram = norm
+			}
+		case "pinterest":
+			if e.Pinterest == "" {
+				e.Pinterest = norm
+			}
+		}
 	}
 }
 

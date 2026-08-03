@@ -20,9 +20,9 @@ import (
 )
 
 const (
-	emailJobTimeout       = 12 * time.Second
-	emailFollowBudget     = 12 * time.Second
-	emailMaxFollowPages   = 8
+	emailJobTimeout       = 18 * time.Second
+	emailFollowBudget     = 20 * time.Second
+	emailMaxFollowPages   = 10
 	emailMaxResponseBytes = 512 << 10
 	emailBrowserUA        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
@@ -72,8 +72,8 @@ type EmailExtractJob struct {
 
 // NewEmailJob creates an email extraction job for the merchant website.
 func NewEmailJob(parentID string, entry *Entry, opts ...EmailExtractJobOptions) *EmailExtractJob {
-	// 低优先级：地点/搜索先跑；邮箱随后补齐，ExitMonitor 会等它们收尾。
-	const defaultPrio = scrapemate.PriorityLow
+	// 与 PlaceJob 同级（Medium）：避免被地点详情饿死，联系方式覆盖率崩盘。
+	const defaultPrio = scrapemate.PriorityMedium
 
 	job := EmailExtractJob{
 		Job: scrapemate.Job{
@@ -191,11 +191,51 @@ func extractWhatsApp(body []byte) string {
 		return ""
 	}
 
-	if m := waMeRe.FindSubmatch(body); len(m) >= 2 {
-		return normalizeWhatsApp(string(m[1]))
+	text := string(body)
+	lower := strings.ToLower(text)
+	// 群邀请链接不含个人手机号，避免把 invite code 数字当成 WA
+	if strings.Contains(lower, "chat.whatsapp.com/") {
+		text = waMeRe.ReplaceAllString(text, "")
+		// 仍允许同页其它 wa.me；去掉 chat 群链后再扫
+		lower = strings.ToLower(text)
+		_ = lower
 	}
-	if m := waDigitsRe.FindSubmatch(body); len(m) >= 2 {
-		return normalizeWhatsApp(string(m[1]))
+
+	if m := waMeRe.FindStringSubmatch(text); len(m) >= 2 {
+		return normalizeWhatsApp(m[1])
+	}
+	if m := waDigitsRe.FindStringSubmatch(text); len(m) >= 2 {
+		return normalizeWhatsApp(m[1])
+	}
+
+	return ""
+}
+
+// extractWhatsAppFromURL 从 wa.me / api.whatsapp.com 链接本身拆手机号。
+func extractWhatsAppFromURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if wa := extractWhatsApp([]byte(raw)); wa != "" {
+		return wa
+	}
+	// wa.me/+62%20811-... 或 wa.me/62811...
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "wa.me" || strings.HasSuffix(host, ".wa.me") {
+		path := strings.Trim(u.Path, "/")
+		if path != "" {
+			return normalizeWhatsApp(path)
+		}
+	}
+	if strings.Contains(host, "whatsapp.com") {
+		if phone := u.Query().Get("phone"); phone != "" {
+			return normalizeWhatsApp(phone)
+		}
 	}
 
 	return ""
@@ -215,6 +255,15 @@ func normalizeWhatsApp(raw string) string {
 		return ""
 	}
 	if len(digits) == 8 && (strings.HasPrefix(digits, "20") || strings.HasPrefix(digits, "19")) {
+		return ""
+	}
+	// 印尼：只要移动号段 628…；拒绝明显非电话（群邀请杂数等）
+	if strings.HasPrefix(digits, "62") && !strings.HasPrefix(digits, "628") {
+		return ""
+	}
+	// 以 95/96/97/98/99 开头且很长的更像邀请码残留，不是手机号
+	if len(digits) >= 14 && (strings.HasPrefix(digits, "95") || strings.HasPrefix(digits, "96") ||
+		strings.HasPrefix(digits, "97") || strings.HasPrefix(digits, "98") || strings.HasPrefix(digits, "99")) {
 		return ""
 	}
 
