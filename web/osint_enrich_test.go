@@ -2,16 +2,20 @@ package web
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestIsLikelyPersonName(t *testing.T) {
-	yes := []string{"Djoko Susanto", "Jogi Hendra Atmadja", "P. K. Ojong"}
-	no := []string{"info", "Contact Us", "PT Mayora Indah", "marketing", "About Us"}
+	yes := []string{"Djoko Susanto", "Jogi Hendra Atmadja", "Ahmed Rubaie", "Hugh Njemanze"}
+	no := []string{
+		"info", "Contact Us", "PT Mayora Indah", "marketing", "About Us",
+		"Partner Directory", "Threat Intel Sharing", "for your organization",
+		"Executive Leadership", "Core Values",
+	}
 	for _, n := range yes {
-		if !isLikelyPersonName(n) && n != "P. K. Ojong" {
-			// P. K. Ojong may fail strict check; covered by source-based looksLikeRealPerson
+		if !isLikelyPersonName(n) {
 			t.Fatalf("expected person name: %q", n)
 		}
 	}
@@ -23,6 +27,18 @@ func TestIsLikelyPersonName(t *testing.T) {
 	d := DecisionMaker{Name: "P. K. Ojong", Source: "wikidata", Confidence: "high"}
 	if !looksLikeRealPerson(d) {
 		t.Fatalf("wikidata short-initial name should count as real person")
+	}
+	text := "Executive Leadership Ahmed Rubaie Chief Executive Officer The Anomali Team. Partner Directory Trial and purchase threat intelligence."
+	got := extractPeopleFromText(text, "https://example.com/about")
+	if countNamedPeople(got) == 0 {
+		t.Fatalf("expected Ahmed Rubaie from title pattern, got %#v", got)
+	}
+	for _, m := range got {
+		for _, bad := range []string{"Partner", "Directory", "Threat", "Trial"} {
+			if strings.Contains(m.Name, bad) {
+				t.Fatalf("false positive name: %q", m.Name)
+			}
+		}
 	}
 }
 

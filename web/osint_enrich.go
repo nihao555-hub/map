@@ -19,11 +19,7 @@ import (
 
 // 背调增强源：Hunter / katana / GitHub commits / GLEIF / Wikidata / AHU（可选代理）。
 
-var (
-	personNameRe = regexp.MustCompile(`(?i)\b([A-ZÁÉÍÓÚÄËÏÖÜÑ][\p{L}'’\-]{1,40}(?:\s+[A-ZÁÉÍÓÚÄËÏÖÜÑ][\p{L}'’\-]{1,40}){1,3})\b`)
-	titleNearRe  = regexp.MustCompile(`(?i)\b(ceo|cfo|cto|coo|founder|co-founder|owner|director|direktur(\s+utama)?|komisaris(\s+utama)?|president|partner|pendiri|pemilik|chief\s+\w+|head of\s+\w+|managing director|board member)\b`)
-	teamURLRe    = regexp.MustCompile(`(?i)/(about|about-us|team|our-team|people|leadership|management|staff|contact|contact-us|kontak|tentang|tentang-kami|profil|struktur|karir|company|imprint)(/|$|\?)`)
-)
+var teamURLRe = regexp.MustCompile(`(?i)/(about|about-us|team|our-team|people|leadership|management|staff|contact|contact-us|kontak|tentang|tentang-kami|profil|struktur|karir|company|imprint)(/|$|\?)`)
 
 func hunterAPIKey() string {
 	for _, k := range []string{"HUNTER_API_KEY", "HUNTER_KEY"} {
@@ -340,40 +336,87 @@ func hostDomain(website string) string {
 	return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 }
 
+// 更严的「头衔 + 人名」模式，减少英文营销句被当成姓名。
+var (
+	// 人名限 2~3 词；nameTitleRunRe 仅 2 词，避免 "Leadership Ahmed Rubaie CEO" 贪婪误匹配。
+	nameThenTitleRe = regexp.MustCompile(`(?i)\b([A-Z][A-Za-z'’\-]{1,30}(?:\s+[A-Z][A-Za-z'’\-]{1,30}){1,2})\s*[,|–—-]\s*((?:Co-)?Founder|CEO|CFO|CTO|COO|Owner|Director|Direktur(?:\s+Utama)?|Komisaris(?:\s+Utama)?|President|Pendiri|Pemilik|Chief\s+[A-Za-z]+|Managing Director)\b`)
+	titleThenNameRe = regexp.MustCompile(`(?i)\b((?:Co-)?Founder|CEO|CFO|CTO|COO|Owner|Director|Direktur(?:\s+Utama)?|Komisaris(?:\s+Utama)?|President|Pendiri|Pemilik|Chief\s+[A-Za-z]+|Managing Director)\s*[:：\-–—]\s*([A-Z][A-Za-z'’\-]{1,30}(?:\s+[A-Z][A-Za-z'’\-]{1,30}){1,2})\b`)
+	nameTitleRunRe  = regexp.MustCompile(`(?i)\b([A-Z][A-Za-z'’\-]{1,30}\s+[A-Z][A-Za-z'’\-]{1,30})\s+((?:Co-)?Founder|CEO|CFO|CTO|COO|Direktur(?:\s+Utama)?|Chief\s+Executive(?:\s+Officer)?)\b`)
+)
+
 func extractPeopleFromText(text, sourceURL string) []DecisionMaker {
 	if text == "" {
 		return nil
 	}
-	// 在头衔附近窗口抓人名
 	var out []DecisionMaker
-	low := text
-	idxs := titleNearRe.FindAllStringIndex(low, -1)
-	for _, loc := range idxs {
-		start := loc[0] - 80
-		if start < 0 {
-			start = 0
+	add := func(name, title string) {
+		name = strings.TrimSpace(name)
+		title = strings.TrimSpace(title)
+		if !isLikelyPersonName(name) {
+			return
 		}
-		end := loc[1] + 120
-		if end > len(low) {
-			end = len(low)
-		}
-		window := low[start:end]
-		title := strings.TrimSpace(titleNearRe.FindString(window))
-		for _, m := range personNameRe.FindAllString(window, -1) {
-			name := strings.TrimSpace(m)
-			if !isLikelyPersonName(name) {
-				continue
-			}
-			out = append(out, DecisionMaker{
-				Name:       name,
-				Title:      title,
-				Source:     "katana-page",
-				Evidence:   "name near title on " + sourceURL,
-				Confidence: "medium",
-			})
+		out = append(out, DecisionMaker{
+			Name:       name,
+			Title:      title,
+			Source:     "katana-page",
+			Evidence:   "title+name pattern on " + sourceURL,
+			Confidence: "medium",
+		})
+	}
+	for _, m := range nameThenTitleRe.FindAllStringSubmatch(text, -1) {
+		if len(m) >= 3 {
+			add(m[1], m[2])
 		}
 	}
-	return dedupeDecisionMakers(out)
+	for _, m := range titleThenNameRe.FindAllStringSubmatch(text, -1) {
+		if len(m) >= 3 {
+			add(m[2], m[1])
+		}
+	}
+	for _, m := range nameTitleRunRe.FindAllStringSubmatch(text, -1) {
+		if len(m) >= 3 {
+			add(m[1], m[2])
+		}
+	}
+	out = dedupeDecisionMakers(out)
+	if len(out) > 8 {
+		out = out[:8]
+	}
+	return out
+}
+
+var personNameStop = map[string]bool{
+	"the": true, "and": true, "for": true, "your": true, "our": true, "with": true,
+	"from": true, "this": true, "that": true, "into": true, "over": true, "under": true,
+	"about": true, "contact": true, "privacy": true, "terms": true, "cookie": true,
+	"read": true, "more": true, "learn": true, "get": true, "started": true, "follow": true,
+	"sign": true, "log": true, "click": true, "here": true, "all": true, "rights": true,
+	"reserved": true, "home": true, "page": true, "team": true, "company": true, "group": true,
+	"indonesia": true, "jakarta": true, "limited": true, "official": true, "website": true,
+	"partner": true, "partners": true, "overview": true, "directory": true, "portal": true,
+	"trial": true, "purchase": true, "threat": true, "intelligence": true, "security": true,
+	"platform": true, "product": true, "products": true, "demo": true, "become": true,
+	"channel": true, "technology": true, "alliance": true, "sharing": true, "deal": true,
+	"registration": true, "executive": true, "leadership": true, "values": true, "core": true,
+	"beyond": true, "detecting": true, "everything": true, "matters": true, "trusted": true,
+	"companies": true, "architecture": true, "failing": true, "teams": true, "aren": true,
+	"losing": true, "because": true, "they": true, "lack": true, "talent": true, "another": true,
+	"engine": true, "pass": true, "margins": true, "former": true, "always": true, "tackled": true,
+	"problems": true, "keeping": true, "come": true, "see": true, "how": true, "customers": true,
+	"achieving": true, "less": true, "typical": true, "operations": true, "advanced": true,
+	"persistent": true, "threats": true, "spent": true, "nearly": true, "four": true, "decades": true,
+	"watching": true, "industries": true, "learning": true, "what": true, "takes": true, "lead": true,
+	"transition": true, "rather": true, "than": true, "transformed": true, "building": true,
+	"rapid": true, "growth": true, "transformation": true, "ahead": true, "sale": true, "served": true,
+	"period": true, "global": true, "also": true, "been": true, "active": true, "investor": true,
+	"board": true, "coffee": true, "festival": true, "community": true, "experience": true,
+	"supporting": true, "series": true, "experiences": true, "approachable": true, "together": true,
+	"through": true, "collaboration": true, "part": true, "keseruan": true,
+	"tour": true, "seasonal": true, "sebagai": true, "bentuk": true, "apresiasi": true, "kepada": true,
+	"lets": true, "let": true, "run": true, "fun": true, "manado": true, "ini": true, "dia": true,
+	"info": true, "admin": true, "sales": true, "marketing": true, "support": true, "hello": true,
+	"customer": true, "chief": true, "store": true, "officer": true, "founder": true, "owner": true,
+	"director": true, "manager": true, "president": true,
 }
 
 func isLikelyPersonName(name string) bool {
@@ -387,31 +430,31 @@ func isLikelyPersonName(name string) bool {
 	}
 	low := strings.ToLower(name)
 	deny := []string{
-		"pt ", "cv ", "tbk", "indonesia", "jakarta", "limited", "company", "group",
-		"contact us", "about us", "privacy policy", "terms of", "cookie", "javascript",
-		"read more", "sign in", "log in", "follow us", "all rights", "wordpress",
-		"google maps", "click here", "learn more", "get started",
+		"pt ", "cv ", "tbk", "privacy policy", "terms of", "javascript",
+		"google maps", "wordpress", "anomali partners", "right intelligence",
 	}
 	for _, d := range deny {
 		if strings.Contains(low, d) {
 			return false
 		}
 	}
-	// 邮箱 local / 职能词不当人名
-	roleLocals := []string{"info", "admin", "sales", "marketing", "support", "contact", "hello", "cs", "customer"}
-	if len(parts) == 1 {
-		return false
-	}
+	stopHits := 0
 	for _, p := range parts {
-		pl := strings.ToLower(p)
-		for _, r := range roleLocals {
-			if pl == r {
-				return false
-			}
+		pl := strings.Trim(strings.ToLower(p), ".,;:\"'")
+		if personNameStop[pl] {
+			stopHits++
 		}
-		if len([]rune(p)) < 2 {
+		if len([]rune(pl)) < 2 {
 			return false
 		}
+		// 纯职能词
+		if pl == "ceo" || pl == "cfo" || pl == "cto" || pl == "coo" {
+			return false
+		}
+	}
+	// 任一词落在停用词 → 多半是句子片段
+	if stopHits > 0 {
+		return false
 	}
 	return true
 }

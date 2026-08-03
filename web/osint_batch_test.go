@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -21,7 +22,7 @@ var uncommonSMBFixtures = []struct {
 	Address  string
 }{
 	{"Excelso Coffee", "https://www.excelso-coffee.com", "Coffee", "Indonesia"},
-	{"Anomali Coffee", "https://www.anomali.com", "Coffee", "Indonesia"},
+	{"Kopi Kenangan", "https://kopikenangan.com", "Coffee", "Indonesia"},
 	{"Tanamera Coffee", "https://www.tanameracoffee.com", "Coffee", "Indonesia"},
 	{"Common Grounds", "https://www.commongrounds.co.id", "Cafe", "Indonesia"},
 	{"JCO", "https://www.jco-online.com", "Bakery", "Indonesia"},
@@ -287,20 +288,15 @@ func durationStats(secs []float64) (avg, p50, p95 float64) {
 	if len(secs) == 0 {
 		return 0, 0, 0
 	}
-	sum := 0.0
 	cp := append([]float64{}, secs...)
-	for i := 0; i < len(cp); i++ {
-		sum += cp[i]
-		for j := i + 1; j < len(cp); j++ {
-			if cp[j] < cp[i] {
-				cp[i], cp[j] = cp[j], cp[i]
-			}
-		}
+	sort.Float64s(cp)
+	sum := 0.0
+	for _, s := range cp {
+		sum += s
 	}
 	avg = sum / float64(len(cp))
 	p50 = cp[len(cp)/2]
-	idx := int(float64(len(cp)-1) * 0.95)
-	p95 = cp[idx]
+	p95 = cp[int(float64(len(cp)-1)*0.95)]
 	return avg, p50, p95
 }
 
