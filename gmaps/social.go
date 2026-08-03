@@ -14,6 +14,8 @@ type SocialLinks struct {
 	Twitter   string
 	TikTok    string
 	YouTube   string
+	Telegram  string
+	Pinterest string
 }
 
 var (
@@ -28,6 +30,8 @@ var (
 		{[]string{"twitter.com", "x.com"}, "twitter"},
 		{[]string{"tiktok.com"}, "tiktok"},
 		{[]string{"youtube.com", "youtu.be"}, "youtube"},
+		{[]string{"t.me", "telegram.me", "telegram.org"}, "telegram"},
+		{[]string{"pinterest.com", "pin.it"}, "pinterest"},
 	}
 )
 
@@ -136,6 +140,14 @@ func (e *Entry) applySocialURL(raw string) {
 		if e.YouTube == "" {
 			e.YouTube = link
 		}
+	case "telegram":
+		if e.Telegram == "" {
+			e.Telegram = link
+		}
+	case "pinterest":
+		if e.Pinterest == "" {
+			e.Pinterest = link
+		}
 	}
 }
 
@@ -185,10 +197,44 @@ func extractSocialFromHTML(body []byte) SocialLinks {
 			out.TikTok = link
 		case "youtube":
 			out.YouTube = link
+		case "telegram":
+			out.Telegram = link
+		case "pinterest":
+			out.Pinterest = link
 		}
 	}
 
 	return out
+}
+
+func mergeSocialLinks(dst *SocialLinks, src SocialLinks) {
+	if dst == nil {
+		return
+	}
+	if dst.Facebook == "" {
+		dst.Facebook = src.Facebook
+	}
+	if dst.Instagram == "" {
+		dst.Instagram = src.Instagram
+	}
+	if dst.LinkedIn == "" {
+		dst.LinkedIn = src.LinkedIn
+	}
+	if dst.Twitter == "" {
+		dst.Twitter = src.Twitter
+	}
+	if dst.TikTok == "" {
+		dst.TikTok = src.TikTok
+	}
+	if dst.YouTube == "" {
+		dst.YouTube = src.YouTube
+	}
+	if dst.Telegram == "" {
+		dst.Telegram = src.Telegram
+	}
+	if dst.Pinterest == "" {
+		dst.Pinterest = src.Pinterest
+	}
 }
 
 func (e *Entry) mergeSocial(s SocialLinks) {
@@ -212,5 +258,11 @@ func (e *Entry) mergeSocial(s SocialLinks) {
 	}
 	if e.YouTube == "" {
 		e.YouTube = s.YouTube
+	}
+	if e.Telegram == "" {
+		e.Telegram = s.Telegram
+	}
+	if e.Pinterest == "" {
+		e.Pinterest = s.Pinterest
 	}
 }

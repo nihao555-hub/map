@@ -138,6 +138,8 @@ type Entry struct {
 	Twitter             string       `json:"twitter"`
 	TikTok              string       `json:"tiktok"`
 	YouTube             string       `json:"youtube"`
+	Telegram            string       `json:"telegram"`
+	Pinterest           string       `json:"pinterest"`
 }
 
 // entryAlias is used inside Marshal/UnmarshalJSON to avoid infinite recursion
@@ -226,6 +228,11 @@ func (e *Entry) IsWebsiteValidForEmail() bool {
 		"youtube.com",
 		"youtu.be",
 		"linkedin.com",
+		"t.me/",
+		"telegram.me",
+		"telegram.org",
+		"pinterest.com",
+		"pin.it",
 		"doordash.com",
 		"ubereats.com",
 		"grubhub.com",
@@ -305,6 +312,8 @@ func (e *Entry) CsvHeaders() []string {
 		"twitter",
 		"tiktok",
 		"youtube",
+		"telegram",
+		"pinterest",
 	}
 }
 
@@ -353,6 +362,8 @@ func (e *Entry) CsvRow() []string {
 		e.Twitter,
 		e.TikTok,
 		e.YouTube,
+		e.Telegram,
+		e.Pinterest,
 	}
 }
 

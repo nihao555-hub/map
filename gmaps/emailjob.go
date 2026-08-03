@@ -158,24 +158,7 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 			if whatsapp == "" {
 				whatsapp = extraWA
 			}
-			if social.Facebook == "" {
-				social.Facebook = extraSocial.Facebook
-			}
-			if social.Instagram == "" {
-				social.Instagram = extraSocial.Instagram
-			}
-			if social.LinkedIn == "" {
-				social.LinkedIn = extraSocial.LinkedIn
-			}
-			if social.Twitter == "" {
-				social.Twitter = extraSocial.Twitter
-			}
-			if social.TikTok == "" {
-				social.TikTok = extraSocial.TikTok
-			}
-			if social.YouTube == "" {
-				social.YouTube = extraSocial.YouTube
-			}
+			mergeSocialLinks(&social, extraSocial)
 		}
 	}
 
@@ -725,24 +708,7 @@ func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string
 		if whatsapp == "" {
 			whatsapp = h.whatsapp
 		}
-		if social.Facebook == "" {
-			social.Facebook = h.social.Facebook
-		}
-		if social.Instagram == "" {
-			social.Instagram = h.social.Instagram
-		}
-		if social.LinkedIn == "" {
-			social.LinkedIn = h.social.LinkedIn
-		}
-		if social.Twitter == "" {
-			social.Twitter = h.social.Twitter
-		}
-		if social.TikTok == "" {
-			social.TikTok = h.social.TikTok
-		}
-		if social.YouTube == "" {
-			social.YouTube = h.social.YouTube
-		}
+		mergeSocialLinks(&social, h.social)
 	}
 
 	return emails, whatsapp, social
