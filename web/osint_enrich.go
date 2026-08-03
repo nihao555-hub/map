@@ -342,6 +342,9 @@ var (
 	nameThenTitleRe = regexp.MustCompile(`(?i)\b([A-Z][A-Za-z'’\-]{1,30}(?:\s+[A-Z][A-Za-z'’\-]{1,30}){1,2})\s*[,|–—-]\s*((?:Co-)?Founder|CEO|CFO|CTO|COO|Owner|Director|Direktur(?:\s+Utama)?|Komisaris(?:\s+Utama)?|President|Pendiri|Pemilik|Chief\s+[A-Za-z]+|Managing Director)\b`)
 	titleThenNameRe = regexp.MustCompile(`(?i)\b((?:Co-)?Founder|CEO|CFO|CTO|COO|Owner|Director|Direktur(?:\s+Utama)?|Komisaris(?:\s+Utama)?|President|Pendiri|Pemilik|Chief\s+[A-Za-z]+|Managing Director)\s*[:：\-–—]\s*([A-Z][A-Za-z'’\-]{1,30}(?:\s+[A-Z][A-Za-z'’\-]{1,30}){1,2})\b`)
 	nameTitleRunRe  = regexp.MustCompile(`(?i)\b([A-Z][A-Za-z'’\-]{1,30}\s+[A-Z][A-Za-z'’\-]{1,30})\s+((?:Co-)?Founder|CEO|CFO|CTO|COO|Direktur(?:\s+Utama)?|Chief\s+Executive(?:\s+Officer)?)\b`)
+	// 印尼常见：Didirikan Oleh Jhony Lee（限 2 词，避免吃掉 sejak/tahun）
+	idFoundedByRe = regexp.MustCompile(`(?i)\b(?:Didirikan\s+Oleh|Pendiri|Pemilik|Founded\s+By)\s*[:：]?\s*([A-Z][A-Za-z'’\-]{1,30}\s+[A-Z][A-Za-z'’\-]{1,30})\b`)
+	idCallWaRe    = regexp.MustCompile(`(?i)(?:Call\s*/?\s*Wa|Whats?App|Telp|Phone)\s*[:：]?\s*(\+?[\d][\d\s\-().]{7,18}\d)\s*(?:\(([^)]+)\))?`)
 )
 
 func extractPeopleFromText(text, sourceURL string) []DecisionMaker {
@@ -349,33 +352,73 @@ func extractPeopleFromText(text, sourceURL string) []DecisionMaker {
 		return nil
 	}
 	var out []DecisionMaker
-	add := func(name, title string) {
+	add := func(name, title, phone string) {
 		name = strings.TrimSpace(name)
 		title = strings.TrimSpace(title)
+		phone = strings.TrimSpace(phone)
 		if !isLikelyPersonName(name) {
 			return
 		}
-		out = append(out, DecisionMaker{
+		dm := DecisionMaker{
 			Name:       name,
 			Title:      title,
-			Source:     "katana-page",
+			Source:     "page-text",
 			Evidence:   "title+name pattern on " + sourceURL,
 			Confidence: "medium",
-		})
+		}
+		if phone != "" {
+			dm.Phone = phone
+			if looksLikeWhatsApp(phone) {
+				dm.WhatsApp = phone
+			}
+			dm.Confidence = "high"
+			dm.Evidence = "name+phone on " + sourceURL
+		}
+		out = append(out, dm)
 	}
 	for _, m := range nameThenTitleRe.FindAllStringSubmatch(text, -1) {
 		if len(m) >= 3 {
-			add(m[1], m[2])
+			add(m[1], m[2], "")
 		}
 	}
 	for _, m := range titleThenNameRe.FindAllStringSubmatch(text, -1) {
 		if len(m) >= 3 {
-			add(m[2], m[1])
+			add(m[2], m[1], "")
 		}
 	}
 	for _, m := range nameTitleRunRe.FindAllStringSubmatch(text, -1) {
 		if len(m) >= 3 {
-			add(m[1], m[2])
+			add(m[1], m[2], "")
+		}
+	}
+	for _, m := range idFoundedByRe.FindAllStringSubmatch(text, -1) {
+		if len(m) >= 2 {
+			add(m[1], "Founder", "")
+		}
+	}
+	for _, m := range idCallWaRe.FindAllStringSubmatch(text, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		phone := strings.TrimSpace(m[1])
+		hint := ""
+		if len(m) >= 3 {
+			hint = strings.TrimSpace(m[2])
+		}
+		if hint == "" {
+			continue
+		}
+		for i := range out {
+			if strings.Contains(strings.ToLower(out[i].Name), strings.ToLower(hint)) {
+				if out[i].Phone == "" {
+					out[i].Phone = phone
+				}
+				if out[i].WhatsApp == "" && looksLikeWhatsApp(phone) {
+					out[i].WhatsApp = phone
+				}
+				out[i].Confidence = "high"
+				break
+			}
 		}
 	}
 	out = dedupeDecisionMakers(out)
@@ -393,6 +436,7 @@ var personNameStop = map[string]bool{
 	"sign": true, "log": true, "click": true, "here": true, "all": true, "rights": true,
 	"reserved": true, "home": true, "page": true, "team": true, "company": true, "group": true,
 	"indonesia": true, "jakarta": true, "limited": true, "official": true, "website": true,
+	"sejak": true, "tahun": true, "adalah": true, "dengan": true, "untuk": true,
 	"partner": true, "partners": true, "overview": true, "directory": true, "portal": true,
 	"trial": true, "purchase": true, "threat": true, "intelligence": true, "security": true,
 	"platform": true, "product": true, "products": true, "demo": true, "become": true,
@@ -833,9 +877,15 @@ func dedupeDecisionMakers(in []DecisionMaker) []DecisionMaker {
 	for _, d := range in {
 		d.Name = strings.TrimSpace(d.Name)
 		d.Email = strings.TrimSpace(strings.ToLower(d.Email))
+		d.Phone = strings.TrimSpace(d.Phone)
+		d.WhatsApp = strings.TrimSpace(d.WhatsApp)
+		d.LinkedIn = strings.TrimSpace(d.LinkedIn)
+		if d.Name == "" && d.Email == "" && d.Phone == "" && d.WhatsApp == "" && d.LinkedIn == "" {
+			continue
+		}
 		key := strings.ToLower(d.Name) + "|" + d.Email
 		if d.Name == "" && d.Email == "" {
-			continue
+			key = "ch|" + d.Phone + "|" + d.WhatsApp + "|" + strings.ToLower(d.LinkedIn)
 		}
 		if seen[key] {
 			continue

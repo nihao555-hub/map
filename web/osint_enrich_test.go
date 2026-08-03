@@ -79,3 +79,26 @@ func TestProbeEnrichmentFlags(t *testing.T) {
 	}
 	t.Logf("katana=%v hunter=%v ahu=%v ahuProxy=%v", st.Katana, st.Hunter, st.AHU, st.AHUProxyConfigured)
 }
+
+func TestExtractPeopleIndonesianFounder(t *testing.T) {
+	text := "Didirikan Oleh Jhony Lee sejak 2014. Call/Wa : +62-811-158-309 (Jhony)"
+	out := extractPeopleFromText(text, "https://importer.co.id/about")
+	if len(out) == 0 {
+		t.Fatal("expected founder")
+	}
+	found := false
+	for _, d := range out {
+		if d.Name == "Jhony Lee" {
+			found = true
+			if d.Title != "Founder" {
+				t.Fatalf("title=%q", d.Title)
+			}
+			if d.Phone == "" && d.WhatsApp == "" {
+				t.Fatalf("expected phone/wa attached: %+v", d)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("Jhony Lee not found: %+v", out)
+	}
+}

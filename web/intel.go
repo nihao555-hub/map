@@ -323,10 +323,8 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		// AI 失败不污染对外说明
 	}
 
-	if countNamedPeople(intel.DecisionMakers) == 0 {
-		// 无真名时再用邮箱角色启发式补「可联系渠道」（不再伪造人名）
-		intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, heuristicDecisionMakers(pageTexts, intel.ExtraEmails, place))
-	}
+	// 始终补邮箱/电话渠道联系人；有真名时合并，不覆盖
+	intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, heuristicDecisionMakers(pageTexts, intel.ExtraEmails, place))
 	intel.DecisionMakers = dedupeDecisionMakers(intel.DecisionMakers)
 	intel.DecisionMakers = attachLinkedInSearchHints(intel.DecisionMakers, place.Title)
 	intel.DecisionMakers = sanitizeDecisionMakers(intel.DecisionMakers, place)
@@ -944,7 +942,7 @@ func sanitizeDecisionMakers(in []DecisionMaker, place Place) []DecisionMaker {
 		d.Email = strings.TrimSpace(d.Email)
 		d.Phone = strings.TrimSpace(d.Phone)
 		d.WhatsApp = strings.TrimSpace(d.WhatsApp)
-		d.LinkedIn = strings.Split(strings.TrimSpace(d.LinkedIn), "?")[0]
+		d.LinkedIn = cleanDecisionLinkedIn(d.LinkedIn)
 		hadOwnChannel := d.Email != "" || d.Phone != "" || d.WhatsApp != "" || d.LinkedIn != ""
 		// 丢弃占位 / 垃圾名（先清名，再决定是否继承门店电话）
 		if isJunkPersonName(d.Name) {
@@ -1009,6 +1007,19 @@ func sanitizeDecisionMakers(in []DecisionMaker, place Place) []DecisionMaker {
 		out = append(out, d)
 	}
 	return out
+}
+
+func cleanDecisionLinkedIn(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	low := strings.ToLower(raw)
+	// 搜人链接必须保留 query（keywords=...）
+	if strings.Contains(low, "/search/results/") {
+		return raw
+	}
+	return strings.Split(raw, "?")[0]
 }
 
 func isJunkTitle(title string) bool {
