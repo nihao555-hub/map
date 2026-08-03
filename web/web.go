@@ -1066,16 +1066,6 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 任务开启了并发背调：未就绪时返回 pending，不在请求线程阻塞跑 OSINT
-	if job.Data.EnableIntel && !refresh {
-		renderJSON(w, http.StatusOK, PlaceIntel{
-			PlaceID: placeID,
-			Status:  IntelPending,
-			Note:    "背调进行中，完成后可展开",
-		})
-		return
-	}
-
 	places, err := s.svc.GetPlaces(r.Context(), id.String())
 	if err != nil && !errors.Is(err, ErrPlacesNotFound) {
 		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: err.Error()})
@@ -1084,7 +1074,8 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 	var place Place
 	found := false
 	for _, p := range places {
-		if p.PlaceID == placeID || p.Cid == placeID || p.DataID == placeID {
+		ensurePlaceKey(&p)
+		if p.PlaceID == placeID || p.Cid == placeID || p.DataID == placeID || StablePlaceKey(p) == placeID {
 			place = p
 			found = true
 			break
@@ -1096,6 +1087,23 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 	}
 	if place.PlaceID == "" {
 		place.PlaceID = placeID
+	}
+
+	// 任务开启了并发背调：未就绪时异步生成并立即返回「背调中」，不阻塞请求线程
+	if job.Data.EnableIntel && !refresh {
+		s.svc.EnsurePlaceIntelAsync(id.String(), place)
+		if cached, ok := s.svc.loadIntel(id.String(), place.PlaceID); ok {
+			renderJSON(w, http.StatusOK, cached)
+			return
+		}
+		renderJSON(w, http.StatusOK, PlaceIntel{
+			PlaceID: place.PlaceID,
+			Title:   place.Title,
+			Website: place.Website,
+			Status:  IntelRunning,
+			Note:    "背调中",
+		})
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)

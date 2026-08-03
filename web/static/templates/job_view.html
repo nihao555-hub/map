@@ -18,7 +18,7 @@
                     <button type="button" class="intel-drawer-close" onclick="window.__closeIntelDrawer && window.__closeIntelDrawer()" aria-label="关闭背调">&times;</button>
                 </div>
                 <div id="intel-drawer-body" class="intel-drawer-body">
-                    <p class="intel-placeholder">点击下方表格任意一行，在此查看公司架构、决策人与公开情报。</p>
+                    <p class="intel-placeholder">点击下方表格任意一行：右侧显示背调；进行中显示「背调中」，完成后自动展示完整结果。</p>
                 </div>
             </aside>
         </div>
@@ -229,6 +229,7 @@
         }
 
         function placeKey(place) {
+            // GetPlaces 会在缺 place_id/cid 时填入稳定 geo_* key
             return place.place_id || place.cid || place.data_id || '';
         }
 
@@ -418,12 +419,13 @@
             }
         }
 
-        function showIntelLoading(place) {
+        function showIntelLoading(place, msg) {
             var titleEl = document.getElementById('intel-drawer-title');
             var bodyEl = document.getElementById('intel-drawer-body');
             if (titleEl) titleEl.textContent = place.title || '背调详情';
             if (bodyEl) {
-                bodyEl.innerHTML = '<div class="intel-loading"><div class="spinner-inline"></div><span>正在拉取公开背调…</span></div>';
+                bodyEl.innerHTML = '<div class="intel-loading"><div class="spinner-inline"></div><span>' +
+                    escapeHtml(msg || '背调中…') + '</span></div>';
             }
         }
 
@@ -431,17 +433,18 @@
             var key = placeKey(place);
             if (!key) {
                 renderIntelPanel(place, {
-                    summary: '缺少 Place ID，无法缓存背调',
+                    status: 'failed',
+                    summary: place.title || '',
                     confidence: 'low',
-                    note: '请使用深度模式结果（含 place_id）'
+                    note: '缺少稳定商户 ID，无法缓存背调'
                 });
                 return;
             }
-            if (!refresh && intelCache[key]) {
+            if (!refresh && intelCache[key] && intelTerminal(intelCache[key].status)) {
                 renderIntelPanel(place, intelCache[key]);
                 return;
             }
-            showIntelLoading(place);
+            showIntelLoading(place, '背调中…');
             if (intelAbort) intelAbort.abort();
             intelAbort = new AbortController();
             var url = '/api/v1/jobs/' + encodeURIComponent(JOB_ID) + '/places/' + encodeURIComponent(key) + '/intel';
@@ -450,12 +453,26 @@
                 .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)); })
                 .then(function (data) {
                     intelCache[key] = data;
-                    if (activePlaceId === key) renderIntelPanel(place, data);
+                    if (intelTerminal(data.status)) {
+                        intelReadyMap[key] = true;
+                    }
+                    if (activePlaceId !== key) return;
+                    if (intelTerminal(data.status)) {
+                        renderIntelPanel(place, data);
+                    } else {
+                        showIntelLoading(place, '背调中…');
+                    }
+                    var tr = null;
+                    if (tbody) {
+                        tr = tbody.querySelector('tr[data-place-id="' + String(key).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]');
+                    }
+                    markRowIntelState(tr, key);
                 })
                 .catch(function (err) {
                     if (err && err.name === 'AbortError') return;
                     if (activePlaceId === key) {
                         renderIntelPanel(place, {
+                            status: 'failed',
                             summary: place.title || '',
                             confidence: 'low',
                             note: '背调请求失败：' + (err && err.message ? err.message : 'unknown'),
@@ -483,22 +500,11 @@
             var ready = !key || intelReadyMap[key];
             tr.classList.toggle('intel-pending', !ready);
             tr.classList.toggle('intel-ready', !!ready);
-            tr.title = ready ? '点击查看背调' : '背调进行中，完成后可展开';
+            tr.title = ready ? '点击查看背调' : '背调中…点击可在右侧查看进度';
         }
 
         function selectPlace(place, tr) {
             var key = placeKey(place);
-            if (ENABLE_INTEL && key && !intelReadyMap[key]) {
-                openIntelDrawer();
-                var titleEl = document.getElementById('intel-drawer-title');
-                var bodyEl = document.getElementById('intel-drawer-body');
-                if (titleEl) titleEl.textContent = place.title || '背调详情';
-                if (bodyEl) {
-                    bodyEl.innerHTML = '<div class="intel-loading"><div class="spinner-inline"></div>' +
-                        '<span>背调尚未完成，请稍候…完成后即可展开详情。</span></div>';
-                }
-                return;
-            }
             if (tbody) {
                 tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
             }
@@ -508,6 +514,10 @@
             if (map && isFinite(place.latitude) && isFinite(place.longitude)) {
                 map.setView([place.latitude, place.longitude], 16);
             }
+            // 无论背调是否完成：右侧立即展示；进行中显示「背调中」，完成后展示完整结果
+            if (ENABLE_INTEL && key && !intelReadyMap[key] && !(intelCache[key] && intelTerminal(intelCache[key].status))) {
+                showIntelLoading(place, '背调中…');
+            }
             loadIntelForPlace(place, false);
         }
 
@@ -516,7 +526,8 @@
             var rows = tbody.querySelectorAll('tr[data-place-id]');
             rows.forEach(function (tr) {
                 var key = tr.getAttribute('data-place-id');
-                if (!key || intelReadyMap[key]) {
+                if (!key) return;
+                if (intelReadyMap[key] && !(activePlaceId === key && intelCache[key] && !intelTerminal(intelCache[key].status))) {
                     markRowIntelState(tr, key);
                     return;
                 }
@@ -524,11 +535,21 @@
                     .then(function (res) { return res.ok ? res.json() : null; })
                     .then(function (data) {
                         if (!data) return;
+                        intelCache[key] = data;
                         if (intelTerminal(data.status)) {
                             intelReadyMap[key] = true;
-                            intelCache[key] = data;
                         }
                         markRowIntelState(tr, key);
+                        // 当前选中行：背调完成后自动切换为完整结果
+                        if (activePlaceId === key) {
+                            var place = placeById[key];
+                            if (!place) return;
+                            if (intelTerminal(data.status)) {
+                                renderIntelPanel(place, data);
+                            } else {
+                                showIntelLoading(place, '背调中…');
+                            }
+                        }
                     })
                     .catch(function () {});
             });

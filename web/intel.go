@@ -339,6 +339,41 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 }
 
 var intelJobRunning sync.Map // jobID -> struct{}
+var intelPlaceRunning sync.Map // jobID|placeID -> struct{}
+
+// EnsurePlaceIntelAsync 后台生成单商户背调（避免 GET 一直假 pending）。
+func (s *Service) EnsurePlaceIntelAsync(jobID string, place Place) {
+	ensurePlaceKey(&place)
+	if place.PlaceID == "" {
+		return
+	}
+	key := jobID + "|" + place.PlaceID
+	if _, loaded := intelPlaceRunning.LoadOrStore(key, struct{}{}); loaded {
+		return
+	}
+	if cached, ok := s.loadIntel(jobID, place.PlaceID); ok &&
+		(cached.Status == IntelReady || cached.Status == IntelSkipped || cached.Status == IntelFailed) {
+		intelPlaceRunning.Delete(key)
+		return
+	}
+	_ = s.saveIntel(jobID, &PlaceIntel{
+		PlaceID: place.PlaceID, Title: place.Title, Website: place.Website,
+		Status: IntelRunning, GeneratedAt: time.Now().UTC(),
+		Note: "背调中",
+	})
+	go func(p Place) {
+		defer intelPlaceRunning.Delete(key)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		if _, err := s.BuildPlaceIntel(ctx, jobID, p); err != nil {
+			_ = s.saveIntel(jobID, &PlaceIntel{
+				PlaceID: p.PlaceID, Title: p.Title, Website: p.Website,
+				Status: IntelFailed, GeneratedAt: time.Now().UTC(),
+				Note: err.Error(), Confidence: "low",
+			})
+		}
+	}(place)
+}
 
 // StartJobIntel 并发背调任务内全部商户（有官网/域名优先）；不阻塞抓取主流程。
 func (s *Service) StartJobIntel(ctx context.Context, jobID string) {
@@ -360,6 +395,8 @@ func (s *Service) runJobIntel(ctx context.Context, jobID string) {
 	var wg sync.WaitGroup
 	for i := range places {
 		p := places[i]
+		ensurePlaceKey(&p)
+		places[i] = p
 		if p.PlaceID == "" {
 			continue
 		}

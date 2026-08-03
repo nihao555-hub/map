@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/csv"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -206,6 +208,10 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 		})
 	}
 
+	for i := range places {
+		ensurePlaceKey(&places[i])
+	}
+
 	// 获客优先：WhatsApp > 邮箱 > 电话；同档再按评分/评论数
 	sort.SliceStable(places, func(i, j int) bool {
 		si, sj := contactScore(places[i]), contactScore(places[j])
@@ -220,6 +226,32 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 	})
 
 	return places, nil
+}
+
+// StablePlaceKey 返回背调/前端可用的稳定商户键。
+// Google 偶发不回 place_id/cid 时，用 title+坐标哈希，避免整批背调被跳过。
+func StablePlaceKey(p Place) string {
+	if id := strings.TrimSpace(p.PlaceID); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(p.Cid); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(p.DataID); id != "" {
+		return id
+	}
+	raw := fmt.Sprintf("%s|%.6f|%.6f", strings.TrimSpace(p.Title), p.Latitude, p.Longitude)
+	sum := sha1.Sum([]byte(raw))
+	return "geo_" + hex.EncodeToString(sum[:10])
+}
+
+func ensurePlaceKey(p *Place) {
+	if p == nil {
+		return
+	}
+	if strings.TrimSpace(p.PlaceID) == "" {
+		p.PlaceID = StablePlaceKey(*p)
+	}
 }
 
 // contactScore WhatsApp > 邮箱 > 电话（印尼等市场更看即时通讯）
