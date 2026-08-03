@@ -13,32 +13,41 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
-// PlaceIntel 商户背调：公司架构 + 决策人 + 域名情报（官网/OSINT，证据驱动，不编造）。
-// 思路借鉴高星项目：theHarvester（域名邮箱）、SpiderFoot（多源画像）、OpenCorporates（主体核验）。
+// PlaceIntel 商户背调：公司架构 + 决策人 + 域名情报（官网 + theHarvester/SpiderFoot/OpenCorporates）。
 type PlaceIntel struct {
-	PlaceID        string           `json:"place_id"`
-	Title          string           `json:"title"`
-	Website        string           `json:"website"`
-	Domain         string           `json:"domain,omitempty"`
-	Summary        string           `json:"summary,omitempty"`
-	OrgStructure   []OrgUnit        `json:"org_structure,omitempty"`
-	DecisionMakers []DecisionMaker  `json:"decision_makers,omitempty"`
-	ExtraEmails    []string         `json:"extra_emails,omitempty"`
-	Phones         []string         `json:"phones,omitempty"`
-	Socials        map[string]string `json:"socials,omitempty"`
-	Technologies   []string         `json:"technologies,omitempty"`
-	CompanyRegistry *CompanyHit     `json:"company_registry,omitempty"`
-	MXHosts        []string         `json:"mx_hosts,omitempty"`
-	HasMX          bool             `json:"has_mx,omitempty"`
-	Confidence     string           `json:"confidence,omitempty"` // high|medium|low
-	Sources        []string         `json:"sources,omitempty"`
-	GeneratedAt    time.Time        `json:"generated_at"`
-	Provider       string           `json:"provider,omitempty"`
-	Note           string           `json:"note,omitempty"`
+	PlaceID         string            `json:"place_id"`
+	Title           string            `json:"title"`
+	Website         string            `json:"website"`
+	Domain          string            `json:"domain,omitempty"`
+	Status          string            `json:"status"` // pending|running|ready|failed|skipped
+	Summary         string            `json:"summary,omitempty"`
+	OrgStructure    []OrgUnit         `json:"org_structure,omitempty"`
+	DecisionMakers  []DecisionMaker   `json:"decision_makers,omitempty"`
+	ExtraEmails     []string          `json:"extra_emails,omitempty"`
+	Phones          []string          `json:"phones,omitempty"`
+	Socials         map[string]string `json:"socials,omitempty"`
+	Technologies    []string          `json:"technologies,omitempty"`
+	CompanyRegistry *CompanyHit       `json:"company_registry,omitempty"`
+	MXHosts         []string          `json:"mx_hosts,omitempty"`
+	HasMX           bool              `json:"has_mx,omitempty"`
+	Confidence      string            `json:"confidence,omitempty"` // high|medium|low
+	Sources         []string          `json:"sources,omitempty"`
+	GeneratedAt     time.Time         `json:"generated_at"`
+	Provider        string            `json:"provider,omitempty"`
+	Note            string            `json:"note,omitempty"`
 }
+
+const (
+	IntelPending = "pending"
+	IntelRunning = "running"
+	IntelReady   = "ready"
+	IntelFailed  = "failed"
+	IntelSkipped = "skipped"
+)
 
 // OrgUnit 组织架构节点
 type OrgUnit struct {
@@ -162,21 +171,25 @@ func (s *Service) saveIntel(jobID string, intel *PlaceIntel) error {
 	return os.WriteFile(path, b, 0o600)
 }
 
-// BuildPlaceIntel 对单条商家做背调：官网抓取 + 域名邮箱/MX + 可选公开主体库 + AI 证据归纳。
+// BuildPlaceIntel 对单条商家做背调：官网 + theHarvester/SpiderFoot + OpenCorporates + AI。
 func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place) (*PlaceIntel, error) {
 	if cached, ok := s.loadIntel(jobID, place.PlaceID); ok {
-		return cached, nil
+		if cached.Status == IntelReady || cached.Status == IntelSkipped || cached.Status == IntelFailed {
+			return cached, nil
+		}
 	}
 
 	intel := &PlaceIntel{
 		PlaceID:     place.PlaceID,
 		Title:       place.Title,
 		Website:     place.Website,
+		Status:      IntelRunning,
 		GeneratedAt: time.Now().UTC(),
-		Provider:    "website+osint",
-		Note:        "仅基于公开网页与可核验字段；决策人姓名未在原文出现时不会编造。借鉴 theHarvester / SpiderFoot / OpenCorporates 思路。",
+		Provider:    "website",
+		Note:        "证据驱动：官网抓取 + theHarvester/SpiderFoot（若已安装）+ OpenCorporates；不编造决策人。",
 		Socials:     map[string]string{},
 	}
+	_ = s.saveIntel(jobID, intel)
 	if place.Website != "" {
 		if u, err := url.Parse(place.Website); err == nil {
 			intel.Domain = strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
@@ -229,7 +242,7 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		intel.Phones = mergeUnique(intel.Phones, []string{place.WhatsApp})
 	}
 
-	// theHarvester 风格：域名 MX 存在性（判断邮箱域是否真实可投）
+	// MX（可投域）
 	if intel.Domain != "" {
 		mx, err := net.LookupMX(intel.Domain)
 		if err == nil && len(mx) > 0 {
@@ -243,7 +256,24 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 		}
 	}
 
-	// SpiderFoot/OpenCorporates：公开公司检索（无 token 时尽力，失败不影响主流程）
+	// 真正调用已安装的 theHarvester / SpiderFoot（有域名时）
+	harvesterOK, spiderOK := OSINTToolsAvailable()
+	if intel.Domain != "" && harvesterOK {
+		if h, err := runTheHarvester(ctx, intel.Domain); err == nil {
+			applyHarvester(intel, h)
+		} else {
+			intel.Note = intel.Note + " theHarvester：" + truncateRunes(err.Error(), 100)
+		}
+	}
+	if intel.Domain != "" && spiderOK {
+		if ev, err := runSpiderfootLite(ctx, intel.Domain); err == nil {
+			applySpiderfoot(intel, ev)
+		} else {
+			intel.Note = intel.Note + " SpiderFoot：" + truncateRunes(err.Error(), 100)
+		}
+	}
+
+	// OpenCorporates HTTP API
 	if hit := lookupOpenCorporates(ctx, place.Title, place.Address); hit != nil {
 		intel.CompanyRegistry = hit
 		if hit.RegistryURL != "" {
@@ -286,8 +316,129 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 	}
 
 	intel.Confidence = scoreConfidence(intel)
+	intel.Status = IntelReady
+	intel.GeneratedAt = time.Now().UTC()
 	_ = s.saveIntel(jobID, intel)
 	return intel, nil
+}
+
+var intelJobRunning sync.Map // jobID -> struct{}
+
+// StartJobIntel 并发背调任务内全部商户（有官网/域名优先）；不阻塞抓取主流程。
+func (s *Service) StartJobIntel(ctx context.Context, jobID string) {
+	if _, loaded := intelJobRunning.LoadOrStore(jobID, struct{}{}); loaded {
+		return // 已有一轮在跑
+	}
+	go func() {
+		defer intelJobRunning.Delete(jobID)
+		s.runJobIntel(context.WithoutCancel(ctx), jobID)
+	}()
+}
+
+func (s *Service) runJobIntel(ctx context.Context, jobID string) {
+	places, err := s.GetPlaces(ctx, jobID)
+	if err != nil || len(places) == 0 {
+		return
+	}
+	sem := make(chan struct{}, 3) // 并发上限，避免打爆 OSINT 源
+	var wg sync.WaitGroup
+	for i := range places {
+		p := places[i]
+		if p.PlaceID == "" {
+			continue
+		}
+		if cached, ok := s.loadIntel(jobID, p.PlaceID); ok &&
+			(cached.Status == IntelReady || cached.Status == IntelSkipped) {
+			continue
+		}
+		// 无任何可查线索：直接 skipped，允许前端展开（仅 Maps 字段）
+		if strings.TrimSpace(p.Website) == "" && strings.TrimSpace(p.Emails) == "" &&
+			strings.TrimSpace(p.Phone) == "" {
+			_ = s.saveIntel(jobID, &PlaceIntel{
+				PlaceID: p.PlaceID, Title: p.Title, Status: IntelSkipped,
+				GeneratedAt: time.Now().UTC(),
+				Note:        "无可公开背调线索（无官网/邮箱/电话）",
+				Confidence:  "low",
+			})
+			continue
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(place Place) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			cctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+			defer cancel()
+			if _, err := s.BuildPlaceIntel(cctx, jobID, place); err != nil {
+				_ = s.saveIntel(jobID, &PlaceIntel{
+					PlaceID: place.PlaceID, Title: place.Title, Website: place.Website,
+					Status: IntelFailed, GeneratedAt: time.Now().UTC(),
+					Note: err.Error(), Confidence: "low",
+				})
+			}
+		}(p)
+	}
+	wg.Wait()
+}
+
+// JobIntelStatus 任务级背调进度
+type JobIntelStatus struct {
+	JobID   string `json:"job_id"`
+	Total   int    `json:"total"`
+	Ready   int    `json:"ready"`
+	Pending int    `json:"pending"`
+	Running int    `json:"running"`
+	Failed  int    `json:"failed"`
+	Skipped int    `json:"skipped"`
+	Done    bool   `json:"done"`
+}
+
+// GetJobIntelStatus 扫描 intel 缓存目录统计进度。
+func (s *Service) GetJobIntelStatus(jobID string, placeCount int) JobIntelStatus {
+	st := JobIntelStatus{JobID: jobID, Total: placeCount}
+	dir := filepath.Join(s.dataFolder, "intel", jobID)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		st.Pending = placeCount
+		st.Done = placeCount == 0
+		return st
+	}
+	seen := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var pi PlaceIntel
+		if json.Unmarshal(b, &pi) != nil {
+			continue
+		}
+		seen++
+		switch pi.Status {
+		case IntelReady:
+			st.Ready++
+		case IntelRunning:
+			st.Running++
+		case IntelFailed:
+			st.Failed++
+		case IntelSkipped:
+			st.Skipped++
+		default:
+			st.Pending++
+		}
+	}
+	if placeCount > seen {
+		st.Pending += placeCount - seen
+	}
+	finished := st.Ready + st.Failed + st.Skipped
+	st.Done = placeCount > 0 && finished >= placeCount && st.Running == 0
+	if placeCount == 0 {
+		st.Done = true
+	}
+	return st
 }
 
 func fillSocials(intel *PlaceIntel, place Place) {

@@ -29,6 +29,7 @@
         var places = {{ .PlacesJSON }};
         var JOB_ID = {{ .JobIDJSON }};
         var JOB_STATUS = {{ .StatusJSON }};
+        var ENABLE_INTEL = {{ .EnableIntelJSON }};
 
         var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
         var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
@@ -207,6 +208,8 @@
         var activePlaceId = '';
         var intelCache = {};
         var intelAbort = null;
+        var intelReadyMap = {}; // placeId -> true when ready/failed/skipped
+        var intelPollTimer = null;
 
         function rowHtml(place) {
             return RESULT_COLUMNS.map(function (col) {
@@ -471,17 +474,64 @@
                 });
         }
 
+        function intelTerminal(status) {
+            return status === 'ready' || status === 'failed' || status === 'skipped';
+        }
+
+        function markRowIntelState(tr, key) {
+            if (!tr || !ENABLE_INTEL) return;
+            var ready = !key || intelReadyMap[key];
+            tr.classList.toggle('intel-pending', !ready);
+            tr.classList.toggle('intel-ready', !!ready);
+            tr.title = ready ? '点击查看背调' : '背调进行中，完成后可展开';
+        }
+
         function selectPlace(place, tr) {
+            var key = placeKey(place);
+            if (ENABLE_INTEL && key && !intelReadyMap[key]) {
+                openIntelDrawer();
+                var titleEl = document.getElementById('intel-drawer-title');
+                var bodyEl = document.getElementById('intel-drawer-body');
+                if (titleEl) titleEl.textContent = place.title || '背调详情';
+                if (bodyEl) {
+                    bodyEl.innerHTML = '<div class="intel-loading"><div class="spinner-inline"></div>' +
+                        '<span>背调尚未完成，请稍候…完成后即可展开详情。</span></div>';
+                }
+                return;
+            }
             if (tbody) {
                 tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
             }
             if (tr) tr.classList.add('row-active');
-            activePlaceId = placeKey(place);
+            activePlaceId = key;
             openIntelDrawer();
             if (map && isFinite(place.latitude) && isFinite(place.longitude)) {
                 map.setView([place.latitude, place.longitude], 16);
             }
             loadIntelForPlace(place, false);
+        }
+
+        function pollIntelStatuses() {
+            if (!ENABLE_INTEL || !tbody) return;
+            var rows = tbody.querySelectorAll('tr[data-place-id]');
+            rows.forEach(function (tr) {
+                var key = tr.getAttribute('data-place-id');
+                if (!key || intelReadyMap[key]) {
+                    markRowIntelState(tr, key);
+                    return;
+                }
+                fetch('/api/v1/jobs/' + encodeURIComponent(JOB_ID) + '/places/' + encodeURIComponent(key) + '/intel')
+                    .then(function (res) { return res.ok ? res.json() : null; })
+                    .then(function (data) {
+                        if (!data) return;
+                        if (intelTerminal(data.status)) {
+                            intelReadyMap[key] = true;
+                            intelCache[key] = data;
+                        }
+                        markRowIntelState(tr, key);
+                    })
+                    .catch(function () {});
+            });
         }
 
         function appendPlace(place, isFirst) {
@@ -498,10 +548,13 @@
             var tr = document.createElement('tr');
             tr.innerHTML = rowHtml(place);
             if (key) tr.setAttribute('data-place-id', key);
+            if (!ENABLE_INTEL) {
+                intelReadyMap[key] = true;
+            }
+            markRowIntelState(tr, key);
             tr.addEventListener('click', function () {
                 selectPlace(place, tr);
             });
-            if (isFirst) tr.classList.add('row-active');
             tbody.appendChild(tr);
         }
 
@@ -628,11 +681,19 @@
                 pollTimer = setInterval(pollPlaces, 3000);
                 pollPlaces();
             }
+            if (ENABLE_INTEL) {
+                intelPollTimer = setInterval(pollIntelStatuses, 4000);
+                pollIntelStatuses();
+            }
         }
 
         window.closeJobMap = function () {
             stopStreaming();
             closeIntelDrawer();
+            if (intelPollTimer) {
+                clearInterval(intelPollTimer);
+                intelPollTimer = null;
+            }
             if (intelAbort) intelAbort.abort();
 
             if (window.__jobMap) {

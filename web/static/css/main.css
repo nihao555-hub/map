@@ -1457,6 +1457,8 @@ svg.lucide { flex-shrink: 0; }
 .places-table tbody tr:nth-child(even) { background: #fafbfd; }
 .places-table tbody tr:hover { background: var(--bg-light-blue); }
 .places-table tbody tr.row-active { background: var(--bg-light-blue); box-shadow: inset 3px 0 0 var(--brand-primary); }
+.places-table tbody tr.intel-pending { opacity: 0.72; cursor: wait; }
+.places-table tbody tr.intel-ready { cursor: pointer; }
 
 .places-table .col-name { font-weight: 500; min-width: 140px; }
 .places-table .col-addr { color: var(--text-aux); min-width: 180px; max-width: 280px; }

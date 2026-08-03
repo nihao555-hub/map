@@ -228,6 +228,14 @@
                     <div class="toggle-switch on" id="email-toggle" title="邮箱为必要字段，已锁定开启" aria-disabled="true"></div>
                   </div>
 
+                  <!-- 背调：用户确认后与抓取并发 -->
+                  <div class="switch-row">
+                    <span class="switch-label"><i data-lucide="shield-search" class="w-4 h-4"></i>商家背调（theHarvester/SpiderFoot）</span>
+                    <input type="checkbox" id="enable_intel" name="enable_intel" class="hidden">
+                    <div class="toggle-switch" id="intel-toggle" onclick="toggleSwitch(this, 'enable_intel')" title="开启后结果照常产出，背调并发；完成后才可点开详情"></div>
+                  </div>
+                  <p class="columns-note" id="osint-status-note">正在检测 OSINT 依赖…</p>
+
                   <!-- 语言 -->
                   <div>
                     <label class="field-label-sm" for="lang">语言</label>
@@ -720,22 +728,19 @@
           params['gridmode'] = document.getElementById('gridmode').value;
           params['radius_km'] = document.getElementById('radius_km').value;
           params['radius'] = document.getElementById('radius').value;
+          params['enable_intel'] = document.getElementById('enable_intel').checked ? 'on' : '';
           // 邮箱刚需：始终提交 on（与隐藏 checkbox 状态无关）
           params['email'] = 'on';
           document.getElementById('email').checked = true;
         }
       });
 
-      // 采集提交成功：保留表单内容，刷新任务列表并自动打开进度/结果窗口
+      // 采集提交成功：只刷新任务坞；不自动展开下方结果（需点击右侧任务）
       function handleScrapeSuccess() {
         setTimeout(function () { lucide.createIcons(); }, 100);
-        // scrape 响应会把新任务插到 #job-list 顶部，稍后打开详情弹窗（支持流式增量）
         setTimeout(function () {
           refreshRecords();
-          var first = document.querySelector('#job-list .record-item');
-          if (first && window.openJobView) {
-            window.openJobView(first.dataset.jobId);
-          }
+          if (window.syncTaskDock) window.syncTaskDock();
         }, 80);
       }
 
@@ -790,6 +795,15 @@
         radiusKmEl.addEventListener('input', syncRadiusMeters);
       }
       selectMode('quick');
+      fetch('/api/v1/osint-status').then(function (r) { return r.ok ? r.json() : null; }).then(function (st) {
+        var note = document.getElementById('osint-status-note');
+        if (!note || !st) return;
+        var parts = [];
+        parts.push(st.theharvester ? 'theHarvester ✓' : 'theHarvester ✗');
+        parts.push(st.spiderfoot ? 'SpiderFoot ✓' : 'SpiderFoot ✗');
+        parts.push('OpenCorporates API ✓');
+        note.textContent = '依赖：' + parts.join(' · ') + (st.theharvester && st.spiderfoot ? '' : '（缺省请在服务器执行 bash tools/install_osint.sh）');
+      }).catch(function () {});
     </script>
 </body>
 </html>

@@ -82,8 +82,9 @@ type JobData struct {
 	Columns string `json:"columns"`
 	// 目标客户数量上限：0 = 不限（在目标半径内尽量抓全）
 	MaxResults int `json:"max_results"`
+	// EnableIntel：抓取前由用户确认是否并发背调（theHarvester/SpiderFoot/OC/AI）
+	EnableIntel bool `json:"enable_intel"`
 	// 目标半径由 Radius（米）表达；前端以公里输入，上限见 MaxRadiusKm()
-	// Country / 关键词留痕：方便核对「找什么/在哪/哪个国家」
 	CountryCode  string   `json:"country_code,omitempty"`
 	CountryName  string   `json:"country_name,omitempty"`
 	RawKeywords  []string `json:"raw_keywords,omitempty"`

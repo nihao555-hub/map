@@ -377,10 +377,13 @@
     }
   };
 
+  // 结果栏仅在用户点击右侧任务后显示（不自动展开）
+  var detailUnlocked = false;
+
   // ============ 结果栏 ============
   function updateResultBar(count, modeLabel) {
     var bar = document.getElementById('result-bar');
-    if (!currentJobId) {
+    if (!currentJobId || !detailUnlocked) {
       bar.classList.add('hidden');
       return;
     }
@@ -389,9 +392,10 @@
     document.getElementById('result-mode').textContent = '（' + modeLabel + '）';
   }
 
-  // 打开结果小窗口（运行中会流式追加）
+  // 打开结果详情（底部表 + 右侧背调）；仅任务坞点击后调用
   window.openJobView = function (jobId) {
     if (!jobId) return;
+    detailUnlocked = true;
     htmx.ajax('GET', '/view?id=' + encodeURIComponent(jobId), {
       target: '#map-modal-container',
       swap: 'innerHTML'
@@ -534,10 +538,14 @@
   };
 
   window.focusTaskFromDock = function (jobId) {
+    detailUnlocked = true;
     var el = document.querySelector('#job-list .record-item[data-job-id="' + jobId + '"]');
     if (el) {
       window.selectRecord(el);
+    } else {
+      currentJobId = jobId;
     }
+    // 只有点击右侧任务后，才展开下方结果详情
     window.openJobView(jobId);
   };
 
@@ -624,6 +632,7 @@
     if (!records.length) {
       currentJobId = null;
       currentPlaces = [];
+      detailUnlocked = false;
       stopLivePoll();
       renderMarkers();
       updateResultBar(0, '');
@@ -631,17 +640,16 @@
       return;
     }
 
-    // 保留已选任务；否则优先进行中任务，再选已完成
-    var selected = null;
-    if (currentJobId) {
-      selected = records.filter(function (r) { return r.dataset.jobId === currentJobId; })[0] || null;
+    // 不自动展开结果：仅当用户已点过右侧任务且任务仍存在时，继续同步该任务
+    if (detailUnlocked && currentJobId) {
+      var selected = records.filter(function (r) { return r.dataset.jobId === currentJobId; })[0] || null;
+      if (selected) {
+        selectRecord(selected);
+      }
+    } else {
+      // 未点任务：只刷任务坞，不展开下方结果栏/详情
+      updateResultBar(0, '');
     }
-    if (!selected) {
-      selected = records.filter(function (r) {
-        return r.dataset.status === 'working' || r.dataset.status === 'pending';
-      })[0] || records.filter(function (r) { return r.dataset.status === 'ok'; })[0] || records[0];
-    }
-    selectRecord(selected);
     refreshMapSize();
     window.syncTaskDock && window.syncTaskDock();
   };

@@ -14,6 +14,9 @@ public/
 deploy/xray/config.json
 .env
 
-# Generated proxy credentials — never commit
-deploy/xray/config.json
-.env
+# OSINT tool installs (clone via tools/install_osint.sh)
+tools/osint-venv/
+tools/spiderfoot-venv/
+tools/theHarvester/
+tools/spiderfoot/
+deploy/xray/__pycache__/

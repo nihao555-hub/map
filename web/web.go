@@ -147,6 +147,17 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.apiPlaceIntel(w, r)
 	})
 
+	mux.HandleFunc("/api/v1/jobs/{id}/intel/status", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+		if r.Method != http.MethodGet {
+			renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+			return
+		}
+		ans.apiJobIntelStatus(w, r)
+	})
+
+	mux.HandleFunc("/api/v1/osint-status", ans.apiOSINTStatus)
+
 	mux.HandleFunc("/api/v1/geocode", ans.apiGeocode)
 	mux.HandleFunc("/api/v1/reverse-geocode", ans.apiReverseGeocode)
 	mux.HandleFunc("/api/v1/ai-translate", ans.apiAITranslate)
@@ -389,6 +400,10 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 	// 邮箱为获客刚需：快速/深度/网格一律开启，忽略前端关闭
 	newJob.Data.Email = true
+
+	// 背调：用户抓取前勾选；开启后结果照常产出，背调并发进行
+	newJob.Data.EnableIntel = r.Form.Get("enable_intel") == "on" ||
+		r.Form.Get("enable_intel") == "true" || r.Form.Get("enable_intel") == "1"
 
 	// 网格全量模式
 	if r.Form.Get("gridmode") == "on" {
@@ -1042,13 +1057,23 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 已有缓存且非强制刷新
+	job, _ := s.svc.Get(r.Context(), id.String())
 	refresh := r.URL.Query().Get("refresh") == "1" || r.Method == http.MethodPost
 	if !refresh {
 		if cached, ok := s.svc.loadIntel(id.String(), placeID); ok {
 			renderJSON(w, http.StatusOK, cached)
 			return
 		}
+	}
+
+	// 任务开启了并发背调：未就绪时返回 pending，不在请求线程阻塞跑 OSINT
+	if job.Data.EnableIntel && !refresh {
+		renderJSON(w, http.StatusOK, PlaceIntel{
+			PlaceID: placeID,
+			Status:  IntelPending,
+			Note:    "背调进行中，完成后可展开",
+		})
+		return
 	}
 
 	places, err := s.svc.GetPlaces(r.Context(), id.String())
@@ -1073,7 +1098,7 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 		place.PlaceID = placeID
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 70*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 	intel, err := s.svc.BuildPlaceIntel(ctx, id.String(), place)
 	if err != nil {
@@ -1081,6 +1106,40 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	renderJSON(w, http.StatusOK, intel)
+}
+
+func (s *Server) apiJobIntelStatus(w http.ResponseWriter, r *http.Request) {
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "Invalid ID"})
+		return
+	}
+	places, err := s.svc.GetPlaces(r.Context(), id.String())
+	n := 0
+	if err == nil {
+		n = len(places)
+	}
+	job, _ := s.svc.Get(r.Context(), id.String())
+	st := s.svc.GetJobIntelStatus(id.String(), n)
+	renderJSON(w, http.StatusOK, map[string]any{
+		"status":       st,
+		"enable_intel": job.Data.EnableIntel,
+	})
+}
+
+func (s *Server) apiOSINTStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+		return
+	}
+	h, sf := OSINTToolsAvailable()
+	renderJSON(w, http.StatusOK, map[string]any{
+		"theharvester": h,
+		"spiderfoot":   sf,
+		"opencorporates_api": true,
+		"max_radius_km": MaxRadiusKm(),
+		"hint": "bash tools/install_osint.sh",
+	})
 }
 
 // viewJob renders the map modal fragment for a job, embedding the job's places
@@ -1120,10 +1179,12 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 附带上任务 ID 与状态：前端据此在任务运行中流式追加结果行
+	// 附带上任务 ID / 状态 / 是否背调：前端据此流式追加与门禁展开
 	status := ""
+	enableIntel := false
 	if job, jerr := s.svc.Get(r.Context(), id.String()); jerr == nil {
 		status = job.Status
+		enableIntel = job.Data.EnableIntel
 	}
 
 	// 必须 JSON 编码后再嵌入 <script>：直接 {{ .Places }} 会输出 Go 结构体文本，
@@ -1137,11 +1198,13 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 
 	jobIDJS, _ := jsonJS(id.String())
 	statusJS, _ := jsonJS(status)
+	enableIntelJS, _ := jsonJS(enableIntel)
 
 	viewData := map[string]any{
-		"JobIDJSON":  jobIDJS,
-		"StatusJSON": statusJS,
-		"PlacesJSON": placesJS,
+		"JobIDJSON":        jobIDJS,
+		"StatusJSON":       statusJS,
+		"PlacesJSON":       placesJS,
+		"EnableIntelJSON":  enableIntelJS,
 	}
 
 	var buf bytes.Buffer
