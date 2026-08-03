@@ -377,27 +377,9 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 		go exitMonitor.Run(mateCtx)
 
-		// 背调与抓取并发：周期性对已落盘商户跑 OSINT
-		intelStop := make(chan struct{})
-		if job.Data.EnableIntel {
-			go func() {
-				ticker := time.NewTicker(12 * time.Second)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-intelStop:
-						return
-					case <-mateCtx.Done():
-						return
-					case <-ticker.C:
-						w.svc.StartJobIntel(mateCtx, job.ID)
-					}
-				}
-			}()
-		}
-
+		// 抓取阶段不做背调：先尽快把结果落盘给用户看。
+		// 背调在任务完成后（下方 StatusOK）再统一启动；用户点行时若未完成会显示「背调中」。
 		err = mate.Start(mateCtx, seedJobs...)
-		close(intelStop)
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 			cancel()
 
@@ -417,9 +399,9 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		return err
 	}
 
-	// 收尾再跑一轮，覆盖最后写入的结果
+	// 结果已落盘：此时再开背调，不与地图抓取抢代理/CPU
 	if job.Data.EnableIntel {
-		log.Printf("job %s: final concurrent intel pass", job.ID)
+		log.Printf("job %s: scrape done, starting intel in background", job.ID)
 		w.svc.StartJobIntel(ctx, job.ID)
 	}
 

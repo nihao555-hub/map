@@ -228,11 +228,11 @@
                     <div class="toggle-switch on" id="email-toggle" title="邮箱为必要字段，已锁定开启" aria-disabled="true"></div>
                   </div>
 
-                  <!-- 背调：用户确认后与抓取并发 -->
+                  <!-- 背调：抓取结果出齐后再后台跑；点行时未完成显示「背调中」 -->
                   <div class="switch-row">
-                    <span class="switch-label"><i data-lucide="shield-search" class="w-4 h-4"></i>商家背调（theHarvester/SpiderFoot）</span>
+                    <span class="switch-label"><i data-lucide="shield-search" class="w-4 h-4"></i>商家背调（结果出齐后再跑）</span>
                     <input type="checkbox" id="enable_intel" name="enable_intel" class="hidden">
-                    <div class="toggle-switch" id="intel-toggle" onclick="toggleSwitch(this, 'enable_intel')" title="开启后结果照常产出，背调并发；完成后才可点开详情"></div>
+                    <div class="toggle-switch" id="intel-toggle" onclick="toggleSwitch(this, 'enable_intel')" title="开启后先出采集结果；抓取结束后后台背调。点某一行时若未完成会显示「背调中」"></div>
                   </div>
                   <p class="columns-note" id="osint-status-note">正在检测 OSINT 依赖…</p>
 

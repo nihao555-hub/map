@@ -382,7 +382,7 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 	return intel, nil
 }
 
-var intelJobRunning sync.Map // jobID -> struct{}
+var intelJobRunning sync.Map   // jobID -> struct{}
 var intelPlaceRunning sync.Map // jobID|placeID -> struct{}
 
 // EnsurePlaceIntelAsync 后台生成单商户背调（避免 GET 一直假 pending）。
@@ -419,7 +419,8 @@ func (s *Service) EnsurePlaceIntelAsync(jobID string, place Place) {
 	}(place)
 }
 
-// StartJobIntel 并发背调任务内全部商户（有官网/域名优先）；不阻塞抓取主流程。
+// StartJobIntel 在抓取结果落盘后，后台并发背调任务内全部商户（有官网/域名优先）。
+// 不阻塞结果展示；用户点行时若尚未完成，前端显示「背调中」。
 func (s *Service) StartJobIntel(ctx context.Context, jobID string) {
 	if _, loaded := intelJobRunning.LoadOrStore(jobID, struct{}{}); loaded {
 		return // 已有一轮在跑
