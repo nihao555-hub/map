@@ -143,6 +143,37 @@ svg.lucide { flex-shrink: 0; }
   margin-bottom: 12px;
 }
 
+.tech-fields-hidden {
+  display: none !important;
+}
+
+.task-dock-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #fca5a5;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 12px;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.task-dock-cancel:hover {
+  background: #fef2f2;
+}
+
+.task-dock-item.status-canceled .task-dock-badge {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.intel-simple-row {
+  margin-top: 8px;
+}
+
 .vip-btn {
   display: inline-flex;
   align-items: center;

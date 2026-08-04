@@ -212,3 +212,15 @@ func TestShortDisplayName(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestMapsPlaceHintSkipsCoordinates(t *testing.T) {
+	if !isLatLonLocation("22.582632, 114.061775") {
+		t.Fatal("expected coords")
+	}
+	if got := mapsPlaceHint("22.582632, 114.061775", "Indonesia"); got != "Indonesia" {
+		t.Fatalf("got %q", got)
+	}
+	if got := mapsPlaceHint("Jakarta", "Indonesia"); got != "Jakarta" {
+		t.Fatalf("got %q", got)
+	}
+}

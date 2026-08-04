@@ -156,20 +156,6 @@
               </div>
             </div>
 
-            <!-- 深度模式：结果字段自选（点击深度模式后展开） -->
-            <div class="field-group hidden" id="columns-section">
-              <label class="field-label">结果字段（深度模式可自选）</label>
-              <p class="columns-note">名称 / 链接 / 经纬度 / CID / PlaceID 为系统保留字段，始终包含</p>
-              <div class="columns-grid" id="columns-grid">
-                <!-- 由 JS 生成复选框 -->
-              </div>
-              <div class="columns-actions">
-                <button type="button" class="columns-btn" onclick="setAllColumns(true)">全选</button>
-                <button type="button" class="columns-btn" onclick="setAllColumns(false)">清空</button>
-                <button type="button" class="columns-btn" onclick="resetEssentialColumns()">只留必要字段</button>
-              </div>
-            </div>
-
             <!-- 目标半径（公里） -->
             <div class="field-group">
               <label class="field-label" for="radius_km">目标半径（公里）</label>
@@ -187,121 +173,40 @@
             </button>
             <div id="spinner" class="spinner htmx-indicator"></div>
 
-            <!-- 高级选项（折叠） -->
-            <div class="advanced-block">
-              <button type="button" id="advanced-toggle" onclick="toggleAdvanced()">
-                <span class="adv-left">
-                  <i data-lucide="settings" class="w-4 h-4"></i>
-                  <span data-i18n="advanced">高级选项</span>
-                </span>
-                <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon open" id="advanced-icon"></i>
-              </button>
-
-              <div id="advanced-options" class="collapse-content open">
-                <div class="adv-inner">
-                  <!-- 目标半径内全量抓取，不设数量上限 -->
-                  <div>
-                    <label class="field-label-sm">结果数量</label>
-                    <p class="columns-note">不设上限：在目标半径内网格全量抓取（突破 Google 单列表约 20 条）。量大时请把「最大运行时间」调到 1～2 小时。</p>
-                    <input type="hidden" id="maxresults" name="maxresults" value="0"/>
-                  </div>
-
-                  <!-- 全域全量模式 -->
-                  <div>
-                    <label class="field-label-sm">全域全量模式（网格搜索）</label>
-                    <div class="mode-card mode-card-sm" data-mode="grid" onclick="selectMode('grid')">
-                      <div class="mode-head">
-                        <i data-lucide="grid-3x3" class="w-4 h-4 mode-icon"></i>
-                        <span class="mode-label">全域全量</span>
-                        <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
-                      </div>
-                      <p class="mode-desc">区域切块搜索<br/>结果更全但更慢</p>
-                    </div>
-                    <p class="columns-note">快速/深度会按目标半径自动开粗网格覆盖</p>
-                  </div>
-
-                  <!-- 网格密度 -->
-                  <div id="grid-density-section">
-                    <label class="field-label-sm" for="gridcell">网格密度</label>
-                    <select id="gridcell" name="gridcell" class="select-field">
-                      <option value="2.0">稀疏（约 2km 一格，速度快）</option>
-                      <option value="1.5" selected>标准（约 1.5km 一格，推荐）</option>
-                      <option value="1.0">密集（约 1km 一格，更全但慢）</option>
-                      <option value="0.5">极密（约 500m 一格，最慢最全）</option>
-                    </select>
-                  </div>
-
-                  <!-- 抓取邮箱：获客刚需，快速/深度均强制开启 -->
-                  <div class="switch-row">
-                    <span class="switch-label"><i data-lucide="mail" class="w-4 h-4"></i>抓取邮箱（必开）</span>
-                    <input type="checkbox" id="email" name="email" checked class="hidden">
-                    <div class="toggle-switch on" id="email-toggle" title="邮箱为必要字段，已锁定开启" aria-disabled="true"></div>
-                  </div>
-
-                  <!-- 背调：抓取结果出齐后再后台跑；点行时未完成显示「背调中」 -->
-                  <div class="switch-row">
-                    <span class="switch-label"><i data-lucide="shield-search" class="w-4 h-4"></i>商家背调（结果出齐后再跑）</span>
-                    <input type="checkbox" id="enable_intel" name="enable_intel" class="hidden">
-                    <div class="toggle-switch" id="intel-toggle" onclick="toggleSwitch(this, 'enable_intel')" title="开启后先出采集结果；抓取结束后后台背调。点某一行时若未完成会显示「背调中」"></div>
-                  </div>
-                  <p class="columns-note" id="osint-status-note">正在检测 OSINT 依赖…</p>
-
-                  <!-- 语言 -->
-                  <div>
-                    <label class="field-label-sm" for="lang">语言</label>
-                    <div class="input-field">
-                      <i data-lucide="globe" class="w-4 h-4 input-icon"></i>
-                      <input type="text" id="lang" name="lang" value="" placeholder="自动检测"/>
-                    </div>
-                  </div>
-
-                  <!-- 最大运行时间 -->
-                  <div>
-                    <label class="field-label-sm" for="maxtime">最大运行时间</label>
-                    <select id="maxtime" name="maxtime" class="select-field">
-                      <option value="3m">3 分钟</option>
-                      <option value="10m">10 分钟</option>
-                      <option value="30m">30 分钟</option>
-                      <option value="60m" selected>1 小时（全量推荐）</option>
-                      <option value="120m">2 小时</option>
-                      <option value="240m">4 小时</option>
-                    </select>
-                  </div>
-
-                  <!-- 滚动深度 -->
-                  <div>
-                    <label class="field-label-sm" for="depth">滚动深度</label>
-                    <select id="depth" name="depth" class="select-field">
-                      <option value="5">浅（5 次，快速）</option>
-                      <option value="10">标准（10 次）</option>
-                      <option value="20" selected>深（20 次）</option>
-                      <option value="50">极深（50 次）</option>
-                    </select>
-                  </div>
-
-                  <!-- 隐藏的后端参数 -->
-                  <input type="hidden" id="zoom" name="zoom" value="14">
-                  <input type="hidden" id="latitude" name="latitude" value="0">
-                  <input type="hidden" id="longitude" name="longitude" value="0">
-                  <input type="hidden" id="fastmode" name="fastmode" value="on">
-                  <input type="hidden" id="gridmode" name="gridmode" value="">
-                  <input type="hidden" id="gridbbox" name="gridbbox" value="">
-                  <input type="hidden" id="radius" name="radius" value="10000">
-                  <input type="hidden" id="columns" name="columns" value="">
-
-                  <!-- 代理设置 -->
-                  <div>
-                    <label class="field-label-sm" for="proxies">代理设置 <span class="label-note">（可选）</span></label>
-                    <textarea
-                      id="proxies"
-                      name="proxies"
-                      class="custom-textarea"
-                      rows="3"
-                      placeholder="每行一个代理，支持 HTTP/HTTPS/SOCKS5&#10;例如：http://user:pass@host:port"
-                    ></textarea>
-                  </div>
-                </div>
+            <!-- 用户可见：仅背调开关；技术参数全部隐藏 -->
+            <div class="field-group intel-simple-row">
+              <div class="switch-row">
+                <span class="switch-label"><i data-lucide="shield-search" class="w-4 h-4"></i>商家背调（结果出齐后再跑）</span>
+                <input type="checkbox" id="enable_intel" name="enable_intel" class="hidden">
+                <div class="toggle-switch" id="intel-toggle" onclick="toggleSwitch(this, 'enable_intel')" title="开启后先出采集结果；抓取结束后后台背调"></div>
               </div>
+            </div>
+
+            <!-- 技术字段：对用户隐藏，保留后端兼容默认值 -->
+            <div class="tech-fields-hidden" hidden aria-hidden="true">
+              <input type="hidden" id="maxresults" name="maxresults" value="0"/>
+              <input type="hidden" id="email" name="email" value="on" checked>
+              <input type="hidden" id="lang" name="lang" value="">
+              <input type="hidden" id="maxtime" name="maxtime" value="60m">
+              <input type="hidden" id="depth" name="depth" value="20">
+              <input type="hidden" id="gridcell" name="gridcell" value="1.5">
+              <input type="hidden" id="proxies" name="proxies" value="">
+              <input type="hidden" id="zoom" name="zoom" value="14">
+              <input type="hidden" id="latitude" name="latitude" value="0">
+              <input type="hidden" id="longitude" name="longitude" value="0">
+              <input type="hidden" id="fastmode" name="fastmode" value="on">
+              <input type="hidden" id="gridmode" name="gridmode" value="">
+              <input type="hidden" id="gridbbox" name="gridbbox" value="">
+              <input type="hidden" id="radius" name="radius" value="10000">
+              <input type="hidden" id="columns" name="columns" value="">
+              <div id="columns-section" class="hidden"></div>
+              <div id="grid-density-section" class="hidden"></div>
+              <div id="columns-grid" class="hidden"></div>
+              <p id="osint-status-note" class="hidden"></p>
+              <div id="advanced-options" class="hidden"></div>
+              <button type="button" id="advanced-toggle" class="hidden" tabindex="-1"></button>
+              <i id="advanced-icon" class="hidden"></i>
+              <div class="mode-card hidden" data-mode="grid"></div>
             </div>
           </form>
 
@@ -418,42 +323,42 @@
 
       // 目标国家（可搜索）。code=ISO2, lang=Google hl, zh=中文名
       var COUNTRY_LIST = [
-        {code:'id', lang:'id', zh:'印度尼西亚', en:'Indonesia'},
-        {code:'th', lang:'th', zh:'泰国', en:'Thailand'},
-        {code:'vn', lang:'vi', zh:'越南', en:'Vietnam'},
-        {code:'my', lang:'ms', zh:'马来西亚', en:'Malaysia'},
-        {code:'sg', lang:'en', zh:'新加坡', en:'Singapore'},
-        {code:'ph', lang:'en', zh:'菲律宾', en:'Philippines'},
-        {code:'kh', lang:'km', zh:'柬埔寨', en:'Cambodia'},
-        {code:'la', lang:'lo', zh:'老挝', en:'Laos'},
-        {code:'mm', lang:'my', zh:'缅甸', en:'Myanmar'},
-        {code:'bn', lang:'ms', zh:'文莱', en:'Brunei'},
-        {code:'tl', lang:'en', zh:'东帝汶', en:'Timor-Leste'},
-        {code:'jp', lang:'ja', zh:'日本', en:'Japan'},
-        {code:'kr', lang:'ko', zh:'韩国', en:'South Korea'},
-        {code:'us', lang:'en', zh:'美国', en:'United States'},
-        {code:'gb', lang:'en', zh:'英国', en:'United Kingdom'},
-        {code:'au', lang:'en', zh:'澳大利亚', en:'Australia'},
-        {code:'nz', lang:'en', zh:'新西兰', en:'New Zealand'},
-        {code:'ca', lang:'en', zh:'加拿大', en:'Canada'},
-        {code:'de', lang:'de', zh:'德国', en:'Germany'},
-        {code:'fr', lang:'fr', zh:'法国', en:'France'},
-        {code:'es', lang:'es', zh:'西班牙', en:'Spain'},
-        {code:'it', lang:'it', zh:'意大利', en:'Italy'},
-        {code:'pt', lang:'pt', zh:'葡萄牙', en:'Portugal'},
-        {code:'br', lang:'pt', zh:'巴西', en:'Brazil'},
-        {code:'mx', lang:'es', zh:'墨西哥', en:'Mexico'},
-        {code:'ae', lang:'ar', zh:'阿联酋', en:'United Arab Emirates'},
-        {code:'sa', lang:'ar', zh:'沙特阿拉伯', en:'Saudi Arabia'},
-        {code:'tr', lang:'tr', zh:'土耳其', en:'Turkey'},
-        {code:'ru', lang:'ru', zh:'俄罗斯', en:'Russia'},
-        {code:'in', lang:'en', zh:'印度', en:'India'},
-        {code:'cn', lang:'zh', zh:'中国', en:'China'},
-        {code:'hk', lang:'zh', zh:'中国香港', en:'Hong Kong'},
-        {code:'tw', lang:'zh', zh:'中国台湾', en:'Taiwan'},
-        {code:'nl', lang:'nl', zh:'荷兰', en:'Netherlands'},
-        {code:'pl', lang:'pl', zh:'波兰', en:'Poland'},
-        {code:'se', lang:'sv', zh:'瑞典', en:'Sweden'}
+        {code:'id', lang:'id', zh:'印度尼西亚', en:'Indonesia', lat:-2.5, lon:118, zoom:5},
+        {code:'th', lang:'th', zh:'泰国', en:'Thailand', lat:15.8, lon:101, zoom:6},
+        {code:'vn', lang:'vi', zh:'越南', en:'Vietnam', lat:15.9, lon:105.8, zoom:6},
+        {code:'my', lang:'ms', zh:'马来西亚', en:'Malaysia', lat:4.2, lon:109.5, zoom:6},
+        {code:'sg', lang:'en', zh:'新加坡', en:'Singapore', lat:1.35, lon:103.82, zoom:11},
+        {code:'ph', lang:'en', zh:'菲律宾', en:'Philippines', lat:12.9, lon:121.8, zoom:6},
+        {code:'kh', lang:'km', zh:'柬埔寨', en:'Cambodia', lat:12.5, lon:105, zoom:7},
+        {code:'la', lang:'lo', zh:'老挝', en:'Laos', lat:19.8, lon:102.5, zoom:6},
+        {code:'mm', lang:'my', zh:'缅甸', en:'Myanmar', lat:21.9, lon:96.1, zoom:6},
+        {code:'bn', lang:'ms', zh:'文莱', en:'Brunei', lat:4.5, lon:114.7, zoom:9},
+        {code:'tl', lang:'en', zh:'东帝汶', en:'Timor-Leste', lat:-8.9, lon:125.7, zoom:8},
+        {code:'jp', lang:'ja', zh:'日本', en:'Japan', lat:36.2, lon:138.3, zoom:5},
+        {code:'kr', lang:'ko', zh:'韩国', en:'South Korea', lat:36.5, lon:127.8, zoom:7},
+        {code:'us', lang:'en', zh:'美国', en:'United States', lat:39.8, lon:-98.5, zoom:4},
+        {code:'gb', lang:'en', zh:'英国', en:'United Kingdom', lat:54.5, lon:-3.4, zoom:6},
+        {code:'au', lang:'en', zh:'澳大利亚', en:'Australia', lat:-25.3, lon:133.8, zoom:4},
+        {code:'nz', lang:'en', zh:'新西兰', en:'New Zealand', lat:-41.5, lon:172.5, zoom:5},
+        {code:'ca', lang:'en', zh:'加拿大', en:'Canada', lat:56.1, lon:-106.3, zoom:3},
+        {code:'de', lang:'de', zh:'德国', en:'Germany', lat:51.2, lon:10.4, zoom:6},
+        {code:'fr', lang:'fr', zh:'法国', en:'France', lat:46.2, lon:2.2, zoom:6},
+        {code:'es', lang:'es', zh:'西班牙', en:'Spain', lat:40.4, lon:-3.7, zoom:6},
+        {code:'it', lang:'it', zh:'意大利', en:'Italy', lat:41.9, lon:12.6, zoom:6},
+        {code:'pt', lang:'pt', zh:'葡萄牙', en:'Portugal', lat:39.4, lon:-8.2, zoom:7},
+        {code:'br', lang:'pt', zh:'巴西', en:'Brazil', lat:-14.2, lon:-51.9, zoom:4},
+        {code:'mx', lang:'es', zh:'墨西哥', en:'Mexico', lat:23.6, lon:-102.5, zoom:5},
+        {code:'ae', lang:'ar', zh:'阿联酋', en:'United Arab Emirates', lat:23.4, lon:53.8, zoom:7},
+        {code:'sa', lang:'ar', zh:'沙特阿拉伯', en:'Saudi Arabia', lat:23.9, lon:45.1, zoom:5},
+        {code:'tr', lang:'tr', zh:'土耳其', en:'Turkey', lat:39.0, lon:35.2, zoom:6},
+        {code:'ru', lang:'ru', zh:'俄罗斯', en:'Russia', lat:61.5, lon:105.3, zoom:3},
+        {code:'in', lang:'en', zh:'印度', en:'India', lat:22.0, lon:79.0, zoom:5},
+        {code:'cn', lang:'zh', zh:'中国', en:'China', lat:35.9, lon:104.2, zoom:4},
+        {code:'hk', lang:'zh', zh:'中国香港', en:'Hong Kong', lat:22.3, lon:114.2, zoom:11},
+        {code:'tw', lang:'zh', zh:'中国台湾', en:'Taiwan', lat:23.7, lon:121.0, zoom:7},
+        {code:'nl', lang:'nl', zh:'荷兰', en:'Netherlands', lat:52.1, lon:5.3, zoom:7},
+        {code:'pl', lang:'pl', zh:'波兰', en:'Poland', lat:51.9, lon:19.1, zoom:6},
+        {code:'se', lang:'sv', zh:'瑞典', en:'Sweden', lat:60.1, lon:18.6, zoom:5}
       ];
       var selectedCountry = null;
       var aiTranslateEnabled = false;
@@ -500,6 +405,10 @@
         document.getElementById('lang').value = c.lang;
         document.getElementById('country-dropdown').classList.add('hidden');
         updateAIPreviewHint();
+        // 选国家后飞到该国，避免在默认深圳地图上点选导致「目标国 + 错误坐标」
+        if (c.lat != null && c.lon != null && window.flyMapTo) {
+          window.flyMapTo(c.lat, c.lon, c.zoom || 6);
+        }
       }
 
       // 供地图点选 / 地理编码回调：按 ISO2 同步左侧「目标国家」
@@ -662,18 +571,14 @@
         // 快速：稍低缩放；半径由用户「目标半径」决定，不再按模式硬改
         document.getElementById('zoom').value = mode === 'quick' ? '14' : '15';
         syncRadiusMeters();
-        // 深度模式也展示网格密度（按目标半径自动开网格）
-        document.getElementById('grid-density-section').classList.toggle('hidden', mode === 'quick');
-        if (mode === 'standard' && document.getElementById('gridcell')) {
-          var gc = document.getElementById('gridcell');
-          if (gc.value === '1.5') gc.value = '2.0';
-        }
-        document.getElementById('email').checked = true;
+        var emailEl = document.getElementById('email');
+        if (emailEl) emailEl.checked = true;
         var emailToggle = document.getElementById('email-toggle');
         if (emailToggle) emailToggle.classList.add('on');
-        document.getElementById('columns-section').classList.toggle('hidden', mode === 'quick');
+        var cols = document.getElementById('columns-section');
+        if (cols) cols.classList.add('hidden');
         if (mode === 'standard' || mode === 'grid') {
-          setAllColumns(true);
+          if (typeof setAllColumns === 'function') setAllColumns(true);
           syncColumnsHidden();
         }
         if (mode === 'grid' || mode === 'standard') {

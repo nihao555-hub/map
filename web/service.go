@@ -8,17 +8,72 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Service struct {
 	repo       JobRepository
 	dataFolder string
+
+	cancelMu sync.Mutex
+	cancels  map[string]context.CancelFunc
 }
 
 func NewService(repo JobRepository, dataFolder string) *Service {
 	return &Service{
 		repo:       repo,
 		dataFolder: dataFolder,
+		cancels:    make(map[string]context.CancelFunc),
+	}
+}
+
+// RegisterJobCancel stores the cancel func for a running scrape (called by webrunner).
+func (s *Service) RegisterJobCancel(id string, cancel context.CancelFunc) {
+	if s == nil || id == "" || cancel == nil {
+		return
+	}
+	s.cancelMu.Lock()
+	s.cancels[id] = cancel
+	s.cancelMu.Unlock()
+}
+
+// UnregisterJobCancel removes a finished job's cancel func.
+func (s *Service) UnregisterJobCancel(id string) {
+	if s == nil || id == "" {
+		return
+	}
+	s.cancelMu.Lock()
+	delete(s.cancels, id)
+	s.cancelMu.Unlock()
+}
+
+// signalCancel invokes a registered cancel func if present.
+func (s *Service) signalCancel(id string) bool {
+	s.cancelMu.Lock()
+	cancel := s.cancels[id]
+	s.cancelMu.Unlock()
+	if cancel == nil {
+		return false
+	}
+	cancel()
+	return true
+}
+
+// CancelOwned marks a pending/working job canceled for the owner and stops the runner if active.
+func (s *Service) CancelOwned(ctx context.Context, id, owner string) error {
+	job, err := s.GetOwned(ctx, id, owner)
+	if err != nil {
+		return err
+	}
+	switch job.Status {
+	case StatusPending, StatusWorking:
+		s.signalCancel(id)
+		job.Status = StatusCanceled
+		return s.Update(ctx, &job)
+	case StatusCanceled:
+		return nil
+	default:
+		return fmt.Errorf("job %s is %s and cannot be canceled", id, job.Status)
 	}
 }
 
@@ -102,8 +157,8 @@ func (s *Service) ClaimPending(ctx context.Context) (Job, error) {
 	return s.repo.ClaimPending(ctx)
 }
 
-// JobConcurrency is how many scrape jobs may run in parallel (default 4, max 4).
-// Override with GMS_WEB_JOB_CONCURRENCY.
+// JobConcurrency is how many scrape jobs may run in parallel (default 4, max 8).
+// Override with GMS_WEB_JOB_CONCURRENCY. On small VPS (2 CPU / ~4GB) keep ≤4.
 func JobConcurrency() int {
 	v := strings.TrimSpace(os.Getenv("GMS_WEB_JOB_CONCURRENCY"))
 	if v == "" {
@@ -113,8 +168,35 @@ func JobConcurrency() int {
 	if err != nil || n < 1 {
 		return 4
 	}
-	if n > 4 {
-		return 4
+	if n > 8 {
+		return 8
+	}
+	return n
+}
+
+// PerJobScrapemateConcurrency derives inner worker count so N parallel jobs
+// do not explode CPU/RAM (especially Playwright deep mode).
+func PerJobScrapemateConcurrency(configured int, fastMode bool) int {
+	if configured < 1 {
+		configured = 1
+	}
+	slots := JobConcurrency()
+	if slots < 1 {
+		slots = 1
+	}
+	n := configured / slots
+	if n < 2 {
+		n = 2
+	}
+	if configured < n {
+		n = configured
+	}
+	if !fastMode && n > 2 {
+		// Deep/browser jobs: hard-cap inner concurrency to avoid OOM on small hosts.
+		n = 2
+	}
+	if fastMode && n > 6 {
+		n = 6
 	}
 	return n
 }

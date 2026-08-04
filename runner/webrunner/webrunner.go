@@ -136,6 +136,7 @@ func (w *webrunner) work(ctx context.Context) error {
 				}
 
 				j := job
+				log.Printf("claimed job %s name=%q (parallel slots up to %d)", j.ID, j.Name, maxJobs)
 				eg.Go(func() error {
 					defer func() { <-sem }()
 
@@ -165,6 +166,17 @@ func (w *webrunner) work(ctx context.Context) error {
 }
 
 func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
+	jobCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	w.svc.RegisterJobCancel(job.ID, cancel)
+	defer w.svc.UnregisterJobCancel(job.ID)
+
+	// Re-read status: user may have canceled while queued.
+	if latest, err := w.svc.Get(ctx, job.ID); err == nil && latest.Status == web.StatusCanceled {
+		log.Printf("job %s canceled before start", job.ID)
+		return nil
+	}
+
 	job.Status = web.StatusWorking
 
 	err := w.svc.Update(ctx, job)
@@ -435,12 +447,13 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			log.Printf("deep+email: extended time budget +%ds → %ds total", contactBudget, allowedSeconds)
 		}
 
-		log.Printf("running job %s with %d seed jobs and %d allowed seconds", job.ID, len(seedJobs), allowedSeconds)
+		log.Printf("running job %s with %d seed jobs and %d allowed seconds (job concurrency=%d)",
+			job.ID, len(seedJobs), allowedSeconds, web.JobConcurrency())
 
-		mateCtx, cancel := context.WithTimeout(ctx, time.Duration(allowedSeconds)*time.Second)
-		defer cancel()
+		mateCtx, mateCancel := context.WithTimeout(jobCtx, time.Duration(allowedSeconds)*time.Second)
+		defer mateCancel()
 
-		exitMonitor.SetCancelFunc(cancel)
+		exitMonitor.SetCancelFunc(mateCancel)
 
 		go exitMonitor.Run(mateCtx)
 
@@ -448,8 +461,8 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		// 背调在任务完成后（下方 StatusOK）再统一启动；用户点行时若未完成会显示「背调中」。
 		err = mate.Start(mateCtx, seedJobs...)
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
-			cancel()
-
+			mateCancel()
+			job.Status = web.StatusFailed
 			err2 := w.svc.Update(ctx, job)
 			if err2 != nil {
 				log.Printf("failed to update job status: %v", err2)
@@ -458,7 +471,19 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			return err
 		}
 
-		cancel()
+		mateCancel()
+	}
+
+	// User cancel wins over success/timeout.
+	if jobCtx.Err() != nil {
+		if latest, gerr := w.svc.Get(ctx, job.ID); gerr == nil && latest.Status == web.StatusCanceled {
+			log.Printf("job %s canceled by user", job.ID)
+			return nil
+		}
+		job.Status = web.StatusCanceled
+		_ = w.svc.Update(ctx, job)
+		log.Printf("job %s marked canceled", job.ID)
+		return nil
 	}
 
 	job.Status = web.StatusOK
@@ -477,9 +502,12 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.Job) (mateRunner, error) {
 	return func(_ context.Context, writer io.Writer, job *web.Job) (mateRunner, error) {
-		// 提速：并发 = 配置的并发数；页面复用从 2 提到 20，浏览器复用从 200 提到 1000
+		// Split host concurrency across parallel jobs so 4 jobs don't each spawn 16 workers.
+		jobConc := web.PerJobScrapemateConcurrency(cfg.Concurrency, job.Data.FastMode)
+		log.Printf("job %s scrapemate concurrency=%d (host=%d jobs=%d fast=%v)",
+			job.ID, jobConc, cfg.Concurrency, web.JobConcurrency(), job.Data.FastMode)
 		opts := []func(*scrapemateapp.Config) error{
-			scrapemateapp.WithConcurrency(cfg.Concurrency),
+			scrapemateapp.WithConcurrency(jobConc),
 		}
 		// 快速：HTTP 搜索，空闲可短收尾；深度：浏览器冷启动+滚动常 >45s，过短会误杀整单。
 		if job.Data.FastMode {

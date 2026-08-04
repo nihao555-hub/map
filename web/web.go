@@ -151,6 +151,29 @@ func New(svc *Service, addr string, opts ...ServerOption) (*Server, error) {
 		ans.apiGetPlaces(w, r)
 	})
 
+	mux.HandleFunc("/api/v1/jobs/{id}/places/count", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+		if r.Method != http.MethodGet {
+			renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+			return
+		}
+		ans.apiGetPlacesCount(w, r)
+	})
+
+	mux.HandleFunc("/api/v1/jobs/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+		if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+			renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+			return
+		}
+		ans.apiCancelJob(w, r)
+	})
+
+	mux.HandleFunc("/cancel", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+		ans.cancelJob(w, r)
+	})
+
 	mux.HandleFunc("/api/v1/jobs/{id}/places/{place_id}/intel", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 		if r.Method != http.MethodGet && r.Method != http.MethodPost {
@@ -543,7 +566,15 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 				searchLocation = loc
 			}
 		}
-		log.Printf("跳过地理编码：已有锚点 %s,%s country=%s", newJob.Data.Lat, newJob.Data.Lon, countryCode)
+		// 地图点选常把「在哪里」写成坐标：不要把坐标拼进 Maps 查询词
+		if isLatLonLocation(searchLocation) {
+			if countryName != "" {
+				searchLocation = countryName
+			} else {
+				searchLocation = ""
+			}
+		}
+		log.Printf("跳过地理编码：已有锚点 %s,%s country=%s searchLoc=%q", newJob.Data.Lat, newJob.Data.Lon, countryCode, searchLocation)
 	}
 
 	// 任务名始终由服务端用当前关键词+地点生成，避免前端隐藏域残留导致「名实不符」
@@ -1094,6 +1125,7 @@ func (s *Server) apiGetJob(w http.ResponseWriter, r *http.Request) {
 
 // apiGetPlaces returns the job's mappable places (parsed from its CSV output)
 // as JSON. A job without CSV output yet yields an empty list, not an error.
+// Query lite=1 (default for UI) returns a compact payload for fast first paint.
 func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 	id, ok := getIDFromRequest(r)
 	if !ok {
@@ -1115,7 +1147,33 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	places, err := s.svc.GetPlaces(r.Context(), id.String())
+	lite := r.URL.Query().Get("full") != "1"
+	if lite {
+		places, err := s.svc.GetPlacesLiteCached(r.Context(), id.String())
+		if err != nil {
+			if !errors.Is(err, ErrPlacesNotFound) {
+				log.Printf("api get places lite %s: %v", id, err)
+				renderJSON(w, http.StatusInternalServerError, apiError{
+					Code:    http.StatusInternalServerError,
+					Message: http.StatusText(http.StatusInternalServerError),
+				})
+				return
+			}
+			places = []PlaceLite{}
+		}
+		for i := range places {
+			if places[i].Thumbnail != "" {
+				tmp := Place{Thumbnail: places[i].Thumbnail, StreetViewURL: ""}
+				rewritePlaceMedia(&tmp)
+				places[i].Thumbnail = tmp.Thumbnail
+			}
+		}
+		w.Header().Set("Cache-Control", "private, max-age=2")
+		renderJSON(w, http.StatusOK, places)
+		return
+	}
+
+	places, err := s.svc.GetPlacesCached(r.Context(), id.String())
 
 	if err != nil {
 		if !errors.Is(err, ErrPlacesNotFound) {
@@ -1139,6 +1197,95 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderJSON(w, http.StatusOK, places)
+}
+
+func (s *Server) apiGetPlacesCount(w http.ResponseWriter, r *http.Request) {
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "Invalid ID"})
+		return
+	}
+	if _, err := s.loadAccessibleJob(r, id.String()); err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "Not found"})
+		return
+	}
+	n, err := s.svc.CountPlacesCached(r.Context(), id.String())
+	if err != nil {
+		if errors.Is(err, ErrPlacesNotFound) {
+			renderJSON(w, http.StatusOK, map[string]int{"count": 0})
+			return
+		}
+		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: "internal error"})
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=2")
+	renderJSON(w, http.StatusOK, map[string]int{"count": n})
+}
+
+func (s *Server) apiCancelJob(w http.ResponseWriter, r *http.Request) {
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "Invalid ID"})
+		return
+	}
+	owner := s.requestOwner(r)
+	if owner == "" && InviteRequired() {
+		renderJSON(w, http.StatusUnauthorized, apiError{Code: http.StatusUnauthorized, Message: "需要邀请会话"})
+		return
+	}
+	var err error
+	if owner != "" {
+		err = s.svc.CancelOwned(r.Context(), id.String(), owner)
+	} else {
+		job, gerr := s.svc.Get(r.Context(), id.String())
+		if gerr != nil {
+			err = gerr
+		} else {
+			s.svc.signalCancel(id.String())
+			job.Status = StatusCanceled
+			err = s.svc.Update(r.Context(), &job)
+		}
+	}
+	if err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{Code: http.StatusBadRequest, Message: err.Error()})
+		return
+	}
+	renderJSON(w, http.StatusOK, map[string]string{"id": id.String(), "status": StatusCanceled})
+}
+
+func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		http.Error(w, "Invalid ID", http.StatusUnprocessableEntity)
+		return
+	}
+	owner := s.requestOwner(r)
+	if InviteRequired() && owner == "" {
+		http.Error(w, "需要邀请会话", http.StatusUnauthorized)
+		return
+	}
+	var err error
+	if owner != "" {
+		err = s.svc.CancelOwned(r.Context(), id.String(), owner)
+	} else {
+		job, gerr := s.svc.Get(r.Context(), id.String())
+		if gerr != nil {
+			err = gerr
+		} else {
+			s.svc.signalCancel(id.String())
+			job.Status = StatusCanceled
+			err = s.svc.Update(r.Context(), &job)
+		}
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // apiPlaceIntel 返回/生成商家背调（公司架构 + 决策人联系方式）

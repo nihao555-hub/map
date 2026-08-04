@@ -251,8 +251,8 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 			continue
 		}
 
-		if searchLocation != "" {
-			searchK = searchK + " in " + searchLocation
+		if placeHint := mapsPlaceHint(searchLocation, opt.CountryName); placeHint != "" {
+			searchK = searchK + " in " + placeHint
 		}
 
 		keywords = append(keywords, searchK)
@@ -275,8 +275,8 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 			}
 		}
 		if fallback != "" && !containsChinese(fallback) {
-			if searchLocation != "" {
-				fallback = fallback + " in " + searchLocation
+			if placeHint := mapsPlaceHint(searchLocation, opt.CountryName); placeHint != "" {
+				fallback = fallback + " in " + placeHint
 			}
 			keywords = append(keywords, fallback)
 			translated = true
@@ -284,6 +284,42 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 	}
 
 	return keywords, searchLocation, translated
+}
+
+// isLatLonLocation reports whether s is raw map coordinates (bad as Maps "in …" text).
+func isLatLonLocation(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	var lat, lon float64
+	n, err := fmt.Sscanf(s, "%f,%f", &lat, &lon)
+	if err != nil || n != 2 {
+		n, err = fmt.Sscanf(s, "%f, %f", &lat, &lon)
+	}
+	if err != nil || n != 2 {
+		return false
+	}
+	return lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180
+}
+
+// mapsPlaceHint returns a human place name suitable for Google Maps queries.
+// Raw coordinates are never appended (they poison ranking and yield few junk hits).
+func mapsPlaceHint(location, countryName string) string {
+	location = strings.TrimSpace(location)
+	countryName = strings.TrimSpace(countryName)
+	if location == "" || isLatLonLocation(location) {
+		return countryName
+	}
+	// Overseas Chinese place names should already have been translated above;
+	// if Chinese remains, prefer country English name over poisoning Maps with Han chars.
+	if containsChinese(location) {
+		if countryName != "" {
+			return countryName
+		}
+		return location
+	}
+	return location
 }
 
 // fuzzyPlaceLexicon 处理输入法丢字（「约曼哈顿」←「纽约曼哈顿」）

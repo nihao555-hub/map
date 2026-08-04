@@ -405,10 +405,26 @@
     a.remove();
   };
 
+  // 预取 places（lite），供弹窗脚本瞬间取用，避免点任务后再等一轮 API
+  var placesPrefetch = {};
+  function prefetchPlacesLite(jobId) {
+    if (!jobId || placesPrefetch[jobId]) return placesPrefetch[jobId];
+    placesPrefetch[jobId] = fetch('/api/v1/jobs/' + encodeURIComponent(jobId) + '/places', { credentials: 'same-origin' })
+      .then(function (res) { return res.ok ? res.json() : []; })
+      .catch(function () { return []; });
+    return placesPrefetch[jobId];
+  }
+  window.__takePrefetchedPlaces = function (jobId) {
+    var p = placesPrefetch[jobId];
+    delete placesPrefetch[jobId];
+    return p || null;
+  };
+
   // 打开结果详情（底部表 + 右侧背调小窗）；仅任务坞点击后调用
   window.openJobView = function (jobId) {
     if (!jobId) return;
     detailUnlocked = true;
+    prefetchPlacesLite(jobId); // 与壳并行
     var container = document.getElementById('map-modal-container');
     if (container) {
       // 立即显示骨架，避免点任务后空白等待
@@ -490,7 +506,7 @@
   }
 
   function fetchPlacesForJob(id, modeLabel, hasAnchor, lat, lon, fit) {
-    return fetch('/api/v1/jobs/' + encodeURIComponent(id) + '/places')
+    return fetch('/api/v1/jobs/' + encodeURIComponent(id) + '/places', { credentials: 'same-origin' })
       .then(function (res) { return res.ok ? res.json() : []; })
       .then(function (places) {
         if (currentJobId !== id) return;
@@ -511,8 +527,29 @@
     if (status === 'pending') return tr ? tr('status_pending') : '排队中';
     if (status === 'ok') return tr ? tr('status_ok') : '已完成';
     if (status === 'failed') return tr ? tr('status_failed') : '失败';
+    if (status === 'canceled') return tr ? tr('status_canceled') : '已终止';
     return status || (tr ? tr('status_unknown') : '未知');
   }
+
+  window.cancelJob = function (jobId) {
+    if (!jobId) return;
+    var tr = (typeof window.t === 'function') ? window.t : null;
+    var msg = tr ? tr('cancel_confirm') : '确定终止该任务？';
+    if (!window.confirm(msg)) return;
+    fetch('/api/v1/jobs/' + encodeURIComponent(jobId) + '/cancel', {
+      method: 'POST',
+      credentials: 'same-origin'
+    }).then(function (res) {
+      if (!res.ok) return res.json().then(function (j) { throw new Error((j && j.message) || res.status); });
+      showTip(tr ? tr('cancel_done') : '任务已终止');
+      if (window.htmx) htmx.trigger('#job-list', 'load');
+      setTimeout(function () {
+        if (window.syncTaskDock) window.syncTaskDock();
+      }, 200);
+    }).catch(function (err) {
+      showTip((tr ? tr('cancel_fail') : '终止失败') + ': ' + (err && err.message ? err.message : err));
+    });
+  };
 
   function modeFromRecord(el) {
     var tag = el.querySelector('.mode-tag');
@@ -522,10 +559,10 @@
   function refreshDockCount(jobId) {
     if (!jobId || dockCountInflight[jobId]) return;
     dockCountInflight[jobId] = true;
-    fetch('/api/v1/jobs/' + encodeURIComponent(jobId) + '/places')
-      .then(function (res) { return res.ok ? res.json() : []; })
-      .then(function (places) {
-        dockCountCache[jobId] = (places || []).length;
+    fetch('/api/v1/jobs/' + encodeURIComponent(jobId) + '/places/count', { credentials: 'same-origin' })
+      .then(function (res) { return res.ok ? res.json() : { count: 0 }; })
+      .then(function (data) {
+        dockCountCache[jobId] = (data && typeof data.count === 'number') ? data.count : 0;
         var countEl = document.querySelector('#task-dock-list [data-dock-id="' + jobId + '"] .task-dock-count');
         if (countEl) {
           var n = dockCountCache[jobId] || 0;
@@ -557,9 +594,10 @@
       return r.dataset.status === 'working' || r.dataset.status === 'pending';
     });
     var done = records.filter(function (r) {
-      return r.dataset.status === 'ok' || r.dataset.status === 'failed';
+      return r.dataset.status === 'ok' || r.dataset.status === 'failed' || r.dataset.status === 'canceled';
     }).slice(0, 6);
     var shown = running.concat(done);
+    var tr = (typeof window.t === 'function') ? window.t : null;
 
     list.innerHTML = shown.map(function (el) {
       var id = el.dataset.jobId;
@@ -571,9 +609,13 @@
         ? (count ? ('已抓 ' + count + ' 家') : (status === 'ok' ? '暂无结果' : '等待首条结果…'))
         : (status === 'working' || status === 'pending' ? '同步进度…' : '查看详情');
       var active = id === currentJobId ? ' active' : '';
-      var exportBtn = status === 'ok'
+      var exportBtn = (status === 'ok' || status === 'canceled')
         ? '<button type="button" class="task-dock-csv" title="导出 CSV" onclick="event.stopPropagation(); window.downloadJobCSV(\'' + id + '\')">' +
             '<i data-lucide="download" class="w-3 h-3"></i> CSV</button>'
+        : '';
+      var cancelBtn = (status === 'working' || status === 'pending')
+        ? '<button type="button" class="task-dock-cancel" title="' + (tr ? tr('cancel_job') : '终止') + '" onclick="event.stopPropagation(); window.cancelJob(\'' + id + '\')">' +
+            '<i data-lucide="square" class="w-3 h-3"></i> ' + (tr ? tr('cancel_job') : '终止') + '</button>'
         : '';
       return '<div class="task-dock-item status-' + status + active + '" data-dock-id="' + id + '">' +
         '<button type="button" class="task-dock-main" onclick="window.focusTaskFromDock(\'' + id + '\')">' +
@@ -586,7 +628,7 @@
             '<span class="task-dock-count">' + countText + '</span>' +
           '</div>' +
         '</button>' +
-        exportBtn +
+        cancelBtn + exportBtn +
       '</div>';
     }).join('');
 
@@ -758,6 +800,13 @@
     tip._timer = setTimeout(function () { tip.classList.add('hidden'); }, 3000);
   }
 
+  window.flyMapTo = function (lat, lon, zoom) {
+    if (!map || !isFinite(lat) || !isFinite(lon)) return;
+    setBaseLayer(inChinaView(lat, lon));
+    map.flyTo([lat, lon], zoom || 6);
+    refreshMapSize();
+  };
+
   // ============ 在当前区域重新搜索 ============
   document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('research-btn').addEventListener('click', function () {
@@ -769,9 +818,32 @@
         return;
       }
       var center = map.getCenter();
-      document.getElementById('latitude').value = center.lat.toFixed(6);
-      document.getElementById('longitude').value = center.lng.toFixed(6);
-      document.getElementById('search-form').requestSubmit();
+      var lat = center.lat.toFixed(6);
+      var lng = center.lng.toFixed(6);
+      document.getElementById('latitude').value = lat;
+      document.getElementById('longitude').value = lng;
+      showTip('正在解析当前地图区域…');
+      // 先逆地理：同步国家/短地名，避免「坐标拼进关键词」导致结果又少又差
+      fetch('/api/v1/reverse-geocode?lat=' + encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng))
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (data) {
+          if (data && data.country_code && window.selectCountryByCode) {
+            window.selectCountryByCode(data.country_code);
+          }
+          if (data && data.display_name) {
+            setLocationText(shortenDisplayName(data.display_name) || data.display_name);
+          } else {
+            // 无地名时清空「在哪里」中的坐标，改用国家名锚定搜索词
+            var ccName = document.getElementById('country_name').value;
+            setLocationText(ccName || '');
+          }
+          document.getElementById('search-form').requestSubmit();
+        })
+        .catch(function () {
+          var ccName = document.getElementById('country_name').value;
+          setLocationText(ccName || '');
+          document.getElementById('search-form').requestSubmit();
+        });
     });
 
     // 抓取提交遮罩消失后，强制重算地图尺寸，避免灰屏/半截图

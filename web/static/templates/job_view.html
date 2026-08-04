@@ -962,10 +962,13 @@
                 }
             }
 
-            // 轻量模式：壳先出，places 走 API（比嵌入大 JSON 快很多）
+            // 轻量模式：壳先出；优先用外层预取的 places，否则再打 lite API
             if (LITE_MODE || places.length === 0) {
-                fetch('/api/v1/jobs/' + encodeURIComponent(JOB_ID) + '/places')
-                    .then(function (res) { return res.ok ? res.json() : []; })
+                setJobProgress(-1, '加载结果…', true);
+                var pref = (window.__takePrefetchedPlaces && window.__takePrefetchedPlaces(JOB_ID)) || null;
+                var loadP = pref || fetch('/api/v1/jobs/' + encodeURIComponent(JOB_ID) + '/places', { credentials: 'same-origin' })
+                    .then(function (res) { return res.ok ? res.json() : []; });
+                Promise.resolve(loadP)
                     .then(function (list) { paintPlaces(list); })
                     .catch(function () {
                         if (streamActive) paintPlaces([]);

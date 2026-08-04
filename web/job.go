@@ -10,10 +10,11 @@ import (
 var jobs []Job
 
 const (
-	StatusPending = "pending"
-	StatusWorking = "working"
-	StatusOK      = "ok"
-	StatusFailed  = "failed"
+	StatusPending  = "pending"
+	StatusWorking  = "working"
+	StatusOK       = "ok"
+	StatusFailed   = "failed"
+	StatusCanceled = "canceled"
 )
 
 type SelectParams struct {
