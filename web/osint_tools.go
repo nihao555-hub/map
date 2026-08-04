@@ -47,7 +47,7 @@ func runCmdGroup(ctx context.Context, stdout, stderr *bytes.Buffer, name string,
 // runOSINTEnrichment 并行跑已安装工具 + 增强源。
 // 目标：整段背调 ≤50s，这里第一波 ≤22s，第二波邮箱工具 ≤12s。
 func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st OSINTStatus) {
-	budget, cancel := context.WithTimeout(ctx, 22*time.Second)
+	budget, cancel := context.WithTimeout(ctx, 28*time.Second)
 	defer cancel()
 
 	var (
@@ -59,6 +59,30 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 		mu.Lock()
 		notes = append(notes, s)
 		mu.Unlock()
+	}
+
+	// 先同步跑 LinkedIn X-Ray：需要 Clash 搜索节点，若与 AHU 并行会被 AHU 长锁饿死。
+	if place.Title != "" {
+		xctx, xcancel := context.WithTimeout(ctx, 20*time.Second)
+		people, coURL, err := lookupLinkedInPeople(xctx, place.Title, intel.Domain)
+		xcancel()
+		if err == nil {
+			mu.Lock()
+			if len(people) > 0 {
+				intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, people)
+				intel.Sources = mergeUnique(intel.Sources, []string{"linkedin:ddg"})
+				intel.Provider = strings.Trim(intel.Provider+"+linkedin", "+")
+			}
+			if coURL != "" {
+				if intel.Socials == nil {
+					intel.Socials = map[string]string{}
+				}
+				if intel.Socials["linkedin"] == "" {
+					intel.Socials["linkedin"] = coURL
+				}
+			}
+			mu.Unlock()
+		}
 	}
 
 	// 与 CLI 第一波并行：Hunter/katana/GitHub/GLEIF/Wikidata/AHU + 免 key 公开源

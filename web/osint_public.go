@@ -120,34 +120,23 @@ func runPublicEnrichment(ctx context.Context, intel *PlaceIntel, place Place, mu
 			mu.Unlock()
 		}()
 
+		// LinkedIn X-Ray 已在 runOSINTEnrichment 开头同步执行（避免被 AHU Clash 锁饿死）。
+		// CrossLinked 作为补充；若 X-Ray 已有 /in/ 则跳过，省代理与时间。
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			people, coURL, err := lookupLinkedInPeople(budget, title, domain)
-			if err != nil {
-				return
-			}
 			mu.Lock()
-			if len(people) > 0 {
-				intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, people)
-				intel.Sources = mergeUnique(intel.Sources, []string{"linkedin:ddg"})
-				intel.Provider = strings.Trim(intel.Provider+"+linkedin", "+")
-			}
-			if coURL != "" {
-				if intel.Socials == nil {
-					intel.Socials = map[string]string{}
-				}
-				if intel.Socials["linkedin"] == "" {
-					intel.Socials["linkedin"] = coURL
+			hasIn := false
+			for _, d := range intel.DecisionMakers {
+				if strings.Contains(strings.ToLower(d.LinkedIn), "linkedin.com/in/") {
+					hasIn = true
+					break
 				}
 			}
 			mu.Unlock()
-		}()
-
-		// CrossLinked 同款：Bing/Brave 挖 site:linkedin.com/in 员工姓名（不碰 LinkedIn API）
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+			if hasIn {
+				return
+			}
 			people, err := lookupCrossLinkedEmployees(budget, title, domain)
 			if err != nil || len(people) == 0 {
 				return
@@ -561,37 +550,38 @@ func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]Decision
 	var makers []DecisionMaker
 	coURL := ""
 	seenIn := map[string]bool{}
+	backend := ""
+
+	// 搜索出口有成本（Clash 切节点）；优先前几条高杠杆公式
+	if len(queries) > 4 {
+		queries = queries[:4]
+	}
 
 	for _, q := range queries {
-		html, err := fetchDDGHTML(ctx, q)
-		if err != nil || html == "" {
+		page, src, err := fetchSearchHTMLForLinkedIn(ctx, q)
+		if err != nil || page == "" {
 			continue
 		}
-		for _, m := range ddgResultARe.FindAllStringSubmatch(html, -1) {
-			if len(m) < 3 {
-				continue
-			}
-			href := decodeDDGHref(m[1])
-			label := strings.TrimSpace(tagStripRe.ReplaceAllString(m[2], " "))
-			label = strings.Join(strings.Fields(label), " ")
-			lowHref := strings.ToLower(href)
-			switch {
-			case strings.Contains(lowHref, "linkedin.com/company/"):
-				clean := cleanLinkedInURL(href)
-				if coURL == "" && clean != "" {
-					coURL = clean
+		if backend == "" {
+			backend = src
+		}
+		for _, hit := range extractLinkedInHitsFromHTML(page) {
+			switch hit.Kind {
+			case "company":
+				if coURL == "" {
+					coURL = hit.URL
 				}
-			case strings.Contains(lowHref, "linkedin.com/in/"):
-				clean := cleanLinkedInURL(href)
-				if clean == "" || seenIn[strings.ToLower(clean)] {
+			case "in":
+				key := strings.ToLower(hit.URL)
+				if hit.URL == "" || seenIn[key] {
 					continue
 				}
-				seenIn[strings.ToLower(clean)] = true
-				name, role := parseLinkedInResultTitle(label, title)
+				seenIn[key] = true
+				name, role := parseLinkedInResultTitle(hit.Label, title)
 				if name == "" {
-					name = linkedInSlugToName(clean)
+					name = linkedInSlugToName(hit.URL)
 				}
-				if name == "" {
+				if name == "" || !IsValidPersonName(name) {
 					continue
 				}
 				conf := "medium"
@@ -600,39 +590,20 @@ func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]Decision
 				}
 				makers = append(makers, DecisionMaker{
 					Name: name, Title: firstNonEmpty(role, "LinkedIn profile"),
-					LinkedIn: clean, Source: "linkedin:xray",
-					Evidence: truncateRunes(label, 140), Confidence: conf,
+					LinkedIn: hit.URL, Source: "linkedin:xray",
+					Evidence: truncateRunes(firstNonEmpty(hit.Label, hit.URL), 140), Confidence: conf,
 				})
 			}
 		}
-		if coURL == "" {
-			for _, m := range ddgLinkedInCoRe.FindAllString(html, -1) {
-				if u := cleanLinkedInURL(decodeDDGHref(m)); u != "" {
-					coURL = u
-					break
-				}
-			}
-		}
-		for _, m := range ddgLinkedInInRe.FindAllString(html, -1) {
-			clean := cleanLinkedInURL(decodeDDGHref(m))
-			if clean == "" || seenIn[strings.ToLower(clean)] {
-				continue
-			}
-			seenIn[strings.ToLower(clean)] = true
-			name := linkedInSlugToName(clean)
-			if name == "" {
-				continue
-			}
-			makers = append(makers, DecisionMaker{
-				Name: name, Title: "LinkedIn profile", LinkedIn: clean,
-				Source: "linkedin:xray", Evidence: clean, Confidence: "low",
-			})
+		if len(makers) >= 6 {
+			break
 		}
 	}
 	out := dedupeDecisionMakers(makers)
 	if len(out) > 8 {
 		out = out[:8]
 	}
+	_ = backend
 	return out, coURL, nil
 }
 

@@ -35,13 +35,20 @@
 | 搜索结果 | ✅ | 公司名、地址、电话、bakum_id、变更历史 |
 | Profil Lengkap / Terakhir | ❌ 需付费 voucher | 完整董事/监事 PDF |
 
-机房直连常失败；Clash 新加坡节点实测可搜：
+机房直连常失败；Clash 新加坡节点实测可搜 AHU：
 `export AHU_PROXY=http://127.0.0.1:7890`
+
+LinkedIn X-Ray / Brave 机房 IP 常 403/429；需经 Clash **日本/美国** 节点。
+背调会临时切换 `PROXY` 组（搜人用 JP/US，AHU 用新加坡），共用锁避免踩踏：
 
 ```bash
 bash tools/install_osint.sh
 export HUNTER_API_KEY=...          # 可选，显著提升「姓名+邮箱」
-export AHU_PROXY=http://127.0.0.1:7890   # Clash mixed-port / 住宅代理
+export AHU_PROXY=http://127.0.0.1:17890          # Clash mixed-port
+export SEARCH_PROXY=http://127.0.0.1:17890        # 与 AHU 同代理即可
+export CLASH_API=http://127.0.0.1:19090
+export CLASH_DEFAULT_NODE='新加坡SG-HY2'           # AHU
+export CLASH_SEARCH_NODE='日本JP-HY2,美国LA-优化-GPT'  # LinkedIn 搜索
 ```
 
-决策人满意线优先：`AHU` + `CrossLinked` + `Hunter` + 官网/katana；有真名后再跑 `Maigret`。
+决策人满意线优先：`AHU` + LinkedIn X-Ray(Brave/Clash) + `CrossLinked` + `Hunter` + 官网/katana；有 `/in/` 后 unavatar 补头像，再跑 `Maigret`。

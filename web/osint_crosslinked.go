@@ -116,21 +116,39 @@ func runCrossLinkedCLI(ctx context.Context, company, domain string) ([]DecisionM
 		cmdName, cmdArgs = bin, args
 	}
 
-	var stdout, stderr strings.Builder
-	cmd := exec.CommandContext(ctx, cmdName, cmdArgs...) //nolint:gosec
-	cmd.Dir = tmpDir
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	_ = cmd.Run()
-
-	csvPath := outBase + ".csv"
-	people, perr := parseCrossLinkedCSV(csvPath)
-	if perr != nil {
-		msg := strings.TrimSpace(stderr.String() + "\n" + stdout.String())
-		if msg == "" {
-			msg = perr.Error()
+	var (
+		stdout, stderr strings.Builder
+		people         []DecisionMaker
+		perr           error
+	)
+	// CrossLinked 的 Bing/Google 同样需要可搜索节点；与 X-Ray 共用 Clash 切换锁
+	runErr := withSearchEgress(ctx, func(node string) error {
+		stdout.Reset()
+		stderr.Reset()
+		cmd := exec.CommandContext(ctx, cmdName, cmdArgs...) //nolint:gosec
+		cmd.Dir = tmpDir
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		_ = cmd.Run()
+		csvPath := outBase + ".csv"
+		people, perr = parseCrossLinkedCSV(csvPath)
+		if perr != nil || len(people) == 0 {
+			msg := strings.TrimSpace(stderr.String() + "\n" + stdout.String())
+			if msg == "" && perr != nil {
+				msg = perr.Error()
+			}
+			if msg == "" {
+				msg = "empty names"
+			}
+			return fmt.Errorf("crosslinked via %s: %s", node, truncateRunes(msg, 120))
 		}
-		return nil, fmt.Errorf("crosslinked: %s", truncateRunes(msg, 160))
+		return nil
+	})
+	if runErr != nil && len(people) == 0 {
+		return nil, runErr
+	}
+	if perr != nil && len(people) == 0 {
+		return nil, fmt.Errorf("crosslinked: %s", truncateRunes(perr.Error(), 160))
 	}
 	return people, nil
 }

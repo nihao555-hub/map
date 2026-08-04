@@ -3,8 +3,6 @@ package web
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -279,25 +277,41 @@ func extractDomainEmailsFromSearchHTML(html, domain string) []string {
 
 func fetchBraveHTML(ctx context.Context, q string) (string, error) {
 	u := "https://search.brave.com/search?q=" + url.QueryEscape(q)
-	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	var (
+		body    string
+		lastErr error
+	)
+	err := withSearchEgress(ctx, func(node string) error {
+		raw, code, err := httpGetSearch(ctx, u, 14*time.Second)
+		if err != nil {
+			lastErr = err
+			return err
+		}
+		if searchHTMLLooksBlocked(raw, code) {
+			lastErr = fmt.Errorf("brave status %d via %s", code, node)
+			return lastErr
+		}
+		body = raw
+		return nil
+	})
+	if body != "" {
+		return body, nil
+	}
+	// 无代理 / Clash 不可用时直连兜底
+	raw, code, err2 := httpGetDirect(ctx, u, 12*time.Second)
+	if err2 == nil && code < 400 && !searchHTMLLooksBlocked(raw, code) {
+		return raw, nil
+	}
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
+	if lastErr != nil {
+		return "", lastErr
 	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 500<<10))
-	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("brave status %d", resp.StatusCode)
+	if err2 != nil {
+		return "", err2
 	}
-	return string(raw), nil
+	return "", fmt.Errorf("brave status %d", code)
 }
 
 func fillDecisionMakerEmails(ctx context.Context, intel *PlaceIntel, domain string) {

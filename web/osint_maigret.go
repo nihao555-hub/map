@@ -76,7 +76,9 @@ func enrichMaigretProfiles(ctx context.Context, intel *PlaceIntel, st OSINTStatu
 					intel.DecisionMakers[j.idx].Evidence+"; maigret:"+j.user, 140)
 			}
 			intel.Sources = mergeUnique(intel.Sources, []string{"maigret"})
-			intel.Provider = strings.Trim(intel.Provider+"+maigret", "+")
+			if !strings.Contains(intel.Provider, "maigret") {
+				intel.Provider = strings.Trim(intel.Provider+"+maigret", "+")
+			}
 			mu.Unlock()
 		}()
 	}

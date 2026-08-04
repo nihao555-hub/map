@@ -815,6 +815,20 @@ func lookupAHU(ctx context.Context, company string) (*CompanyHit, []DecisionMake
 	py := ahuPython()
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
+
+	// AHU 需新加坡节点；与 LinkedIn 搜索共用 Clash 锁，避免搜人把节点切走
+	clashSearchMu.Lock()
+	prev := clashCurrentNode(ctx)
+	_ = clashSelectNode(ctx, clashDefaultNode())
+	defer func() {
+		if prev != "" {
+			_ = clashSelectNode(context.Background(), prev)
+		} else {
+			_ = clashSelectNode(context.Background(), clashDefaultNode())
+		}
+		clashSearchMu.Unlock()
+	}()
+
 	var stdout, stderr strings.Builder
 	cmd := exec.CommandContext(ctx, py, script, "--query", company, "--proxy", proxy, "--backend", "playwright") //nolint:gosec
 	cmd.Stdout = &stdout
