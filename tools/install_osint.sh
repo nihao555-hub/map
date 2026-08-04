@@ -20,9 +20,11 @@ fi
 (
   cd theHarvester
   if ! command -v uv >/dev/null; then
-    python3 -m pip install --user uv
+    # 官方安装到 ~/.local/bin（避免 venv/PEP668 下 pip --user 失败）
+    curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="${HOME}/.local/bin:${PATH}"
   fi
+  export PATH="${HOME}/.local/bin:${PATH}"
   uv sync
   uv run theHarvester -h >/dev/null
   echo "[ok] theHarvester"
@@ -77,6 +79,8 @@ pip install -e ./CrossLinked 'PySocks>=1.7.1' 'requests[socks]'
 crosslinked -h >/dev/null
 deactivate
 echo "[ok] CrossLinked (local CLI)"
+
+export PATH="${HOME}/.local/bin:${HOME}/go/bin:${PATH}"
 
 # --- amass ---
 if ! command -v amass >/dev/null && [[ ! -x "${HOME}/go/bin/amass" ]]; then
