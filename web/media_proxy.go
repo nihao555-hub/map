@@ -32,6 +32,7 @@ var mediaAllowedHosts = map[string]bool{
 	"images.contactout.com":              true,
 	"media.licdn.com":                    true,
 	"static.licdn.com":                   true,
+	"unavatar.io":                        true,
 }
 
 // ProxiedMediaURL 把外链图片改写为本站代理地址；非白名单原样返回。
@@ -59,7 +60,8 @@ func mediaHostAllowed(host string) bool {
 		return true
 	}
 	return strings.HasSuffix(host, ".googleusercontent.com") ||
-		strings.HasSuffix(host, ".licdn.com")
+		strings.HasSuffix(host, ".licdn.com") ||
+		host == "unavatar.io" || strings.HasSuffix(host, ".unavatar.io")
 }
 
 // apiMediaProxy GET /api/v1/media?u=<url>

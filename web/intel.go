@@ -1533,6 +1533,10 @@ func isRealAvatarURL(u string) bool {
 	if strings.Contains(u, "media.licdn.com") || strings.Contains(u, "licdn.com/dms/") {
 		return true
 	}
+	// unavatar.io/linkedin/{slug}：领英 authwall 时的公开头像回退（真实 JPEG，非字母占位）
+	if strings.Contains(u, "unavatar.io/linkedin/") || strings.Contains(u, "unavatar.io/github/") {
+		return true
+	}
 	if strings.Contains(u, "gravatar.com") && strings.Contains(u, "d=identicon") {
 		return false
 	}
@@ -1554,7 +1558,7 @@ func enrichLinkedInPublicProfiles(makers []DecisionMaker) {
 			continue
 		}
 		jobs = append(jobs, job{i: i})
-		if len(jobs) >= 6 { // 控制并发与耗时
+		if len(jobs) >= 12 { // 与决策人上限对齐
 			break
 		}
 	}
@@ -1571,6 +1575,10 @@ func enrichLinkedInPublicProfiles(makers []DecisionMaker) {
 			defer wg.Done()
 			defer func() { <-sem }()
 			avatar, headline, loc := fetchLinkedInPublicMeta(makers[j.i].LinkedIn)
+			if avatar == "" {
+				// 普通 /in/ 页常被 LinkedIn 999 authwall；unavatar 仍可取到公开头像 JPEG
+				avatar = lookupUnavatarLinkedIn(makers[j.i].LinkedIn)
+			}
 			if avatar != "" {
 				makers[j.i].Avatar = avatar
 			}
@@ -1586,6 +1594,57 @@ func enrichLinkedInPublicProfiles(makers []DecisionMaker) {
 		}()
 	}
 	wg.Wait()
+}
+
+// lookupUnavatarLinkedIn 用 unavatar.io 取 LinkedIn 公开头像（不登录）。
+// 仅在 HEAD/GET 确认为 image/* 且体积像真人照片时返回，避免字母占位图。
+func lookupUnavatarLinkedIn(profileURL string) string {
+	slug := linkedInSlugUsername(profileURL)
+	if slug == "" {
+		return ""
+	}
+	u := "https://unavatar.io/linkedin/" + url.PathEscape(slug)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; gmaps-intel/1.0)")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	_ = resp.Body.Close()
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	if resp.StatusCode >= 400 || !strings.HasPrefix(ct, "image/") {
+		// 部分 CDN 对 HEAD 不友好，再试短 GET
+		gctx, gcancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer gcancel()
+		greq, err := http.NewRequestWithContext(gctx, http.MethodGet, u, nil)
+		if err != nil {
+			return ""
+		}
+		greq.Header.Set("User-Agent", "Mozilla/5.0 (compatible; gmaps-intel/1.0)")
+		gresp, err := http.DefaultClient.Do(greq)
+		if err != nil {
+			return ""
+		}
+		defer gresp.Body.Close()
+		ct = strings.ToLower(gresp.Header.Get("Content-Type"))
+		if gresp.StatusCode >= 400 || !strings.HasPrefix(ct, "image/") {
+			return ""
+		}
+		n, _ := io.Copy(io.Discard, io.LimitReader(gresp.Body, 64<<10))
+		if n < 800 { // 过小多半是占位/错误图
+			return ""
+		}
+		return u
+	}
+	if cl := resp.ContentLength; cl > 0 && cl < 800 {
+		return ""
+	}
+	return u
 }
 
 var (
