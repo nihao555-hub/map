@@ -129,16 +129,12 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 		return nil, nil, fmt.Errorf("failed to parse search results: %w", err)
 	}
 
-	// 分页：该接口每页固定 20 条。本页抓满且未到页数上限时派生下一页任务；
-	// 种子完成计数只在翻页链结束（不满页 / 到上限 / 出错）时累加，
-	// 避免退出监控在翻页中途误判任务完成。
-	const (
-		searchPageSize = 20
-		maxSearchPages = 10 // 扩页：单点/单格尽量多拿，配合网格覆盖更大区域
-	)
+	// 分页：该接口每页固定 20 条（Google 接口页大小，不是结果总数上限）。
+	// 本页抓满就继续翻下一页，直到不满页为止——不再设页数封顶。
+	const searchPageSize = 20
 
 	rawCount := len(entries)
-	spawnNext := rawCount >= searchPageSize && j.params.Offset < (maxSearchPages-1)*searchPageSize
+	spawnNext := rawCount >= searchPageSize
 
 	var nextJobs []scrapemate.IJob
 

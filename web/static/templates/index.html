@@ -189,16 +189,16 @@
 
               <div id="advanced-options" class="collapse-content open">
                 <div class="adv-inner">
-                  <!-- 可选数量上限 -->
+                  <!-- 目标半径内全量抓取，不设数量上限 -->
                   <div>
-                    <label class="field-label-sm" for="maxresults">数量上限（可选）</label>
-                    <input type="number" id="maxresults" name="maxresults" min="0" step="1" value="0" class="select-field" placeholder="0 = 半径内尽量抓全"/>
-                    <p class="columns-note">默认 0：在目标半径内网格全量抓取（突破 Google 单列表约 20～120 条上限）；填正整数可提前停</p>
+                    <label class="field-label-sm">结果数量</label>
+                    <p class="columns-note">不设上限：在目标半径内网格全量抓取（突破 Google 单列表约 20 条）。量大时请把「最大运行时间」调到 1～2 小时。</p>
+                    <input type="hidden" id="maxresults" name="maxresults" value="0"/>
                   </div>
 
                   <!-- 全域全量模式 -->
                   <div>
-                    <label class="field-label-sm">全域全量模式（网格搜索，突破数量上限）</label>
+                    <label class="field-label-sm">全域全量模式（网格搜索）</label>
                     <div class="mode-card mode-card-sm" data-mode="grid" onclick="selectMode('grid')">
                       <div class="mode-head">
                         <i data-lucide="grid-3x3" class="w-4 h-4 mode-icon"></i>
@@ -251,9 +251,10 @@
                     <select id="maxtime" name="maxtime" class="select-field">
                       <option value="3m">3 分钟</option>
                       <option value="10m">10 分钟</option>
-                      <option value="30m" selected>30 分钟（推荐，量大时更稳）</option>
-                      <option value="60m">1 小时</option>
+                      <option value="30m">30 分钟</option>
+                      <option value="60m" selected>1 小时（全量推荐）</option>
                       <option value="120m">2 小时</option>
+                      <option value="240m">4 小时</option>
                     </select>
                   </div>
 

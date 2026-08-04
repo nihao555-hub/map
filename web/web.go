@@ -443,12 +443,8 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	// 结果列配置（快速模式可不选；深度/网格模式用户自选表头）
 	newJob.Data.Columns = strings.TrimSpace(r.Form.Get("columns"))
 
-	// 可选数量上限（高级）：0 或不填 = 在目标半径内尽量抓全
-	if mr := strings.TrimSpace(r.Form.Get("maxresults")); mr != "" {
-		if v, err := strconv.Atoi(mr); err == nil && v > 0 {
-			newJob.Data.MaxResults = v
-		}
-	}
+	// 不设数量上限：半径内网格全量抓取，忽略前端/历史 maxresults
+	newJob.Data.MaxResults = 0
 
 	// 深度模式：在目标半径内用粗网格覆盖（单点滚动远达不到半径内全量）。
 	if !newJob.Data.FastMode && !newJob.Data.GridMode {
@@ -459,8 +455,8 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		if newJob.Data.Locations == "" {
 			newJob.Data.Locations = locationsStr
 		}
-		log.Printf("深度模式启用粗网格覆盖目标半径 cell=%.1fkm radius=%dm (%.1fkm) max=%d",
-			newJob.Data.GridCellKm, newJob.Data.Radius, float64(newJob.Data.Radius)/1000, newJob.Data.MaxResults)
+		log.Printf("深度模式启用粗网格覆盖目标半径 cell=%.1fkm radius=%dm (%.1fkm) unlimited",
+			newJob.Data.GridCellKm, newJob.Data.Radius, float64(newJob.Data.Radius)/1000)
 	}
 
 	// 用户显式选择的目标国家（优先于地理编码推断）
@@ -941,6 +937,8 @@ func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
 
 	// convert to seconds
 	newJob.Data.MaxTime *= time.Second
+	// Web 产品不设数量上限：半径内全量抓取
+	newJob.Data.MaxResults = 0
 
 	err = newJob.Validate()
 	if err != nil {
