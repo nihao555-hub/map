@@ -423,6 +423,9 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	newJob.Data.EnableIntel = r.Form.Get("enable_intel") == "on" ||
 		r.Form.Get("enable_intel") == "true" || r.Form.Get("enable_intel") == "1"
 
+	// 界面/AI 产出语言（与 Maps hl/lang 独立）；缺省英文
+	newJob.Data.UILang = normalizeUILang(r.Form.Get("ui_lang"))
+
 	// 网格全量模式
 	if r.Form.Get("gridmode") == "on" {
 		newJob.Data.GridMode = true

@@ -6,17 +6,24 @@
     <title>邀请码 · 地图获客</title>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <link rel="stylesheet" href="/static/css/main.css">
+    <script src="/static/js/i18n.js"></script>
 </head>
 <body class="invite-page">
   <div class="invite-shell">
     <div class="invite-panel">
+      <div class="invite-lang-row">
+        <label class="ui-lang-wrap" title="UI language">
+          <i data-lucide="languages" class="w-4 h-4"></i>
+          <select id="ui-lang-select" class="ui-lang-select" aria-label="UI language"></select>
+        </label>
+      </div>
       <a class="brand invite-brand" href="/invite">
         <span class="brand-icon"><i data-lucide="map-pin" class="w-5 h-5"></i></span>
-        <span class="brand-name">地图获客</span>
-        <span class="brand-tag">智能版</span>
+        <span class="brand-name" data-i18n="brand_name">地图获客</span>
+        <span class="brand-tag" data-i18n="brand_tag">智能版</span>
       </a>
-      <h1 class="invite-title">邀请码登录</h1>
-      <p class="invite-desc">邀请码即账号，可重复登录；历史任务会一直保留在该邀请码下。登录会话约 30 天有效，过期后用同一邀请码重新登录即可。</p>
+      <h1 class="invite-title" data-i18n="invite_title">邀请码登录</h1>
+      <p class="invite-desc" data-i18n="invite_desc">邀请码即账号，可重复登录；历史任务会一直保留在该邀请码下。登录会话约 30 天有效，过期后用同一邀请码重新登录即可。</p>
 
       {{if .Error}}
       <div class="invite-error" role="alert">{{.Error}}</div>
@@ -24,13 +31,14 @@
 
       <form class="invite-form" method="post" action="/invite" autocomplete="off">
         <input type="hidden" name="next" value="{{.Next}}">
-        <label class="field-label" for="invite-code">邀请码</label>
+        <label class="field-label" for="invite-code" data-i18n="invite_label">邀请码</label>
         <div class="input-field invite-input">
           <i data-lucide="ticket" class="w-4 h-4 input-icon icon-blue"></i>
           <input
             id="invite-code"
             name="code"
             type="text"
+            data-i18n-placeholder="invite_ph"
             placeholder="例如 GMS-XXXX-XXXX"
             required
             autofocus
@@ -38,10 +46,13 @@
             maxlength="32"
           />
         </div>
-        <button type="submit" class="invite-submit">验证并进入</button>
+        <button type="submit" class="invite-submit" data-i18n="invite_submit">验证并进入</button>
       </form>
     </div>
   </div>
-  <script>lucide.createIcons();</script>
+  <script>
+    if (window.GMS_I18N) { GMS_I18N.init(); }
+    lucide.createIcons();
+  </script>
 </body>
 </html>

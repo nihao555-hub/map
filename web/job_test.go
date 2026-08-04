@@ -8,6 +8,27 @@ import (
 	"time"
 )
 
+func TestNormalizeUILang(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"zh", "zh"},
+		{"ID", "id"},
+		{"fil", "tl"},
+		{"xx", "en"},
+		{"", "en"},
+		{"  th ", "th"},
+	}
+	for _, tt := range tests {
+		if got := normalizeUILang(tt.in); got != tt.want {
+			t.Fatalf("normalizeUILang(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+	if got := uiLangDisplayName("id"); !strings.Contains(got, "Indonesia") {
+		t.Fatalf("uiLangDisplayName(id) = %q", got)
+	}
+}
+
 func TestGeoAnchor(t *testing.T) {
 	tests := []struct {
 		name     string

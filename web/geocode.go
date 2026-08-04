@@ -226,6 +226,7 @@ var countryLang = map[string]string{
 	"cn": "zh", "hk": "zh", "tw": "zh", "mo": "zh",
 	"jp": "ja", "kr": "ko", "th": "th", "vn": "vi",
 	"id": "id", "my": "ms", "sg": "en", "ph": "en", "in": "en",
+	"kh": "km", "la": "lo", "mm": "my", "bn": "ms",
 	"us": "en", "gb": "en", "au": "en", "nz": "en", "ca": "en",
 	"de": "de", "at": "de", "ch": "de", "fr": "fr", "es": "es",
 	"it": "it", "pt": "pt", "br": "pt", "ru": "ru", "ua": "uk",

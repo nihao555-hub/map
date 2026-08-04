@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -73,6 +74,20 @@ func (j *Job) Validate() error {
 	return nil
 }
 
+// normalizeUILang 规范化界面/AI 产出语言代码；不支持时回落 en。
+func normalizeUILang(code string) string {
+	code = strings.ToLower(strings.TrimSpace(code))
+	switch code {
+	case "zh", "en", "id", "ms", "th", "vi", "tl", "fil", "km", "lo", "my":
+		if code == "fil" {
+			return "tl"
+		}
+		return code
+	default:
+		return "en"
+	}
+}
+
 type JobData struct {
 	Keywords     []string      `json:"keywords"`
 	Lang         string        `json:"lang"`
@@ -97,6 +112,8 @@ type JobData struct {
 	MaxResults int `json:"max_results"`
 	// EnableIntel：抓取前由用户确认是否并发背调（theHarvester/SpiderFoot/OC/AI）
 	EnableIntel bool `json:"enable_intel"`
+	// UILang：界面/AI 产出语言（与 Maps 搜索 hl/lang 独立）。如 zh、en、id…
+	UILang string `json:"ui_lang,omitempty"`
 	// 目标半径由 Radius（米）表达；前端以公里输入，上限见 MaxRadiusKm()
 	CountryCode string   `json:"country_code,omitempty"`
 	CountryName string   `json:"country_name,omitempty"`

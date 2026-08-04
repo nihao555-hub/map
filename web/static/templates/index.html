@@ -9,18 +9,23 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="/static/css/main.css">
+    <script src="/static/js/i18n.js"></script>
 </head>
 <body>
     <!-- 顶部导航栏 -->
     <header id="topbar">
       <a class="brand" href="/">
         <span class="brand-icon"><i data-lucide="map-pin" class="w-5 h-5"></i></span>
-        <span class="brand-name">地图获客</span>
-        <span class="brand-tag">智能版</span>
+        <span class="brand-name" data-i18n="brand_name">地图获客</span>
+        <span class="brand-tag" data-i18n="brand_tag">智能版</span>
       </a>
       <div class="topbar-right">
-        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
-        <button type="button" class="help-btn"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</button>
+        <label class="ui-lang-wrap" title="UI language">
+          <i data-lucide="languages" class="w-4 h-4"></i>
+          <select id="ui-lang-select" class="ui-lang-select" aria-label="UI language"></select>
+        </label>
+        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i><span data-i18n="vip">升级会员</span></button>
+        <button type="button" class="help-btn"><i data-lucide="help-circle" class="w-4 h-4"></i><span data-i18n="help">使用帮助</span></button>
         <div class="user-box">
           <span class="avatar"><i data-lucide="user" class="w-4 h-4"></i></span>
           <span class="user-name">张三</span>
@@ -33,8 +38,9 @@
       <!-- 左侧表单面板 -->
       <aside id="sidebar">
         <div id="sidebar-content">
-          <h1 class="page-title">找到精准客户，从地图开始</h1>
-          <p class="page-subtitle">输入位置和需求，智能为您挖掘潜在客户</p>
+          <h1 class="page-title" data-i18n="page_title">找到精准客户，从地图开始</h1>
+          <p class="page-subtitle" data-i18n="page_subtitle">输入位置和需求，智能为您挖掘潜在客户</p>
+          <p class="field-hint" style="margin-top:-8px;margin-bottom:14px" data-i18n="lang_hint">界面与 AI 背调产出将使用此语言；地图搜索仍可用当地原语言</p>
 
           <div id="error-container" class="error-message"></div>
           <form
@@ -51,16 +57,18 @@
             <input type="hidden" id="country_code" name="country_code" value="">
             <input type="hidden" id="country_name" name="country_name" value="">
             <input type="hidden" id="ai_translate" name="ai_translate" value="on">
+            <input type="hidden" id="ui_lang" name="ui_lang" value="zh">
 
             <!-- 目标国家：决定语言 + AI 翻译目标（写在「在哪里」之前） -->
             <div class="field-group">
-              <label class="field-label" for="country-search">目标国家</label>
+              <label class="field-label" for="country-search" data-i18n="country_label">目标国家</label>
               <div class="country-picker" id="country-picker">
                 <div class="input-field">
                   <i data-lucide="globe-2" class="w-4 h-4 input-icon icon-blue"></i>
                   <input
                     type="text"
                     id="country-search"
+                    data-i18n-placeholder="country_ph"
                     placeholder="搜索或选择国家，如：印尼 / Indonesia"
                     autocomplete="off"
                     aria-autocomplete="list"
@@ -72,48 +80,50 @@
               </div>
               <label class="ai-toggle-row" id="ai-toggle-row">
                 <input type="checkbox" id="ai-translate-check" checked />
-                <span>AI 译成目标国搜索词</span>
+                <span data-i18n="ai_toggle">AI 译成目标国搜索词</span>
                 <span class="ai-badge" id="ai-badge">检测中…</span>
               </label>
-              <p class="field-hint" id="country-hint">先选国家；中文关键词由 AI 译成当地可搜词（需配置 GRSAI_API_KEY）</p>
+              <p class="field-hint" id="country-hint" data-i18n="country_hint">先选国家；中文关键词由 AI 译成当地可搜词（需配置 GRSAI_API_KEY）</p>
             </div>
 
             <!-- 在哪里 -->
             <div class="field-group">
-              <label class="field-label" for="locations">在哪里</label>
+              <label class="field-label" for="locations" data-i18n="where_label">在哪里</label>
               <div class="input-field">
                 <i data-lucide="map-pin" class="w-4 h-4 input-icon icon-blue"></i>
                 <input
                   type="text"
                   id="locations"
                   name="locations"
+                  data-i18n-placeholder="where_ph"
                   placeholder="请输入地点，如：雅加达 / 纽约曼哈顿"
                   autocomplete="off"
                 />
               </div>
-              <p class="field-hint">支持中文地名；会按目标国家锚定地图</p>
+              <p class="field-hint" data-i18n="where_hint">支持中文地名；会按目标国家锚定地图</p>
             </div>
 
             <!-- 找什么 -->
             <div class="field-group">
-              <label class="field-label" for="keywords">找什么</label>
+              <label class="field-label" for="keywords" data-i18n="what_label">找什么</label>
               <div class="input-field">
                 <i data-lucide="search" class="w-4 h-4 input-icon"></i>
                 <input
                   type="text"
                   id="keywords"
                   name="keywords"
+                  data-i18n-placeholder="what_ph"
                   placeholder="咖啡馆"
                   autocomplete="off"
                 />
                 <button type="button" class="clear-btn" id="keywords-clear" title="清除">&times;</button>
               </div>
-              <p class="field-hint" id="ai-preview-hint">可用中文；提交时 AI/词典译成目标国语言</p>
+              <p class="field-hint" id="ai-preview-hint" data-i18n="what_hint">可用中文；提交时 AI/词典译成目标国语言</p>
             </div>
 
             <!-- 热门搜索 -->
             <div class="hot-search">
-              <span class="hot-label">热门搜索：</span>
+              <span class="hot-label" data-i18n="hot_label">热门搜索：</span>
               <div class="hot-tags">
                 <button type="button" class="hot-tag" onclick="fillKeyword('咖啡馆')">咖啡馆</button>
                 <button type="button" class="hot-tag" onclick="fillKeyword('奶茶店')">奶茶店</button>
@@ -173,7 +183,7 @@
             <!-- 开始搜索 -->
             <button type="submit" id="start-btn" class="btn-primary">
               <i data-lucide="search" class="w-5 h-5"></i>
-              <span>开始搜索</span>
+              <span data-i18n="start_search">开始搜索</span>
             </button>
             <div id="spinner" class="spinner htmx-indicator"></div>
 
@@ -182,7 +192,7 @@
               <button type="button" id="advanced-toggle" onclick="toggleAdvanced()">
                 <span class="adv-left">
                   <i data-lucide="settings" class="w-4 h-4"></i>
-                  高级选项
+                  <span data-i18n="advanced">高级选项</span>
                 </span>
                 <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon open" id="advanced-icon"></i>
               </button>
@@ -315,20 +325,20 @@
         <div id="map-loading-mask">
           <div class="map-loading-box">
             <div class="spinner-inline"></div>
-            <span>正在采集，请稍候…</span>
+            <span data-i18n="map_loading">正在采集，请稍候…</span>
           </div>
         </div>
 
         <!-- 左上：当前区域重新搜索 -->
         <button type="button" id="research-btn" class="map-card map-card-btn">
           <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-          在当前区域重新搜索
+          <span data-i18n="research">在当前区域重新搜索</span>
         </button>
 
         <!-- 右上：热力图开关 -->
         <div id="heatmap-card" class="map-card">
           <i data-lucide="flame" class="w-4 h-4 flame-icon"></i>
-          <span>显示热力图</span>
+          <span data-i18n="heatmap">显示热力图</span>
           <div class="toggle-switch" id="heatmap-toggle" onclick="toggleHeatmap(this)"></div>
         </div>
 
@@ -337,12 +347,12 @@
           <div class="task-dock-head">
             <div class="task-dock-title">
               <i data-lucide="list-checks" class="w-4 h-4"></i>
-              <span>任务进度</span>
+              <span data-i18n="task_dock">任务进度</span>
             </div>
-            <span id="task-dock-hint" class="task-dock-hint">实时更新</span>
+            <span id="task-dock-hint" class="task-dock-hint" data-i18n="task_hint">实时更新</span>
           </div>
           <div id="task-dock-list" class="task-dock-list">
-            <p class="task-dock-empty">还没有任务。填写左侧表单后点击「开始搜索」。</p>
+            <p class="task-dock-empty" data-i18n="task_empty">还没有任务。填写左侧表单后点击「开始搜索」。</p>
           </div>
         </aside>
 
@@ -356,15 +366,15 @@
         <!-- 底部结果栏 -->
         <div id="result-bar" class="hidden">
           <div class="result-info">
-            <div class="result-title">找到 <b id="result-count">0</b> 个相关结果<span id="result-mode">（快速模式）</span></div>
-            <div class="result-source">真实商户数据 · 结果会随抓取逐渐增加</div>
+            <div class="result-title"><span data-i18n="result_found">找到</span> <b id="result-count">0</b> <span data-i18n="result_related">个相关结果</span><span id="result-mode">（快速模式）</span></div>
+            <div class="result-source" data-i18n="result_source">真实商户数据 · 结果会随抓取逐渐增加</div>
           </div>
           <div class="result-actions">
             <button type="button" id="result-csv-btn" class="csv-export-btn result-csv-btn" title="一键导出 CSV">
               <i data-lucide="download" class="w-4 h-4"></i>
-              <span>导出 CSV</span>
+              <span data-i18n="export_csv">导出 CSV</span>
             </button>
-            <button type="button" id="result-detail-btn" class="result-detail">查看详情 <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
+            <button type="button" id="result-detail-btn" class="result-detail"><span data-i18n="view_detail">查看详情</span> <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
           </div>
         </div>
 
@@ -377,6 +387,7 @@
 
     <script src="/static/js/map.js"></script>
     <script>
+      if (window.GMS_I18N) { GMS_I18N.init(); }
       // 初始化 Lucide 图标
       lucide.createIcons();
 
@@ -413,6 +424,11 @@
         {code:'my', lang:'ms', zh:'马来西亚', en:'Malaysia'},
         {code:'sg', lang:'en', zh:'新加坡', en:'Singapore'},
         {code:'ph', lang:'en', zh:'菲律宾', en:'Philippines'},
+        {code:'kh', lang:'km', zh:'柬埔寨', en:'Cambodia'},
+        {code:'la', lang:'lo', zh:'老挝', en:'Laos'},
+        {code:'mm', lang:'my', zh:'缅甸', en:'Myanmar'},
+        {code:'bn', lang:'ms', zh:'文莱', en:'Brunei'},
+        {code:'tl', lang:'en', zh:'东帝汶', en:'Timor-Leste'},
         {code:'jp', lang:'ja', zh:'日本', en:'Japan'},
         {code:'kr', lang:'ko', zh:'韩国', en:'South Korea'},
         {code:'us', lang:'en', zh:'美国', en:'United States'},

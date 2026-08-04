@@ -506,11 +506,12 @@
 
   // ============ 右侧任务进度面板 ============
   function statusLabel(status) {
-    if (status === 'working') return '进行中';
-    if (status === 'pending') return '排队中';
-    if (status === 'ok') return '已完成';
-    if (status === 'failed') return '失败';
-    return status || '未知';
+    var tr = (typeof window.t === 'function') ? window.t : null;
+    if (status === 'working') return tr ? tr('status_working') : '进行中';
+    if (status === 'pending') return tr ? tr('status_pending') : '排队中';
+    if (status === 'ok') return tr ? tr('status_ok') : '已完成';
+    if (status === 'failed') return tr ? tr('status_failed') : '失败';
+    return status || (tr ? tr('status_unknown') : '未知');
   }
 
   function modeFromRecord(el) {
@@ -528,7 +529,13 @@
         var countEl = document.querySelector('#task-dock-list [data-dock-id="' + jobId + '"] .task-dock-count');
         if (countEl) {
           var n = dockCountCache[jobId] || 0;
-          countEl.textContent = n ? ('已抓 ' + n + ' 家') : '等待首条结果…';
+          var tr = (typeof window.t === 'function') ? window.t : null;
+          if (!n) {
+            countEl.textContent = tr ? tr('dock_waiting') : '等待首条结果…';
+          } else {
+            var units = tr ? tr('dock_units') : '家';
+            countEl.textContent = (tr ? tr('dock_scraped') : '已抓') + ' ' + n + (units ? (' ' + units) : '');
+          }
         }
       })
       .catch(function () {})
@@ -775,6 +782,13 @@
       }
     });
   });
+
+  // 界面语言切换后刷新任务坞文案
+  window.onUILangChange = function () {
+    try {
+      if (typeof window.syncTaskDock === 'function') window.syncTaskDock();
+    } catch (e) {}
+  };
 
   // 启动
   if (document.readyState === 'loading') {

@@ -64,6 +64,10 @@ func TestLangForCountryCode(t *testing.T) {
 		{"cn", "zh"},
 		{"jp", "ja"},
 		{"us", "en"},
+		{"kh", "km"},
+		{"la", "lo"},
+		{"mm", "my"},
+		{"bn", "ms"},
 		{"xx", ""}, // 未覆盖的国家保留用户语言
 		{"", ""},
 	}

@@ -332,7 +332,11 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 	evidenceBlob := strings.ToLower(strings.Join(pageTexts, "\n") + "\n" + strings.Join(rawBodies, "\n"))
 
 	if AITranslateEnabled() && (len(pageTexts) > 0 || place.Title != "") {
-		aiOut, err := AICompanyIntel(ctx, place, strings.Join(pageTexts, "\n\n---\n\n"), intel.ExtraEmails)
+		outputLang := "en"
+		if job, err := s.Get(ctx, jobID); err == nil {
+			outputLang = normalizeUILang(job.Data.UILang)
+		}
+		aiOut, err := AICompanyIntel(ctx, place, strings.Join(pageTexts, "\n\n---\n\n"), intel.ExtraEmails, outputLang)
 		if err == nil && aiOut != nil {
 			if aiOut.Summary != "" {
 				intel.Summary = aiOut.Summary
@@ -1806,21 +1810,50 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+// uiLangDisplayName 返回给模型的自然语言语言名。
+func uiLangDisplayName(code string) string {
+	switch normalizeUILang(code) {
+	case "zh":
+		return "Simplified Chinese (简体中文)"
+	case "id":
+		return "Bahasa Indonesia"
+	case "ms":
+		return "Bahasa Melayu"
+	case "th":
+		return "Thai (ภาษาไทย)"
+	case "vi":
+		return "Vietnamese (Tiếng Việt)"
+	case "tl":
+		return "Filipino"
+	case "km":
+		return "Khmer (ភាសាខ្មែរ)"
+	case "lo":
+		return "Lao (ພາສາລາວ)"
+	case "my":
+		return "Burmese (မြန်မာဘာသာ)"
+	default:
+		return "English"
+	}
+}
+
 // AICompanyIntel 用 GRSAI 从页面文本归纳架构与决策人（严格禁止编造）。
-func AICompanyIntel(ctx context.Context, place Place, pageText string, knownEmails []string) (*PlaceIntel, error) {
+// outputLang 控制 summary 等自然语言字段的产出语言（与 Maps 搜索语言独立）。
+func AICompanyIntel(ctx context.Context, place Place, pageText string, knownEmails []string, outputLang string) (*PlaceIntel, error) {
 	key := grsaiAPIKey()
 	if key == "" {
 		return nil, fmt.Errorf("AI disabled")
 	}
 
-	system := `You are a B2B export sales intelligence analyst (外贸获客). From public website/Google Maps text, extract ONLY evidenced facts useful for outreach:
+	langName := uiLangDisplayName(outputLang)
+	system := fmt.Sprintf(`You are a B2B export sales intelligence analyst (外贸获客). From public website/Google Maps text, extract ONLY evidenced facts useful for outreach:
 1) One short company summary (2 sentences max: what they buy/sell, market, location).
 2) Org units only if explicitly named on the page.
 3) Decision makers / key contacts: prefer Purchasing Manager, Procurement, Buyer, Owner, Director, Founder, Direktur, Import/Export Manager. Include name, title, email, phone, linkedin ONLY if present in the text.
 NEVER invent people. NEVER use email local-parts as names. If only a generic email exists, omit decision_makers.
 Every decision_maker must include evidence (short quote or field name). Prefer empty arrays over guesses.
+CRITICAL LANGUAGE RULE: Write ALL natural-language fields (summary, role descriptions, titles when paraphrased, evidence notes) in %s. Keep proper nouns, emails, phones, URLs unchanged.
 Return STRICT JSON only (no markdown):
-{"summary":"...","org_structure":[{"name":"...","role":"...","parent":"...","evidence":"..."}],"decision_makers":[{"name":"...","title":"...","email":"...","phone":"...","linkedin":"...","source":"...","evidence":"...","confidence":"high|medium|low"}]}`
+{"summary":"...","org_structure":[{"name":"...","role":"...","parent":"...","evidence":"..."}],"decision_makers":[{"name":"...","title":"...","email":"...","phone":"...","linkedin":"...","source":"...","evidence":"...","confidence":"high|medium|low"}]}`, langName)
 
 	user := fmt.Sprintf(`Business: %s
 Category: %s
