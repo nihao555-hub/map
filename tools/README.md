@@ -26,15 +26,22 @@
 
 ### AHU 是什么？
 
-**不是 GitHub 项目。** AHU = 印尼法律与人权部「一般法律行政总局」公开公司查询站
-[ahu.go.id](https://ahu.go.id)（Pencarian Perseroan Terbatas）。  
-我们用 `tools/ahu_lookup.py` 去查 **PT 公司董事/监事真名**——这是印尼法人登记数据，比领英更贴本地批发商。  
-机房 IP 会被 Cloudflare 拦，必须配住宅代理：`export AHU_PROXY=socks5://...`
+**不是 GitHub 项目。** AHU = 印尼法律与人权部公开公司查询站
+[ahu.go.id/pencarian/profil-pt](https://ahu.go.id/pencarian/profil-pt)。  
+`tools/ahu_lookup.py` 用 **Playwright / Crawl4AI / Scrapling** + `AHU_PROXY`（可用 Clash mixed-port）。
+
+| 层级 | 免费？ | 内容 |
+|------|--------|------|
+| 搜索结果 | ✅ | 公司名、地址、电话、bakum_id、变更历史 |
+| Profil Lengkap / Terakhir | ❌ 需付费 voucher | 完整董事/监事 PDF |
+
+机房直连常失败；Clash 新加坡节点实测可搜：
+`export AHU_PROXY=http://127.0.0.1:7890`
 
 ```bash
 bash tools/install_osint.sh
 export HUNTER_API_KEY=...          # 可选，显著提升「姓名+邮箱」
-export AHU_PROXY=http://...        # 可选，印尼董事；机房 IP 会被 CF 拦截
+export AHU_PROXY=http://127.0.0.1:7890   # Clash mixed-port / 住宅代理
 ```
 
-决策人满意线优先：`AHU` + `CrossLinked/领英X-Ray` + `Hunter` + 官网/katana；有真名后再跑 `Maigret`。AI 只归类，不编造姓名。
+决策人满意线优先：`AHU` + `CrossLinked` + `Hunter` + 官网/katana；有真名后再跑 `Maigret`。
