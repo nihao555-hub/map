@@ -99,7 +99,7 @@ func (s *Server) invitePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.Method {
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		s.renderInvite(w, invitePageData{
 			Next: safeNext(r.URL.Query().Get("next")),
 		})
