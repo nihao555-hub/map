@@ -166,7 +166,7 @@ func (s *Server) redeemInvite(w http.ResponseWriter, r *http.Request) {
 
 	token, expires, err := s.invites.Redeem(r.Context(), code)
 	if err != nil {
-		msg := "邀请码无效或已被使用"
+		msg := "邀请码无效，请检查后重试"
 		if !errors.Is(err, ErrInvalidInvite) {
 			log.Printf("invite redeem: %v", err)
 			msg = "兑换失败，请稍后重试"

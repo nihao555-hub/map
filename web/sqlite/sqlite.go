@@ -384,7 +384,8 @@ func (s *Store) EnsureSeed(ctx context.Context, count int) ([]string, error) {
 	return created, nil
 }
 
-// Redeem marks a code as used and creates a session token.
+// Redeem logs in with an invite code (reusable account) and issues a session token.
+// used_at stores the latest login time; codes are never burned.
 func (s *Store) Redeem(ctx context.Context, code string) (string, time.Time, error) {
 	code = web.NormalizeInviteCode(code)
 	if code == "" || !strings.HasPrefix(code, "GMS-") {
@@ -397,16 +398,13 @@ func (s *Store) Redeem(ctx context.Context, code string) (string, time.Time, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var usedAt sql.NullInt64
-	err = tx.QueryRowContext(ctx, `SELECT used_at FROM invite_codes WHERE code = ?`, code).Scan(&usedAt)
+	var existing string
+	err = tx.QueryRowContext(ctx, `SELECT code FROM invite_codes WHERE code = ?`, code).Scan(&existing)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", time.Time{}, web.ErrInvalidInvite
 	}
 	if err != nil {
 		return "", time.Time{}, err
-	}
-	if usedAt.Valid {
-		return "", time.Time{}, web.ErrInvalidInvite
 	}
 
 	token, err := randomToken()
@@ -417,19 +415,12 @@ func (s *Store) Redeem(ctx context.Context, code string) (string, time.Time, err
 	now := time.Now().UTC()
 	expires := now.Add(web.InviteSessionTTL)
 
-	res, err := tx.ExecContext(ctx,
-		`UPDATE invite_codes SET used_at = ?, session_id = ? WHERE code = ? AND used_at IS NULL`,
+	_, err = tx.ExecContext(ctx,
+		`UPDATE invite_codes SET used_at = ?, session_id = ? WHERE code = ?`,
 		now.Unix(), token, code,
 	)
 	if err != nil {
 		return "", time.Time{}, err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	if n == 0 {
-		return "", time.Time{}, web.ErrInvalidInvite
 	}
 
 	_, err = tx.ExecContext(ctx,
@@ -544,14 +535,15 @@ func (s *Store) ExportFile(ctx context.Context, path string) error {
 	}
 
 	var b strings.Builder
-	b.WriteString("# 地图获客 · 邀请码清单\n")
-	b.WriteString("# 格式: CODE\\tSTATUS\\tUSED_AT\n")
+	b.WriteString("# 地图获客 · 邀请码清单（邀请码=可重复登录账号）\n")
+	b.WriteString("# 格式: CODE\\tSTATUS\\tLAST_LOGIN_AT\n")
+	b.WriteString("# STATUS: never=从未登录 active=已登录过（可继续用同一码登录）\n")
 	b.WriteString(fmt.Sprintf("# generated_at=%s total=%d\n", time.Now().UTC().Format(time.RFC3339), len(codes)))
 	for _, c := range codes {
-		status := "unused"
+		status := "never"
 		used := ""
 		if c.UsedAt != nil {
-			status = "used"
+			status = "active"
 			used = c.UsedAt.Format(time.RFC3339)
 		}
 		b.WriteString(fmt.Sprintf("%s\t%s\t%s\n", c.Code, status, used))

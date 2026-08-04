@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,12 +36,11 @@ func (m *memInviteStore) Redeem(_ context.Context, code string) (string, time.Ti
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	code = NormalizeInviteCode(code)
-	used, ok := m.codes[code]
-	if !ok || used {
+	if _, ok := m.codes[code]; !ok {
 		return "", time.Time{}, ErrInvalidInvite
 	}
 	m.codes[code] = true
-	token := "tok-" + code
+	token := fmt.Sprintf("tok-%s-%d", code, time.Now().UnixNano())
 	exp := time.Now().UTC().Add(InviteSessionTTL)
 	m.sessions[token] = exp
 	m.owners[token] = code
@@ -140,5 +140,50 @@ func TestNormalizeInviteCode(t *testing.T) {
 	}
 	if got := NormalizeInviteCode("  gms ab12 cd34  "); got != "GMS-AB12-CD34" {
 		t.Fatalf("spaced: %q", got)
+	}
+}
+
+func TestInviteCodeReusableLogin(t *testing.T) {
+	code := "GMS-ACCT-0001"
+	store := newMemInviteStore(code)
+	svc := NewService(nil, t.TempDir())
+	srv, err := New(svc, ":0", WithInvite(store, true))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	login := func() string {
+		form := strings.NewReader("code=" + code + "&next=/")
+		req := httptest.NewRequest(http.MethodPost, "/invite", form)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		srv.srv.Handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusFound {
+			t.Fatalf("login want 302, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		for _, c := range rec.Result().Cookies() {
+			if c.Name == InviteCookieName {
+				return c.Value
+			}
+		}
+		t.Fatal("missing session cookie")
+		return ""
+	}
+
+	tok1 := login()
+	tok2 := login()
+	if tok1 == tok2 {
+		t.Fatalf("expected distinct session tokens")
+	}
+
+	// Both sessions should unlock the app.
+	for i, tok := range []string{tok1, tok2} {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.AddCookie(&http.Cookie{Name: InviteCookieName, Value: tok})
+		rec := httptest.NewRecorder()
+		srv.srv.Handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("session %d home want 200, got %d", i+1, rec.Code)
+		}
 	}
 }

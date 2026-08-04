@@ -21,12 +21,13 @@ const (
 	DefaultInviteSeedCount = 100
 )
 
-// ErrInvalidInvite is returned when a code is missing, already used, or malformed.
-var ErrInvalidInvite = errors.New("invalid or already used invite code")
+// ErrInvalidInvite is returned when a code is missing or malformed.
+var ErrInvalidInvite = errors.New("invalid invite code")
 
 // InviteStore persists invite codes and browser sessions.
 type InviteStore interface {
 	EnsureSeed(ctx context.Context, count int) (created []string, err error)
+	// Redeem logs in with an invite code. Codes are reusable accounts.
 	Redeem(ctx context.Context, code string) (sessionToken string, expiresAt time.Time, err error)
 	ValidSession(ctx context.Context, token string) (bool, error)
 	// SessionInviteCode returns the invite code bound to a valid session token.

@@ -56,9 +56,21 @@ func TestInviteSeedRedeemAndGate(t *testing.T) {
 		t.Fatalf("ValidSession: ok=%v err=%v", ok, err)
 	}
 
-	_, _, err = store.Redeem(context.Background(), created[0])
-	if err != web.ErrInvalidInvite {
-		t.Fatalf("reuse want ErrInvalidInvite, got %v", err)
+	// Invite codes are reusable accounts: second login must succeed.
+	token2, _, err := store.Redeem(context.Background(), created[0])
+	if err != nil {
+		t.Fatalf("reuse redeem: %v", err)
+	}
+	if token2 == "" || token2 == token {
+		t.Fatalf("expected new session token, got %q", token2)
+	}
+	code1, err := store.SessionInviteCode(context.Background(), token)
+	if err != nil || code1 != created[0] {
+		t.Fatalf("old session code=%q err=%v", code1, err)
+	}
+	code2, err := store.SessionInviteCode(context.Background(), token2)
+	if err != nil || code2 != created[0] {
+		t.Fatalf("new session code=%q err=%v", code2, err)
 	}
 
 	exportPath := filepath.Join(dir, "invite_codes.txt")
