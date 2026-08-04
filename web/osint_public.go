@@ -715,6 +715,37 @@ func containsWholeToken(text, token string) bool {
 	return false
 }
 
+// employerMentionsCompany 要求摘要里出现足够多的公司实义词，避免「Mitra」撞上别的 PT. Tri Mitra。
+func employerMentionsCompany(stripped, companyTitle string) bool {
+	stripped = strings.ToLower(strings.TrimSpace(stripped))
+	if stripped == "" || strings.TrimSpace(companyTitle) == "" {
+		return false
+	}
+	re := regexp.MustCompile(`(?i)\b(PT\.?|CV\.?|TBK\.?|Ltd\.?|Limited|Inc\.?|Corp\.?|LLC|GmbH|Sdn\.?\s*Bhd\.?|Pte\.?|Co\.?|Company|Group|Holding|Holdings|Indonesia|Jakarta|International|Internasional|Trading|Trade|Export|Import|Impor|Ekspor|Global|Asia|Pacific|Solution|Solutions|Service|Services|Industry|Industries|Industrial|Manufacturing|Distributor|Distribution|Logistics|Forwarder|Cargo|Shipping)\b`)
+	cleaned := strings.TrimSpace(re.ReplaceAllString(companyTitle, " "))
+	var tokens []string
+	for _, w := range strings.Fields(strings.ToLower(cleaned)) {
+		w = strings.Trim(w, ".,'")
+		if len(w) >= 4 {
+			tokens = append(tokens, w)
+		}
+	}
+	if len(tokens) == 0 {
+		return false
+	}
+	hits := 0
+	for _, tok := range tokens {
+		if containsWholeToken(stripped, tok) {
+			hits++
+		}
+	}
+	need := 1
+	if len(tokens) >= 2 {
+		need = 2
+	}
+	return hits >= need
+}
+
 // companyBrandToken 从 "PT Deugro Indonesia" 抽出品牌词 Deugro，供搜索公式使用。
 func companyBrandToken(title string) string {
 	t := strings.TrimSpace(title)
