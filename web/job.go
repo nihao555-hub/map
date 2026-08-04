@@ -3,21 +3,25 @@ package web
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
 var jobs []Job
 
 const (
-	StatusPending = "pending"
-	StatusWorking = "working"
-	StatusOK      = "ok"
-	StatusFailed  = "failed"
+	StatusPending  = "pending"
+	StatusWorking  = "working"
+	StatusOK       = "ok"
+	StatusFailed   = "failed"
+	StatusCanceled = "canceled"
 )
 
 type SelectParams struct {
 	Status string
 	Limit  int
+	// Owner filters by invite-code tenant. Empty means no owner filter (worker/admin).
+	Owner string
 }
 
 type JobRepository interface {
@@ -26,14 +30,25 @@ type JobRepository interface {
 	Delete(context.Context, string) error
 	Select(context.Context, SelectParams) ([]Job, error)
 	Update(context.Context, *Job) error
+	// ClaimPending atomically marks the oldest pending job as working.
+	// Returns ErrNoPending when the queue is empty.
+	ClaimPending(context.Context) (Job, error)
 }
+
+// ErrNoPending is returned by ClaimPending when no pending jobs exist.
+var ErrNoPending = errors.New("no pending jobs")
+
+// ErrJobNotFound is returned when a job is missing or not visible to the caller.
+var ErrJobNotFound = errors.New("job not found")
 
 type Job struct {
 	ID     string
 	Name   string
 	Date   time.Time
 	Status string
-	Data   JobData
+	// Owner is the invite code that owns this job (tenant isolation key).
+	Owner string
+	Data  JobData
 }
 
 func (j *Job) Validate() error {
@@ -60,6 +75,20 @@ func (j *Job) Validate() error {
 	return nil
 }
 
+// normalizeUILang 规范化界面/AI 产出语言代码；不支持时回落 en。
+func normalizeUILang(code string) string {
+	code = strings.ToLower(strings.TrimSpace(code))
+	switch code {
+	case "zh", "en", "id", "ms", "th", "vi", "tl", "fil", "km", "lo", "my":
+		if code == "fil" {
+			return "tl"
+		}
+		return code
+	default:
+		return "en"
+	}
+}
+
 type JobData struct {
 	Keywords     []string      `json:"keywords"`
 	Lang         string        `json:"lang"`
@@ -74,18 +103,27 @@ type JobData struct {
 	MaxTime      time.Duration `json:"max_time"`
 	Proxies      []string      `json:"proxies"`
 	// 网格全量模式：把区域切块搜索，突破 120 条上限
-	GridMode    bool    `json:"grid_mode"`
-	GridBBox    string  `json:"grid_bbox"`    // "minLat,minLon,maxLat,maxLon"
-	GridCellKm  float64 `json:"grid_cell_km"` // 每格边长（公里）
-	Locations   string  `json:"locations"`    // 原始地点名，用于网格模式的地理编码
+	GridMode   bool    `json:"grid_mode"`
+	GridBBox   string  `json:"grid_bbox"`    // "minLat,minLon,maxLat,maxLon"
+	GridCellKm float64 `json:"grid_cell_km"` // 每格边长（公里）
+	Locations  string  `json:"locations"`    // 原始地点名，用于网格模式的地理编码
 	// 结果列配置：逗号分隔的 CSV 列名；空 = 按模式默认（快速=必要列，深度/网格=全部列）
 	Columns string `json:"columns"`
-	// 目标客户数量上限：0 = 不限（抓到全域全量为止）
+	// 目标客户数量上限：0 = 不限（在目标半径内尽量抓全）
 	MaxResults int `json:"max_results"`
+	// EnableIntel：抓取前由用户确认是否并发背调（theHarvester/SpiderFoot/OC/AI）
+	EnableIntel bool `json:"enable_intel"`
+	// UILang：界面/AI 产出语言（与 Maps 搜索 hl/lang 独立）。如 zh、en、id…
+	UILang string `json:"ui_lang,omitempty"`
+	// 目标半径由 Radius（米）表达；前端以公里输入，上限见 MaxRadiusKm()
+	CountryCode string   `json:"country_code,omitempty"`
+	CountryName string   `json:"country_name,omitempty"`
+	RawKeywords []string `json:"raw_keywords,omitempty"`
 }
 
 // GeoAnchor 返回用于展示的锚定坐标（如 "13.756331, 100.501765"），
 // 无有效锚定（空值或表单默认的 0,0）时返回空串，模板据此决定是否展示
+//
 //nolint:gocritic // 模板里以值形式访问 .Data.GeoAnchor，需要值接收者
 func (d JobData) GeoAnchor() string {
 	if !hasGeoAnchor(d.Lat, d.Lon) {

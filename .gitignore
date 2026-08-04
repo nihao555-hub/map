@@ -9,3 +9,23 @@ gmaps-output
 .vercel
 public/
 .vercel/
+
+# Generated proxy credentials — never commit
+deploy/xray/config.json
+.env
+
+# OSINT tool installs (clone via tools/install_osint.sh)
+tools/osint-venv/
+tools/osint-extra-venv/
+tools/spiderfoot-venv/
+tools/crosslinked-venv/
+tools/theHarvester/
+tools/spiderfoot/
+tools/blackbird/
+tools/Photon/
+tools/CrossLinked/
+tools/maigret/
+deploy/xray/__pycache__/
+tools/logs/
+tools/crosslinked-venv/
+tools/ahu-venv/

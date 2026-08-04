@@ -16,6 +16,33 @@ func writeCSV(t *testing.T, dir, id, content string) {
 	}
 }
 
+func TestGetPlacesSortsEmailFirst(t *testing.T) {
+	dir := t.TempDir()
+	csvPath := filepath.Join(dir, "job-email.csv")
+	content := "title,address,latitude,longitude,link,category,phone,website,review_rating,review_count,emails\n" +
+		"OnlyPhone,Addr,1.0,2.0,http://a,cat,111,,4.0,10,\n" +
+		"HasEmail,Addr,1.1,2.1,http://b,cat,222,http://b.com,3.0,5,a@b.com\n" +
+		"Neither,Addr,1.2,2.2,http://c,cat,,,5.0,20,\n"
+	if err := os.WriteFile(csvPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewService(nil, dir)
+	places, err := svc.GetPlaces(context.Background(), "job-email")
+	if err != nil {
+		t.Fatalf("GetPlaces: %v", err)
+	}
+	if len(places) != 3 {
+		t.Fatalf("len=%d", len(places))
+	}
+	if places[0].Title != "HasEmail" {
+		t.Fatalf("want email-first, got %q", places[0].Title)
+	}
+	if places[1].Title != "OnlyPhone" {
+		t.Fatalf("want phone second, got %q", places[1].Title)
+	}
+}
+
 func TestGetPlacesParsesCSV(t *testing.T) {
 	dir := t.TempDir()
 	svc := NewService(nil, dir)
@@ -109,5 +136,27 @@ func TestGetPlacesRejectsTraversal(t *testing.T) {
 
 	if _, err := svc.GetPlaces(context.Background(), "../etc/passwd"); err == nil {
 		t.Fatal("expected error for path traversal")
+	}
+}
+
+func TestJobConcurrencyDefaultIsFour(t *testing.T) {
+	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "")
+	if got := JobConcurrency(); got != 4 {
+		t.Fatalf("default=%d want 4", got)
+	}
+	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "3")
+	if got := JobConcurrency(); got != 3 {
+		t.Fatalf("override=%d want 3", got)
+	}
+	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "99")
+	if got := JobConcurrency(); got != 8 {
+		t.Fatalf("cap=%d want 8", got)
+	}
+	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "4")
+	if got := PerJobScrapemateConcurrency(16, true); got != 4 {
+		t.Fatalf("per-job fast=%d want 4", got)
+	}
+	if got := PerJobScrapemateConcurrency(16, false); got != 2 {
+		t.Fatalf("per-job deep=%d want 2", got)
 	}
 }

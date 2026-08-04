@@ -50,14 +50,22 @@ func New(cfg *runner.Config) (runner.Runner, error) {
 
 	dbpath := filepath.Join(cfg.DataFolder, dbfname)
 
-	repo, err := sqlite.New(dbpath)
+	store, err := sqlite.New(dbpath)
 	if err != nil {
 		return nil, err
 	}
 
-	svc := web.NewService(repo, cfg.DataFolder)
+	svc := web.NewService(store, cfg.DataFolder)
 
-	srv, err := web.New(svc, cfg.Addr)
+	inviteOn := web.InviteRequired()
+	if inviteOn {
+		exportPath := filepath.Join(cfg.DataFolder, "invite_codes.txt")
+		if err := web.SeedAndExport(context.Background(), store, web.InviteSeedCount(), exportPath); err != nil {
+			return nil, fmt.Errorf("seed invite codes: %w", err)
+		}
+	}
+
+	srv, err := web.New(svc, cfg.Addr, web.WithInvite(store, inviteOn))
 	if err != nil {
 		return nil, err
 	}
@@ -94,51 +102,81 @@ func (w *webrunner) work(ctx context.Context) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
+	maxJobs := web.JobConcurrency()
+	log.Printf("web runner: job concurrency=%d (GMS_WEB_JOB_CONCURRENCY)", maxJobs)
+
+	sem := make(chan struct{}, maxJobs)
+	var eg errgroup.Group
+
 	for {
 		select {
 		case <-ctx.Done():
+			_ = eg.Wait()
 			return nil
 		case <-ticker.C:
-			jobs, err := w.svc.SelectPending(ctx)
-			if err != nil {
-				return err
-			}
-
-			for i := range jobs {
+			for {
 				select {
 				case <-ctx.Done():
+					_ = eg.Wait()
 					return nil
+				case sem <- struct{}{}:
 				default:
+					// all slots busy
+					goto nextTick
+				}
+
+				job, err := w.svc.ClaimPending(ctx)
+				if err != nil {
+					<-sem
+					if errors.Is(err, web.ErrNoPending) {
+						goto nextTick
+					}
+					_ = eg.Wait()
+					return err
+				}
+
+				j := job
+				log.Printf("claimed job %s name=%q (parallel slots up to %d)", j.ID, j.Name, maxJobs)
+				eg.Go(func() error {
+					defer func() { <-sem }()
+
 					t0 := time.Now().UTC()
-					if err := w.scrapeJob(ctx, &jobs[i]); err != nil {
+					if err := w.scrapeJob(ctx, &j); err != nil {
 						params := map[string]any{
-							"job_count": len(jobs[i].Data.Keywords),
+							"job_count": len(j.Data.Keywords),
 							"duration":  time.Now().UTC().Sub(t0).String(),
 							"error":     err.Error(),
 						}
-
-						evt := tlmt.NewEvent("web_runner", params)
-
-						_ = runner.Telemetry().Send(ctx, evt)
-
-						log.Printf("error scraping job %s: %v", jobs[i].ID, err)
+						_ = runner.Telemetry().Send(ctx, tlmt.NewEvent("web_runner", params))
+						log.Printf("error scraping job %s: %v", j.ID, err)
 					} else {
 						params := map[string]any{
-							"job_count": len(jobs[i].Data.Keywords),
+							"job_count": len(j.Data.Keywords),
 							"duration":  time.Now().UTC().Sub(t0).String(),
 						}
-
 						_ = runner.Telemetry().Send(ctx, tlmt.NewEvent("web_runner", params))
-
-						log.Printf("job %s scraped successfully", jobs[i].ID)
+						log.Printf("job %s scraped successfully", j.ID)
 					}
-				}
+					return nil
+				})
 			}
+		nextTick:
 		}
 	}
 }
 
 func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
+	jobCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	w.svc.RegisterJobCancel(job.ID, cancel)
+	defer w.svc.UnregisterJobCancel(job.ID)
+
+	// Re-read status: user may have canceled while queued.
+	if latest, err := w.svc.Get(ctx, job.ID); err == nil && latest.Status == web.StatusCanceled {
+		log.Printf("job %s canceled before start", job.ID)
+		return nil
+	}
+
 	job.Status = web.StatusWorking
 
 	err := w.svc.Update(ctx, job)
@@ -210,28 +248,54 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		if bbox.MinLat == 0 && bbox.MaxLat == 0 {
 			if alat, aerr := strconv.ParseFloat(job.Data.Lat, 64); aerr == nil {
 				if alon, aerr2 := strconv.ParseFloat(job.Data.Lon, 64); aerr2 == nil && !(alat == 0 && alon == 0) {
-					halfKm := float64(job.Data.Radius) / 2000 // radius=10000m → 半径5km（约10km×10km）
+					halfKm := float64(job.Data.Radius) / 1000 // Radius 为米 → 真实目标半径（公里）
+					if halfKm <= 0 {
+						halfKm = 10
+					}
 					bbox = anchorBBox(alat, alon, halfKm)
 					log.Printf("grid mode: anchor bbox around %.4f,%.4f (±%.1fkm)", alat, alon, halfKm)
 				}
 			}
 		}
 
-		// 没有 bbox 就用地理编码从地点名生成
+		// 没有 bbox 就用地理编码从地点名生成（含中文→英文、离线城市回退）
 		if bbox.MinLat == 0 && bbox.MaxLat == 0 && job.Data.Locations != "" {
-			log.Printf("geocoding location %q for grid mode", job.Data.Locations)
+			log.Printf("geocoding location %q for grid mode (country=%s)", job.Data.Locations, job.Data.CountryCode)
 
 			var err error
-			bbox, err = geocode(ctx, job.Data.Locations)
+			bbox, err = geocodeInCountry(ctx, job.Data.Locations, job.Data.CountryCode)
 			if err != nil {
-				log.Printf("geocoding failed: %v, falling back to single search", err)
-				// 地理编码失败就退化成普通模式
-				job.Data.GridMode = false
+				log.Printf("geocoding failed: %v", err)
+				// 全量网格不能静默退化成单点 ~20：再用半径锚点最后一搏
+				if alat, aerr := strconv.ParseFloat(job.Data.Lat, 64); aerr == nil {
+					if alon, aerr2 := strconv.ParseFloat(job.Data.Lon, 64); aerr2 == nil && (alat != 0 || alon != 0) {
+						halfKm := float64(job.Data.Radius) / 1000
+						if halfKm <= 0 {
+							halfKm = 10
+						}
+						bbox = anchorBBox(alat, alon, halfKm)
+						log.Printf("grid mode: recovered anchor bbox %.4f,%.4f (±%.1fkm) after geocode failure", alat, alon, halfKm)
+					}
+				}
+				if bbox.MinLat == 0 && bbox.MaxLat == 0 {
+					log.Printf("grid mode aborted: no bbox; falling back to single search (~20 results)")
+					job.Data.GridMode = false
+				}
 			} else {
-				// 向外扩展 10%，确保覆盖完整
-				bbox = expandBBox(bbox, 0.1)
-				log.Printf("geocoded bbox: %.4f,%.4f -> %.4f,%.4f (%s)",
-					bbox.MinLat, bbox.MinLon, bbox.MaxLat, bbox.MaxLon, job.Data.Locations)
+				// 用户给了目标半径：以解析中心为圆心覆盖半径（全量按半径，不按 Nominatim 城市框）
+				clat := (bbox.MinLat + bbox.MaxLat) / 2
+				clon := (bbox.MinLon + bbox.MaxLon) / 2
+				halfKm := float64(job.Data.Radius) / 1000
+				if halfKm <= 0 {
+					halfKm = 10
+					bbox = expandBBox(bbox, 0.1)
+					log.Printf("geocoded bbox: %.4f,%.4f -> %.4f,%.4f (%s)",
+						bbox.MinLat, bbox.MinLon, bbox.MaxLat, bbox.MaxLon, job.Data.Locations)
+				} else {
+					bbox = anchorBBox(clat, clon, halfKm)
+					log.Printf("grid mode: radius-shaped bbox around %.4f,%.4f (±%.1fkm from %q)",
+						clat, clon, halfKm, job.Data.Locations)
+				}
 			}
 		}
 
@@ -241,8 +305,26 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 				cellKm = 1.5 // 默认 1.5km 一格
 			}
 
-			// 估算格子数，打个日志
+			// 深度模式每格要开浏览器：半径大时自动加粗格子，避免上千格跑不完
 			estCells := grid.EstimateCellCount(bbox, cellKm)
+			if !job.Data.FastMode && estCells > 64 {
+				halfKm := float64(job.Data.Radius) / 1000
+				if halfKm <= 0 {
+					halfKm = 10
+				}
+				// 目标约 8×8=64 格覆盖直径
+				target := (2 * halfKm) / 8
+				if target < cellKm {
+					target = cellKm
+				}
+				if target > 12 {
+					target = 12
+				}
+				log.Printf("grid mode: deep auto-coarsen cell %.1fkm -> %.1fkm (was ~%d cells)", cellKm, target, estCells)
+				cellKm = target
+				job.Data.GridCellKm = cellKm
+				estCells = grid.EstimateCellCount(bbox, cellKm)
+			}
 			log.Printf("grid mode: ~%d cells at %.1fkm resolution", estCells, cellKm)
 
 			var err error
@@ -286,6 +368,11 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			coords = job.Data.Lat + "," + job.Data.Lon
 		}
 
+		radius := float64(10000)
+		if job.Data.Radius > 0 {
+			radius = float64(job.Data.Radius)
+		}
+
 		var err error
 		seedJobs, err = runner.CreateSeedJobs(
 			job.Data.FastMode,
@@ -295,13 +382,7 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			job.Data.Email,
 			coords,
 			job.Data.Zoom,
-			func() float64 {
-				if job.Data.Radius <= 0 {
-					return 10000 // 10 km
-				}
-
-				return float64(job.Data.Radius)
-			}(),
+			radius,
 			dedup,
 			exitMonitor,
 			w.cfg.ExtraReviews || job.Data.ExtraReviews,
@@ -313,6 +394,22 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			}
 
 			return err
+		}
+
+		// 深度模式单点列表常卡在 ~120：目标≥100 且有坐标时，再开 4 个偏移点搜索扩量
+		// （仍走详情页，质量不变；靠共享 deduper 去重）
+		if !job.Data.FastMode && job.Data.MaxResults >= 100 && coords != "" {
+			extra := deepSearchFanoutSeeds(
+				job,
+				radius,
+				dedup,
+				exitMonitor,
+				w.cfg.ExtraReviews || job.Data.ExtraReviews,
+			)
+			if len(extra) > 0 {
+				seedJobs = append(seedJobs, extra...)
+				log.Printf("deep mode fan-out: +%d offset searches for max_results=%d", len(extra), job.Data.MaxResults)
+			}
 		}
 	}
 
@@ -339,19 +436,33 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			}
 		}
 
-		log.Printf("running job %s with %d seed jobs and %d allowed seconds", job.ID, len(seedJobs), allowedSeconds)
+		// 深度+抓邮箱：预留联系方式补齐时间，避免 MaxTime 一到就砍掉邮箱队列
+		if !job.Data.FastMode && job.Data.Email {
+			contactBudget := 300 // 至少再留 5 分钟给官网补齐
+			if job.Data.MaxResults > 0 {
+				// 约每条 2s 官网（并发下），上限 20 分钟
+				contactBudget = max(contactBudget, min(1200, job.Data.MaxResults*2))
+			}
+			allowedSeconds = max(allowedSeconds, int(job.Data.MaxTime.Seconds())+contactBudget)
+			log.Printf("deep+email: extended time budget +%ds → %ds total", contactBudget, allowedSeconds)
+		}
 
-		mateCtx, cancel := context.WithTimeout(ctx, time.Duration(allowedSeconds)*time.Second)
-		defer cancel()
+		log.Printf("running job %s with %d seed jobs and %d allowed seconds (job concurrency=%d)",
+			job.ID, len(seedJobs), allowedSeconds, web.JobConcurrency())
 
-		exitMonitor.SetCancelFunc(cancel)
+		mateCtx, mateCancel := context.WithTimeout(jobCtx, time.Duration(allowedSeconds)*time.Second)
+		defer mateCancel()
+
+		exitMonitor.SetCancelFunc(mateCancel)
 
 		go exitMonitor.Run(mateCtx)
 
+		// 抓取阶段不做背调：先尽快把结果落盘给用户看。
+		// 背调在任务完成后（下方 StatusOK）再统一启动；用户点行时若未完成会显示「背调中」。
 		err = mate.Start(mateCtx, seedJobs...)
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
-			cancel()
-
+			mateCancel()
+			job.Status = web.StatusFailed
 			err2 := w.svc.Update(ctx, job)
 			if err2 != nil {
 				log.Printf("failed to update job status: %v", err2)
@@ -360,20 +471,50 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			return err
 		}
 
-		cancel()
+		mateCancel()
+	}
+
+	// User cancel wins over success/timeout.
+	if jobCtx.Err() != nil {
+		if latest, gerr := w.svc.Get(ctx, job.ID); gerr == nil && latest.Status == web.StatusCanceled {
+			log.Printf("job %s canceled by user", job.ID)
+			return nil
+		}
+		job.Status = web.StatusCanceled
+		_ = w.svc.Update(ctx, job)
+		log.Printf("job %s marked canceled", job.ID)
+		return nil
 	}
 
 	job.Status = web.StatusOK
+	if err := w.svc.Update(ctx, job); err != nil {
+		return err
+	}
 
-	return w.svc.Update(ctx, job)
+	// 结果已落盘：此时再开背调，不与地图抓取抢代理/CPU
+	if job.Data.EnableIntel {
+		log.Printf("job %s: scrape done, starting intel in background", job.ID)
+		w.svc.StartJobIntel(ctx, job.ID)
+	}
+
+	return nil
 }
 
 func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.Job) (mateRunner, error) {
 	return func(_ context.Context, writer io.Writer, job *web.Job) (mateRunner, error) {
-		// 提速：并发 = 配置的并发数；页面复用从 2 提到 20，浏览器复用从 200 提到 1000
+		// Split host concurrency across parallel jobs so 4 jobs don't each spawn 16 workers.
+		jobConc := web.PerJobScrapemateConcurrency(cfg.Concurrency, job.Data.FastMode)
+		log.Printf("job %s scrapemate concurrency=%d (host=%d jobs=%d fast=%v)",
+			job.ID, jobConc, cfg.Concurrency, web.JobConcurrency(), job.Data.FastMode)
 		opts := []func(*scrapemateapp.Config) error{
-			scrapemateapp.WithConcurrency(cfg.Concurrency),
-			scrapemateapp.WithExitOnInactivity(time.Minute * 10),
+			scrapemateapp.WithConcurrency(jobConc),
+		}
+		// 快速：HTTP 搜索，空闲可短收尾；深度：浏览器冷启动+滚动常 >45s，过短会误杀整单。
+		if job.Data.FastMode {
+			opts = append(opts, scrapemateapp.WithExitOnInactivity(90*time.Second))
+		} else {
+			// 深度：浏览器冷启动 + 官网联系方式补齐，需要更长空闲窗口
+			opts = append(opts, scrapemateapp.WithExitOnInactivity(5*time.Minute))
 		}
 
 		if !job.Data.FastMode {
@@ -421,7 +562,12 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 		log.Printf("job %s has proxy: %v", job.ID, hasProxy)
 
 		// 按任务配置过滤输出列：快速=必要列，深度=用户自选列（内部列强制保留）
-		csvWriter := newColumnWriter(csv.NewWriter(writer), job.Data.FastMode, job.Data.Columns)
+		// 传入 *os.File 以支持「地点先写、邮箱后补」的 upsert，避免超时丢行/重复行
+		var outFile *os.File
+		if f, ok := writer.(*os.File); ok {
+			outFile = f
+		}
+		csvWriter := newColumnWriter(csv.NewWriter(writer), job.Data.FastMode, job.Data.Columns, outFile)
 
 		writers := []scrapemate.ResultWriter{csvWriter}
 
@@ -435,4 +581,50 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 
 		return scrapemateapp.NewScrapeMateApp(matecfg)
 	}
+}
+
+// deepSearchFanoutSeeds 在中心点四周再开偏移搜索，突破 Google 单列表 ~120 的上限。
+// 偏移约 3km，详情仍走浏览器 PlaceJob，质量与单点深度一致。
+func deepSearchFanoutSeeds(
+	job *web.Job,
+	radius float64,
+	dedup deduper.Deduper,
+	exitMonitor exiter.Exiter,
+	extraReviews bool,
+) []scrapemate.IJob {
+	lat, err1 := strconv.ParseFloat(strings.TrimSpace(job.Data.Lat), 64)
+	lon, err2 := strconv.ParseFloat(strings.TrimSpace(job.Data.Lon), 64)
+	if err1 != nil || err2 != nil {
+		return nil
+	}
+
+	const delta = 0.028 // ≈3km
+	offsets := [][2]float64{
+		{delta, 0}, {-delta, 0}, {0, delta}, {0, -delta},
+	}
+
+	var out []scrapemate.IJob
+	for _, o := range offsets {
+		coords := fmt.Sprintf("%.6f,%.6f", lat+o[0], lon+o[1])
+		jobs, err := runner.CreateSeedJobs(
+			false,
+			job.Data.Lang,
+			strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
+			job.Data.Depth,
+			job.Data.Email,
+			coords,
+			job.Data.Zoom,
+			radius,
+			dedup,
+			exitMonitor,
+			extraReviews,
+		)
+		if err != nil {
+			log.Printf("deep fan-out seed at %s failed: %v", coords, err)
+			continue
+		}
+		out = append(out, jobs...)
+	}
+
+	return out
 }

@@ -106,9 +106,13 @@ func (r *memoryJobRepo) Select(_ context.Context, params web.SelectParams) ([]we
 
 	for id := range r.jobs {
 		job := r.jobs[id]
-		if params.Status == "" || job.Status == params.Status {
-			jobs = append(jobs, job)
+		if params.Status != "" && job.Status != params.Status {
+			continue
 		}
+		if params.Owner != "" && job.Owner != params.Owner {
+			continue
+		}
+		jobs = append(jobs, job)
 	}
 
 	return jobs, nil
@@ -117,4 +121,31 @@ func (r *memoryJobRepo) Select(_ context.Context, params web.SelectParams) ([]we
 func (r *memoryJobRepo) Update(_ context.Context, job *web.Job) error {
 	r.jobs[job.ID] = *job
 	return nil
+}
+
+func (r *memoryJobRepo) ClaimPending(_ context.Context) (web.Job, error) {
+	if r.jobs == nil {
+		return web.Job{}, web.ErrNoPending
+	}
+	var (
+		best   web.Job
+		found  bool
+		bestID string
+	)
+	for id, job := range r.jobs {
+		if job.Status != web.StatusPending {
+			continue
+		}
+		if !found || job.Date.Before(best.Date) {
+			best = job
+			bestID = id
+			found = true
+		}
+	}
+	if !found {
+		return web.Job{}, web.ErrNoPending
+	}
+	best.Status = web.StatusWorking
+	r.jobs[bestID] = best
+	return best, nil
 }

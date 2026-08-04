@@ -1,15 +1,23 @@
 <div class="record-item status-{{.Status}}" data-job-id="{{.ID}}" data-ts="{{.Date.Unix}}" data-status="{{.Status}}" data-lat="{{.Data.Lat}}" data-lon="{{.Data.Lon}}" onclick="selectRecord(this)">
   <div class="record-main">
     <div class="record-name">{{.Name}}</div>
+    <div class="record-progress" style="opacity:0.75">
+      {{ if .Data.CountryName }}{{.Data.CountryName}} · {{ end }}{{ if .Data.Keywords }}{{ index .Data.Keywords 0 }}{{ end }}{{ if .Data.GeoAnchor }} · {{.Data.GeoAnchor}}{{ end }}
+    </div>
     {{ if eq .Status "working" }}<div class="record-progress">采集中…</div>
     {{ else if eq .Status "pending" }}<div class="record-progress">待启动…</div>
-    {{ else if eq .Status "failed" }}<div class="record-failed">采集失败</div>{{ end }}
+    {{ else if eq .Status "failed" }}<div class="record-failed">采集失败</div>
+    {{ else if eq .Status "canceled" }}<div class="record-progress">已终止</div>{{ end }}
   </div>
   <div class="record-side">
-    {{ if .Data.GridMode }}<span class="mode-tag tag-grid">全域全量</span>
+    {{ if and .Data.GridMode (not .Data.FastMode) }}<span class="mode-tag tag-grid">全域全量</span>
     {{ else if .Data.FastMode }}<span class="mode-tag tag-quick">快速模式</span>
     {{ else }}<span class="mode-tag tag-deep">深度模式</span>{{ end }}
     <span class="record-time">{{.Date.Format "01-02 15:04"}}</span>
+    {{ if eq .Status "ok" }}
+    <a class="record-csv" href="/download?id={{.ID}}" download title="导出 CSV"
+       onclick="event.stopPropagation()">CSV</a>
+    {{ end }}
     <button type="button" class="record-del" title="删除记录" onclick="event.stopPropagation()"
             hx-delete="/delete?id={{.ID}}"
             hx-target="closest .record-item"
