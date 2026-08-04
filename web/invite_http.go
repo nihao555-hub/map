@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -137,6 +138,14 @@ func (s *Server) redeemInvite(w http.ResponseWriter, r *http.Request) {
 		}
 		s.renderInvite(w, invitePageData{Error: msg, Next: next})
 		return
+	}
+
+	// Keep operator export file in sync after each redeem (best-effort).
+	if s.svc != nil && s.svc.dataFolder != "" {
+		exportPath := filepath.Join(s.svc.dataFolder, "invite_codes.txt")
+		if err := s.invites.ExportFile(r.Context(), exportPath); err != nil {
+			log.Printf("invite export refresh: %v", err)
+		}
 	}
 
 	http.SetCookie(w, &http.Cookie{
