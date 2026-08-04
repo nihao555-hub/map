@@ -39,7 +39,7 @@ services:
       GMAPS_REPO_ROOT: "/app"
       INVITE_REQUIRED: "${INVITE_REQUIRED:-1}"
       INVITE_SEED_COUNT: "${INVITE_SEED_COUNT:-100}"
-      GMS_WEB_JOB_CONCURRENCY: "${GMS_WEB_JOB_CONCURRENCY:-2}"
+      GMS_WEB_JOB_CONCURRENCY: "${GMS_WEB_JOB_CONCURRENCY:-4}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

@@ -14,12 +14,14 @@ type memInviteStore struct {
 	mu       sync.Mutex
 	codes    map[string]bool // code -> used
 	sessions map[string]time.Time
+	owners   map[string]string // token -> invite code
 }
 
 func newMemInviteStore(codes ...string) *memInviteStore {
 	m := &memInviteStore{
 		codes:    make(map[string]bool),
 		sessions: make(map[string]time.Time),
+		owners:   make(map[string]string),
 	}
 	for _, c := range codes {
 		m.codes[NormalizeInviteCode(c)] = false
@@ -41,6 +43,7 @@ func (m *memInviteStore) Redeem(_ context.Context, code string) (string, time.Ti
 	token := "tok-" + code
 	exp := time.Now().UTC().Add(InviteSessionTTL)
 	m.sessions[token] = exp
+	m.owners[token] = code
 	return token, exp, nil
 }
 
@@ -49,6 +52,16 @@ func (m *memInviteStore) ValidSession(_ context.Context, token string) (bool, er
 	defer m.mu.Unlock()
 	exp, ok := m.sessions[token]
 	return ok && time.Now().UTC().Before(exp), nil
+}
+
+func (m *memInviteStore) SessionInviteCode(_ context.Context, token string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	exp, ok := m.sessions[token]
+	if !ok || time.Now().UTC().After(exp) {
+		return "", nil
+	}
+	return m.owners[token], nil
 }
 
 func (m *memInviteStore) Stats(context.Context) (int, int, int, error)  { return 0, 0, 0, nil }

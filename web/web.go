@@ -625,6 +625,11 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		newJob.Data.Locations, newJob.Data.Lat, newJob.Data.Lon,
 		newJob.Data.FastMode, newJob.Data.GridMode)
 
+	if err := s.attachOwner(r, &newJob); err != nil {
+		http.Error(w, "需要有效邀请会话", http.StatusUnauthorized)
+		return
+	}
+
 	err = s.svc.Create(r.Context(), &newJob)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -655,7 +660,7 @@ func (s *Server) getJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobs, err := s.svc.All(context.Background())
+	jobs, err := s.listJobsForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -681,16 +686,19 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	job, err := s.loadAccessibleJob(r, id.String())
+	if err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
 	filePath, err := s.svc.GetCSV(ctx, id.String())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	jobName := ""
-	if job, jerr := s.svc.Get(ctx, id.String()); jerr == nil {
-		jobName = job.Name
-	}
+	jobName := job.Name
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -749,6 +757,11 @@ func (s *Server) delete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		http.Error(w, "Invalid ID", http.StatusUnprocessableEntity)
 
+		return
+	}
+
+	if _, err := s.loadAccessibleJob(r, deleteID.String()); err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
 
@@ -1002,6 +1015,14 @@ func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := s.attachOwner(r, &newJob); err != nil {
+		renderJSON(w, http.StatusUnauthorized, apiError{
+			Code:    http.StatusUnauthorized,
+			Message: "需要有效邀请会话",
+		})
+		return
+	}
+
 	err = s.svc.Create(r.Context(), &newJob)
 	if err != nil {
 		ans := apiError{
@@ -1022,7 +1043,7 @@ func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiGetJobs(w http.ResponseWriter, r *http.Request) {
-	jobs, err := s.svc.All(r.Context())
+	jobs, err := s.listJobsForRequest(r)
 	if err != nil {
 		apiError := apiError{
 			Code:    http.StatusInternalServerError,
@@ -1053,7 +1074,7 @@ func (s *Server) apiGetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := s.svc.Get(r.Context(), id.String())
+	job, err := s.loadAccessibleJob(r, id.String())
 	if err != nil {
 		apiError := apiError{
 			Code:    http.StatusNotFound,
@@ -1080,6 +1101,14 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 
 		renderJSON(w, http.StatusUnprocessableEntity, apiError)
 
+		return
+	}
+
+	if _, err := s.loadAccessibleJob(r, id.String()); err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: http.StatusText(http.StatusNotFound),
+		})
 		return
 	}
 
@@ -1122,7 +1151,11 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, _ := s.svc.Get(r.Context(), id.String())
+	job, err := s.loadAccessibleJob(r, id.String())
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "Job not found"})
+		return
+	}
 	refresh := r.URL.Query().Get("refresh") == "1" || r.Method == http.MethodPost
 	if !refresh {
 		if cached, ok := s.svc.loadIntel(id.String(), placeID); ok {
@@ -1193,12 +1226,16 @@ func (s *Server) apiJobIntelStatus(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "Invalid ID"})
 		return
 	}
+	job, err := s.loadAccessibleJob(r, id.String())
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "Job not found"})
+		return
+	}
 	places, err := s.svc.GetPlaces(r.Context(), id.String())
 	n := 0
 	if err == nil {
 		n = len(places)
 	}
-	job, _ := s.svc.Get(r.Context(), id.String())
 	st := s.svc.GetJobIntelStatus(id.String(), n)
 	renderJSON(w, http.StatusOK, map[string]any{
 		"status":       st,
@@ -1259,6 +1296,12 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	job, jerr := s.loadAccessibleJob(r, id.String())
+	if jerr != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
 	// 轻量打开：默认不嵌入全量 places（前端 API 流式拉），大幅加快弹窗首屏
 	lite := r.URL.Query().Get("lite") != "0"
 	var places []Place
@@ -1285,14 +1328,9 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 附带上任务 ID / 状态 / 是否背调：前端据此流式追加与门禁展开
-	status := ""
-	jobName := ""
-	enableIntel := false
-	if job, jerr := s.svc.Get(r.Context(), id.String()); jerr == nil {
-		status = job.Status
-		jobName = job.Name
-		enableIntel = job.Data.EnableIntel
-	}
+	status := job.Status
+	jobName := job.Name
+	enableIntel := job.Data.EnableIntel
 
 	// 必须 JSON 编码后再嵌入 <script>：直接 {{ .Places }} 会输出 Go 结构体文本，
 	// 有结果时 JS 直接语法错误，导致弹窗右侧/左侧地图整段脚本不执行。
@@ -1348,6 +1386,14 @@ func (s *Server) apiDeleteJob(w http.ResponseWriter, r *http.Request) {
 
 		renderJSON(w, http.StatusUnprocessableEntity, apiError)
 
+		return
+	}
+
+	if _, err := s.loadAccessibleJob(r, id.String()); err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: http.StatusText(http.StatusNotFound),
+		})
 		return
 	}
 

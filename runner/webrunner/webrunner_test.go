@@ -106,9 +106,13 @@ func (r *memoryJobRepo) Select(_ context.Context, params web.SelectParams) ([]we
 
 	for id := range r.jobs {
 		job := r.jobs[id]
-		if params.Status == "" || job.Status == params.Status {
-			jobs = append(jobs, job)
+		if params.Status != "" && job.Status != params.Status {
+			continue
 		}
+		if params.Owner != "" && job.Owner != params.Owner {
+			continue
+		}
+		jobs = append(jobs, job)
 	}
 
 	return jobs, nil

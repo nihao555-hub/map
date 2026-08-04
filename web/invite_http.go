@@ -27,9 +27,17 @@ func (s *Server) inviteGateMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if s.hasValidInviteSession(r) {
-			next.ServeHTTP(w, r)
-			return
+		token := inviteTokenFromRequest(r)
+		if token != "" {
+			code, err := s.invites.SessionInviteCode(r.Context(), token)
+			if err == nil && code != "" {
+				ctx := WithInviteCode(r.Context(), code)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			if err != nil {
+				log.Printf("invite session lookup: %v", err)
+			}
 		}
 
 		if strings.HasPrefix(path, "/api/") {
@@ -70,6 +78,33 @@ func (s *Server) hasValidInviteSession(r *http.Request) bool {
 		return false
 	}
 	return ok
+}
+
+// requestOwner returns the invite-code tenant for this request.
+// When the invite gate is disabled, returns "".
+func (s *Server) requestOwner(r *http.Request) string {
+	if !s.inviteRequired() {
+		return ""
+	}
+	return InviteCodeFromContext(r.Context())
+}
+
+// loadAccessibleJob loads a job visible to the current request tenant.
+// When invite gate is on, ownership is enforced; otherwise any job id is allowed
+// (missing DB rows still return a stub so CSV-backed views keep working).
+func (s *Server) loadAccessibleJob(r *http.Request, id string) (Job, error) {
+	if s.inviteRequired() {
+		owner := s.requestOwner(r)
+		if owner == "" {
+			return Job{}, ErrJobNotFound
+		}
+		return s.svc.GetOwned(r.Context(), id, owner)
+	}
+	job, err := s.svc.Get(r.Context(), id)
+	if err != nil {
+		return Job{ID: id}, nil
+	}
+	return job, nil
 }
 
 func inviteTokenFromRequest(r *http.Request) string {
@@ -194,4 +229,25 @@ func safeNext(raw string) string {
 		out += "?" + u.RawQuery
 	}
 	return out
+}
+
+// listJobsForRequest returns jobs visible to the current tenant.
+func (s *Server) listJobsForRequest(r *http.Request) ([]Job, error) {
+	if s.inviteRequired() {
+		return s.svc.AllForOwner(r.Context(), s.requestOwner(r))
+	}
+	return s.svc.All(r.Context())
+}
+
+// attachOwner stamps the invite-code tenant onto a new job when the gate is on.
+func (s *Server) attachOwner(r *http.Request, job *Job) error {
+	if !s.inviteRequired() {
+		return nil
+	}
+	owner := s.requestOwner(r)
+	if owner == "" {
+		return errors.New("missing invite session")
+	}
+	job.Owner = owner
+	return nil
 }

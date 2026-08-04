@@ -67,6 +67,58 @@ func TestInviteSeedRedeemAndGate(t *testing.T) {
 	}
 }
 
+func TestOwnerIsolation(t *testing.T) {
+	t.Parallel()
+
+	store, err := sqlite.New(filepath.Join(t.TempDir(), "jobs.db"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	mk := func(id, owner string) *web.Job {
+		return &web.Job{
+			ID:     id,
+			Name:   owner + "-" + id,
+			Status: web.StatusPending,
+			Owner:  owner,
+			Date:   time.Now().UTC(),
+			Data: web.JobData{
+				Keywords: []string{"coffee"},
+				Lang:     "en",
+				Zoom:     15,
+				Lat:      "1",
+				Lon:      "1",
+				Depth:    1,
+				MaxTime:  time.Minute,
+			},
+		}
+	}
+	if err := store.Create(context.Background(), mk("a1", "GMS-AAAA-AAAA")); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Create(context.Background(), mk("b1", "GMS-BBBB-BBBB")); err != nil {
+		t.Fatal(err)
+	}
+
+	aJobs, err := store.Select(context.Background(), web.SelectParams{Owner: "GMS-AAAA-AAAA"})
+	if err != nil || len(aJobs) != 1 || aJobs[0].ID != "a1" {
+		t.Fatalf("owner A: %+v err=%v", aJobs, err)
+	}
+	bJobs, err := store.Select(context.Background(), web.SelectParams{Owner: "GMS-BBBB-BBBB"})
+	if err != nil || len(bJobs) != 1 || bJobs[0].ID != "b1" {
+		t.Fatalf("owner B: %+v err=%v", bJobs, err)
+	}
+
+	svc := web.NewService(store, t.TempDir())
+	if _, err := svc.GetOwned(context.Background(), "a1", "GMS-BBBB-BBBB"); !web.IsJobNotFound(err) {
+		t.Fatalf("cross-tenant get want not found, got %v", err)
+	}
+	got, err := svc.GetOwned(context.Background(), "a1", "GMS-AAAA-AAAA")
+	if err != nil || got.ID != "a1" {
+		t.Fatalf("same-tenant get: %+v err=%v", got, err)
+	}
+}
+
 func TestClaimPending(t *testing.T) {
 	t.Parallel()
 

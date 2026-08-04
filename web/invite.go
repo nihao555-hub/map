@@ -29,6 +29,8 @@ type InviteStore interface {
 	EnsureSeed(ctx context.Context, count int) (created []string, err error)
 	Redeem(ctx context.Context, code string) (sessionToken string, expiresAt time.Time, err error)
 	ValidSession(ctx context.Context, token string) (bool, error)
+	// SessionInviteCode returns the invite code bound to a valid session token.
+	SessionInviteCode(ctx context.Context, token string) (string, error)
 	Stats(ctx context.Context) (total, used, unused int, err error)
 	ListAll(ctx context.Context) ([]InviteCode, error)
 	ExportFile(ctx context.Context, path string) error

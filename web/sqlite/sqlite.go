@@ -32,8 +32,10 @@ func New(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+const jobSelectCols = `id, name, status, data, created_at, updated_at, COALESCE(owner_code, '')`
+
 func (s *Store) Get(ctx context.Context, id string) (web.Job, error) {
-	const q = `SELECT * from jobs WHERE id = ?`
+	q := `SELECT ` + jobSelectCols + ` FROM jobs WHERE id = ?`
 
 	row := s.db.QueryRowContext(ctx, q, id)
 
@@ -46,9 +48,9 @@ func (s *Store) Create(ctx context.Context, job *web.Job) error {
 		return err
 	}
 
-	const q = `INSERT INTO jobs (id, name, status, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
+	const q = `INSERT INTO jobs (id, name, status, data, created_at, updated_at, owner_code) VALUES (?, ?, ?, ?, ?, ?, ?)`
 
-	_, err = s.db.ExecContext(ctx, q, item.ID, item.Name, item.Status, item.Data, item.CreatedAt, item.UpdatedAt)
+	_, err = s.db.ExecContext(ctx, q, item.ID, item.Name, item.Status, item.Data, item.CreatedAt, item.UpdatedAt, item.OwnerCode)
 	if err != nil {
 		return err
 	}
@@ -65,21 +67,28 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 }
 
 func (s *Store) Select(ctx context.Context, params web.SelectParams) ([]web.Job, error) {
-	q := `SELECT * from jobs`
-
-	var args []any
+	q := `SELECT ` + jobSelectCols + ` FROM jobs`
+	var (
+		conds []string
+		args  []any
+	)
 
 	if params.Status != "" {
-		q += ` WHERE status = ?`
-
+		conds = append(conds, `status = ?`)
 		args = append(args, params.Status)
+	}
+	if params.Owner != "" {
+		conds = append(conds, `owner_code = ?`)
+		args = append(args, params.Owner)
+	}
+	if len(conds) > 0 {
+		q += ` WHERE ` + strings.Join(conds, ` AND `)
 	}
 
 	q += " ORDER BY created_at DESC"
 
 	if params.Limit > 0 {
 		q += " LIMIT ?"
-
 		args = append(args, params.Limit)
 	}
 
@@ -114,9 +123,9 @@ func (s *Store) Update(ctx context.Context, job *web.Job) error {
 		return err
 	}
 
-	const q = `UPDATE jobs SET name = ?, status = ?, data = ?, updated_at = ? WHERE id = ?`
+	const q = `UPDATE jobs SET name = ?, status = ?, data = ?, updated_at = ?, owner_code = ? WHERE id = ?`
 
-	_, err = s.db.ExecContext(ctx, q, item.Name, item.Status, item.Data, item.UpdatedAt, item.ID)
+	_, err = s.db.ExecContext(ctx, q, item.Name, item.Status, item.Data, item.UpdatedAt, item.OwnerCode, item.ID)
 
 	return err
 }
@@ -156,7 +165,7 @@ func (s *Store) ClaimPending(ctx context.Context) (web.Job, error) {
 		return web.Job{}, web.ErrNoPending
 	}
 
-	row := tx.QueryRowContext(ctx, `SELECT * FROM jobs WHERE id = ?`, id)
+	row := tx.QueryRowContext(ctx, `SELECT `+jobSelectCols+` FROM jobs WHERE id = ?`, id)
 	job, err := rowToJob(row)
 	if err != nil {
 		return web.Job{}, err
@@ -177,7 +186,7 @@ type scannable interface {
 func rowToJob(row scannable) (web.Job, error) {
 	var j job
 
-	err := row.Scan(&j.ID, &j.Name, &j.Status, &j.Data, &j.CreatedAt, &j.UpdatedAt)
+	err := row.Scan(&j.ID, &j.Name, &j.Status, &j.Data, &j.CreatedAt, &j.UpdatedAt, &j.OwnerCode)
 	if err != nil {
 		return web.Job{}, err
 	}
@@ -186,6 +195,7 @@ func rowToJob(row scannable) (web.Job, error) {
 		ID:     j.ID,
 		Name:   j.Name,
 		Status: j.Status,
+		Owner:  j.OwnerCode,
 		Date:   time.Unix(j.CreatedAt, 0).UTC(),
 	}
 
@@ -210,6 +220,7 @@ func jobToRow(item *web.Job) (job, error) {
 		Data:      string(data),
 		CreatedAt: item.Date.Unix(),
 		UpdatedAt: time.Now().UTC().Unix(),
+		OwnerCode: item.Owner,
 	}, nil
 }
 
@@ -220,6 +231,7 @@ type job struct {
 	Data      string
 	CreatedAt int64
 	UpdatedAt int64
+	OwnerCode string
 }
 
 func initDatabase(path string) (*sql.DB, error) {
@@ -268,7 +280,8 @@ func createSchema(db *sql.DB) error {
 			status TEXT NOT NULL,
 			data TEXT NOT NULL,
 			created_at INT NOT NULL,
-			updated_at INT NOT NULL
+			updated_at INT NOT NULL,
+			owner_code TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE IF NOT EXISTS invite_codes (
 			code TEXT PRIMARY KEY,
@@ -284,9 +297,47 @@ func createSchema(db *sql.DB) error {
 			last_seen_at INT NOT NULL
 		);
 		CREATE INDEX IF NOT EXISTS idx_jobs_status_created ON jobs(status, created_at);
+		CREATE INDEX IF NOT EXISTS idx_jobs_owner_created ON jobs(owner_code, created_at);
 		CREATE INDEX IF NOT EXISTS idx_invite_sessions_expires ON invite_sessions(expires_at);
 	`)
+	if err != nil {
+		return err
+	}
 
+	return ensureOwnerColumn(db)
+}
+
+func ensureOwnerColumn(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(jobs)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	hasOwner := false
+	for rows.Next() {
+		var (
+			cid     int
+			name    string
+			ctype   string
+			notnull int
+			dflt    sql.NullString
+			pk      int
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == "owner_code" {
+			hasOwner = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if hasOwner {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE jobs ADD COLUMN owner_code TEXT NOT NULL DEFAULT ''`)
 	return err
 }
 
@@ -395,30 +446,42 @@ func (s *Store) Redeem(ctx context.Context, code string) (string, time.Time, err
 
 // ValidSession checks the session token and refreshes last_seen_at.
 func (s *Store) ValidSession(ctx context.Context, token string) (bool, error) {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return false, nil
-	}
-
-	now := time.Now().UTC().Unix()
-	var expires int64
-	err := s.db.QueryRowContext(ctx,
-		`SELECT expires_at FROM invite_sessions WHERE token = ?`, token,
-	).Scan(&expires)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+	code, err := s.SessionInviteCode(ctx, token)
 	if err != nil {
 		return false, err
 	}
+	return code != "", nil
+}
+
+// SessionInviteCode returns the invite code for a valid session token.
+func (s *Store) SessionInviteCode(ctx context.Context, token string) (string, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", nil
+	}
+
+	now := time.Now().UTC().Unix()
+	var (
+		expires int64
+		code    string
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT expires_at, invite_code FROM invite_sessions WHERE token = ?`, token,
+	).Scan(&expires, &code)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
 	if expires < now {
-		return false, nil
+		return "", nil
 	}
 
 	_, _ = s.db.ExecContext(ctx,
 		`UPDATE invite_sessions SET last_seen_at = ? WHERE token = ?`, now, token,
 	)
-	return true, nil
+	return code, nil
 }
 
 // Stats returns invite code counts.

@@ -18,6 +18,8 @@ const (
 type SelectParams struct {
 	Status string
 	Limit  int
+	// Owner filters by invite-code tenant. Empty means no owner filter (worker/admin).
+	Owner string
 }
 
 type JobRepository interface {
@@ -34,12 +36,17 @@ type JobRepository interface {
 // ErrNoPending is returned by ClaimPending when no pending jobs exist.
 var ErrNoPending = errors.New("no pending jobs")
 
+// ErrJobNotFound is returned when a job is missing or not visible to the caller.
+var ErrJobNotFound = errors.New("job not found")
+
 type Job struct {
 	ID     string
 	Name   string
 	Date   time.Time
 	Status string
-	Data   JobData
+	// Owner is the invite code that owns this job (tenant isolation key).
+	Owner string
+	Data  JobData
 }
 
 func (j *Job) Validate() error {

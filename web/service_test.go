@@ -138,3 +138,18 @@ func TestGetPlacesRejectsTraversal(t *testing.T) {
 		t.Fatal("expected error for path traversal")
 	}
 }
+
+func TestJobConcurrencyDefaultIsFour(t *testing.T) {
+	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "")
+	if got := JobConcurrency(); got != 4 {
+		t.Fatalf("default=%d want 4", got)
+	}
+	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "3")
+	if got := JobConcurrency(); got != 3 {
+		t.Fatalf("override=%d want 3", got)
+	}
+	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "99")
+	if got := JobConcurrency(); got != 4 {
+		t.Fatalf("cap=%d want 4", got)
+	}
+}
