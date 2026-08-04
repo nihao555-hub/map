@@ -117,6 +117,6 @@ cat <<EOF
 - katana (~17k) about/team 深链
 - OpenCorporates / GLEIF / Wikidata（Go 直连）
 - Hunter.io（可选 env HUNTER_API_KEY）
-- AHU=印尼 ahu.go.id 董事登记（可选 env AHU_PROXY + tools/ahu_lookup.py）
+- AHU=印尼 ahu.go.id（tools/ahu_lookup.py + AHU_PROXY/Clash；完整董事需付费）
 
 EOF
