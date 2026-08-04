@@ -985,6 +985,9 @@ func (s *Server) apiGetJobs(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if jobs == nil {
+		jobs = []Job{}
+	}
 
 	renderJSON(w, http.StatusOK, jobs)
 }

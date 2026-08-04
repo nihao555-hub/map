@@ -26,10 +26,10 @@ var (
 	junkEmailLocalRe        = regexp.MustCompile(`(?i)^(and|or|the|for|with|from|only|your|my|this|that|http|https|www|png|jpg|gif|svg|css|js)$`)
 )
 
+// tradeRoleLocals 仅在域名有 MX、且公开源无任何可用邮箱时，写入 ExtraEmails 作触达猜测。
+// 绝不升成具名决策人；数量刻意压到 2，避免 UI 刷出一排「渠道联系人」。
 var tradeRoleLocals = []string{
-	"sales", "export", "exports", "purchase", "procurement", "buying", "buyer",
-	"trade", "import", "imports", "enquiry", "inquiry", "contact", "info",
-	"hello", "cs", "customercare", "customerservice", "marketing", "commerce",
+	"purchase", "sales",
 }
 
 // runContactFormulaPass 在 OSINT/决策人初步汇聚后执行，补齐可触达联系方式与架构节点。
@@ -97,9 +97,9 @@ func seedTradeRoleEmails(domain string) []string {
 	if domain == "" {
 		return nil
 	}
-	out := make([]string, 0, 8)
+	out := make([]string, 0, 2)
 	for i, local := range tradeRoleLocals {
-		if i >= 8 {
+		if i >= 2 {
 			break
 		}
 		out = append(out, local+"@"+domain)

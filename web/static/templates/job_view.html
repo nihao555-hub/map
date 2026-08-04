@@ -294,12 +294,25 @@
             return '<a class="intel-act intel-act-wa" href="' + encodeURI(href) + '" target="_blank" rel="noopener noreferrer">WhatsApp</a>';
         }
 
+        function isNamedDecisionMaker(d) {
+            var name = String((d && d.name) || '').trim();
+            if (!name) return false;
+            // 前端兜底：不要把占位文案当成真人名
+            var junk = {
+                '渠道联系人': 1, '联系人': 1, '采购联系人': 1, '业务联系人': 1,
+                'contact': 1, 'business contact': 1, 'email channel': 1,
+                'whatsapp channel': 1, 'phone channel': 1, 'office inbox': 1
+            };
+            return !junk[name] && !junk[name.toLowerCase()];
+        }
+
         function personCard(d) {
-            var name = d.name || (d.email ? '渠道联系人' : '联系人');
+            var name = String(d.name || '').trim();
+            if (!name) return ''; // 无名渠道走 channelChip，不冒充决策人
             var av = mediaURL(d.avatar || '');
             var avatar = av
                 ? '<img class="intel-avatar" src="' + encodeURI(av) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">'
-                : '<div class="intel-avatar intel-avatar-fallback">' + escapeHtml((name || '?').charAt(0).toUpperCase()) + '</div>';
+                : '<div class="intel-avatar intel-avatar-fallback">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
             var actions = [];
             if (d.email) {
                 actions.push('<a class="intel-act" href="mailto:' + encodeURIComponent(d.email) + '">邮件</a>');
@@ -332,6 +345,24 @@
                 '</article>';
         }
 
+        function channelChip(d) {
+            var parts = [];
+            if (d.email) {
+                parts.push('<a href="mailto:' + encodeURIComponent(d.email) + '">' + escapeHtml(d.email) + '</a>');
+            }
+            if (d.phone) parts.push(escapeHtml(d.phone));
+            if (d.whatsapp && d.whatsapp !== d.phone) {
+                parts.push(waLink(d.whatsapp) || escapeHtml(d.whatsapp));
+            } else if (d.phone) {
+                var w = waLink(d.phone);
+                if (w) parts.push(w);
+            }
+            if (d.linkedin) parts.push(linkOrText(d.linkedin));
+            if (!parts.length) return '';
+            var label = d.title ? escapeHtml(d.title) + ' · ' : '';
+            return '<div class="intel-chip">' + label + parts.join(' · ') + '</div>';
+        }
+
         function isGenericEmail(em) {
             var local = String(em || '').split('@')[0].toLowerCase();
             return /^(info|sales|admin|contact|hello|support|office|mail|privacy|noreply)/.test(local) ||
@@ -360,13 +391,21 @@
             });
             var otherOffice = officeEmails.filter(function (e) { return localOffice.indexOf(e) < 0; });
 
-            // 1) 决策人 + 联系方式合并（外贸触达主视图）
+            // 1) 具名决策人 vs 无名触达渠道（角色邮箱/门店电话绝不冒充决策人）
+            var namedDms = dms.filter(isNamedDecisionMaker);
+            var channelDms = dms.filter(function (d) { return !isNamedDecisionMaker(d); });
             var peopleHtml = '';
             peopleHtml += '<p class="intel-lead">' + escapeHtml(intel.note || '优先展示可核验决策人及其邮箱/WhatsApp/LinkedIn。') + '</p>';
-            if (dms.length) {
-                peopleHtml += '<h4 class="intel-sub">决策人 / 关键联系人</h4>' + dms.map(personCard).join('');
+            if (namedDms.length) {
+                peopleHtml += '<h4 class="intel-sub">具名决策人（' + namedDms.length + '）</h4>' + namedDms.map(personCard).join('');
             } else {
-                peopleHtml += emptyBlock('暂无具名决策人；下方为可触达办公室渠道（不会把 info-* 当成决策人）');
+                peopleHtml += emptyBlock('暂无具名决策人（未挖到可核验真人名/LinkedIn）；下方仅为触达渠道');
+            }
+            if (channelDms.length) {
+                var chips = channelDms.map(channelChip).filter(Boolean).join('');
+                if (chips) {
+                    peopleHtml += '<h4 class="intel-sub">触达渠道（非决策人）</h4><div class="intel-chips">' + chips + '</div>';
+                }
             }
             if (personEmails.length) {
                 var leftover = personEmails.filter(function (e) { return !dmEmails[String(e).toLowerCase()]; });

@@ -1010,6 +1010,11 @@ func isGenericOfficeEmailLocal(local string) bool {
 		"finance", "accounts", "helpdesk", "service", "customerservice", "cs",
 		"hr", "jobs", "career", "careers", "recruit", "legal", "compliance",
 		"infosec", "security", "newsletter", "subscribe", "team", "general",
+		// 外贸角色邮箱（purchase@/buyer@ 等）只作触达渠道，绝不当决策人姓名
+		"purchase", "purchasing", "procurement", "buyer", "buying", "sourcing",
+		"export", "exports", "import", "imports", "trade", "commerce",
+		"customercare", "business", "order", "orders", "ops", "operation",
+		"operations", "supply", "supplier", "vendors", "vendor",
 	}
 	for _, g := range generics {
 		if low == g || strings.HasPrefix(low, g+"-") || strings.HasPrefix(low, g+".") || strings.HasPrefix(low, g+"_") {
