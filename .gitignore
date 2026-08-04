@@ -28,3 +28,4 @@ tools/maigret/
 deploy/xray/__pycache__/
 tools/logs/
 tools/crosslinked-venv/
+tools/ahu-venv/

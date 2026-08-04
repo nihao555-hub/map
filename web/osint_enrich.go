@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // 背调增强源：Hunter / katana / GitHub commits / GLEIF / Wikidata / AHU（可选代理）。
@@ -32,11 +33,26 @@ func hunterAPIKey() string {
 
 func ahuProxyURL() string {
 	for _, k := range []string{"AHU_PROXY", "AHU_PROXY_URL", "RESIDENTIAL_PROXY", "HTTPS_PROXY", "HTTP_PROXY"} {
-		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+		if v := firstProxyLine(os.Getenv(k)); v != "" {
 			return v
 		}
 	}
 	return ""
+}
+
+func ahuPython() string {
+	if p := strings.TrimSpace(os.Getenv("AHU_PYTHON")); p != "" {
+		return p
+	}
+	cand := filepath.Join(repoRoot(), "tools", "ahu-venv", "bin", "python")
+	if fileExists(cand) {
+		return cand
+	}
+	py := osintExtraPython()
+	if fileExists(py) {
+		return py
+	}
+	return "python3"
 }
 
 func githubToken() string {
@@ -796,32 +812,45 @@ func lookupAHU(ctx context.Context, company string) (*CompanyHit, []DecisionMake
 	if proxy == "" {
 		return nil, nil, fmt.Errorf("AHU_PROXY not set (datacenter IPs blocked)")
 	}
-	py := osintExtraPython()
-	if !fileExists(py) {
-		py = "python3"
-	}
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	py := ahuPython()
+	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	var stdout, stderr strings.Builder
-	cmd := exec.CommandContext(ctx, py, script, "--query", company, "--proxy", proxy) //nolint:gosec
+	cmd := exec.CommandContext(ctx, py, script, "--query", company, "--proxy", proxy, "--backend", "playwright") //nolint:gosec
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Run(); err != nil && stdout.Len() == 0 {
 		return nil, nil, fmt.Errorf("%v: %s", err, truncateRunes(stderr.String(), 80))
 	}
 	var parsed struct {
-		OK     bool   `json:"ok"`
-		Error  string `json:"error"`
-		Result struct {
+		OK      bool   `json:"ok"`
+		Error   string `json:"error"`
+		Backend string `json:"backend"`
+		Result  struct {
 			CompanyName    string `json:"company_name"`
 			RegistrationNo string `json:"registration_no"`
 			LegalForm      string `json:"legal_form"`
 			LegalStatus    string `json:"legal_status"`
 			Domicile       string `json:"domicile"`
+			Phone          string `json:"phone"`
+			BakumID        string `json:"bakum_id"`
+			Note           string `json:"note"`
 			Directors      []struct {
 				Nama    string `json:"nama"`
 				Jabatan string `json:"jabatan"`
 			} `json:"directors"`
+			Commissioners []struct {
+				Nama    string `json:"nama"`
+				Jabatan string `json:"jabatan"`
+			} `json:"commissioners"`
+			SearchHits []struct {
+				BakumID     string `json:"bakum_id"`
+				CompanyName string `json:"company_name"`
+				Phone       string `json:"phone"`
+				Address     string `json:"address"`
+				Region      string `json:"region"`
+				Domicile    string `json:"domicile"`
+			} `json:"search_hits"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal([]byte(stdout.String()), &parsed); err != nil {
@@ -830,28 +859,54 @@ func lookupAHU(ctx context.Context, company string) (*CompanyHit, []DecisionMake
 	if !parsed.OK {
 		return nil, nil, fmt.Errorf("%s", firstNonEmpty(parsed.Error, "ahu failed"))
 	}
+	companyNo := firstNonEmpty(parsed.Result.RegistrationNo, parsed.Result.BakumID)
 	hit := &CompanyHit{
 		Name:          parsed.Result.CompanyName,
-		CompanyNumber: parsed.Result.RegistrationNo,
+		CompanyNumber: companyNo,
 		Jurisdiction:  "id",
 		CompanyType:   parsed.Result.LegalForm,
 		CurrentStatus: parsed.Result.LegalStatus,
-		RegistryURL:   "https://ahu.go.id/pencarian/perseroan-terbatas",
+		RegistryURL:   "https://ahu.go.id/pencarian/profil-pt",
 		Source:        "ahu.go.id",
 	}
 	var makers []DecisionMaker
-	for _, d := range parsed.Result.Directors {
-		name := strings.TrimSpace(d.Nama)
+	addOfficer := func(nama, jabatan, kind string) {
+		name := strings.TrimSpace(nama)
 		if name == "" {
-			continue
+			return
+		}
+		// AHU 人名常全大写，门控要求 Title Case
+		name = titleCaseWords(name)
+		if !IsValidPersonName(name) {
+			return
 		}
 		makers = append(makers, DecisionMaker{
-			Name: name, Title: firstNonEmpty(d.Jabatan, "Direksi"),
-			Source: "ahu.go.id", Evidence: "AHU company directors",
+			Name: name, Title: firstNonEmpty(jabatan, kind),
+			Source: "ahu.go.id", Evidence: "AHU " + kind,
 			Confidence: "high",
 		})
 	}
+	for _, d := range parsed.Result.Directors {
+		addOfficer(d.Nama, d.Jabatan, "Direksi")
+	}
+	for _, d := range parsed.Result.Commissioners {
+		addOfficer(d.Nama, d.Jabatan, "Komisaris")
+	}
 	return hit, makers, nil
+}
+
+// titleCaseWords 把 "BUDI SANTOSO" / "budi santoso" 规范成门控可过的人名。
+func titleCaseWords(s string) string {
+	parts := strings.Fields(strings.ToLower(strings.TrimSpace(s)))
+	for i, p := range parts {
+		r := []rune(p)
+		if len(r) == 0 {
+			continue
+		}
+		r[0] = unicode.ToUpper(r[0])
+		parts[i] = string(r)
+	}
+	return strings.Join(parts, " ")
 }
 
 func applyAHU(intel *PlaceIntel, hit *CompanyHit, makers []DecisionMaker) {

@@ -92,6 +92,17 @@ echo "[ok] katana (PATH or ~/go/bin/katana)"
 
 chmod +x "${ROOT}/ahu_lookup.py" 2>/dev/null || true
 
+# --- AHU venv（Playwright / Crawl4AI / Scrapling）---
+python3 -m venv ahu-venv
+# shellcheck disable=SC1091
+source ahu-venv/bin/activate
+pip install -U pip wheel
+pip install playwright crawl4ai 'scrapling[fetchers]' httpx
+playwright install chromium || true
+crawl4ai-setup || true
+deactivate
+echo "[ok] AHU venv (playwright/crawl4ai/scrapling)"
+
 cat <<EOF
 
 已覆盖：
