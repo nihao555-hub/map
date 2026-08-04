@@ -641,7 +641,7 @@ func linkedInXRayRelevant(name, label, companyTitle string) bool {
 	if companyLow != "" && strings.Contains(labelLow, companyLow) {
 		return true
 	}
-	if brandLow != "" && len(brandLow) >= 4 && strings.Contains(stripped, brandLow) {
+	if employerMentionsCompany(stripped, companyTitle) {
 		return true
 	}
 
@@ -697,6 +697,22 @@ func commonPrefixLen(a, b string) int {
 		i++
 	}
 	return i
+}
+
+func containsWholeToken(text, token string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	token = strings.ToLower(strings.TrimSpace(token))
+	if text == "" || token == "" {
+		return false
+	}
+	for _, w := range strings.FieldsFunc(text, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	}) {
+		if w == token {
+			return true
+		}
+	}
+	return false
 }
 
 // companyBrandToken 从 "PT Deugro Indonesia" 抽出品牌词 Deugro，供搜索公式使用。

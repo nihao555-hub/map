@@ -111,4 +111,7 @@ func TestLinkedInXRayRelevantRejectsBrandNameCollision(t *testing.T) {
 	if !linkedInXRayRelevant("Budi Santoso", "Budi Santoso - Purchasing Manager - PT. ARTAN INTERNATIONAL TRADING", company) {
 		t.Fatal("explicit company in label should pass")
 	}
+	if linkedInXRayRelevant("Stevano Savio", "Stevano Savio - Plant Manager at PT. Tri Mitra Makmur", "MITRA INDO MAJU, PT") {
+		t.Fatal("other company that merely shares Mitra token should be rejected")
+	}
 }
