@@ -13,9 +13,10 @@ import (
 )
 
 // AI 翻译配置：密钥只从环境变量读取，绝不写进仓库/前端。
-//   GRSAI_API_KEY   必填才启用 AI 翻译
-//   GRSAI_API_HOST  默认 https://grsaiapi.com
-//   GRSAI_MODEL     默认 gemini-3.1-flash-lite
+//
+//	GRSAI_API_KEY   必填才启用 AI 翻译
+//	GRSAI_API_HOST  默认 https://grsaiapi.com
+//	GRSAI_MODEL     默认 gemini-3.1-flash-lite
 const (
 	defaultGRSAIHost  = "https://grsaiapi.com"
 	defaultGRSAIModel = "gemini-3.1-flash-lite"

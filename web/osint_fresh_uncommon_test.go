@@ -89,25 +89,25 @@ func TestLiveFreshUncommon20Channels(t *testing.T) {
 		t.Skip("short")
 	}
 	type row struct {
-		Title            string   `json:"title"`
-		Website          string   `json:"website"`
-		OK               bool     `json:"ok"`
-		Emails           int      `json:"emails"`
-		Phones           int      `json:"phones"`
-		WhatsApp         bool     `json:"whatsapp"`
-		SocialKeys       []string `json:"social_keys,omitempty"`
-		Makers           int      `json:"decision_makers"`
-		NamedPeople      int      `json:"named_people"`
-		ContactablePeople int     `json:"contactable_people"`
-		OrgUnits         int      `json:"org_units"`
-		OrgRoles         []string `json:"org_roles,omitempty"`
-		MakerSamples     []string `json:"maker_samples,omitempty"`
-		Channels         []string `json:"channels,omitempty"`
-		Confidence       string   `json:"confidence"`
-		Provider         string   `json:"provider"`
-		Note             string   `json:"note,omitempty"`
-		Seconds          float64  `json:"seconds"`
-		Err              string   `json:"err,omitempty"`
+		Title             string   `json:"title"`
+		Website           string   `json:"website"`
+		OK                bool     `json:"ok"`
+		Emails            int      `json:"emails"`
+		Phones            int      `json:"phones"`
+		WhatsApp          bool     `json:"whatsapp"`
+		SocialKeys        []string `json:"social_keys,omitempty"`
+		Makers            int      `json:"decision_makers"`
+		NamedPeople       int      `json:"named_people"`
+		ContactablePeople int      `json:"contactable_people"`
+		OrgUnits          int      `json:"org_units"`
+		OrgRoles          []string `json:"org_roles,omitempty"`
+		MakerSamples      []string `json:"maker_samples,omitempty"`
+		Channels          []string `json:"channels,omitempty"`
+		Confidence        string   `json:"confidence"`
+		Provider          string   `json:"provider"`
+		Note              string   `json:"note,omitempty"`
+		Seconds           float64  `json:"seconds"`
+		Err               string   `json:"err,omitempty"`
 	}
 
 	dir := t.TempDir()

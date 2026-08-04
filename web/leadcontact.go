@@ -146,13 +146,13 @@ func lookupLeadContactPeople(ctx context.Context, company, country string) ([]De
 	}
 
 	payload := map[string]any{
-		"company":            []string{company},
-		"location":           loc,
-		"jobTitle":           []string{"Purchasing", "Procurement", "Buyer", "Owner", "Founder", "Direktur", "Director", "CEO", "General Manager", "Pemilik"},
-		"currentTitlesOnly":  true,
-		"companyFilter":      "current",
-		"seniority":          []string{"Owner / Founder", "CXO", "Director", "VP", "Head", "Manager"},
-		"jobFunction":        []string{"Purchasing", "Operations", "Business Development", "Leadership", "Sales"},
+		"company":           []string{company},
+		"location":          loc,
+		"jobTitle":          []string{"Purchasing", "Procurement", "Buyer", "Owner", "Founder", "Direktur", "Director", "CEO", "General Manager", "Pemilik"},
+		"currentTitlesOnly": true,
+		"companyFilter":     "current",
+		"seniority":         []string{"Owner / Founder", "CXO", "Director", "VP", "Head", "Manager"},
+		"jobFunction":       []string{"Purchasing", "Operations", "Business Development", "Leadership", "Sales"},
 	}
 
 	raw, err := leadContactDo(ctx, http.MethodPost, "/api/rest/employess/query/advanced", payload)

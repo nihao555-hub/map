@@ -171,7 +171,7 @@ func TestLiveContactFormula20(t *testing.T) {
 			Title: f.Title, Domain: domain,
 			SiteEmails: siteEmails, BraveEmails: brave, PreciseEmails: precise,
 			RoleFallback: roles, HasPrecise: len(precise) > 0,
-			HasOutreach: len(precise) > 0 || len(roles) > 0,
+			HasOutreach:    len(precise) > 0 || len(roles) > 0,
 			MapsPhoneBound: f.Phone != "" && intel.DecisionMakers[0].Phone == f.Phone,
 		}
 		rows = append(rows, r)
@@ -188,7 +188,7 @@ func TestLiveContactFormula20(t *testing.T) {
 
 	summary := map[string]any{
 		"n": len(rows), "precise_n": preciseN, "outreach_n": outreachN,
-		"precise_rate": float64(preciseN) / float64(len(rows)),
+		"precise_rate":  float64(preciseN) / float64(len(rows)),
 		"outreach_rate": float64(outreachN) / float64(len(rows)),
 	}
 	out := map[string]any{"summary": summary, "results": rows}

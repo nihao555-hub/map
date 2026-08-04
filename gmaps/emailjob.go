@@ -39,7 +39,7 @@ var (
 		"/kontak", "/hubungi-kami", "/hubungi", "/contact-me",
 		"/contacto", "/contatti", "/nous-contacter",
 	}
-	contactLinkRe = regexp.MustCompile(`(?i)contact|about|privacy|impressum|imprint|support|get-in-touch|kontakt|kontak|hubungi|legal|team`)
+	contactLinkRe       = regexp.MustCompile(`(?i)contact|about|privacy|impressum|imprint|support|get-in-touch|kontakt|kontak|hubungi|legal|team`)
 	emailJunkSubstrings = []string{
 		"sentry.io", "example.com", "domain.com", "email.com", "yourdomain",
 		"localhost", "schema.org", "w3.org", "googleapis", "gstatic.com",

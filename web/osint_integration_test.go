@@ -31,10 +31,10 @@ func TestBuildPlaceIntelWithOSINT(t *testing.T) {
 	// minimal CSV so GetPlaces works if needed
 	_ = os.MkdirAll(dir, 0o755)
 	place := Place{
-		Title:   "Example Domain",
-		Website: "https://example.com",
-		PlaceID: "ChIJ_test_example",
-		Address: "Example",
+		Title:    "Example Domain",
+		Website:  "https://example.com",
+		PlaceID:  "ChIJ_test_example",
+		Address:  "Example",
 		Category: "Company",
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)

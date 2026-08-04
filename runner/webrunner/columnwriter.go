@@ -33,6 +33,7 @@ var essentialColumns = []string{
 // columnWriter 按任务配置过滤 CSV 输出列：
 //   - 快速模式：必要列 + 内部强制列
 //   - 深度/网格模式：默认全部列；用户选了 columns 时 = 选中列 + 内部强制列
+//
 // 同一 place_id/cid 再次写入时 upsert（地点先落盘、邮箱任务稍后补联系方式）。
 type columnWriter struct {
 	w          *csv.Writer

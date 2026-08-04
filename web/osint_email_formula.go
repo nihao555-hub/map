@@ -21,9 +21,9 @@ import (
 // SMTP:25 在本环境不可用，故不做 RCPT 探测。
 
 var (
-	mailtoEmailRe = regexp.MustCompile(`(?i)mailto:([a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,})`)
-	obfuscatedAtRe = regexp.MustCompile(`(?i)\b([a-z0-9._%+\-]{2,40})\s*(?:\[at\]|\(at\)|\s+at\s+)\s*([a-z0-9.\-]+\.[a-z]{2,})\b`)
-	jsonLDBlockRe = regexp.MustCompile(`(?is)<script[^>]+type=["']application/ld\+json["'][^>]*>(.*?)</script>`)
+	mailtoEmailRe           = regexp.MustCompile(`(?i)mailto:([a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,})`)
+	obfuscatedAtRe          = regexp.MustCompile(`(?i)\b([a-z0-9._%+\-]{2,40})\s*(?:\[at\]|\(at\)|\s+at\s+)\s*([a-z0-9.\-]+\.[a-z]{2,})\b`)
+	jsonLDBlockRe           = regexp.MustCompile(`(?is)<script[^>]+type=["']application/ld\+json["'][^>]*>(.*?)</script>`)
 	placeholderEmailLocalRe = regexp.MustCompile(`(?i)^(first(\.|_)?last|first\.middle(last)?|first|last|flast|f\.?last|firstl|j\.?doe|jdoe|jane|john|doe(_jane|_j)?|jane_doe|janedoe|johndoe|john\.doe|j\.?smith|jsmith|johnsmith|name|user|email|test|sample|someone|fullname|yourname|firstname|lastname|n/a|na)(\d*)$`)
 	junkEmailLocalRe        = regexp.MustCompile(`(?i)^(and|or|the|for|with|from|only|your|my|this|that|http|https|www|png|jpg|gif|svg|css|js)$`)
 )

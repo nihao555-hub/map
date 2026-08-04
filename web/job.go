@@ -74,10 +74,10 @@ type JobData struct {
 	MaxTime      time.Duration `json:"max_time"`
 	Proxies      []string      `json:"proxies"`
 	// 网格全量模式：把区域切块搜索，突破 120 条上限
-	GridMode    bool    `json:"grid_mode"`
-	GridBBox    string  `json:"grid_bbox"`    // "minLat,minLon,maxLat,maxLon"
-	GridCellKm  float64 `json:"grid_cell_km"` // 每格边长（公里）
-	Locations   string  `json:"locations"`    // 原始地点名，用于网格模式的地理编码
+	GridMode   bool    `json:"grid_mode"`
+	GridBBox   string  `json:"grid_bbox"`    // "minLat,minLon,maxLat,maxLon"
+	GridCellKm float64 `json:"grid_cell_km"` // 每格边长（公里）
+	Locations  string  `json:"locations"`    // 原始地点名，用于网格模式的地理编码
 	// 结果列配置：逗号分隔的 CSV 列名；空 = 按模式默认（快速=必要列，深度/网格=全部列）
 	Columns string `json:"columns"`
 	// 目标客户数量上限：0 = 不限（在目标半径内尽量抓全）
@@ -85,13 +85,14 @@ type JobData struct {
 	// EnableIntel：抓取前由用户确认是否并发背调（theHarvester/SpiderFoot/OC/AI）
 	EnableIntel bool `json:"enable_intel"`
 	// 目标半径由 Radius（米）表达；前端以公里输入，上限见 MaxRadiusKm()
-	CountryCode  string   `json:"country_code,omitempty"`
-	CountryName  string   `json:"country_name,omitempty"`
-	RawKeywords  []string `json:"raw_keywords,omitempty"`
+	CountryCode string   `json:"country_code,omitempty"`
+	CountryName string   `json:"country_name,omitempty"`
+	RawKeywords []string `json:"raw_keywords,omitempty"`
 }
 
 // GeoAnchor 返回用于展示的锚定坐标（如 "13.756331, 100.501765"），
 // 无有效锚定（空值或表单默认的 0,0）时返回空串，模板据此决定是否展示
+//
 //nolint:gocritic // 模板里以值形式访问 .Data.GeoAnchor，需要值接收者
 func (d JobData) GeoAnchor() string {
 	if !hasGeoAnchor(d.Lat, d.Lon) {

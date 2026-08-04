@@ -52,12 +52,12 @@ type TradeHSCode struct {
 
 // TradeShipment 近期提单摘要。
 type TradeShipment struct {
-	Date        string `json:"date,omitempty"`
-	Shipper     string `json:"shipper,omitempty"`
-	Consignee   string `json:"consignee,omitempty"`
-	Product     string `json:"product,omitempty"`
-	HSCode      string `json:"hs_code,omitempty"`
-	Country     string `json:"country,omitempty"`
+	Date         string `json:"date,omitempty"`
+	Shipper      string `json:"shipper,omitempty"`
+	Consignee    string `json:"consignee,omitempty"`
+	Product      string `json:"product,omitempty"`
+	HSCode       string `json:"hs_code,omitempty"`
+	Country      string `json:"country,omitempty"`
 	BillOfLading string `json:"bill_of_lading,omitempty"`
 }
 
