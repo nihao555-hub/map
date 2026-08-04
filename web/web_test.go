@@ -93,6 +93,35 @@ func TestViewJobInvalidID(t *testing.T) {
 	}
 }
 
+func TestDownloadCSVServesAttachment(t *testing.T) {
+	dir := t.TempDir()
+	id := "33333333-3333-3333-3333-333333333333"
+	csvBody := "title,phone\nShop,123\n"
+	if err := os.WriteFile(filepath.Join(dir, id+".csv"), []byte(csvBody), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	srv := newTestServer(t, dir)
+	req := requestWithID(httptest.NewRequest(http.MethodGet, "/download?id="+id, http.NoBody))
+	rec := httptest.NewRecorder()
+	srv.download(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	cd := rec.Header().Get("Content-Disposition")
+	if !strings.Contains(cd, "attachment") || !strings.Contains(cd, ".csv") {
+		t.Fatalf("Content-Disposition=%q", cd)
+	}
+	body := rec.Body.Bytes()
+	if len(body) < 3 || body[0] != 0xEF || body[1] != 0xBB || body[2] != 0xBF {
+		t.Fatalf("expected UTF-8 BOM prefix, got %v", body[:min(8, len(body))])
+	}
+	if !strings.Contains(string(body), "title,phone") {
+		t.Fatalf("body missing csv: %q", rec.Body.String())
+	}
+}
+
 func TestSecurityHeadersAllowMapResources(t *testing.T) {
 	handler := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

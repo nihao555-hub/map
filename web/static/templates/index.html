@@ -359,7 +359,13 @@
             <div class="result-title">找到 <b id="result-count">0</b> 个相关结果<span id="result-mode">（快速模式）</span></div>
             <div class="result-source">真实商户数据 · 结果会随抓取逐渐增加</div>
           </div>
-          <button type="button" id="result-detail-btn" class="result-detail">查看详情 <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
+          <div class="result-actions">
+            <button type="button" id="result-csv-btn" class="csv-export-btn result-csv-btn" title="一键导出 CSV">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>导出 CSV</span>
+            </button>
+            <button type="button" id="result-detail-btn" class="result-detail">查看详情 <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
+          </div>
         </div>
 
         <!-- 地图选点提示 -->

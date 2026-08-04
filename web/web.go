@@ -13,7 +13,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -667,7 +666,7 @@ func (s *Server) getJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) download(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 
 		return
@@ -688,6 +687,11 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	jobName := ""
+	if job, jerr := s.svc.Get(ctx, id.String()); jerr == nil {
+		jobName = job.Name
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		http.Error(w, "Failed to open file", http.StatusInternalServerError)
@@ -695,9 +699,37 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	fileName := filepath.Base(filePath)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
-	w.Header().Set("Content-Type", "text/csv")
+	st, err := file.Stat()
+	if err != nil {
+		http.Error(w, "Failed to stat file", http.StatusInternalServerError)
+		return
+	}
+
+	fileName := csvDownloadFilename(jobName, id.String())
+	w.Header().Set("Content-Disposition", contentDispositionAttachment(fileName))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+
+	if r.Method == http.MethodHead {
+		// Approximate size (+ optional BOM). Exact size not critical for HEAD.
+		w.Header().Set("Content-Length", strconv.FormatInt(st.Size()+3, 10))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Excel on Windows often misreads UTF-8 CSV without BOM.
+	bom := make([]byte, 3)
+	n, _ := file.Read(bom)
+	hasBOM := n >= 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		http.Error(w, "Failed to read file", http.StatusInternalServerError)
+		return
+	}
+	if !hasBOM {
+		if _, err := w.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+			return
+		}
+	}
 
 	_, err = io.Copy(w, file)
 	if err != nil {
@@ -1254,9 +1286,11 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 
 	// 附带上任务 ID / 状态 / 是否背调：前端据此流式追加与门禁展开
 	status := ""
+	jobName := ""
 	enableIntel := false
 	if job, jerr := s.svc.Get(r.Context(), id.String()); jerr == nil {
 		status = job.Status
+		jobName = job.Name
 		enableIntel = job.Data.EnableIntel
 	}
 
@@ -1271,15 +1305,26 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 
 	jobIDJS, _ := jsonJS(id.String())
 	statusJS, _ := jsonJS(status)
+	jobNameJS, _ := jsonJS(jobName)
 	enableIntelJS, _ := jsonJS(enableIntel)
 	liteJS, _ := jsonJS(lite)
+	canExport := status == StatusOK
+	if !canExport && status == StatusWorking {
+		if _, csvErr := s.svc.GetCSV(r.Context(), id.String()); csvErr == nil {
+			canExport = true
+		}
+	}
 
 	viewData := map[string]any{
+		"JobID":           id.String(),
 		"JobIDJSON":       jobIDJS,
 		"StatusJSON":      statusJS,
+		"JobNameJSON":     jobNameJS,
 		"PlacesJSON":      placesJS,
 		"EnableIntelJSON": enableIntelJS,
 		"LiteJSON":        liteJS,
+		"CanExport":       canExport,
+		"JobStatus":       status,
 	}
 
 	var buf bytes.Buffer

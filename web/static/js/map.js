@@ -392,6 +392,19 @@
     document.getElementById('result-mode').textContent = '（' + modeLabel + '）';
   }
 
+  // 一键导出当前/指定任务的 CSV（浏览器直接下载）
+  window.downloadJobCSV = function (jobId) {
+    var id = jobId || currentJobId;
+    if (!id) return;
+    var a = document.createElement('a');
+    a.href = '/download?id=' + encodeURIComponent(id);
+    a.setAttribute('download', '');
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   // 打开结果详情（底部表 + 右侧背调小窗）；仅任务坞点击后调用
   window.openJobView = function (jobId) {
     if (!jobId) return;
@@ -437,6 +450,13 @@
       if (!currentJobId) return;
       window.openJobView(currentJobId);
     });
+    var csvBtn = document.getElementById('result-csv-btn');
+    if (csvBtn) {
+      csvBtn.addEventListener('click', function () {
+        if (!currentJobId) return;
+        window.downloadJobCSV(currentJobId);
+      });
+    }
   });
 
   function stopLivePoll() {
@@ -544,16 +564,23 @@
         ? (count ? ('已抓 ' + count + ' 家') : (status === 'ok' ? '暂无结果' : '等待首条结果…'))
         : (status === 'working' || status === 'pending' ? '同步进度…' : '查看详情');
       var active = id === currentJobId ? ' active' : '';
-      return '<button type="button" class="task-dock-item status-' + status + active + '" data-dock-id="' + id + '" onclick="window.focusTaskFromDock(\'' + id + '\')">' +
-        '<div class="task-dock-item-top">' +
-          '<span class="task-dock-name">' + escapeHtml(name.trim()) + '</span>' +
-          '<span class="task-dock-badge">' + statusLabel(status) + '</span>' +
-        '</div>' +
-        '<div class="task-dock-item-meta">' +
-          '<span>' + escapeHtml(mode) + '</span>' +
-          '<span class="task-dock-count">' + countText + '</span>' +
-        '</div>' +
-      '</button>';
+      var exportBtn = status === 'ok'
+        ? '<button type="button" class="task-dock-csv" title="导出 CSV" onclick="event.stopPropagation(); window.downloadJobCSV(\'' + id + '\')">' +
+            '<i data-lucide="download" class="w-3 h-3"></i> CSV</button>'
+        : '';
+      return '<div class="task-dock-item status-' + status + active + '" data-dock-id="' + id + '">' +
+        '<button type="button" class="task-dock-main" onclick="window.focusTaskFromDock(\'' + id + '\')">' +
+          '<div class="task-dock-item-top">' +
+            '<span class="task-dock-name">' + escapeHtml(name.trim()) + '</span>' +
+            '<span class="task-dock-badge">' + statusLabel(status) + '</span>' +
+          '</div>' +
+          '<div class="task-dock-item-meta">' +
+            '<span>' + escapeHtml(mode) + '</span>' +
+            '<span class="task-dock-count">' + countText + '</span>' +
+          '</div>' +
+        '</button>' +
+        exportBtn +
+      '</div>';
     }).join('');
 
     // 进行中的任务持续拉数量（结果逐渐增加）

@@ -8,7 +8,18 @@
                     <span id="job-progress-label" class="job-progress-label">准备中…</span>
                 </div>
             </div>
-            <button type="button" class="map-modal-close" aria-label="Close" onclick="closeJobMap()">&times;</button>
+            <div class="job-view-head-actions">
+                {{ if .CanExport }}
+                <a class="csv-export-btn" id="job-csv-export"
+                   href="/download?id={{.JobID}}"
+                   download
+                   title="一键导出 CSV">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span>导出 CSV</span>
+                </a>
+                {{ end }}
+                <button type="button" class="map-modal-close" aria-label="Close" onclick="closeJobMap()">&times;</button>
+            </div>
         </div>
         <div class="map-modal-body job-view-body">
             <div class="job-view-main">
@@ -998,6 +1009,9 @@
         };
 
         ensureLeaflet(initJobMap);
+        if (window.lucide) {
+            try { window.lucide.createIcons(); } catch (e) {}
+        }
     })();
     </script>
 </div>
