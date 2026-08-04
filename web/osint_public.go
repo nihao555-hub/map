@@ -584,6 +584,10 @@ func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]Decision
 				if name == "" || !IsValidPersonName(name) {
 					continue
 				}
+				// 拒收「人名碰巧含公司品牌词」的假阳性：Artan Metaj ≠ PT. ARTAN …
+				if !linkedInXRayRelevant(name, hit.Label, title) {
+					continue
+				}
 				conf := "medium"
 				if role != "" {
 					conf = "high"
@@ -607,25 +611,105 @@ func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]Decision
 	return out, coURL, nil
 }
 
+// linkedinXRayRelevant 过滤 X-Ray 假阳性：人名里撞上公司品牌（Artan / Lifung）时，
+// 必须在标题残留里仍能看到公司/品牌，否则多半是同名外人。
+func linkedInXRayRelevant(name, label, companyTitle string) bool {
+	name = strings.TrimSpace(name)
+	companyTitle = strings.TrimSpace(companyTitle)
+	if name == "" {
+		return false
+	}
+	brand := companyBrandToken(companyTitle)
+	if brand == "" || len(brand) < 4 {
+		return true
+	}
+	brandLow := strings.ToLower(brand)
+	nameLow := strings.ToLower(name)
+	labelLow := strings.ToLower(label)
+	companyLow := strings.ToLower(companyTitle)
+
+	nameTokens := strings.Fields(nameLow)
+	overlaps := false
+	for _, tok := range nameTokens {
+		tok = strings.Trim(tok, ".,'")
+		if len(tok) < 4 {
+			continue
+		}
+		if tok == brandLow || strings.HasPrefix(brandLow, tok) || strings.HasPrefix(tok, brandLow) ||
+			commonPrefixLen(tok, brandLow) >= 4 {
+			overlaps = true
+			break
+		}
+	}
+	if !overlaps {
+		return true
+	}
+
+	// 去掉人名后再看标签是否还提到公司/品牌（雇主侧证据）
+	stripped := labelLow
+	for _, tok := range nameTokens {
+		tok = strings.Trim(tok, ".,'")
+		if tok == "" {
+			continue
+		}
+		stripped = strings.ReplaceAll(stripped, tok, " ")
+	}
+	stripped = strings.Join(strings.Fields(stripped), " ")
+	if strings.Contains(stripped, brandLow) {
+		return true
+	}
+	if companyLow != "" && strings.Contains(labelLow, companyLow) {
+		return true
+	}
+	// 标签明确写 at/Company 且含品牌也算
+	if strings.Contains(labelLow, brandLow) &&
+		(strings.Contains(labelLow, " at ") || strings.Contains(labelLow, " @ ") ||
+			strings.Contains(labelLow, " | ") || strings.Contains(labelLow, companyLow)) {
+		// 但若品牌只出现在人名位置，stripped 已不含品牌；这里再放行会误伤。仅当 stripped 仍有品牌。
+		return strings.Contains(stripped, brandLow)
+	}
+	return false
+}
+
+func commonPrefixLen(a, b string) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	i := 0
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return i
+}
+
 // companyBrandToken 从 "PT Deugro Indonesia" 抽出品牌词 Deugro，供搜索公式使用。
 func companyBrandToken(title string) string {
 	t := strings.TrimSpace(title)
 	if t == "" {
 		return ""
 	}
-	// 去法人前缀/后缀
-	re := regexp.MustCompile(`(?i)\b(PT\.?|CV\.?|TBK\.?|Ltd\.?|Limited|Inc\.?|Corp\.?|LLC|GmbH|Sdn\.?\s*Bhd\.?|Pte\.?|Co\.?|Company|Group|Indonesia|Jakarta)\b`)
+	// 去法人前缀/后缀与泛行业词（否则 ARTAN INTERNATIONAL TRADING 会抽成 INTERNATIONAL）
+	re := regexp.MustCompile(`(?i)\b(PT\.?|CV\.?|TBK\.?|Ltd\.?|Limited|Inc\.?|Corp\.?|LLC|GmbH|Sdn\.?\s*Bhd\.?|Pte\.?|Co\.?|Company|Group|Holding|Holdings|Indonesia|Jakarta|International|Internasional|Trading|Trade|Export|Import|Impor|Ekspor|Global|Asia|Pacific|Solution|Solutions|Service|Services|Industry|Industries|Industrial|Manufacturing|Distributor|Distribution|Logistics|Forwarder|Cargo|Shipping)\b`)
 	cleaned := strings.TrimSpace(re.ReplaceAllString(t, " "))
 	cleaned = strings.Join(strings.Fields(cleaned), " ")
 	if cleaned == "" {
 		return t
 	}
 	parts := strings.Fields(cleaned)
-	// 取最长实义词，通常是品牌
+	// 优先取第一个足够长的实义词（通常是品牌），再回退最长词
 	best := parts[0]
 	for _, p := range parts {
-		if len(p) > len(best) {
+		if len(p) >= 4 {
 			best = p
+			break
+		}
+	}
+	if len(best) < 3 {
+		for _, p := range parts {
+			if len(p) > len(best) {
+				best = p
+			}
 		}
 	}
 	if len(best) < 3 {

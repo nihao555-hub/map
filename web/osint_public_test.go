@@ -84,3 +84,22 @@ func TestBuildPlaceIntelPublicSourcesGordi(t *testing.T) {
 		t.Fatalf("expected public/osint providers in %s", intel.Provider)
 	}
 }
+
+func TestLinkedInXRayRelevantRejectsBrandNameCollision(t *testing.T) {
+	company := "PT. ARTAN INTERNATIONAL TRADING"
+	if linkedInXRayRelevant("Artan Metaj", "Artan Metaj - Founder & CEO - IHIGH | LinkedIn", company) {
+		t.Fatal("name-brand collision without employer evidence should be rejected")
+	}
+	if linkedInXRayRelevant("Artatran Rath", "Artatran Rath - Senior Procurement Analyst - IHIGH", company) {
+		t.Fatal("Artatran~Artan collision should be rejected")
+	}
+	if !linkedInXRayRelevant("Mukhtar Ahmed", "Mukhtar Ahmed - Senior Vice President - Lifung Indonesia | LinkedIn", "PT. Lifung Indonesia") {
+		t.Fatal("true employee mention should pass")
+	}
+	if !linkedInXRayRelevant("Subhan Sofyan", "Subhan Sofyan - Procurement & Supply Chain Manager", "PT. Nawasena Mulia Niaga Internasional") {
+		t.Fatal("no brand overlap should pass")
+	}
+	if !linkedInXRayRelevant("Budi Santoso", "Budi Santoso - Purchasing Manager - PT. ARTAN INTERNATIONAL TRADING", company) {
+		t.Fatal("explicit company in label should pass even if uncommon")
+	}
+}
