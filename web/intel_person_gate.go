@@ -38,6 +38,12 @@ var nonPersonTokens = map[string]bool{
 	"executive": true, "officer": true, "chief": true, "head": true,
 	"department": true, "division": true, "office": true, "branch": true,
 	"company": true, "corporate": true, "group": true, "holding": true,
+	// 职称/组织角色被网页抽成「姓名」：Senior GM / Wakil Presiden / Investor Relations
+	"senior": true, "junior": true, "gm": true, "vp": true, "svp": true, "evp": true,
+	"president": true, "presiden": true, "wakil": true, "investor": true,
+	"relation": true, "relations": true, "ir": true, "board": true,
+	"komisaris": true, "commissioner": true, "secretary": true, "sekretaris": true,
+	"chairman": true, "chairwoman": true, "chair": true, "ketua": true,
 	// 主体后缀
 	"pt": true, "cv": true, "ud": true, "tbk": true, "inc": true, "ltd": true,
 	"llc": true, "gmbh": true, "bv": true, "sdn": true, "bhd": true,

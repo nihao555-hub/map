@@ -158,3 +158,27 @@ func TestAvatarsNeverFabricated(t *testing.T) {
 		}
 	}
 }
+
+func TestRoleTitlesRejectedAsPersonNames(t *testing.T) {
+	bad := []string{"Senior GM", "Wakil Presiden", "Investor Relations", "WIDARTO Presiden"}
+	for _, n := range bad {
+		if IsValidPersonName(n) {
+			t.Errorf("expected reject %q", n)
+		}
+	}
+	good := []string{"OEY ALFRED", "Lim Gunawan Hariyanto", "Jhony Lee"}
+	for _, n := range good {
+		if !IsValidPersonName(n) {
+			t.Errorf("expected accept %q", n)
+		}
+	}
+}
+
+func TestUnavatarLooksLikeRealPhoto(t *testing.T) {
+	if unavatarLooksLikeRealPhoto("image/png", 1506) {
+		t.Fatal("placeholder png must be rejected")
+	}
+	if !unavatarLooksLikeRealPhoto("image/jpeg", 10572) {
+		t.Fatal("real jpeg must be accepted")
+	}
+}

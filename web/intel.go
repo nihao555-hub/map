@@ -1597,54 +1597,47 @@ func enrichLinkedInPublicProfiles(makers []DecisionMaker) {
 }
 
 // lookupUnavatarLinkedIn 用 unavatar.io 取 LinkedIn 公开头像（不登录）。
-// 仅在 HEAD/GET 确认为 image/* 且体积像真人照片时返回，避免字母占位图。
+// 假 slug 会返回 ~1.5KB PNG 占位图；只接受像真人照片的 JPEG/WebP（体积门槛）。
 func lookupUnavatarLinkedIn(profileURL string) string {
 	slug := linkedInSlugUsername(profileURL)
 	if slug == "" {
 		return ""
 	}
 	u := "https://unavatar.io/linkedin/" + url.PathEscape(slug)
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
+	gctx, gcancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer gcancel()
+	greq, err := http.NewRequestWithContext(gctx, http.MethodGet, u, nil)
 	if err != nil {
 		return ""
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; gmaps-intel/1.0)")
-	resp, err := http.DefaultClient.Do(req)
+	greq.Header.Set("User-Agent", "Mozilla/5.0 (compatible; gmaps-intel/1.0)")
+	gresp, err := http.DefaultClient.Do(greq)
 	if err != nil {
 		return ""
 	}
-	_ = resp.Body.Close()
-	ct := strings.ToLower(resp.Header.Get("Content-Type"))
-	if resp.StatusCode >= 400 || !strings.HasPrefix(ct, "image/") {
-		// 部分 CDN 对 HEAD 不友好，再试短 GET
-		gctx, gcancel := context.WithTimeout(context.Background(), 8*time.Second)
-		defer gcancel()
-		greq, err := http.NewRequestWithContext(gctx, http.MethodGet, u, nil)
-		if err != nil {
-			return ""
-		}
-		greq.Header.Set("User-Agent", "Mozilla/5.0 (compatible; gmaps-intel/1.0)")
-		gresp, err := http.DefaultClient.Do(greq)
-		if err != nil {
-			return ""
-		}
-		defer gresp.Body.Close()
-		ct = strings.ToLower(gresp.Header.Get("Content-Type"))
-		if gresp.StatusCode >= 400 || !strings.HasPrefix(ct, "image/") {
-			return ""
-		}
-		n, _ := io.Copy(io.Discard, io.LimitReader(gresp.Body, 64<<10))
-		if n < 800 { // 过小多半是占位/错误图
-			return ""
-		}
-		return u
+	defer gresp.Body.Close()
+	if gresp.StatusCode >= 400 {
+		return ""
 	}
-	if cl := resp.ContentLength; cl > 0 && cl < 800 {
+	ct := strings.ToLower(gresp.Header.Get("Content-Type"))
+	buf, _ := io.ReadAll(io.LimitReader(gresp.Body, 96<<10))
+	if !unavatarLooksLikeRealPhoto(ct, len(buf)) {
 		return ""
 	}
 	return u
+}
+
+func unavatarLooksLikeRealPhoto(contentType string, n int) bool {
+	ct := strings.ToLower(contentType)
+	// 占位回退是小 PNG（实测 ~1506B）；真人头像多为数 KB 起的 JPEG
+	if strings.Contains(ct, "png") && n < 4096 {
+		return false
+	}
+	if n < 2500 {
+		return false
+	}
+	return strings.Contains(ct, "jpeg") || strings.Contains(ct, "jpg") ||
+		strings.Contains(ct, "webp") || (strings.Contains(ct, "image/") && n >= 4096)
 }
 
 var (
