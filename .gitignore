@@ -18,9 +18,13 @@ deploy/xray/config.json
 tools/osint-venv/
 tools/osint-extra-venv/
 tools/spiderfoot-venv/
+tools/crosslinked-venv/
 tools/theHarvester/
 tools/spiderfoot/
 tools/blackbird/
 tools/Photon/
+tools/CrossLinked/
+tools/maigret/
 deploy/xray/__pycache__/
 tools/logs/
+tools/crosslinked-venv/

@@ -162,8 +162,24 @@
             return escapeHtml(s);
         }
 
+        // 外链图片（Google/领英）经同源代理，国内才能加载
+        function mediaURL(u) {
+            if (!u) return '';
+            if (u.indexOf('/api/v1/media') === 0) return u;
+            if (/googleusercontent\.com|contactout\.com|licdn\.com|googleapis\.com\/.*streetview/i.test(u)) {
+                return '/api/v1/media?u=' + encodeURIComponent(u);
+            }
+            return u;
+        }
+        function thumbCell(place) {
+            var src = mediaURL(place.thumbnail || '');
+            if (!src) return '<span class="cell-empty">—</span>';
+            return '<img class="place-thumb" src="' + encodeURI(src) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.classList.add(\'thumb-broken\');this.alt=\'\'">';
+        }
+
         // 首屏只渲染获客必要列，显著加快表格绘制
         var RESULT_COLUMNS = [
+            { key: 'thumbnail', label: '图片', cls: 'col-thumb', render: function (p) { return thumbCell(p); } },
             { key: 'title', label: '名称', cls: 'col-name', render: function (p) { return textCell(p.title); } },
             { key: 'category', label: '类别', cls: 'col-cat', render: function (p) { return textCell(p.category); } },
             { key: 'address', label: '地址', cls: 'col-addr', render: function (p) { return textCell(p.address); } },
@@ -280,8 +296,9 @@
 
         function personCard(d) {
             var name = d.name || (d.email ? '渠道联系人' : '联系人');
-            var avatar = d.avatar
-                ? '<img class="intel-avatar" src="' + encodeURI(d.avatar) + '" alt="" loading="lazy" referrerpolicy="no-referrer">'
+            var av = mediaURL(d.avatar || '');
+            var avatar = av
+                ? '<img class="intel-avatar" src="' + encodeURI(av) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">'
                 : '<div class="intel-avatar intel-avatar-fallback">' + escapeHtml((name || '?').charAt(0).toUpperCase()) + '</div>';
             var actions = [];
             if (d.email) {
@@ -307,6 +324,9 @@
                 (d.phone ? kv('电话', escapeHtml(d.phone)) : '') +
                 (d.whatsapp && d.whatsapp !== d.phone ? kv('WhatsApp', escapeHtml(d.whatsapp)) : '') +
                 (d.linkedin ? kv('LinkedIn', linkOrText(d.linkedin)) : '') +
+                (d.profiles && d.profiles.length ? kv('社媒画像', d.profiles.slice(0, 6).map(function (u) {
+                    return linkOrText(u);
+                }).join('<br>')) : '') +
                 (actions.length ? '<div class="intel-acts">' + actions.join('') + '</div>' : '') +
                 (d.evidence ? '<div class="intel-muted">证据：' + escapeHtml(d.evidence) + '</div>' : '') +
                 '</article>';

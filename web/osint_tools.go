@@ -73,7 +73,7 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 		runPublicEnrichment(budget, intel, place, &mu)
 	}()
 
-	// 第一波：域名/官网类（跳过最慢的 Maigret，噪音大且易超预算）
+	// 第一波：域名/官网类（Maigret 改到门控真名后由 enrichMaigretProfiles 调用，避免邮箱本地名噪声）
 	if intel.Domain != "" && st.TheHarvester {
 		wg.Add(1)
 		go func() {
@@ -141,7 +141,7 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 	}
 	seedEmails = uniqueStrings(seedEmails)
 	if len(seedEmails) == 0 {
-			// OSINT 调试信息只进 provider，不污染对外 note
+		// OSINT 调试信息只进 provider，不污染对外 note
 		_ = notes
 		return
 	}
@@ -183,14 +183,14 @@ func runOSINTEnrichment(ctx context.Context, intel *PlaceIntel, place Place, st 
 
 // OSINTStatus 本地已安装的 OSINT 工具探测结果。
 type OSINTStatus struct {
-	TheHarvester      bool `json:"theharvester"`
-	SpiderFoot        bool `json:"spiderfoot"`
-	Holehe            bool `json:"holehe"`
-	Maigret           bool `json:"maigret"`
-	Blackbird         bool `json:"blackbird"`
-	Photon            bool `json:"photon"`
-	Amass             bool `json:"amass"`
-	OpenCorporatesAPI bool `json:"opencorporates_api"`
+	TheHarvester       bool `json:"theharvester"`
+	SpiderFoot         bool `json:"spiderfoot"`
+	Holehe             bool `json:"holehe"`
+	Maigret            bool `json:"maigret"`
+	Blackbird          bool `json:"blackbird"`
+	Photon             bool `json:"photon"`
+	Amass              bool `json:"amass"`
+	OpenCorporatesAPI  bool `json:"opencorporates_api"`
 	Hunter             bool `json:"hunter"`
 	Katana             bool `json:"katana"`
 	GitHubCommits      bool `json:"github_commits"`
@@ -205,6 +205,9 @@ type OSINTStatus struct {
 	DuckDuckGo         bool `json:"duckduckgo"`
 	ImportYeti         bool `json:"importyeti"`
 	Kirchner           bool `json:"kirchner"`
+	CrossLinked        bool `json:"crosslinked"` // tools/CrossLinked CLI
+	MaigretReady       bool `json:"maigret_ready"`
+	LeadContact        bool `json:"leadcontact"`
 }
 
 func osintExtraPython() string {
@@ -292,7 +295,7 @@ func probeOSINTToolsUncached() OSINTStatus {
 		st.Holehe = exec.CommandContext(ctx, extra, "-c", "import holehe").Run() == nil
 		cancel()
 		ctx, cancel = context.WithTimeout(context.Background(), 6*time.Second)
-		st.Maigret = exec.CommandContext(ctx, extra, "-c", "import maigret").Run() == nil
+		st.Maigret = maigretBin() != "" || exec.CommandContext(ctx, extra, "-c", "import maigret").Run() == nil
 		cancel()
 		bb := filepath.Join(repoRoot(), "tools", "blackbird", "blackbird.py")
 		if _, err := os.Stat(bb); err == nil {
@@ -328,6 +331,9 @@ func probeOSINTToolsUncached() OSINTStatus {
 	st.DuckDuckGo = true
 	st.ImportYeti = importYetiEnabled()
 	st.Kirchner = strings.TrimSpace(os.Getenv("KIRCHNER_DISABLE")) != "1"
+	st.CrossLinked = CrossLinkedAvailable()
+	st.MaigretReady = st.Maigret
+	st.LeadContact = LeadContactEnabled()
 	return st
 }
 
@@ -343,10 +349,10 @@ func OSINTToolsAvailable() (harvester, spiderfoot bool) {
 }
 
 type harvesterOut struct {
-	Emails        []string `json:"emails"`
-	Hosts         []string `json:"hosts"`
-	People        []string `json:"people"`
-	Interesting   []string `json:"interesting_urls"`
+	Emails      []string `json:"emails"`
+	Hosts       []string `json:"hosts"`
+	People      []string `json:"people"`
+	Interesting []string `json:"interesting_urls"`
 }
 
 func runTheHarvester(ctx context.Context, domain string) (*harvesterOut, error) {
@@ -645,15 +651,18 @@ func runAmassPassive(ctx context.Context, domain string) ([]string, error) {
 	return uniqueStrings(hosts), nil
 }
 
-// runMaigretLite 用邮箱本地部分当用户名做轻量社媒枚举（限站点数）。
+// runMaigretLite 调用本地 tools/maigret（venv CLI）做轻量社媒枚举。
 func runMaigretLite(ctx context.Context, username string) ([]string, error) {
 	username = strings.TrimSpace(username)
 	username = regexp.MustCompile(`[^a-zA-Z0-9._-]`).ReplaceAllString(username, "")
 	if len(username) < 3 {
 		return nil, fmt.Errorf("bad username")
 	}
-	py := osintExtraPython()
-	ctx, cancel := context.WithTimeout(ctx, 35*time.Second)
+	bin := maigretBin()
+	if bin == "" {
+		return nil, fmt.Errorf("maigret not installed (bash tools/install_osint.sh)")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 22*time.Second)
 	defer cancel()
 	tmpDir, err := os.MkdirTemp("", "maigret-*")
 	if err != nil {
@@ -661,15 +670,20 @@ func runMaigretLite(ctx context.Context, username string) ([]string, error) {
 	}
 	defer os.RemoveAll(tmpDir)
 	var out bytes.Buffer
-	_ = runCmdGroup(ctx, &out, nil, filepath.Join(filepath.Dir(py), "maigret"),
+	args := []string{
 		username,
-		"--timeout", "8",
-		"-n", "20",
+		"--timeout", "6",
+		"-n", "15",
 		"--no-recursion",
 		"--no-extracting",
 		"-fo", tmpDir,
 		"--json", "simple",
-	)
+	}
+	// 优先用本地克隆的 sites 库
+	if db := filepath.Join(repoRoot(), "tools", "maigret", "maigret", "resources", "data.json"); fileExists(db) {
+		args = append(args, "--db", db)
+	}
+	_ = runCmdGroup(ctx, &out, nil, bin, args...)
 	var hits []string
 	_ = filepath.Walk(tmpDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(info.Name(), ".json") {

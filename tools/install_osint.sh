@@ -43,12 +43,15 @@ python spiderfoot/sf.py -V
 deactivate
 echo "[ok] SpiderFoot"
 
-# --- holehe / maigret / socialscan + blackbird + Photon ---
+# --- Maigret（本地克隆 soxoj/maigret，editable 安装）---
+if [[ ! -d maigret/.git ]]; then
+  git clone --depth 1 https://github.com/soxoj/maigret.git
+fi
 python3 -m venv osint-extra-venv
 # shellcheck disable=SC1091
 source osint-extra-venv/bin/activate
 pip install -U pip wheel
-pip install holehe maigret socialscan 'aiohttp>=3.12.14'
+pip install -e ./maigret holehe socialscan 'aiohttp>=3.12.14'
 if [[ ! -d blackbird/.git ]]; then
   git clone --depth 1 https://github.com/p1ngul1n0/blackbird.git
 fi
@@ -58,8 +61,22 @@ if [[ ! -d Photon/.git ]]; then
   git clone --depth 1 https://github.com/s0md3v/Photon.git
 fi
 pip install -r Photon/requirements.txt || true
+maigret --version >/dev/null
 deactivate
-echo "[ok] holehe/maigret/blackbird/Photon"
+echo "[ok] maigret(local)+holehe/blackbird/Photon"
+
+# --- CrossLinked（本地克隆 m8sec/CrossLinked，独立 venv 避免与 maigret 依赖冲突）---
+if [[ ! -d CrossLinked/.git ]]; then
+  git clone --depth 1 https://github.com/m8sec/CrossLinked.git
+fi
+python3 -m venv crosslinked-venv
+# shellcheck disable=SC1091
+source crosslinked-venv/bin/activate
+pip install -U pip wheel
+pip install -e ./CrossLinked 'PySocks>=1.7.1' 'requests[socks]'
+crosslinked -h >/dev/null
+deactivate
+echo "[ok] CrossLinked (local CLI)"
 
 # --- amass ---
 if ! command -v amass >/dev/null && [[ ! -x "${HOME}/go/bin/amass" ]]; then
@@ -81,13 +98,14 @@ cat <<EOF
 - theHarvester (~17k) 域名邮箱/主机
 - SpiderFoot (~20k) DNS/WHOIS/主体
 - holehe (~11k) 邮箱注册足迹
-- maigret (~36k) 用户名社媒枚举
+- maigret (~36k) tools/maigret 本地克隆 CLI
+- CrossLinked (~1.6k) tools/CrossLinked 本地克隆 CLI（Bing/Google 员工名）
 - blackbird (~6k) 邮箱/用户名社媒搜索
 - Photon (~11k) 网站爬虫抽邮箱/社媒
 - amass (~15k) 被动子域名
 - katana (~17k) about/team 深链
 - OpenCorporates / GLEIF / Wikidata（Go 直连）
 - Hunter.io（可选 env HUNTER_API_KEY）
-- AHU 董事（可选 env AHU_PROXY + tools/ahu_lookup.py）
+- AHU=印尼 ahu.go.id 董事登记（可选 env AHU_PROXY + tools/ahu_lookup.py）
 
 EOF

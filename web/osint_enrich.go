@@ -170,6 +170,24 @@ func runEnrichmentSources(ctx context.Context, intel *PlaceIntel, place Place, s
 		}()
 	}
 
+	// LeadContact：按公司名搜领英决策人（含头像 URL）；邮箱/电话另计费，见 enrichLeadContactContacts
+	if LeadContactEnabled() && title != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			people, err := lookupLeadContactPeople(budget, title, "Indonesia")
+			if err != nil {
+				addNote("LeadContact：" + truncateRunes(err.Error(), 60))
+				return
+			}
+			mu.Lock()
+			intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, people)
+			intel.Sources = mergeUnique(intel.Sources, []string{"leadcontact.ai"})
+			intel.Provider = strings.Trim(intel.Provider+"+leadcontact", "+")
+			mu.Unlock()
+		}()
+	}
+
 	wg.Wait()
 }
 
@@ -872,7 +890,7 @@ func mergeDecisionMakers(dst, src []DecisionMaker) []DecisionMaker {
 }
 
 func dedupeDecisionMakers(in []DecisionMaker) []DecisionMaker {
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	var out []DecisionMaker
 	for _, d := range in {
 		d.Name = strings.TrimSpace(d.Name)
@@ -887,10 +905,26 @@ func dedupeDecisionMakers(in []DecisionMaker) []DecisionMaker {
 		if d.Name == "" && d.Email == "" {
 			key = "ch|" + d.Phone + "|" + d.WhatsApp + "|" + strings.ToLower(d.LinkedIn)
 		}
-		if seen[key] {
+		if i, ok := seen[key]; ok {
+			// 合并同名记录的 LinkedIn / Profiles / 头衔
+			if out[i].LinkedIn == "" && d.LinkedIn != "" {
+				out[i].LinkedIn = d.LinkedIn
+			}
+			if out[i].Title == "" && d.Title != "" {
+				out[i].Title = d.Title
+			}
+			if out[i].Avatar == "" && d.Avatar != "" {
+				out[i].Avatar = d.Avatar
+			}
+			out[i].Profiles = mergeUnique(out[i].Profiles, d.Profiles)
+			if out[i].Source == "" {
+				out[i].Source = d.Source
+			} else if d.Source != "" && !strings.Contains(out[i].Source, d.Source) {
+				out[i].Source = out[i].Source + "+" + d.Source
+			}
 			continue
 		}
-		seen[key] = true
+		seen[key] = len(out)
 		out = append(out, d)
 	}
 	return out

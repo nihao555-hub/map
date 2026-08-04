@@ -63,18 +63,19 @@ type OrgUnit struct {
 
 // DecisionMaker 决策人 / 关键联系人（须有证据；优先可触达：邮箱/电话/WhatsApp/LinkedIn）。
 type DecisionMaker struct {
-	Name       string `json:"name"`
-	Title      string `json:"title,omitempty"`
-	Headline   string `json:"headline,omitempty"` // LinkedIn 公开页标题行
-	Location   string `json:"location,omitempty"`
-	Email      string `json:"email,omitempty"`
-	Phone      string `json:"phone,omitempty"`
-	WhatsApp   string `json:"whatsapp,omitempty"`
-	LinkedIn   string `json:"linkedin,omitempty"`
-	Avatar     string `json:"avatar,omitempty"`
-	Source     string `json:"source,omitempty"`
-	Evidence   string `json:"evidence,omitempty"`
-	Confidence string `json:"confidence,omitempty"`
+	Name       string   `json:"name"`
+	Title      string   `json:"title,omitempty"`
+	Headline   string   `json:"headline,omitempty"` // LinkedIn 公开页标题行
+	Location   string   `json:"location,omitempty"`
+	Email      string   `json:"email,omitempty"`
+	Phone      string   `json:"phone,omitempty"`
+	WhatsApp   string   `json:"whatsapp,omitempty"`
+	LinkedIn   string   `json:"linkedin,omitempty"`
+	Avatar     string   `json:"avatar,omitempty"`
+	Profiles   []string `json:"profiles,omitempty"` // Maigret 等社媒画像 URL
+	Source     string   `json:"source,omitempty"`
+	Evidence   string   `json:"evidence,omitempty"`
+	Confidence string   `json:"confidence,omitempty"`
 }
 
 // CompanyHit OpenCorporates 等公开主体匹配
@@ -362,6 +363,8 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 	intel.DecisionMakers = attachLinkedInSearchHints(intel.DecisionMakers, place.Title)
 	intel.DecisionMakers = sanitizeDecisionMakers(intel.DecisionMakers, place)
 	intel.DecisionMakers = pruneOfficeInboxesWhenPeopleExist(intel.DecisionMakers)
+	// Maigret：仅对门控后的真名做用户名社媒画像（有名字才有用）
+	enrichMaigretProfiles(ctx, intel, st)
 	enrichDecisionMakerAvatars(intel.DecisionMakers)
 	sortDecisionMakersForOutreach(intel.DecisionMakers)
 	if len(intel.DecisionMakers) > 12 {

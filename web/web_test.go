@@ -110,6 +110,7 @@ func TestSecurityHeadersAllowMapResources(t *testing.T) {
 		"unpkg.com",
 		"nominatim.openstreetmap.org",
 		"*.is.autonavi.com",
+		"*.googleusercontent.com",
 	} {
 		if !strings.Contains(csp, want) {
 			t.Fatalf("CSP missing %q: %s", want, csp)

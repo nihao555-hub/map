@@ -1731,3 +1731,15 @@ svg.lucide { flex-shrink: 0; }
 #maxresults {
   width: 100%;
 }
+
+/* 商家缩略图（经 /api/v1/media 同源代理，国内可加载） */
+.places-table .col-thumb { width: 56px; min-width: 56px; padding: 6px 8px; }
+.places-table .place-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #eef1f6;
+  display: block;
+}
+.places-table .place-thumb.thumb-broken { opacity: 0.25; }

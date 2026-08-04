@@ -144,6 +144,21 @@ func runPublicEnrichment(ctx context.Context, intel *PlaceIntel, place Place, mu
 			mu.Unlock()
 		}()
 
+		// CrossLinked 同款：Bing/Brave 挖 site:linkedin.com/in 员工姓名（不碰 LinkedIn API）
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			people, err := lookupCrossLinkedEmployees(budget, title, domain)
+			if err != nil || len(people) == 0 {
+				return
+			}
+			mu.Lock()
+			intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, people)
+			intel.Sources = mergeUnique(intel.Sources, []string{"crosslinked"})
+			intel.Provider = strings.Trim(intel.Provider+"+crosslinked", "+")
+			mu.Unlock()
+		}()
+
 		// 海关定公司 → 领英定人（ImportYeti / 美国提单开放数据）
 		wg.Add(1)
 		go func() {

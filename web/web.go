@@ -157,6 +157,7 @@ func New(svc *Service, addr string) (*Server, error) {
 	})
 
 	mux.HandleFunc("/api/v1/osint-status", ans.apiOSINTStatus)
+	mux.HandleFunc("/api/v1/media", ans.apiMediaProxy)
 
 	mux.HandleFunc("/api/v1/geocode", ans.apiGeocode)
 	mux.HandleFunc("/api/v1/reverse-geocode", ans.apiReverseGeocode)
@@ -1050,6 +1051,10 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 		places = []Place{}
 	}
 
+	for i := range places {
+		rewritePlaceMedia(&places[i])
+	}
+
 	renderJSON(w, http.StatusOK, places)
 }
 
@@ -1070,6 +1075,7 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 	refresh := r.URL.Query().Get("refresh") == "1" || r.Method == http.MethodPost
 	if !refresh {
 		if cached, ok := s.svc.loadIntel(id.String(), placeID); ok {
+			rewriteIntelMedia(cached)
 			renderJSON(w, http.StatusOK, cached)
 			return
 		}
@@ -1102,6 +1108,7 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 	if job.Data.EnableIntel && !refresh {
 		s.svc.EnsurePlaceIntelAsync(id.String(), place)
 		if cached, ok := s.svc.loadIntel(id.String(), place.PlaceID); ok {
+			rewriteIntelMedia(cached)
 			renderJSON(w, http.StatusOK, cached)
 			return
 		}
@@ -1125,6 +1132,7 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: err.Error()})
 		return
 	}
+	rewriteIntelMedia(intel)
 	renderJSON(w, http.StatusOK, intel)
 }
 
@@ -1177,8 +1185,10 @@ func (s *Server) apiOSINTStatus(w http.ResponseWriter, r *http.Request) {
 		"duckduckgo":         st.DuckDuckGo,
 		"importyeti":         st.ImportYeti,
 		"kirchner":           st.Kirchner,
+		"crosslinked":        st.CrossLinked,
+		"leadcontact":        st.LeadContact,
 		"max_radius_km":      MaxRadiusKm(),
-		"hint":               "bash tools/install_osint.sh；公开源已启用；ImportYeti/Kirchner 美国海关提单；可选 IMPORTYETI_API_KEY / HUNTER_API_KEY / AHU_PROXY",
+		"hint":               "bash tools/install_osint.sh；CrossLinked(Bing员工名)+Maigret(社媒画像)+公开源；AHU=印尼 ahu.go.id 董事登记（需 AHU_PROXY）；可选 HUNTER_API_KEY / LEADCONTACT_API_KEY",
 	})
 }
 
@@ -1347,7 +1357,9 @@ func securityHeaders(next http.Handler) http.Handler {
 				"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
 				"img-src 'self' data: blob: cdn.redoc.ly cdnjs.cloudflare.com unpkg.com "+
 				"*.tile.openstreetmap.org tile.openstreetmap.org "+
-				"*.basemaps.cartocdn.com basemaps.cartocdn.com *.is.autonavi.com; "+
+				"*.basemaps.cartocdn.com basemaps.cartocdn.com *.is.autonavi.com "+
+				"*.googleusercontent.com streetviewpixels-pa.googleapis.com "+
+				"images.contactout.com *.licdn.com; "+
 				"font-src 'self' fonts.gstatic.com; "+
 				"connect-src 'self' nominatim.openstreetmap.org")
 
