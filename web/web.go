@@ -35,12 +35,25 @@ func jsonJS(v any) (template.JS, error) {
 var static embed.FS
 
 type Server struct {
-	tmpl map[string]*template.Template
-	srv  *http.Server
-	svc  *Service
+	tmpl       map[string]*template.Template
+	srv        *http.Server
+	svc        *Service
+	invites    InviteStore
+	inviteGate bool
 }
 
-func New(svc *Service, addr string) (*Server, error) {
+// ServerOption configures optional Server behavior.
+type ServerOption func(*Server)
+
+// WithInvite enables the invite-code gate using the given store.
+func WithInvite(store InviteStore, enabled bool) ServerOption {
+	return func(s *Server) {
+		s.invites = store
+		s.inviteGate = enabled && store != nil
+	}
+}
+
+func New(svc *Service, addr string, opts ...ServerOption) (*Server, error) {
 	ans := Server{
 		svc:  svc,
 		tmpl: make(map[string]*template.Template),
@@ -53,6 +66,9 @@ func New(svc *Service, addr string) (*Server, error) {
 			MaxHeaderBytes:    1 << 20,
 		},
 	}
+	for _, opt := range opts {
+		opt(&ans)
+	}
 
 	staticFS, err := fs.Sub(static, "static")
 	if err != nil {
@@ -63,6 +79,7 @@ func New(svc *Service, addr string) (*Server, error) {
 	mux := http.NewServeMux()
 
 	mux.Handle("/static/", http.StripPrefix("/static/", fileServer))
+	mux.HandleFunc("/invite", ans.invitePage)
 	mux.HandleFunc("/scrape", ans.scrape)
 	mux.HandleFunc("/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
@@ -181,7 +198,7 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.download(w, r)
 	})
 
-	handler := securityHeaders(mux)
+	handler := securityHeaders(ans.inviteGateMiddleware(mux))
 	ans.srv.Handler = handler
 
 	tmplsKeys := []string{
@@ -190,6 +207,7 @@ func New(svc *Service, addr string) (*Server, error) {
 		"static/templates/job_row.html",
 		"static/templates/job_view.html",
 		"static/templates/redoc.html",
+		"static/templates/invite.html",
 	}
 
 	for _, key := range tmplsKeys {

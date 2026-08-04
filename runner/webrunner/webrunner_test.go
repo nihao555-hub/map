@@ -118,3 +118,30 @@ func (r *memoryJobRepo) Update(_ context.Context, job *web.Job) error {
 	r.jobs[job.ID] = *job
 	return nil
 }
+
+func (r *memoryJobRepo) ClaimPending(_ context.Context) (web.Job, error) {
+	if r.jobs == nil {
+		return web.Job{}, web.ErrNoPending
+	}
+	var (
+		best   web.Job
+		found  bool
+		bestID string
+	)
+	for id, job := range r.jobs {
+		if job.Status != web.StatusPending {
+			continue
+		}
+		if !found || job.Date.Before(best.Date) {
+			best = job
+			bestID = id
+			found = true
+		}
+	}
+	if !found {
+		return web.Job{}, web.ErrNoPending
+	}
+	best.Status = web.StatusWorking
+	r.jobs[bestID] = best
+	return best, nil
+}

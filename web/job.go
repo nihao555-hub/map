@@ -26,7 +26,13 @@ type JobRepository interface {
 	Delete(context.Context, string) error
 	Select(context.Context, SelectParams) ([]Job, error)
 	Update(context.Context, *Job) error
+	// ClaimPending atomically marks the oldest pending job as working.
+	// Returns ErrNoPending when the queue is empty.
+	ClaimPending(context.Context) (Job, error)
 }
+
+// ErrNoPending is returned by ClaimPending when no pending jobs exist.
+var ErrNoPending = errors.New("no pending jobs")
 
 type Job struct {
 	ID     string

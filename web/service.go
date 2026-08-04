@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -59,6 +60,31 @@ func (s *Service) Update(ctx context.Context, job *Job) error {
 
 func (s *Service) SelectPending(ctx context.Context) ([]Job, error) {
 	return s.repo.Select(ctx, SelectParams{Status: StatusPending, Limit: 1})
+}
+
+// ClaimPending atomically claims the next pending job (status → working).
+func (s *Service) ClaimPending(ctx context.Context) (Job, error) {
+	if s.repo == nil {
+		return Job{}, fmt.Errorf("job repository not configured")
+	}
+	return s.repo.ClaimPending(ctx)
+}
+
+// JobConcurrency is how many scrape jobs may run in parallel (default 2).
+// Override with GMS_WEB_JOB_CONCURRENCY (1–4 recommended under 2.5g mem limit).
+func JobConcurrency() int {
+	v := strings.TrimSpace(os.Getenv("GMS_WEB_JOB_CONCURRENCY"))
+	if v == "" {
+		return 2
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 {
+		return 2
+	}
+	if n > 4 {
+		return 4
+	}
+	return n
 }
 
 // csvPath returns the on-disk path of a job's CSV output, rejecting ids that

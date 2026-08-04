@@ -37,6 +37,9 @@ services:
       CLASH_DEFAULT_NODE: "${CLASH_DEFAULT_NODE:-新加坡SG-HY2}"
       CLASH_SEARCH_NODE: "${CLASH_SEARCH_NODE:-日本JP-HY2,美国LA-优化-GPT,德国-优化}"
       GMAPS_REPO_ROOT: "/app"
+      INVITE_REQUIRED: "${INVITE_REQUIRED:-1}"
+      INVITE_SEED_COUNT: "${INVITE_SEED_COUNT:-100}"
+      GMS_WEB_JOB_CONCURRENCY: "${GMS_WEB_JOB_CONCURRENCY:-2}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

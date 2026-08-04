@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>邀请码 · 地图获客</title>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body class="invite-page">
+  <div class="invite-shell">
+    <div class="invite-panel">
+      <a class="brand invite-brand" href="/invite">
+        <span class="brand-icon"><i data-lucide="map-pin" class="w-5 h-5"></i></span>
+        <span class="brand-name">地图获客</span>
+        <span class="brand-tag">智能版</span>
+      </a>
+      <h1 class="invite-title">输入邀请码开始使用</h1>
+      <p class="invite-desc">本系统需邀请码开通。每个邀请码仅可兑换一次，兑换后会话约 30 天有效。</p>
+
+      {{if .Error}}
+      <div class="invite-error" role="alert">{{.Error}}</div>
+      {{end}}
+
+      <form class="invite-form" method="post" action="/invite" autocomplete="off">
+        <input type="hidden" name="next" value="{{.Next}}">
+        <label class="field-label" for="invite-code">邀请码</label>
+        <div class="input-field invite-input">
+          <i data-lucide="ticket" class="w-4 h-4 input-icon icon-blue"></i>
+          <input
+            id="invite-code"
+            name="code"
+            type="text"
+            placeholder="例如 GMS-XXXX-XXXX"
+            required
+            autofocus
+            spellcheck="false"
+            maxlength="32"
+          />
+        </div>
+        <button type="submit" class="invite-submit">验证并进入</button>
+      </form>
+    </div>
+  </div>
+  <script>lucide.createIcons();</script>
+</body>
+</html>

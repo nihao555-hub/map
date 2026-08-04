@@ -1743,3 +1743,97 @@ svg.lucide { flex-shrink: 0; }
   display: block;
 }
 .places-table .place-thumb.thumb-broken { opacity: 0.25; }
+
+/* ========================================
+   邀请码门禁页
+   ======================================== */
+body.invite-page {
+  overflow: auto;
+  min-height: 100%;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(22, 119, 255, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(82, 196, 26, 0.10), transparent 50%),
+    linear-gradient(180deg, #f7fbff 0%, var(--bg-page) 45%, #eef3f8 100%);
+}
+
+.invite-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.invite-panel {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-float);
+  padding: 36px 32px 32px;
+}
+
+.invite-brand {
+  margin-bottom: 28px;
+}
+
+.invite-title {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.invite-desc {
+  margin: 0 0 24px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  font-size: 13px;
+}
+
+.invite-error {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius-ctrl);
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  color: var(--brand-error);
+  font-size: 13px;
+}
+
+.invite-form .field-label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.invite-input {
+  margin-bottom: 20px;
+}
+
+.invite-input input {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.invite-submit {
+  width: 100%;
+  height: 44px;
+  border: none;
+  border-radius: var(--radius-ctrl);
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  transition: background 0.15s ease;
+}
+
+.invite-submit:hover {
+  background: var(--brand-primary-hover);
+}
+
+.invite-submit:active {
+  background: var(--brand-primary-active);
+}

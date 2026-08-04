@@ -50,14 +50,22 @@ func New(cfg *runner.Config) (runner.Runner, error) {
 
 	dbpath := filepath.Join(cfg.DataFolder, dbfname)
 
-	repo, err := sqlite.New(dbpath)
+	store, err := sqlite.New(dbpath)
 	if err != nil {
 		return nil, err
 	}
 
-	svc := web.NewService(repo, cfg.DataFolder)
+	svc := web.NewService(store, cfg.DataFolder)
 
-	srv, err := web.New(svc, cfg.Addr)
+	inviteOn := web.InviteRequired()
+	if inviteOn {
+		exportPath := filepath.Join(cfg.DataFolder, "invite_codes.txt")
+		if err := web.SeedAndExport(context.Background(), store, web.InviteSeedCount(), exportPath); err != nil {
+			return nil, fmt.Errorf("seed invite codes: %w", err)
+		}
+	}
+
+	srv, err := web.New(svc, cfg.Addr, web.WithInvite(store, inviteOn))
 	if err != nil {
 		return nil, err
 	}
@@ -94,46 +102,64 @@ func (w *webrunner) work(ctx context.Context) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
+	maxJobs := web.JobConcurrency()
+	log.Printf("web runner: job concurrency=%d (GMS_WEB_JOB_CONCURRENCY)", maxJobs)
+
+	sem := make(chan struct{}, maxJobs)
+	var eg errgroup.Group
+
 	for {
 		select {
 		case <-ctx.Done():
+			_ = eg.Wait()
 			return nil
 		case <-ticker.C:
-			jobs, err := w.svc.SelectPending(ctx)
-			if err != nil {
-				return err
-			}
-
-			for i := range jobs {
+			for {
 				select {
 				case <-ctx.Done():
+					_ = eg.Wait()
 					return nil
+				case sem <- struct{}{}:
 				default:
+					// all slots busy
+					goto nextTick
+				}
+
+				job, err := w.svc.ClaimPending(ctx)
+				if err != nil {
+					<-sem
+					if errors.Is(err, web.ErrNoPending) {
+						goto nextTick
+					}
+					_ = eg.Wait()
+					return err
+				}
+
+				j := job
+				eg.Go(func() error {
+					defer func() { <-sem }()
+
 					t0 := time.Now().UTC()
-					if err := w.scrapeJob(ctx, &jobs[i]); err != nil {
+					if err := w.scrapeJob(ctx, &j); err != nil {
 						params := map[string]any{
-							"job_count": len(jobs[i].Data.Keywords),
+							"job_count": len(j.Data.Keywords),
 							"duration":  time.Now().UTC().Sub(t0).String(),
 							"error":     err.Error(),
 						}
-
-						evt := tlmt.NewEvent("web_runner", params)
-
-						_ = runner.Telemetry().Send(ctx, evt)
-
-						log.Printf("error scraping job %s: %v", jobs[i].ID, err)
+						_ = runner.Telemetry().Send(ctx, tlmt.NewEvent("web_runner", params))
+						log.Printf("error scraping job %s: %v", j.ID, err)
 					} else {
 						params := map[string]any{
-							"job_count": len(jobs[i].Data.Keywords),
+							"job_count": len(j.Data.Keywords),
 							"duration":  time.Now().UTC().Sub(t0).String(),
 						}
-
 						_ = runner.Telemetry().Send(ctx, tlmt.NewEvent("web_runner", params))
-
-						log.Printf("job %s scraped successfully", jobs[i].ID)
+						log.Printf("job %s scraped successfully", j.ID)
 					}
-				}
+					return nil
+				})
 			}
+		nextTick:
 		}
 	}
 }
