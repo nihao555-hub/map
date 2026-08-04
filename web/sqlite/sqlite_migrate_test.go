@@ -9,7 +9,6 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/gosom/google-maps-scraper/web"
 	"github.com/gosom/google-maps-scraper/web/sqlite"
 )
 
