@@ -7,10 +7,14 @@
     {{ else if eq .Status "failed" }}<div class="record-failed">采集失败</div>{{ end }}
   </div>
   <div class="record-side">
-    {{ if .Data.GridMode }}<span class="mode-tag tag-grid">全域全量</span>
+    {{ if and .Data.GridMode (not .Data.FastMode) }}<span class="mode-tag tag-grid">全域全量</span>
     {{ else if .Data.FastMode }}<span class="mode-tag tag-quick">快速模式</span>
     {{ else }}<span class="mode-tag tag-deep">深度模式</span>{{ end }}
     <span class="record-time">{{.Date.Format "01-02 15:04"}}</span>
+    {{ if eq .Status "ok" }}
+    <a class="record-csv" href="/download?id={{.ID}}" download title="导出 CSV"
+       onclick="event.stopPropagation()">CSV</a>
+    {{ end }}
     <button type="button" class="record-del" title="删除记录" onclick="event.stopPropagation()"
             hx-delete="/delete?id={{.ID}}"
             hx-target="closest .record-item"

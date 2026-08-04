@@ -13,7 +13,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -21,16 +20,39 @@ import (
 	"github.com/google/uuid"
 )
 
+// jsonJS 把值编成可安全嵌入 <script> 的 JSON（带引号的字符串/数组/对象）
+func jsonJS(v any) (template.JS, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+
+	return template.JS(b), nil
+}
+
 //go:embed static
 var static embed.FS
 
 type Server struct {
-	tmpl map[string]*template.Template
-	srv  *http.Server
-	svc  *Service
+	tmpl       map[string]*template.Template
+	srv        *http.Server
+	svc        *Service
+	invites    InviteStore
+	inviteGate bool
 }
 
-func New(svc *Service, addr string) (*Server, error) {
+// ServerOption configures optional Server behavior.
+type ServerOption func(*Server)
+
+// WithInvite enables the invite-code gate using the given store.
+func WithInvite(store InviteStore, enabled bool) ServerOption {
+	return func(s *Server) {
+		s.invites = store
+		s.inviteGate = enabled && store != nil
+	}
+}
+
+func New(svc *Service, addr string, opts ...ServerOption) (*Server, error) {
 	ans := Server{
 		svc:  svc,
 		tmpl: make(map[string]*template.Template),
@@ -43,6 +65,9 @@ func New(svc *Service, addr string) (*Server, error) {
 			MaxHeaderBytes:    1 << 20,
 		},
 	}
+	for _, opt := range opts {
+		opt(&ans)
+	}
 
 	staticFS, err := fs.Sub(static, "static")
 	if err != nil {
@@ -53,6 +78,7 @@ func New(svc *Service, addr string) (*Server, error) {
 	mux := http.NewServeMux()
 
 	mux.Handle("/static/", http.StripPrefix("/static/", fileServer))
+	mux.HandleFunc("/invite", ans.invitePage)
 	mux.HandleFunc("/scrape", ans.scrape)
 	mux.HandleFunc("/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
@@ -125,6 +151,35 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.apiGetPlaces(w, r)
 	})
 
+	mux.HandleFunc("/api/v1/jobs/{id}/places/{place_id}/intel", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			renderJSON(w, http.StatusMethodNotAllowed, apiError{
+				Code:    http.StatusMethodNotAllowed,
+				Message: "Method not allowed",
+			})
+			return
+		}
+		ans.apiPlaceIntel(w, r)
+	})
+
+	mux.HandleFunc("/api/v1/jobs/{id}/intel/status", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+		if r.Method != http.MethodGet {
+			renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+			return
+		}
+		ans.apiJobIntelStatus(w, r)
+	})
+
+	mux.HandleFunc("/api/v1/osint-status", ans.apiOSINTStatus)
+	mux.HandleFunc("/api/v1/media", ans.apiMediaProxy)
+
+	mux.HandleFunc("/api/v1/geocode", ans.apiGeocode)
+	mux.HandleFunc("/api/v1/reverse-geocode", ans.apiReverseGeocode)
+	mux.HandleFunc("/api/v1/ai-translate", ans.apiAITranslate)
+	mux.HandleFunc("/api/v1/ai-status", ans.apiAIStatus)
+
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 
@@ -142,7 +197,7 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.download(w, r)
 	})
 
-	handler := securityHeaders(mux)
+	handler := securityHeaders(ans.inviteGateMiddleware(mux))
 	ans.srv.Handler = handler
 
 	tmplsKeys := []string{
@@ -151,6 +206,7 @@ func New(svc *Service, addr string) (*Server, error) {
 		"static/templates/job_row.html",
 		"static/templates/job_view.html",
 		"static/templates/redoc.html",
+		"static/templates/invite.html",
 	}
 
 	for _, key := range tmplsKeys {
@@ -286,7 +342,7 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 	newJob := Job{
 		ID:     uuid.New().String(),
-		Name:   r.Form.Get("name"),
+		Name:   strings.TrimSpace(r.Form.Get("name")),
 		Date:   time.Now().UTC(),
 		Status: StatusPending,
 		Data:   JobData{},
@@ -319,19 +375,14 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	locationsStr := r.Form.Get("locations")
 	locationsStr = strings.TrimSpace(locationsStr)
 
-	keywords := strings.Split(keywordsStr[0], "\n")
-	for _, k := range keywords {
+	// 先保留用户原始中文关键词；海外搜索时再译成当地语言拼进 Maps 查询
+	var rawKeywords []string
+	for _, k := range strings.Split(keywordsStr[0], "\n") {
 		k = strings.TrimSpace(k)
 		if k == "" {
 			continue
 		}
-
-		// 如果有地点，把地点拼到关键词后面（加 in 前缀）
-		if locationsStr != "" {
-			k = k + " in " + locationsStr
-		}
-
-		newJob.Data.Keywords = append(newJob.Data.Keywords, k)
+		rawKeywords = append(rawKeywords, k)
 	}
 
 	newJob.Data.Lang = r.Form.Get("lang")
@@ -347,9 +398,10 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		newJob.Data.FastMode = true
 	}
 
-	newJob.Data.Radius, err = strconv.Atoi(r.Form.Get("radius"))
+	// 目标半径：优先 radius_km（公里，项目上限 MaxRadiusKm），否则兼容旧 radius（米）
+	newJob.Data.Radius, err = parseTargetRadiusMeters(r)
 	if err != nil {
-		http.Error(w, "invalid radius", http.StatusUnprocessableEntity)
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 
 		return
 	}
@@ -364,7 +416,15 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newJob.Data.Email = r.Form.Get("email") == "on"
+	// 邮箱为获客刚需：快速/深度/网格一律开启，忽略前端关闭
+	newJob.Data.Email = true
+
+	// 背调：用户抓取前勾选；开启后结果照常产出，背调并发进行
+	newJob.Data.EnableIntel = r.Form.Get("enable_intel") == "on" ||
+		r.Form.Get("enable_intel") == "true" || r.Form.Get("enable_intel") == "1"
+
+	// 界面/AI 产出语言（与 Maps hl/lang 独立）；缺省英文
+	newJob.Data.UILang = normalizeUILang(r.Form.Get("ui_lang"))
 
 	// 网格全量模式
 	if r.Form.Get("gridmode") == "on" {
@@ -386,42 +446,162 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		// 快速模式已原生支持网格（纯 HTTP 搜索接口按格取数），不再强制关闭
 	}
 
+	// 快速模式单点搜索结果很少：自动开粗网格扩量（仍走纯 HTTP）。
+	// 保留用户设定的目标半径；仅在未设网格密度时给粗默认。
+	if newJob.Data.FastMode && !newJob.Data.GridMode {
+		newJob.Data.GridMode = true
+		if newJob.Data.GridCellKm <= 0 {
+			newJob.Data.GridCellKm = 2.5
+		}
+		if newJob.Data.Locations == "" {
+			newJob.Data.Locations = locationsStr
+		}
+		log.Printf("快速模式自动启用粗网格扩量 cell=%.1fkm radius=%dm (%.1fkm)",
+			newJob.Data.GridCellKm, newJob.Data.Radius, float64(newJob.Data.Radius)/1000)
+	}
+
 	// 结果列配置（快速模式可不选；深度/网格模式用户自选表头）
 	newJob.Data.Columns = strings.TrimSpace(r.Form.Get("columns"))
 
-	// 目标客户数量上限：0 或不填 = 不限
-	if mr := strings.TrimSpace(r.Form.Get("maxresults")); mr != "" {
-		if v, err := strconv.Atoi(mr); err == nil && v > 0 {
-			newJob.Data.MaxResults = v
+	// 不设数量上限：半径内网格全量抓取，忽略前端/历史 maxresults
+	newJob.Data.MaxResults = 0
+
+	// 深度模式：在目标半径内用粗网格覆盖（单点滚动远达不到半径内全量）。
+	if !newJob.Data.FastMode && !newJob.Data.GridMode {
+		newJob.Data.GridMode = true
+		if newJob.Data.GridCellKm <= 0 {
+			newJob.Data.GridCellKm = 2.0 // 深度走浏览器，格子稍粗以免格数爆炸
+		}
+		if newJob.Data.Locations == "" {
+			newJob.Data.Locations = locationsStr
+		}
+		log.Printf("深度模式启用粗网格覆盖目标半径 cell=%.1fkm radius=%dm (%.1fkm) unlimited",
+			newJob.Data.GridCellKm, newJob.Data.Radius, float64(newJob.Data.Radius)/1000)
+	}
+
+	// 用户显式选择的目标国家（优先于地理编码推断）
+	countryCode := strings.ToLower(strings.TrimSpace(r.Form.Get("country_code")))
+	countryName := strings.TrimSpace(r.Form.Get("country_name"))
+	useAI := r.Form.Get("ai_translate") == "on" || r.Form.Get("ai_translate") == "true"
+	if useAI && !AITranslateEnabled() {
+		log.Printf("已勾选 AI 翻译但未配置 GRSAI_API_KEY，将回退词典/机翻")
+		useAI = false
+	}
+	newJob.Data.CountryCode = countryCode
+	newJob.Data.CountryName = countryName
+	newJob.Data.RawKeywords = append([]string(nil), rawKeywords...)
+	if countryCode != "" {
+		if hl := langForCountryCode(countryCode); hl != "" {
+			newJob.Data.Lang = hl
 		}
 	}
 
-	// 地理锚定：普通模式（非网格）下，用户只填了地点没填有效经纬度时，
-	// 先地理编码一次，把搜索锚定到目标地，并让 hl 与目标地语言匹配，
-	// 避免 Google 按代理出口/浏览器环境本地化结果。
-	// 地理编码失败只告警，回退为原来的未锚定搜索，不让任务失败
-	if !newJob.Data.GridMode && locationsStr != "" && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
-		geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	// 地理锚定 + 海外中文查询本地化：
+	// 1) 锚定经纬度 / 按国家校正 hl
+	// 2) 把「咖啡 in 纽约」译成「coffee in New York」再交给 Google Maps
+	searchLocation := locationsStr
+	// 前端已锚定 lat/lon 且选定国家时，跳过二次地理编码（可省数秒）
+	skipGeocode := hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) && countryCode != ""
+	if locationsStr != "" && !skipGeocode {
+		geoCtx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 
-		point, geoErr := Geocode(geoCtx, locationsStr)
+		point, geoErr := ResolveLocationAnchor(geoCtx, locationsStr, countryCode)
 
 		cancel()
 
 		if geoErr != nil {
 			log.Printf("地理编码 %q 失败: %v，回退为未锚定搜索", locationsStr, geoErr)
 		} else {
-			newJob.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
-			newJob.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
-
-			if hl := langForCountryCode(point.CountryCode); hl != "" && hl != newJob.Data.Lang {
-				log.Printf("地点 %q 国家代码 %s，hl 从 %s 调整为 %s",
-					locationsStr, point.CountryCode, newJob.Data.Lang, hl)
-
-				newJob.Data.Lang = hl
+			if !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+				newJob.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
+				newJob.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
+				log.Printf("地点 %q 锚定到 %s,%s", locationsStr, newJob.Data.Lat, newJob.Data.Lon)
 			}
 
-			log.Printf("地点 %q 锚定到 %s,%s", locationsStr, newJob.Data.Lat, newJob.Data.Lon)
+			// 未选手动国家时，才用地理编码结果校正语言
+			if countryCode == "" {
+				if hl := langForCountryCode(point.CountryCode); hl != "" && hl != newJob.Data.Lang {
+					log.Printf("地点 %q 国家代码 %s，hl 从 %s 调整为 %s",
+						locationsStr, point.CountryCode, newJob.Data.Lang, hl)
+
+					newJob.Data.Lang = hl
+				}
+			}
+
+			// 海外中文地名：优先词典/英文展示名，避免 Maps 吃中文地点
+			if containsChinese(locationsStr) && newJob.Data.Lang != "zh" {
+				if loc, ok := zhPlaceLexicon[locationsStr]; ok {
+					searchLocation = loc
+				} else if short := shortDisplayName(point.DisplayName); short != "" && !containsChinese(short) {
+					searchLocation = short
+				}
+			}
 		}
+	} else if locationsStr != "" && skipGeocode {
+		if containsChinese(locationsStr) && newJob.Data.Lang != "zh" {
+			if loc, ok := zhPlaceLexicon[locationsStr]; ok {
+				searchLocation = loc
+			}
+		}
+		log.Printf("跳过地理编码：已有锚点 %s,%s country=%s", newJob.Data.Lat, newJob.Data.Lon, countryCode)
+	}
+
+	// 任务名始终由服务端用当前关键词+地点生成，避免前端隐藏域残留导致「名实不符」
+	newJob.Name = buildJobName(rawKeywords, locationsStr)
+
+	// 关键词本地化：词典优先；仅未命中时短超时走 AI
+	{
+		locTimeout := 6 * time.Second
+		if useAI && AITranslateEnabled() {
+			locTimeout = 10 * time.Second
+		}
+		locCtx, cancel := context.WithTimeout(r.Context(), locTimeout)
+		localized, locUsed, did := localizeSearchQuery(locCtx, rawKeywords, searchLocation, newJob.Data.Lang, localizeOpts{
+			CountryName: countryName,
+			UseAI:       useAI,
+		})
+		cancel()
+
+		if len(localized) == 0 {
+			http.Error(w, "无法将中文关键词译成目标国可搜词（机翻不可用）。请改用英文/当地语言品类，或勾选 AI 翻译后重试", http.StatusUnprocessableEntity)
+
+			return
+		}
+
+		// 二次保险：海外任务绝不带汉字进 Google Maps（否则常只命中 1～2 家无关店）
+		if newJob.Data.Lang != "zh" {
+			clean := make([]string, 0, len(localized))
+			for _, kw := range localized {
+				if containsChinese(kw) {
+					log.Printf("丢弃仍含中文的查询: %q", kw)
+					continue
+				}
+				clean = append(clean, kw)
+			}
+			if len(clean) == 0 {
+				http.Error(w, "关键词仍含中文，无法在目标国 Google Maps 有效搜索。请填写英文品类（如 importer / cafe）或勾选 AI 翻译", http.StatusUnprocessableEntity)
+
+				return
+			}
+			localized = clean
+		}
+
+		newJob.Data.Keywords = localized
+		if did {
+			log.Printf("中文查询已本地化: name=%q lang=%s country=%s ai=%v loc=%q -> %v",
+				newJob.Name, newJob.Data.Lang, countryCode, useAI && AITranslateEnabled(), locUsed, localized)
+		}
+	}
+
+	if newJob.Data.Locations == "" && locationsStr != "" {
+		newJob.Data.Locations = locationsStr
+	}
+
+	// 快速模式必须有真实地理锚点，否则会落到 (0,0) 而不是用户选的国家/城市
+	if newJob.Data.FastMode && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+		http.Error(w, "快速模式需要有效地点：请选择国家并在地图上选点，或等待地点解析完成后再提交", http.StatusUnprocessableEntity)
+
+		return
 	}
 
 	// 提交前校验代理：格式非法、缺用户名密码认证的立即拒绝，
@@ -439,6 +619,17 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 
+		return
+	}
+
+	log.Printf("任务意图 name=%q raw=%v search=%v country=%s(%s) lang=%s loc=%q geo=%s,%s fast=%v grid=%v",
+		newJob.Name, newJob.Data.RawKeywords, newJob.Data.Keywords,
+		newJob.Data.CountryName, newJob.Data.CountryCode, newJob.Data.Lang,
+		newJob.Data.Locations, newJob.Data.Lat, newJob.Data.Lon,
+		newJob.Data.FastMode, newJob.Data.GridMode)
+
+	if err := s.attachOwner(r, &newJob); err != nil {
+		http.Error(w, "需要有效邀请会话", http.StatusUnauthorized)
 		return
 	}
 
@@ -472,7 +663,7 @@ func (s *Server) getJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobs, err := s.svc.All(context.Background())
+	jobs, err := s.listJobsForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -483,7 +674,7 @@ func (s *Server) getJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) download(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 
 		return
@@ -498,11 +689,19 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	job, err := s.loadAccessibleJob(r, id.String())
+	if err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
 	filePath, err := s.svc.GetCSV(ctx, id.String())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
+
+	jobName := job.Name
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -511,9 +710,37 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	fileName := filepath.Base(filePath)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
-	w.Header().Set("Content-Type", "text/csv")
+	st, err := file.Stat()
+	if err != nil {
+		http.Error(w, "Failed to stat file", http.StatusInternalServerError)
+		return
+	}
+
+	fileName := csvDownloadFilename(jobName, id.String())
+	w.Header().Set("Content-Disposition", contentDispositionAttachment(fileName))
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+
+	if r.Method == http.MethodHead {
+		// Approximate size (+ optional BOM). Exact size not critical for HEAD.
+		w.Header().Set("Content-Length", strconv.FormatInt(st.Size()+3, 10))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Excel on Windows often misreads UTF-8 CSV without BOM.
+	bom := make([]byte, 3)
+	n, _ := file.Read(bom)
+	hasBOM := n >= 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		http.Error(w, "Failed to read file", http.StatusInternalServerError)
+		return
+	}
+	if !hasBOM {
+		if _, err := w.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+			return
+		}
+	}
 
 	_, err = io.Copy(w, file)
 	if err != nil {
@@ -533,6 +760,11 @@ func (s *Server) delete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		http.Error(w, "Invalid ID", http.StatusUnprocessableEntity)
 
+		return
+	}
+
+	if _, err := s.loadAccessibleJob(r, deleteID.String()); err != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
 
@@ -571,6 +803,181 @@ func (s *Server) redocHandler(w http.ResponseWriter, _ *http.Request) {
 	_ = tmpl.Execute(w, nil)
 }
 
+// apiAIStatus 告诉前端 AI 翻译是否已配置（不暴露密钥）
+func (s *Server) apiAIStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"enabled": AITranslateEnabled(),
+		"model":   grsaiModel(),
+	})
+}
+
+// apiAITranslate 用配置的 Gemini 兼容接口把中文关键词译成目标国搜索词
+func (s *Server) apiAITranslate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+
+		return
+	}
+
+	if !AITranslateEnabled() {
+		renderJSON(w, http.StatusServiceUnavailable, apiError{
+			Code:    http.StatusServiceUnavailable,
+			Message: "AI translate not configured (set GRSAI_API_KEY)",
+		})
+
+		return
+	}
+
+	var req struct {
+		Text        string `json:"text"`
+		CountryName string `json:"country_name"`
+		Lang        string `json:"lang"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{Code: http.StatusBadRequest, Message: err.Error()})
+
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 50*time.Second)
+	defer cancel()
+
+	out, err := AITranslateKeyword(ctx, req.Text, req.CountryName, req.Lang)
+	if err != nil {
+		renderJSON(w, http.StatusBadGateway, apiError{Code: http.StatusBadGateway, Message: err.Error()})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"translated": out,
+		"lang":       req.Lang,
+		"country":    req.CountryName,
+	})
+}
+
+// apiGeocode 供前端「在哪里」预取坐标：支持中文海外地名（纽约/东京等），
+// 走服务端 Nominatim，避免浏览器直连被限流或 CSP/CORS 拦住。
+func (s *Server) apiGeocode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "missing q",
+		})
+
+		return
+	}
+
+	geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	point, err := Geocode(geoCtx, q)
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	display := point.DisplayName
+	if display == "" {
+		display = q
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"lat":          point.Lat,
+		"lon":          point.Lon,
+		"country_code": point.CountryCode,
+		"lang":         langForCountryCode(point.CountryCode),
+		"display_name": display,
+	})
+}
+
+// apiReverseGeocode 地图点选：经纬度 → 地点文案 + 国家（同步左侧表单）
+func (s *Server) apiReverseGeocode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	lat, err1 := strconv.ParseFloat(strings.TrimSpace(r.URL.Query().Get("lat")), 64)
+	lon, err2 := strconv.ParseFloat(strings.TrimSpace(r.URL.Query().Get("lon")), 64)
+	if err1 != nil || err2 != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "invalid lat/lon",
+		})
+
+		return
+	}
+
+	geoCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	point, err := ReverseGeocode(geoCtx, lat, lon)
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"lat":          point.Lat,
+		"lon":          point.Lon,
+		"country_code": point.CountryCode,
+		"lang":         langForCountryCode(point.CountryCode),
+		"display_name": point.DisplayName,
+	})
+}
+
+// buildJobName 用关键词与地点拼任务显示名（取第一条关键词的原始词，去掉 " in 地点" 后缀）
+func buildJobName(keywords []string, locations string) string {
+	kw := ""
+	if len(keywords) > 0 {
+		kw = keywords[0]
+		if locations != "" {
+			kw = strings.TrimSuffix(kw, " in "+locations)
+		}
+		kw = strings.TrimSpace(kw)
+	}
+
+	locations = strings.TrimSpace(locations)
+	switch {
+	case kw != "" && locations != "":
+		return locations + " · " + kw
+	case kw != "":
+		return kw
+	default:
+		return locations
+	}
+}
+
 func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
 	var req apiScrapeRequest
 
@@ -596,6 +1003,8 @@ func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
 
 	// convert to seconds
 	newJob.Data.MaxTime *= time.Second
+	// Web 产品不设数量上限：半径内全量抓取
+	newJob.Data.MaxResults = 0
 
 	err = newJob.Validate()
 	if err != nil {
@@ -606,6 +1015,14 @@ func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
 
 		renderJSON(w, http.StatusUnprocessableEntity, ans)
 
+		return
+	}
+
+	if err := s.attachOwner(r, &newJob); err != nil {
+		renderJSON(w, http.StatusUnauthorized, apiError{
+			Code:    http.StatusUnauthorized,
+			Message: "需要有效邀请会话",
+		})
 		return
 	}
 
@@ -629,7 +1046,7 @@ func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiGetJobs(w http.ResponseWriter, r *http.Request) {
-	jobs, err := s.svc.All(r.Context())
+	jobs, err := s.listJobsForRequest(r)
 	if err != nil {
 		apiError := apiError{
 			Code:    http.StatusInternalServerError,
@@ -639,6 +1056,9 @@ func (s *Server) apiGetJobs(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusInternalServerError, apiError)
 
 		return
+	}
+	if jobs == nil {
+		jobs = []Job{}
 	}
 
 	renderJSON(w, http.StatusOK, jobs)
@@ -657,7 +1077,7 @@ func (s *Server) apiGetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := s.svc.Get(r.Context(), id.String())
+	job, err := s.loadAccessibleJob(r, id.String())
 	if err != nil {
 		apiError := apiError{
 			Code:    http.StatusNotFound,
@@ -687,6 +1107,14 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, err := s.loadAccessibleJob(r, id.String()); err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: http.StatusText(http.StatusNotFound),
+		})
+		return
+	}
+
 	places, err := s.svc.GetPlaces(r.Context(), id.String())
 
 	if err != nil {
@@ -706,7 +1134,153 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 		places = []Place{}
 	}
 
+	for i := range places {
+		rewritePlaceMedia(&places[i])
+	}
+
 	renderJSON(w, http.StatusOK, places)
+}
+
+// apiPlaceIntel 返回/生成商家背调（公司架构 + 决策人联系方式）
+func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "Invalid ID"})
+		return
+	}
+	placeID := strings.TrimSpace(r.PathValue("place_id"))
+	if placeID == "" {
+		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "missing place_id"})
+		return
+	}
+
+	job, err := s.loadAccessibleJob(r, id.String())
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "Job not found"})
+		return
+	}
+	refresh := r.URL.Query().Get("refresh") == "1" || r.Method == http.MethodPost
+	if !refresh {
+		if cached, ok := s.svc.loadIntel(id.String(), placeID); ok {
+			rewriteIntelMedia(cached)
+			renderJSON(w, http.StatusOK, cached)
+			return
+		}
+	}
+
+	places, err := s.svc.GetPlaces(r.Context(), id.String())
+	if err != nil && !errors.Is(err, ErrPlacesNotFound) {
+		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: err.Error()})
+		return
+	}
+	var place Place
+	found := false
+	for _, p := range places {
+		ensurePlaceKey(&p)
+		if p.PlaceID == placeID || p.Cid == placeID || p.DataID == placeID || StablePlaceKey(p) == placeID {
+			place = p
+			found = true
+			break
+		}
+	}
+	if !found {
+		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "place not found in job results"})
+		return
+	}
+	if place.PlaceID == "" {
+		place.PlaceID = placeID
+	}
+
+	// 任务开启了并发背调：未就绪时异步生成并立即返回「背调中」，不阻塞请求线程
+	if job.Data.EnableIntel && !refresh {
+		s.svc.EnsurePlaceIntelAsync(id.String(), place)
+		if cached, ok := s.svc.loadIntel(id.String(), place.PlaceID); ok {
+			rewriteIntelMedia(cached)
+			renderJSON(w, http.StatusOK, cached)
+			return
+		}
+		renderJSON(w, http.StatusOK, PlaceIntel{
+			PlaceID: place.PlaceID,
+			Title:   place.Title,
+			Website: place.Website,
+			Status:  IntelRunning,
+			Note:    "背调中",
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+	if refresh {
+		_ = s.svc.deleteIntel(id.String(), place.PlaceID)
+	}
+	intel, err := s.svc.BuildPlaceIntel(ctx, id.String(), place)
+	if err != nil {
+		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: err.Error()})
+		return
+	}
+	rewriteIntelMedia(intel)
+	renderJSON(w, http.StatusOK, intel)
+}
+
+func (s *Server) apiJobIntelStatus(w http.ResponseWriter, r *http.Request) {
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "Invalid ID"})
+		return
+	}
+	job, err := s.loadAccessibleJob(r, id.String())
+	if err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "Job not found"})
+		return
+	}
+	places, err := s.svc.GetPlaces(r.Context(), id.String())
+	n := 0
+	if err == nil {
+		n = len(places)
+	}
+	st := s.svc.GetJobIntelStatus(id.String(), n)
+	renderJSON(w, http.StatusOK, map[string]any{
+		"status":       st,
+		"enable_intel": job.Data.EnableIntel,
+	})
+}
+
+func (s *Server) apiOSINTStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+		return
+	}
+	st := ProbeOSINTTools()
+	renderJSON(w, http.StatusOK, map[string]any{
+		"tools":              st,
+		"theharvester":       st.TheHarvester,
+		"spiderfoot":         st.SpiderFoot,
+		"holehe":             st.Holehe,
+		"maigret":            st.Maigret,
+		"blackbird":          st.Blackbird,
+		"photon":             st.Photon,
+		"amass":              st.Amass,
+		"opencorporates_api": st.OpenCorporatesAPI,
+		"hunter":             st.Hunter,
+		"katana":             st.Katana,
+		"github_commits":     st.GitHubCommits,
+		"gleif":              st.GLEIF,
+		"wikidata":           st.Wikidata,
+		"ahu":                st.AHU,
+		"ahu_proxy":          st.AHUProxyConfigured,
+		"rdap":               st.RDAP,
+		"crtsh":              st.CRTSH,
+		"wayback":            st.Wayback,
+		"wikipedia":          st.Wikipedia,
+		"duckduckgo":         st.DuckDuckGo,
+		"importyeti":         st.ImportYeti,
+		"kirchner":           st.Kirchner,
+		"crosslinked":        st.CrossLinked,
+		"leadcontact":        st.LeadContact,
+		"max_radius_km":      MaxRadiusKm(),
+		"hint":               "bash tools/install_osint.sh；CrossLinked(Bing员工名)+Maigret(社媒画像)+公开源；AHU=印尼 ahu.go.id 董事登记（需 AHU_PROXY）；可选 HUNTER_API_KEY / LEADCONTACT_API_KEY",
+	})
 }
 
 // viewJob renders the map modal fragment for a job, embedding the job's places
@@ -725,17 +1299,27 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	places, err := s.svc.GetPlaces(r.Context(), id.String())
+	job, jerr := s.loadAccessibleJob(r, id.String())
+	if jerr != nil {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
 
-	if err != nil {
-		if !errors.Is(err, ErrPlacesNotFound) {
-			log.Printf("view job %s: %v", id, err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-
-			return
+	// 轻量打开：默认不嵌入全量 places（前端 API 流式拉），大幅加快弹窗首屏
+	lite := r.URL.Query().Get("lite") != "0"
+	var places []Place
+	if !lite {
+		var err error
+		places, err = s.svc.GetPlaces(r.Context(), id.String())
+		if err != nil {
+			if !errors.Is(err, ErrPlacesNotFound) {
+				log.Printf("view job %s: %v", id, err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+			places = []Place{}
 		}
-
-		// No CSV yet: render the modal with an empty state rather than an error.
+	} else {
 		places = []Place{}
 	}
 
@@ -746,16 +1330,42 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 附带上任务 ID 与状态：前端据此在任务运行中流式追加结果行
-	status := ""
-	if job, jerr := s.svc.Get(r.Context(), id.String()); jerr == nil {
-		status = job.Status
+	// 附带上任务 ID / 状态 / 是否背调：前端据此流式追加与门禁展开
+	status := job.Status
+	jobName := job.Name
+	enableIntel := job.Data.EnableIntel
+
+	// 必须 JSON 编码后再嵌入 <script>：直接 {{ .Places }} 会输出 Go 结构体文本，
+	// 有结果时 JS 直接语法错误，导致弹窗右侧/左侧地图整段脚本不执行。
+	placesJS, err := jsonJS(places)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+
+		return
+	}
+
+	jobIDJS, _ := jsonJS(id.String())
+	statusJS, _ := jsonJS(status)
+	jobNameJS, _ := jsonJS(jobName)
+	enableIntelJS, _ := jsonJS(enableIntel)
+	liteJS, _ := jsonJS(lite)
+	canExport := status == StatusOK
+	if !canExport && status == StatusWorking {
+		if _, csvErr := s.svc.GetCSV(r.Context(), id.String()); csvErr == nil {
+			canExport = true
+		}
 	}
 
 	viewData := map[string]any{
-		"JobID":  id.String(),
-		"Status": status,
-		"Places": places,
+		"JobID":           id.String(),
+		"JobIDJSON":       jobIDJS,
+		"StatusJSON":      statusJS,
+		"JobNameJSON":     jobNameJS,
+		"PlacesJSON":      placesJS,
+		"EnableIntelJSON": enableIntelJS,
+		"LiteJSON":        liteJS,
+		"CanExport":       canExport,
+		"JobStatus":       status,
 	}
 
 	var buf bytes.Buffer
@@ -779,6 +1389,14 @@ func (s *Server) apiDeleteJob(w http.ResponseWriter, r *http.Request) {
 
 		renderJSON(w, http.StatusUnprocessableEntity, apiError)
 
+		return
+	}
+
+	if _, err := s.loadAccessibleJob(r, id.String()); err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{
+			Code:    http.StatusNotFound,
+			Message: http.StatusText(http.StatusNotFound),
+		})
 		return
 	}
 
@@ -808,19 +1426,55 @@ func formatDate(t time.Time) string {
 	return t.Format("Jan 02, 2006 15:04:05")
 }
 
+// parseTargetRadiusMeters 解析目标半径：优先 radius_km（公里），否则 radius（米）。
+// 结果钳制到 (0, MaxRadiusMeters]，默认 10km。
+func parseTargetRadiusMeters(r *http.Request) (int, error) {
+	if kmStr := strings.TrimSpace(r.Form.Get("radius_km")); kmStr != "" {
+		km, err := strconv.ParseFloat(kmStr, 64)
+		if err != nil || km <= 0 {
+			return 0, fmt.Errorf("invalid radius_km")
+		}
+		if km > float64(MaxRadiusKm()) {
+			return 0, fmt.Errorf("radius_km must be ≤ %d", MaxRadiusKm())
+		}
+		meters := int(km * 1000)
+		if meters < 1000 {
+			meters = 1000 // 至少 1km，避免过碎网格
+		}
+		return meters, nil
+	}
+
+	raw := strings.TrimSpace(r.Form.Get("radius"))
+	if raw == "" {
+		return 10000, nil // 默认 10km
+	}
+	meters, err := strconv.Atoi(raw)
+	if err != nil || meters <= 0 {
+		return 0, fmt.Errorf("invalid radius")
+	}
+	if meters > MaxRadiusMeters() {
+		meters = MaxRadiusMeters()
+	}
+	return meters, nil
+}
+
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; "+
-			"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
-			"worker-src 'self' blob:; "+
-			"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
-			"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org *.is.autonavi.com; "+
-			"font-src 'self' fonts.gstatic.com; "+
-			"connect-src 'self'")
+			"default-src 'self'; "+
+				"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
+				"worker-src 'self' blob:; "+
+				"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
+				"img-src 'self' data: blob: cdn.redoc.ly cdnjs.cloudflare.com unpkg.com "+
+				"*.tile.openstreetmap.org tile.openstreetmap.org "+
+				"*.basemaps.cartocdn.com basemaps.cartocdn.com *.is.autonavi.com "+
+				"*.googleusercontent.com streetviewpixels-pa.googleapis.com "+
+				"images.contactout.com *.licdn.com; "+
+				"font-src 'self' fonts.gstatic.com; "+
+				"connect-src 'self' nominatim.openstreetmap.org")
 
 		next.ServeHTTP(w, r)
 	})

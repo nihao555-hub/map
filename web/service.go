@@ -2,9 +2,11 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -28,8 +30,35 @@ func (s *Service) All(ctx context.Context) ([]Job, error) {
 	return s.repo.Select(ctx, SelectParams{})
 }
 
+// AllForOwner lists jobs belonging to one invite-code tenant.
+// When owner is empty, returns an empty list (never falls back to global listing).
+func (s *Service) AllForOwner(ctx context.Context, owner string) ([]Job, error) {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return []Job{}, nil
+	}
+	return s.repo.Select(ctx, SelectParams{Owner: owner})
+}
+
 func (s *Service) Get(ctx context.Context, id string) (Job, error) {
+	if s.repo == nil {
+		return Job{}, fmt.Errorf("job repository not configured")
+	}
+
 	return s.repo.Get(ctx, id)
+}
+
+// GetOwned returns a job only if it belongs to owner.
+func (s *Service) GetOwned(ctx context.Context, id, owner string) (Job, error) {
+	job, err := s.Get(ctx, id)
+	if err != nil {
+		return Job{}, ErrJobNotFound
+	}
+	owner = strings.TrimSpace(owner)
+	if owner == "" || job.Owner != owner {
+		return Job{}, ErrJobNotFound
+	}
+	return job, nil
 }
 
 func (s *Service) Delete(ctx context.Context, id string) error {
@@ -49,12 +78,45 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
 }
 
+// DeleteOwned deletes a job only if it belongs to owner.
+func (s *Service) DeleteOwned(ctx context.Context, id, owner string) error {
+	if _, err := s.GetOwned(ctx, id, owner); err != nil {
+		return err
+	}
+	return s.Delete(ctx, id)
+}
+
 func (s *Service) Update(ctx context.Context, job *Job) error {
 	return s.repo.Update(ctx, job)
 }
 
 func (s *Service) SelectPending(ctx context.Context) ([]Job, error) {
 	return s.repo.Select(ctx, SelectParams{Status: StatusPending, Limit: 1})
+}
+
+// ClaimPending atomically claims the next pending job (status → working).
+func (s *Service) ClaimPending(ctx context.Context) (Job, error) {
+	if s.repo == nil {
+		return Job{}, fmt.Errorf("job repository not configured")
+	}
+	return s.repo.ClaimPending(ctx)
+}
+
+// JobConcurrency is how many scrape jobs may run in parallel (default 4, max 4).
+// Override with GMS_WEB_JOB_CONCURRENCY.
+func JobConcurrency() int {
+	v := strings.TrimSpace(os.Getenv("GMS_WEB_JOB_CONCURRENCY"))
+	if v == "" {
+		return 4
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 {
+		return 4
+	}
+	if n > 4 {
+		return 4
+	}
+	return n
 }
 
 // csvPath returns the on-disk path of a job's CSV output, rejecting ids that
@@ -78,4 +140,21 @@ func (s *Service) GetCSV(_ context.Context, id string) (string, error) {
 	}
 
 	return datapath, nil
+}
+
+// GetOwnedCSV returns the CSV path only when the job belongs to owner.
+func (s *Service) GetOwnedCSV(ctx context.Context, id, owner string) (string, error) {
+	if _, err := s.GetOwned(ctx, id, owner); err != nil {
+		return "", err
+	}
+	path, err := s.GetCSV(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// IsJobNotFound reports whether err is a missing/forbidden job.
+func IsJobNotFound(err error) bool {
+	return errors.Is(err, ErrJobNotFound)
 }

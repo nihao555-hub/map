@@ -2,32 +2,69 @@ package web
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/csv"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 // ErrPlacesNotFound is returned by GetPlaces when the job's CSV output does not
 // exist. Callers use it to distinguish a missing job (404) from other errors.
 var ErrPlacesNotFound = errors.New("places not found")
 
-// Place is a single map-able result extracted from a job's CSV output.
+// Place is a single result row extracted from a job's CSV output for the UI table/map.
 type Place struct {
-	Title        string  `json:"title"`
-	Address      string  `json:"address"`
-	Latitude     float64 `json:"latitude"`
-	Longitude    float64 `json:"longitude"`
-	Link         string  `json:"link"`
-	Category     string  `json:"category"`
-	Phone        string  `json:"phone"`
-	Website      string  `json:"website"`
-	ReviewRating float64 `json:"review_rating"`
-	ReviewCount  int     `json:"review_count"`
-	Emails       string  `json:"emails"`
+	Title               string  `json:"title"`
+	Category            string  `json:"category"`
+	Address             string  `json:"address"`
+	CompleteAddress     string  `json:"complete_address"`
+	Latitude            float64 `json:"latitude"`
+	Longitude           float64 `json:"longitude"`
+	Link                string  `json:"link"`
+	Phone               string  `json:"phone"`
+	Website             string  `json:"website"`
+	ReviewRating        float64 `json:"review_rating"`
+	ReviewCount         int     `json:"review_count"`
+	ReviewsPerRating    string  `json:"reviews_per_rating"`
+	Emails              string  `json:"emails"`
+	WhatsApp            string  `json:"whatsapp"`
+	Facebook            string  `json:"facebook"`
+	Instagram           string  `json:"instagram"`
+	LinkedIn            string  `json:"linkedin"`
+	Twitter             string  `json:"twitter"`
+	TikTok              string  `json:"tiktok"`
+	YouTube             string  `json:"youtube"`
+	Telegram            string  `json:"telegram"`
+	Pinterest           string  `json:"pinterest"`
+	Status              string  `json:"status"`
+	OpenHours           string  `json:"open_hours"`
+	PopularTimes        string  `json:"popular_times"`
+	PriceRange          string  `json:"price_range"`
+	Descriptions        string  `json:"descriptions"`
+	About               string  `json:"about"`
+	Menu                string  `json:"menu"`
+	Owner               string  `json:"owner"`
+	Images              string  `json:"images"`
+	Thumbnail           string  `json:"thumbnail"`
+	ReviewsLink         string  `json:"reviews_link"`
+	UserReviews         string  `json:"user_reviews"`
+	UserReviewsExtended string  `json:"user_reviews_extended"`
+	PlusCode            string  `json:"plus_code"`
+	Timezone            string  `json:"timezone"`
+	CreditCardsAccepted string  `json:"credit_cards_accepted"`
+	Reservations        string  `json:"reservations"`
+	OrderOnline         string  `json:"order_online"`
+	StreetViewURL       string  `json:"street_view_url"`
+	PlaceID             string  `json:"place_id"`
+	Cid                 string  `json:"cid"`
+	DataID              string  `json:"data_id"`
 }
 
 // GetPlaces locates the job's CSV output and parses it into mappable places.
@@ -124,24 +161,115 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 		reviewCount, _ := strconv.Atoi(get(row, "review_count"))
 
 		places = append(places, Place{
-			Title:        get(row, "title"),
-			Address:      get(row, "address"),
-			Latitude:     lat,
-			Longitude:    lon,
-			Link:         get(row, "link"),
-			Category:     get(row, "category"),
-			Phone:        get(row, "phone"),
-			Website:      get(row, "website"),
-			ReviewRating: rating,
-			ReviewCount:  reviewCount,
-			Emails:       get(row, "emails"),
+			Title:               get(row, "title"),
+			Category:            get(row, "category"),
+			Address:             get(row, "address"),
+			CompleteAddress:     get(row, "complete_address"),
+			Latitude:            lat,
+			Longitude:           lon,
+			Link:                get(row, "link"),
+			Phone:               get(row, "phone"),
+			Website:             get(row, "website"),
+			ReviewRating:        rating,
+			ReviewCount:         reviewCount,
+			ReviewsPerRating:    get(row, "reviews_per_rating"),
+			Emails:              get(row, "emails"),
+			WhatsApp:            get(row, "whatsapp"),
+			Facebook:            get(row, "facebook"),
+			Instagram:           get(row, "instagram"),
+			LinkedIn:            get(row, "linkedin"),
+			Twitter:             get(row, "twitter"),
+			TikTok:              get(row, "tiktok"),
+			YouTube:             get(row, "youtube"),
+			Telegram:            get(row, "telegram"),
+			Pinterest:           get(row, "pinterest"),
+			Status:              get(row, "status"),
+			OpenHours:           get(row, "open_hours"),
+			PopularTimes:        get(row, "popular_times"),
+			PriceRange:          get(row, "price_range"),
+			Descriptions:        get(row, "descriptions"),
+			About:               get(row, "about"),
+			Menu:                get(row, "menu"),
+			Owner:               get(row, "owner"),
+			Images:              get(row, "images"),
+			Thumbnail:           get(row, "thumbnail"),
+			ReviewsLink:         get(row, "reviews_link"),
+			UserReviews:         get(row, "user_reviews"),
+			UserReviewsExtended: get(row, "user_reviews_extended"),
+			PlusCode:            get(row, "plus_code"),
+			Timezone:            get(row, "timezone"),
+			CreditCardsAccepted: get(row, "credit_cards_accepted"),
+			Reservations:        get(row, "reservations"),
+			OrderOnline:         get(row, "order_online"),
+			StreetViewURL:       get(row, "street_view_url"),
+			PlaceID:             get(row, "place_id"),
+			Cid:                 get(row, "cid"),
+			DataID:              get(row, "data_id"),
 		})
 	}
+
+	for i := range places {
+		ensurePlaceKey(&places[i])
+	}
+
+	// 获客优先：WhatsApp > 邮箱 > 电话；同档再按评分/评论数
+	sort.SliceStable(places, func(i, j int) bool {
+		si, sj := contactScore(places[i]), contactScore(places[j])
+		if si != sj {
+			return si > sj
+		}
+		if places[i].ReviewRating != places[j].ReviewRating {
+			return places[i].ReviewRating > places[j].ReviewRating
+		}
+
+		return places[i].ReviewCount > places[j].ReviewCount
+	})
 
 	return places, nil
 }
 
-// finite reports whether f is a usable, real number (not NaN or ±Inf).
-func finite(f float64) bool {
-	return !math.IsNaN(f) && !math.IsInf(f, 0)
+// StablePlaceKey 返回背调/前端可用的稳定商户键。
+// Google 偶发不回 place_id/cid 时，用 title+坐标哈希，避免整批背调被跳过。
+func StablePlaceKey(p Place) string {
+	if id := strings.TrimSpace(p.PlaceID); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(p.Cid); id != "" {
+		return id
+	}
+	if id := strings.TrimSpace(p.DataID); id != "" {
+		return id
+	}
+	raw := fmt.Sprintf("%s|%.6f|%.6f", strings.TrimSpace(p.Title), p.Latitude, p.Longitude)
+	sum := sha1.Sum([]byte(raw))
+	return "geo_" + hex.EncodeToString(sum[:10])
+}
+
+func ensurePlaceKey(p *Place) {
+	if p == nil {
+		return
+	}
+	if strings.TrimSpace(p.PlaceID) == "" {
+		p.PlaceID = StablePlaceKey(*p)
+	}
+}
+
+// contactScore WhatsApp > 邮箱 > 电话（印尼等市场更看即时通讯）
+func contactScore(p Place) int {
+	score := 0
+	if strings.TrimSpace(p.WhatsApp) != "" {
+		score += 100
+	}
+	if strings.TrimSpace(p.Emails) != "" {
+		score += 10
+	}
+	if strings.TrimSpace(p.Phone) != "" {
+		score += 1
+	}
+
+	return score
+}
+
+func finite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
 }

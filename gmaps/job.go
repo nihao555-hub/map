@@ -323,8 +323,8 @@ func scroll(ctx context.Context,
 	cnt := 0
 
 	const (
-		timeout  = 500
-		maxWait2 = 2000
+		timeout  = 400
+		maxWait2 = 1200 // 滚动等待上限：不影响列表质量，缩短空等
 	)
 
 	for i := 0; i < maxDepth; i++ {

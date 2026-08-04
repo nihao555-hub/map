@@ -1,25 +1,66 @@
 <div id="map-modal" class="map-modal" role="dialog" aria-modal="true" aria-labelledby="map-modal-title" onclick="if(event.target===this)closeJobMap()">
-    <div class="map-modal-content">
+    <div class="map-modal-content job-view-shell job-view-fast">
         <div class="map-modal-header">
-            <h2 id="map-modal-title">采集结果</h2>
-            <button type="button" class="map-modal-close" aria-label="Close" onclick="closeJobMap()">&times;</button>
+            <div class="job-view-head-left">
+                <h2 id="map-modal-title">采集结果</h2>
+                <div id="job-progress-wrap" class="job-progress-wrap" hidden>
+                    <div class="job-progress-track"><div id="job-progress-bar" class="job-progress-bar" style="width:0%"></div></div>
+                    <span id="job-progress-label" class="job-progress-label">准备中…</span>
+                </div>
+            </div>
+            <div class="job-view-head-actions">
+                {{ if .CanExport }}
+                <a class="csv-export-btn" id="job-csv-export"
+                   href="/download?id={{.JobID}}"
+                   download
+                   title="一键导出 CSV">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span>导出 CSV</span>
+                </a>
+                {{ end }}
+                <button type="button" class="map-modal-close" aria-label="Close" onclick="closeJobMap()">&times;</button>
+            </div>
         </div>
-        <div class="map-modal-body">
-            <div id="job-map"></div>
-            <div id="job-places-list"></div>
+        <div class="map-modal-body job-view-body">
+            <div class="job-view-main">
+                <div id="job-map" class="job-view-map job-view-map-compact"></div>
+                <div id="job-places-list" class="job-view-table">
+                    <div class="places-skeleton" id="places-skeleton">
+                        <div class="sk-row"></div><div class="sk-row"></div><div class="sk-row"></div>
+                        <div class="sk-row"></div><div class="sk-row"></div>
+                    </div>
+                </div>
+            </div>
+            <aside id="job-intel-drawer" class="job-intel-drawer job-intel-popup" aria-hidden="true">
+                <div class="intel-drawer-head">
+                    <div>
+                        <p class="intel-drawer-kicker">背调详情</p>
+                        <h3 id="intel-drawer-title">选择表格中的一家商户</h3>
+                    </div>
+                    <button type="button" class="intel-drawer-close" onclick="window.__closeIntelDrawer && window.__closeIntelDrawer()" aria-label="关闭背调">&times;</button>
+                </div>
+                <div id="intel-progress-wrap" class="intel-progress-wrap" hidden>
+                    <div class="intel-progress-track"><div id="intel-progress-bar" class="intel-progress-bar"></div></div>
+                    <span id="intel-progress-label" class="intel-progress-label">背调中…</span>
+                </div>
+                <div id="intel-drawer-body" class="intel-drawer-body">
+                    <p class="intel-placeholder">点击下方表格任意一行：右侧弹出背调小窗；进行中显示骨架进度，完成后自动展示完整结果。</p>
+                </div>
+            </aside>
         </div>
     </div>
     <script>
     (function () {
-        var places = {{ .Places }};
-        var JOB_ID = {{ .JobID }};
-        var JOB_STATUS = {{ .Status }};
+        // Places/JobID/Status 必须由服务端 JSON 编码，否则有结果时脚本语法错误导致地图不初始化
+        var places = {{ .PlacesJSON }};
+        var JOB_ID = {{ .JobIDJSON }};
+        var JOB_STATUS = {{ .StatusJSON }};
+        var ENABLE_INTEL = {{ .EnableIntelJSON }};
+        var LITE_MODE = {{ .LiteJSON }};
 
-        var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
-        var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+        var LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        var LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
 
-        // ensureLeaflet lazily loads Leaflet (CSS + JS) the first time the map
-        // is opened, then invokes callback once it is available.
         function ensureLeaflet(callback) {
             if (window.L) {
                 callback();
@@ -51,35 +92,49 @@
             return div.innerHTML;
         }
 
+        function refreshMapSize(map) {
+            if (!map) return;
+            [0, 50, 150, 300, 600].forEach(function (ms) {
+                setTimeout(function () { map.invalidateSize({ pan: false }); }, ms);
+            });
+        }
+
         function createMap() {
             if (window.__jobMap) {
                 window.__jobMap.remove();
             }
 
-            var map = L.map('job-map');
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap contributors'
+            var el = document.getElementById('job-map');
+            if (!el) return null;
+
+            if (L.Icon && L.Icon.Default) {
+                L.Icon.Default.imagePath = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/';
+            }
+
+            var map = L.map(el, {
+                zoomControl: true,
+                center: [20, 0],
+                zoom: 2
+            });
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                subdomains: 'abcd',
+                maxZoom: 20,
+                attribution: '© OpenStreetMap © CARTO'
             }).addTo(map);
 
             window.__jobMap = map;
+            refreshMapSize(map);
             return map;
         }
 
         function placePopup(place) {
             var parts = ['<strong>' + escapeHtml(place.title || '未命名商家') + '</strong>'];
-            if (place.address) {
-                parts.push(escapeHtml(place.address));
-            }
-            if (place.phone) {
-                parts.push('电话：' + escapeHtml(place.phone));
-            }
-            if (place.emails) {
-                parts.push('邮箱：' + escapeHtml(place.emails));
-            }
-            if (place.review_rating) {
-                parts.push('评分：★ ' + escapeHtml(String(place.review_rating)));
-            }
+            if (place.category) parts.push(escapeHtml(place.category));
+            if (place.address) parts.push(escapeHtml(place.address));
+            if (place.whatsapp) parts.push('WhatsApp：' + escapeHtml(place.whatsapp));
+            if (place.emails) parts.push('邮箱：' + escapeHtml(place.emails));
+            if (place.phone) parts.push('电话：' + escapeHtml(place.phone));
+            if (place.website) parts.push('网站：' + escapeHtml(place.website));
             return parts.join('<br>');
         }
 
@@ -92,14 +147,65 @@
             return '<span class="cell-empty">—</span>';
         }
 
+        function linkCell(url, label) {
+            if (!url) return '<span class="cell-empty">—</span>';
+            var text = label || url;
+            if (/^https?:\/\//i.test(String(url))) {
+                try {
+                    if (!label) text = new URL(url).hostname.replace(/^www\./, '') + new URL(url).pathname;
+                } catch (e) {}
+                return '<a href="' + encodeURI(String(url)) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">' +
+                    escapeHtml(String(text).slice(0, 48)) + '</a>';
+            }
+            return escapeHtml(String(url).slice(0, 80));
+        }
+
         function textCell(value) {
             if (value === null || value === undefined || value === '') {
                 return '<span class="cell-empty">—</span>';
             }
-            return escapeHtml(String(value));
+            var s = String(value);
+            if ((s.charAt(0) === '{' || s.charAt(0) === '[') && s.length > 60) {
+                s = s.slice(0, 57) + '…';
+            } else if (s.length > 120) {
+                s = s.slice(0, 117) + '…';
+            }
+            return escapeHtml(s);
         }
 
-        // ============ 流式结果表格：初始渲染 + 运行中轮询增量追加 ============
+        // 外链图片（Google/领英）经同源代理，国内才能加载
+        function mediaURL(u) {
+            if (!u) return '';
+            if (u.indexOf('/api/v1/media') === 0) return u;
+            if (/googleusercontent\.com|contactout\.com|licdn\.com|googleapis\.com\/.*streetview/i.test(u)) {
+                return '/api/v1/media?u=' + encodeURIComponent(u);
+            }
+            return u;
+        }
+        function thumbCell(place) {
+            var src = mediaURL(place.thumbnail || '');
+            if (!src) return '<span class="cell-empty">—</span>';
+            return '<img class="place-thumb" src="' + encodeURI(src) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.classList.add(\'thumb-broken\');this.alt=\'\'">';
+        }
+
+        // 首屏只渲染获客必要列，显著加快表格绘制
+        var RESULT_COLUMNS = [
+            { key: 'thumbnail', label: '图片', cls: 'col-thumb', render: function (p) { return thumbCell(p); } },
+            { key: 'title', label: '名称', cls: 'col-name', render: function (p) { return textCell(p.title); } },
+            { key: 'category', label: '类别', cls: 'col-cat', render: function (p) { return textCell(p.category); } },
+            { key: 'address', label: '地址', cls: 'col-addr', render: function (p) { return textCell(p.address); } },
+            { key: 'phone', label: '电话', cls: 'col-phone', render: function (p) { return textCell(p.phone); } },
+            { key: 'emails', label: '邮箱', cls: 'col-mail', render: function (p) { return textCell(p.emails); } },
+            { key: 'whatsapp', label: 'WhatsApp', cls: 'col-wa', render: function (p) { return waCell(p); } },
+            { key: 'website', label: '网站', cls: 'col-site', render: function (p) { return websiteCell(p); } },
+            { key: 'instagram', label: 'IG', cls: 'col-social', render: function (p) { return linkCell(p.instagram); } },
+            { key: 'facebook', label: 'FB', cls: 'col-social', render: function (p) { return linkCell(p.facebook); } },
+            { key: 'linkedin', label: 'IN', cls: 'col-social', render: function (p) { return linkCell(p.linkedin); } },
+            { key: 'review_rating', label: '评分', cls: 'col-rating', render: function (p) {
+                return p.review_rating ? ('★ ' + escapeHtml(String(p.review_rating))) : '<span class="cell-empty">—</span>';
+            }}
+        ];
+
         var map = null;
         var tbody = null;
         var markersLayer = null;
@@ -107,21 +213,608 @@
         var pollTimer = null;
         var statusPollCount = 0;
         var streamActive = (JOB_STATUS === 'working' || JOB_STATUS === 'pending');
+        var placeById = {};
+        var activePlaceId = '';
+        var intelCache = {};
+        var intelAbort = null;
+        var intelReadyMap = {}; // placeId -> true when ready/failed/skipped
+        var intelPollTimer = null;
+        var intelProgressTimer = null;
 
         function rowHtml(place) {
-            return '<td class="col-name">' + textCell(place.title) + '</td>' +
-                '<td class="col-addr">' + textCell(place.address) + '</td>' +
-                '<td class="col-phone">' + textCell(place.phone) + '</td>' +
-                '<td class="col-mail">' + textCell(place.emails) + '</td>' +
-                '<td class="col-rating">' + (place.review_rating ? '★ ' + escapeHtml(String(place.review_rating)) : '<span class="cell-empty">—</span>') + '</td>' +
-                '<td class="col-reviews">' + (place.review_count ? escapeHtml(String(place.review_count)) : '<span class="cell-empty">—</span>') + '</td>' +
-                '<td class="col-site">' + websiteCell(place) + '</td>';
+            return RESULT_COLUMNS.map(function (col) {
+                return '<td class="' + col.cls + '">' + col.render(place) + '</td>';
+            }).join('');
+        }
+
+        function waCell(place) {
+            var wa = place.whatsapp;
+            if (!wa) return '<span class="cell-empty">—</span>';
+            var digits = String(wa).replace(/[^\d+]/g, '');
+            var href = digits.indexOf('+') === 0 || /^\d+$/.test(digits)
+                ? 'https://wa.me/' + digits.replace(/^\+/, '')
+                : (String(wa).indexOf('http') === 0 ? wa : 'https://wa.me/' + digits);
+            return '<a href="' + encodeURI(href) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">' +
+                escapeHtml(String(wa)) + '</a>';
+        }
+
+        function placeKey(place) {
+            // GetPlaces 会在缺 place_id/cid 时填入稳定 geo_* key
+            return place.place_id || place.cid || place.data_id || '';
+        }
+
+        function openIntelDrawer() {
+            var drawer = document.getElementById('job-intel-drawer');
+            if (!drawer) return;
+            drawer.classList.add('open');
+            drawer.setAttribute('aria-hidden', 'false');
+            // 浮层小窗不挤压主表布局
+            refreshMapSize(map);
+        }
+
+        function closeIntelDrawer() {
+            var drawer = document.getElementById('job-intel-drawer');
+            if (drawer) {
+                drawer.classList.remove('open');
+                drawer.setAttribute('aria-hidden', 'true');
+            }
+            setIntelProgress(0, '', false);
+            activePlaceId = '';
+            if (tbody) {
+                tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
+            }
+            refreshMapSize(map);
+        }
+        window.__closeIntelDrawer = closeIntelDrawer;
+
+        function confBadge(level) {
+            var lv = String(level || 'low').toLowerCase();
+            return '<span class="intel-conf intel-conf-' + escapeHtml(lv) + '">' + escapeHtml(lv) + '</span>';
+        }
+
+        function emptyBlock(msg) {
+            return '<p class="intel-empty">' + escapeHtml(msg || '暂无公开证据') + '</p>';
+        }
+
+        function kv(label, value) {
+            if (value === null || value === undefined || value === '') return '';
+            return '<div class="intel-kv"><span class="intel-k">' + escapeHtml(label) + '</span><span class="intel-v">' + value + '</span></div>';
+        }
+
+        function listChips(items) {
+            if (!items || !items.length) return emptyBlock();
+            return '<div class="intel-chips">' + items.map(function (x) {
+                return '<span class="intel-chip">' + escapeHtml(x) + '</span>';
+            }).join('') + '</div>';
+        }
+
+        function linkOrText(v) {
+            if (!v) return '—';
+            if (/^https?:\/\//i.test(String(v))) {
+                return '<a href="' + encodeURI(String(v)) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(String(v)) + '</a>';
+            }
+            return escapeHtml(String(v));
+        }
+
+        function waLink(phone) {
+            if (!phone) return '';
+            var digits = String(phone).replace(/[^\d+]/g, '');
+            if (!digits) return '';
+            var href = digits.indexOf('http') === 0 ? digits
+                : 'https://wa.me/' + digits.replace(/^\+/, '');
+            return '<a class="intel-act intel-act-wa" href="' + encodeURI(href) + '" target="_blank" rel="noopener noreferrer">WhatsApp</a>';
+        }
+
+        function isNamedDecisionMaker(d) {
+            var name = String((d && d.name) || '').trim();
+            if (!name) return false;
+            // 前端兜底：不要把占位文案当成真人名
+            var junk = {
+                '渠道联系人': 1, '联系人': 1, '采购联系人': 1, '业务联系人': 1,
+                'contact': 1, 'business contact': 1, 'email channel': 1,
+                'whatsapp channel': 1, 'phone channel': 1, 'office inbox': 1
+            };
+            return !junk[name] && !junk[name.toLowerCase()];
+        }
+
+        function personCard(d) {
+            var name = String(d.name || '').trim();
+            if (!name) return ''; // 无名渠道走 channelChip，不冒充决策人
+            var av = mediaURL(d.avatar || '');
+            var avatar = av
+                ? '<img class="intel-avatar" src="' + encodeURI(av) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display=\'none\'">'
+                : '<div class="intel-avatar intel-avatar-fallback">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
+            var actions = [];
+            if (d.email) {
+                actions.push('<a class="intel-act" href="mailto:' + encodeURIComponent(d.email) + '">邮件</a>');
+            }
+            if (d.whatsapp || d.phone) {
+                actions.push(waLink(d.whatsapp || d.phone));
+            }
+            if (d.phone && d.phone !== d.whatsapp) {
+                actions.push('<a class="intel-act" href="tel:' + encodeURIComponent(String(d.phone).replace(/\s+/g, '')) + '">电话</a>');
+            }
+            if (d.linkedin) {
+                var liLabel = String(d.linkedin).indexOf('/search/') >= 0 ? '搜 LinkedIn' : 'LinkedIn';
+                actions.push('<a class="intel-act intel-act-li" href="' + encodeURI(d.linkedin) + '" target="_blank" rel="noopener noreferrer">' + liLabel + '</a>');
+            }
+            return '<article class="intel-person">' +
+                '<div class="intel-person-head">' + avatar +
+                '<div class="intel-person-meta"><strong>' + escapeHtml(name) + '</strong>' +
+                (d.title ? '<div class="intel-muted">' + escapeHtml(d.title) + '</div>' : '') +
+                (d.location ? '<div class="intel-muted">' + escapeHtml(d.location) + '</div>' : '') +
+                confBadge(d.confidence) + '</div></div>' +
+                (d.email ? kv('邮箱', '<a href="mailto:' + encodeURIComponent(d.email) + '">' + escapeHtml(d.email) + '</a>') : '') +
+                (d.phone ? kv('电话', escapeHtml(d.phone)) : '') +
+                (d.whatsapp && d.whatsapp !== d.phone ? kv('WhatsApp', escapeHtml(d.whatsapp)) : '') +
+                (d.linkedin ? kv('LinkedIn', linkOrText(d.linkedin)) : '') +
+                (d.profiles && d.profiles.length ? kv('社媒画像', d.profiles.slice(0, 6).map(function (u) {
+                    return linkOrText(u);
+                }).join('<br>')) : '') +
+                (actions.length ? '<div class="intel-acts">' + actions.join('') + '</div>' : '') +
+                (d.evidence ? '<div class="intel-muted">证据：' + escapeHtml(d.evidence) + '</div>' : '') +
+                '</article>';
+        }
+
+        function channelChip(d) {
+            var parts = [];
+            if (d.email) {
+                parts.push('<a href="mailto:' + encodeURIComponent(d.email) + '">' + escapeHtml(d.email) + '</a>');
+            }
+            if (d.phone) parts.push(escapeHtml(d.phone));
+            if (d.whatsapp && d.whatsapp !== d.phone) {
+                parts.push(waLink(d.whatsapp) || escapeHtml(d.whatsapp));
+            } else if (d.phone) {
+                var w = waLink(d.phone);
+                if (w) parts.push(w);
+            }
+            if (d.linkedin) parts.push(linkOrText(d.linkedin));
+            if (!parts.length) return '';
+            var label = d.title ? escapeHtml(d.title) + ' · ' : '';
+            return '<div class="intel-chip">' + label + parts.join(' · ') + '</div>';
+        }
+
+        function isGenericEmail(em) {
+            var local = String(em || '').split('@')[0].toLowerCase();
+            return /^(info|sales|admin|contact|hello|support|office|mail|privacy|noreply)/.test(local) ||
+                /^(info|sales)[-_.]/.test(local);
+        }
+
+        function buildTabs(place, intel) {
+            var tabs = [];
+            var dms = intel.decision_makers || [];
+            var emails = intel.extra_emails || [];
+            var phones = intel.phones || [];
+            var socials = intel.socials || {};
+            var socialKeys = Object.keys(socials).filter(function (k) { return socials[k]; });
+
+            // 决策人邮箱集合，避免下方再重复列出
+            var dmEmails = {};
+            dms.forEach(function (d) { if (d.email) dmEmails[String(d.email).toLowerCase()] = true; });
+            var personEmails = emails.filter(function (e) { return !isGenericEmail(e); });
+            var officeEmails = emails.filter(function (e) { return isGenericEmail(e) && !dmEmails[String(e).toLowerCase()]; });
+            var localOffice = officeEmails.filter(function (e) {
+                var blob = ((place.title || '') + ' ' + (place.address || '')).toLowerCase();
+                var em = String(e).toLowerCase();
+                return (blob.indexOf('indonesia') >= 0 && em.indexOf('indonesia') >= 0) ||
+                    (blob.indexOf('jakarta') >= 0 && em.indexOf('indonesia') >= 0) ||
+                    /^info@/.test(em);
+            });
+            var otherOffice = officeEmails.filter(function (e) { return localOffice.indexOf(e) < 0; });
+
+            // 1) 具名决策人 vs 无名触达渠道（角色邮箱/门店电话绝不冒充决策人）
+            var namedDms = dms.filter(isNamedDecisionMaker);
+            var channelDms = dms.filter(function (d) { return !isNamedDecisionMaker(d); });
+            var peopleHtml = '';
+            peopleHtml += '<p class="intel-lead">' + escapeHtml(intel.note || '优先展示可核验决策人及其邮箱/WhatsApp/LinkedIn。') + '</p>';
+            if (namedDms.length) {
+                peopleHtml += '<h4 class="intel-sub">具名决策人（' + namedDms.length + '）</h4>' + namedDms.map(personCard).join('');
+            } else {
+                peopleHtml += emptyBlock('暂无具名决策人（未挖到可核验真人名/LinkedIn）；下方仅为触达渠道');
+            }
+            if (channelDms.length) {
+                var chips = channelDms.map(channelChip).filter(Boolean).join('');
+                if (chips) {
+                    peopleHtml += '<h4 class="intel-sub">触达渠道（非决策人）</h4><div class="intel-chips">' + chips + '</div>';
+                }
+            }
+            if (personEmails.length) {
+                var leftover = personEmails.filter(function (e) { return !dmEmails[String(e).toLowerCase()]; });
+                if (leftover.length) {
+                    peopleHtml += '<h4 class="intel-sub">疑似个人邮箱</h4>' + listChips(leftover);
+                }
+            }
+            peopleHtml += '<h4 class="intel-sub">电话 / WhatsApp</h4>';
+            if (phones.length) {
+                peopleHtml += '<div class="intel-chips">' + phones.slice(0, 6).map(function (p) {
+                    return '<span class="intel-chip">' + escapeHtml(p) + ' ' + waLink(p) + '</span>';
+                }).join('') + '</div>';
+            } else {
+                peopleHtml += emptyBlock('暂无电话');
+            }
+            if (localOffice.length) {
+                peopleHtml += '<h4 class="intel-sub">本地/总机邮箱</h4>' + listChips(localOffice.slice(0, 5));
+            }
+            if (otherOffice.length) {
+                peopleHtml += '<details class="intel-more"><summary class="intel-sub">全球办公室邮箱（' + otherOffice.length + '，默认折叠）</summary>' +
+                    listChips(otherOffice.slice(0, 20)) + '</details>';
+            }
+            if (socialKeys.length) {
+                peopleHtml += '<h4 class="intel-sub">社媒</h4>' + socialKeys.map(function (k) {
+                    return kv(k, linkOrText(socials[k]));
+                }).join('');
+            }
+            // 一键打开外贸公式搜 LinkedIn
+            var brand = (place.title || '').replace(/\b(PT\.?|CV\.?|TBK\.?|Indonesia|Jakarta|Ltd\.?|Limited)\b/ig, ' ').replace(/\s+/g, ' ').trim();
+            var xray = 'https://www.google.com/search?q=' + encodeURIComponent('site:linkedin.com/in "' + (brand || place.title || '') + '" ("Purchasing Manager" OR Buyer OR Procurement OR Direktur OR Owner OR CEO)');
+            peopleHtml += '<div class="intel-acts" style="margin-top:10px">' +
+                '<a class="intel-act intel-act-li" href="' + xray + '" target="_blank" rel="noopener noreferrer">用外贸公式搜 LinkedIn 决策人</a></div>';
+
+            tabs.push({
+                id: 'people',
+                label: '决策人' + (dms.length ? ' (' + dms.length + ')' : ''),
+                html: peopleHtml
+            });
+
+            // 2) 公司简介
+            var overviewBits = [
+                kv('触达信心', confBadge(intel.confidence)),
+                kv('摘要', escapeHtml(intel.summary || '')),
+                kv('域名', escapeHtml(intel.domain || '—')),
+                kv('网站', linkOrText(intel.website || place.website))
+            ];
+            if (intel.has_mx && intel.mx_hosts && intel.mx_hosts.length) {
+                overviewBits.push(kv('企业邮箱 MX', escapeHtml(intel.mx_hosts.join(', '))));
+            }
+            tabs.push({
+                id: 'overview',
+                label: '公司',
+                html: overviewBits.filter(Boolean).join('') || emptyBlock('暂无公司信息')
+            });
+
+            // 2.5) 海关提单（ImportYeti）— 外贸公式「海关定公司」
+            var trade = intel.trade;
+            if (trade && (trade.total_shipments || (trade.top_suppliers || []).length || (trade.top_hs_codes || []).length)) {
+                var tradeHtml = '';
+                tradeHtml += '<p class="intel-lead">' + escapeHtml(trade.summary || '美国海关海运提单记录（免费源：ImportYeti / Kirchner）') + '</p>';
+                tradeHtml += [
+                    kv('数据源', escapeHtml(trade.source || '—')),
+                    kv('角色', escapeHtml(trade.role === 'supplier' ? '对美出口供应商' : '美国进口商')),
+                    kv('主体', escapeHtml(trade.name || '')),
+                    kv('提单数', trade.total_shipments ? String(trade.total_shipments) : ''),
+                    kv('区间', escapeHtml(((trade.date_start || '') + ' – ' + (trade.date_end || '')).replace(/^\s–\s$/, ''))),
+                    kv('国家', escapeHtml(trade.country || '')),
+                    kv('地址', escapeHtml(trade.address || '')),
+                    kv('电话', escapeHtml(trade.phone || '')),
+                    kv('档案', linkOrText(trade.profile_url || ''))
+                ].filter(Boolean).join('');
+                var sups = trade.top_suppliers || [];
+                if (sups.length) {
+                    tradeHtml += '<h4 class="intel-sub">主要贸易伙伴</h4><ul class="intel-org-list">' + sups.map(function (s) {
+                        return '<li><strong>' + escapeHtml(s.name || '') + '</strong>' +
+                            (s.country ? ' · ' + escapeHtml(s.country) : '') +
+                            (s.shipments ? ' · ' + s.shipments + '票' : '') +
+                            (s.profile_url ? '<div class="intel-muted">' + linkOrText(s.profile_url) + '</div>' : '') +
+                            '</li>';
+                    }).join('') + '</ul>';
+                }
+                var hs = trade.top_hs_codes || [];
+                if (hs.length) {
+                    tradeHtml += '<h4 class="intel-sub">HS 编码</h4><div class="intel-chips">' + hs.map(function (h) {
+                        return '<span class="intel-chip">' + escapeHtml(h.code || '') +
+                            (h.description ? ' ' + escapeHtml(h.description) : '') +
+                            (h.shipments ? ' (' + h.shipments + ')' : '') + '</span>';
+                    }).join('') + '</div>';
+                }
+                var bols = trade.recent_bols || [];
+                if (bols.length) {
+                    tradeHtml += '<h4 class="intel-sub">近期提单</h4><ul class="intel-org-list">' + bols.map(function (b) {
+                        return '<li>' + escapeHtml(b.date || '') + ' · ' +
+                            escapeHtml(b.shipper || '') + ' → ' + escapeHtml(b.consignee || '') +
+                            (b.hs_code ? ' · HS ' + escapeHtml(b.hs_code) : '') +
+                            (b.product ? '<div class="intel-muted">' + escapeHtml(b.product) + '</div>' : '') +
+                            '</li>';
+                    }).join('') + '</ul>';
+                }
+                var tradeBrand = trade.name || place.title || '';
+                var tradeXray = 'https://www.google.com/search?q=' + encodeURIComponent('site:linkedin.com/in "' + tradeBrand + '" ("Purchasing Manager" OR Buyer OR Procurement OR Direktur OR Owner OR CEO)');
+                tradeHtml += '<div class="intel-acts" style="margin-top:10px">' +
+                    '<a class="intel-act intel-act-li" href="' + tradeXray + '" target="_blank" rel="noopener noreferrer">海关锁定后：搜 LinkedIn 采购决策人</a></div>';
+                tabs.push({
+                    id: 'customs',
+                    label: '海关' + (trade.total_shipments ? ' (' + trade.total_shipments + ')' : ''),
+                    html: tradeHtml
+                });
+            }
+
+            // 3) 架构（无实质内容则不假装有架构）
+            var orgs = intel.org_structure || [];
+            var usefulOrgs = orgs.filter(function (o) {
+                if (!o || !o.name) return false;
+                var ev = String(o.evidence || '') + ' ' + String(o.role || '');
+                if (/google maps category|domain-registrant|rdap|whois|registrant/i.test(ev)) return false;
+                if (o.role === 'domain' || o.role === 'registrant') return false;
+                return true;
+            });
+            tabs.push({
+                id: 'org',
+                label: '架构' + (usefulOrgs.length ? ' (' + usefulOrgs.length + ')' : ''),
+                html: usefulOrgs.length ? '<ul class="intel-org-list">' + usefulOrgs.map(function (o) {
+                    return '<li><strong>' + escapeHtml(o.name || '') + '</strong>' +
+                        (o.role ? ' · ' + escapeHtml(o.role) : '') +
+                        (o.parent ? '<div class="intel-muted">上级：' + escapeHtml(o.parent) + '</div>' : '') +
+                        (o.evidence ? '<div class="intel-muted">证据：' + escapeHtml(o.evidence) + '</div>' : '') +
+                        '</li>';
+                }).join('') + '</ul>' : emptyBlock('官网未公开组织架构（不会用域名注册人冒充架构）')
+            });
+
+            // 4) 主体
+            var reg = intel.company_registry;
+            var tech = (intel.technologies || []).filter(function (t) {
+                return t && !/^hosts:\d+/i.test(t) && t !== 'WHOIS';
+            });
+            var domainHtml = '';
+            domainHtml += '<h4 class="intel-sub">主体登记</h4>';
+            if (reg && reg.name) {
+                domainHtml += [
+                    kv('名称', escapeHtml(reg.name)),
+                    kv('编号', escapeHtml(reg.company_number || '')),
+                    kv('辖区', escapeHtml(reg.jurisdiction || '')),
+                    kv('状态', escapeHtml(reg.current_status || '')),
+                    kv('成立', escapeHtml(reg.incorporation_date || '')),
+                    kv('链接', linkOrText(reg.registry_url || ''))
+                ].filter(Boolean).join('');
+            } else {
+                domainHtml += emptyBlock('未匹配公开主体');
+            }
+            if (tech.length) {
+                domainHtml += '<h4 class="intel-sub">网站技术</h4>' + listChips(tech);
+            }
+            tabs.push({ id: 'domain', label: '主体', html: domainHtml });
+
+            // 5) 来源
+            var sources = intel.sources || [];
+            tabs.push({
+                id: 'sources',
+                label: '来源' + (sources.length ? ' (' + sources.length + ')' : ''),
+                html: sources.length
+                    ? '<ol class="intel-sources">' + sources.map(function (s) {
+                        return '<li>' + linkOrText(s) + '</li>';
+                    }).join('') + '</ol>'
+                    : emptyBlock('无网页来源（可能无官网）')
+            });
+
+            return tabs;
+        }
+
+        function setIntelProgress(pct, label, show) {
+            var wrap = document.getElementById('intel-progress-wrap');
+            var bar = document.getElementById('intel-progress-bar');
+            var lab = document.getElementById('intel-progress-label');
+            if (!wrap || !bar) return;
+            if (!show) {
+                wrap.hidden = true;
+                bar.style.width = '0%';
+                bar.classList.remove('indeterminate');
+                return;
+            }
+            wrap.hidden = false;
+            if (lab) lab.textContent = label || '背调中…';
+            if (pct == null || pct < 0) {
+                bar.classList.add('indeterminate');
+                bar.style.width = '35%';
+            } else {
+                bar.classList.remove('indeterminate');
+                bar.style.width = Math.max(5, Math.min(100, pct)) + '%';
+            }
+        }
+
+        function setJobProgress(pct, label, show) {
+            var wrap = document.getElementById('job-progress-wrap');
+            var bar = document.getElementById('job-progress-bar');
+            var lab = document.getElementById('job-progress-label');
+            if (!wrap || !bar) return;
+            if (!show) { wrap.hidden = true; return; }
+            wrap.hidden = false;
+            if (lab) lab.textContent = label || '';
+            bar.style.width = Math.max(2, Math.min(100, pct || 0)) + '%';
+        }
+
+        function showIntelLoading(place, msg) {
+            var titleEl = document.getElementById('intel-drawer-title');
+            var bodyEl = document.getElementById('intel-drawer-body');
+            if (titleEl) titleEl.textContent = place.title || '背调详情';
+            setIntelProgress(-1, msg || '背调中…', true);
+            if (bodyEl) {
+                bodyEl.innerHTML =
+                    '<div class="intel-skeleton">' +
+                    '<div class="sk-line sk-lg"></div>' +
+                    '<div class="sk-line"></div><div class="sk-line"></div>' +
+                    '<div class="sk-line sk-short"></div>' +
+                    '<div class="sk-block"></div>' +
+                    '<div class="sk-line"></div><div class="sk-line sk-short"></div>' +
+                    '<div class="sk-chips"><span></span><span></span><span></span></div>' +
+                    '<p class="intel-loading-msg">' + escapeHtml(msg || '背调中，正在拉取公开情报…') + '</p>' +
+                    '</div>';
+            }
+        }
+
+        function renderIntelPanel(place, intel) {
+            setIntelProgress(100, '背调完成', true);
+            setTimeout(function () { setIntelProgress(0, '', false); }, 600);
+            var titleEl = document.getElementById('intel-drawer-title');
+            var bodyEl = document.getElementById('intel-drawer-body');
+            if (titleEl) titleEl.textContent = place.title || '背调详情';
+            if (!bodyEl) return;
+
+            var tabs = buildTabs(place, intel || {});
+            var nav = '<div class="intel-tabs" role="tablist">' + tabs.map(function (t, i) {
+                return '<button type="button" class="intel-tab' + (i === 0 ? ' active' : '') + '" data-tab="' + t.id + '" role="tab">' +
+                    escapeHtml(t.label) + '</button>';
+            }).join('') + '</div>';
+            var panels = tabs.map(function (t, i) {
+                return '<div class="intel-tab-panel' + (i === 0 ? ' active' : '') + '" data-panel="' + t.id + '" role="tabpanel">' +
+                    t.html + '</div>';
+            }).join('');
+            var actions = '<div class="intel-actions">' +
+                '<button type="button" class="intel-refresh-btn" data-refresh="1">重新拉取背调</button>' +
+                '<span class="intel-muted">' + escapeHtml((intel && intel.provider) || '') + '</span></div>';
+
+            bodyEl.innerHTML = nav + panels + actions;
+
+            bodyEl.querySelectorAll('.intel-tab').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var id = btn.getAttribute('data-tab');
+                    bodyEl.querySelectorAll('.intel-tab').forEach(function (b) { b.classList.toggle('active', b === btn); });
+                    bodyEl.querySelectorAll('.intel-tab-panel').forEach(function (p) {
+                        p.classList.toggle('active', p.getAttribute('data-panel') === id);
+                    });
+                });
+            });
+            var refreshBtn = bodyEl.querySelector('[data-refresh]');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function () {
+                    loadIntelForPlace(place, true);
+                });
+            }
+        }
+
+        function loadIntelForPlace(place, refresh) {
+            var key = placeKey(place);
+            if (!key) {
+                renderIntelPanel(place, {
+                    status: 'failed',
+                    summary: place.title || '',
+                    confidence: 'low',
+                    note: '缺少稳定商户 ID，无法缓存背调'
+                });
+                return;
+            }
+            if (!refresh && intelCache[key] && intelTerminal(intelCache[key].status)) {
+                renderIntelPanel(place, intelCache[key]);
+                return;
+            }
+            showIntelLoading(place, '背调中…');
+            if (intelAbort) intelAbort.abort();
+            intelAbort = new AbortController();
+            var url = '/api/v1/jobs/' + encodeURIComponent(JOB_ID) + '/places/' + encodeURIComponent(key) + '/intel';
+            if (refresh) url += '?refresh=1';
+            fetch(url, { signal: intelAbort.signal })
+                .then(function (res) { return res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status)); })
+                .then(function (data) {
+                    intelCache[key] = data;
+                    if (intelTerminal(data.status)) {
+                        intelReadyMap[key] = true;
+                        setIntelProgress(100, '背调完成', true);
+                    } else {
+                        setIntelProgress(-1, '背调中…', true);
+                    }
+                    if (activePlaceId !== key) return;
+                    if (intelTerminal(data.status)) {
+                        renderIntelPanel(place, data);
+                    } else {
+                        showIntelLoading(place, '背调中…');
+                    }
+                    var tr = null;
+                    if (tbody) {
+                        tr = tbody.querySelector('tr[data-place-id="' + String(key).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]');
+                    }
+                    markRowIntelState(tr, key);
+                })
+                .catch(function (err) {
+                    if (err && err.name === 'AbortError') return;
+                    if (activePlaceId === key) {
+                        setIntelProgress(0, '', false);
+                        renderIntelPanel(place, {
+                            status: 'failed',
+                            summary: place.title || '',
+                            confidence: 'low',
+                            note: '背调请求失败：' + (err && err.message ? err.message : 'unknown'),
+                            decision_makers: [],
+                            org_structure: [],
+                            extra_emails: (place.emails || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean),
+                            phones: [place.phone, place.whatsapp].filter(Boolean),
+                            socials: {
+                                facebook: place.facebook,
+                                instagram: place.instagram,
+                                linkedin: place.linkedin,
+                                whatsapp: place.whatsapp
+                            }
+                        });
+                    }
+                });
+        }
+
+        function intelTerminal(status) {
+            return status === 'ready' || status === 'failed' || status === 'skipped';
+        }
+
+        function markRowIntelState(tr, key) {
+            if (!tr || !ENABLE_INTEL) return;
+            var ready = !key || intelReadyMap[key];
+            tr.classList.toggle('intel-pending', !ready);
+            tr.classList.toggle('intel-ready', !!ready);
+            tr.title = ready ? '点击查看背调' : '背调中…点击可在右侧查看进度';
+        }
+
+        function selectPlace(place, tr) {
+            var key = placeKey(place);
+            if (tbody) {
+                tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
+            }
+            if (tr) tr.classList.add('row-active');
+            activePlaceId = key;
+            openIntelDrawer();
+            if (map && isFinite(place.latitude) && isFinite(place.longitude)) {
+                map.setView([place.latitude, place.longitude], 16);
+            }
+            // 无论背调是否完成：右侧立即展示；进行中显示「背调中」，完成后展示完整结果
+            if (ENABLE_INTEL && key && !intelReadyMap[key] && !(intelCache[key] && intelTerminal(intelCache[key].status))) {
+                showIntelLoading(place, '背调中…');
+            }
+            loadIntelForPlace(place, false);
+        }
+
+        function pollIntelStatuses() {
+            if (!ENABLE_INTEL || !tbody) return;
+            var rows = tbody.querySelectorAll('tr[data-place-id]');
+            rows.forEach(function (tr) {
+                var key = tr.getAttribute('data-place-id');
+                if (!key) return;
+                if (intelReadyMap[key] && !(activePlaceId === key && intelCache[key] && !intelTerminal(intelCache[key].status))) {
+                    markRowIntelState(tr, key);
+                    return;
+                }
+                fetch('/api/v1/jobs/' + encodeURIComponent(JOB_ID) + '/places/' + encodeURIComponent(key) + '/intel')
+                    .then(function (res) { return res.ok ? res.json() : null; })
+                    .then(function (data) {
+                        if (!data) return;
+                        intelCache[key] = data;
+                        if (intelTerminal(data.status)) {
+                            intelReadyMap[key] = true;
+                        }
+                        markRowIntelState(tr, key);
+                        // 当前选中行：背调完成后自动切换为完整结果
+                        if (activePlaceId === key) {
+                            var place = placeById[key];
+                            if (!place) return;
+                            if (intelTerminal(data.status)) {
+                                renderIntelPanel(place, data);
+                            } else {
+                                showIntelLoading(place, '背调中…');
+                            }
+                        }
+                    })
+                    .catch(function () {});
+            });
         }
 
         function appendPlace(place, isFirst) {
             var latlng = [place.latitude, place.longitude];
+            var key = placeKey(place);
+            if (key) placeById[key] = place;
 
-            if (markersLayer) {
+            if (markersLayer && isFinite(place.latitude) && isFinite(place.longitude)) {
                 L.marker(latlng).bindPopup(placePopup(place)).addTo(markersLayer);
             }
 
@@ -129,12 +822,14 @@
 
             var tr = document.createElement('tr');
             tr.innerHTML = rowHtml(place);
+            if (key) tr.setAttribute('data-place-id', key);
+            if (!ENABLE_INTEL) {
+                intelReadyMap[key] = true;
+            }
+            markRowIntelState(tr, key);
             tr.addEventListener('click', function () {
-                tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('row-active'); });
-                tr.classList.add('row-active');
-                if (map) map.setView(latlng, 16);
+                selectPlace(place, tr);
             });
-            if (isFirst) tr.classList.add('row-active');
             tbody.appendChild(tr);
         }
 
@@ -151,22 +846,16 @@
             listEl.innerHTML = '';
             var wrap = document.createElement('div');
             wrap.className = 'places-table-wrap';
-            wrap.innerHTML = '<table class="places-table">' +
-                '<thead><tr>' +
-                '<th class="col-name">名称</th>' +
-                '<th class="col-addr">地址</th>' +
-                '<th class="col-phone">电话</th>' +
-                '<th class="col-mail">邮箱</th>' +
-                '<th class="col-rating">评分</th>' +
-                '<th class="col-reviews">评论数</th>' +
-                '<th class="col-site">网站</th>' +
-                '</tr></thead><tbody></tbody></table>';
+            var ths = RESULT_COLUMNS.map(function (col) {
+                return '<th class="' + col.cls + '">' + escapeHtml(col.label) + '</th>';
+            }).join('');
+            wrap.innerHTML = '<table class="places-table places-table-wide">' +
+                '<thead><tr>' + ths + '</tr></thead><tbody></tbody></table>';
             listEl.appendChild(wrap);
             tbody = wrap.querySelector('tbody');
         }
 
         function renderBatch(list) {
-            // CSV 只增不改，按下标增量追加即可
             for (var i = renderedCount; i < list.length; i++) {
                 appendPlace(list[i], renderedCount === 0 && i === 0);
             }
@@ -174,7 +863,6 @@
             renderedCount = list.length;
 
             if (hadNew && map && markersLayer) {
-                // 首次有数据时缩放到结果范围；后续追加不再打断用户视角
                 if (!renderBatch._fitted) {
                     renderBatch._fitted = true;
                     try { map.fitBounds(markersLayer.getBounds(), { padding: [30, 30] }); } catch (e) {}
@@ -208,14 +896,12 @@
                 })
                 .catch(function () {});
 
-            // 每 2 次轮询查一次任务状态，完成/失败即停止流式更新
             statusPollCount++;
             if (statusPollCount % 2 === 0) {
                 fetch('/api/v1/jobs/' + JOB_ID)
                     .then(function (res) { return res.ok ? res.json() : null; })
                     .then(function (job) {
                         if (job && job.Status !== 'working' && job.Status !== 'pending') {
-                            // 最后再拉一次结果，然后停止
                             fetch('/api/v1/jobs/' + JOB_ID + '/places')
                                 .then(function (res) { return res.ok ? res.json() : null; })
                                 .then(function (list) {
@@ -233,31 +919,83 @@
         }
 
         function initJobMap() {
-            var listEl = document.getElementById('job-places-list');
+            if (!Array.isArray(places)) places = [];
 
             map = createMap();
+            if (!map) return;
             markersLayer = L.layerGroup().addTo(map);
+            setJobProgress(12, '加载结果…', true);
 
-            if (places.length > 0) {
-                ensureTable();
-                renderBatch(places);
-            } else if (streamActive) {
-                ensureTable();
-                updateTitle();
-                map.setView([20, 0], 2);
-            } else {
-                showEmptyState();
+            function paintPlaces(list) {
+                places = list || [];
+                var sk = document.getElementById('places-skeleton');
+                if (sk) sk.remove();
+                if (places.length > 0) {
+                    ensureTable();
+                    renderedCount = 0;
+                    if (tbody) tbody.innerHTML = '';
+                    if (markersLayer) markersLayer.clearLayers();
+                    renderBatch._fitted = false;
+                    var first = places[0];
+                    if (first && isFinite(first.latitude) && isFinite(first.longitude)) {
+                        map.setView([first.latitude, first.longitude], 13);
+                    }
+                    renderBatch(places);
+                    setJobProgress(100, '已加载 ' + places.length + ' 家', true);
+                    setTimeout(function () { setJobProgress(0, '', false); }, 700);
+                    setTimeout(function () {
+                        refreshMapSize(map);
+                        try {
+                            if (markersLayer && markersLayer.getLayers().length) {
+                                map.fitBounds(markersLayer.getBounds(), { padding: [30, 30], maxZoom: 15 });
+                            }
+                        } catch (e) {}
+                    }, 60);
+                } else if (streamActive) {
+                    ensureTable();
+                    updateTitle();
+                    map.setView([20, 0], 2);
+                    setJobProgress(-1, '采集中…', true);
+                } else {
+                    showEmptyState();
+                    setJobProgress(0, '', false);
+                }
             }
 
-            setTimeout(function () { map.invalidateSize(); }, 0);
+            // 轻量模式：壳先出，places 走 API（比嵌入大 JSON 快很多）
+            if (LITE_MODE || places.length === 0) {
+                fetch('/api/v1/jobs/' + encodeURIComponent(JOB_ID) + '/places')
+                    .then(function (res) { return res.ok ? res.json() : []; })
+                    .then(function (list) { paintPlaces(list); })
+                    .catch(function () {
+                        if (streamActive) paintPlaces([]);
+                        else showEmptyState();
+                        setJobProgress(0, '', false);
+                    });
+            } else {
+                paintPlaces(places);
+            }
+
+            refreshMapSize(map);
 
             if (streamActive) {
-                pollTimer = setInterval(pollPlaces, 5000);
+                pollTimer = setInterval(pollPlaces, 2500);
+                pollPlaces();
+            }
+            if (ENABLE_INTEL) {
+                intelPollTimer = setInterval(pollIntelStatuses, 3000);
+                intelPollTimer && pollIntelStatuses();
             }
         }
 
         window.closeJobMap = function () {
             stopStreaming();
+            closeIntelDrawer();
+            if (intelPollTimer) {
+                clearInterval(intelPollTimer);
+                intelPollTimer = null;
+            }
+            if (intelAbort) intelAbort.abort();
 
             if (window.__jobMap) {
                 window.__jobMap.remove();
@@ -271,6 +1009,9 @@
         };
 
         ensureLeaflet(initJobMap);
+        if (window.lucide) {
+            try { window.lucide.createIcons(); } catch (e) {}
+        }
     })();
     </script>
 </div>
