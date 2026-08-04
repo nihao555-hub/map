@@ -280,8 +280,7 @@ func createSchema(db *sql.DB) error {
 			status TEXT NOT NULL,
 			data TEXT NOT NULL,
 			created_at INT NOT NULL,
-			updated_at INT NOT NULL,
-			owner_code TEXT NOT NULL DEFAULT ''
+			updated_at INT NOT NULL
 		);
 		CREATE TABLE IF NOT EXISTS invite_codes (
 			code TEXT PRIMARY KEY,
@@ -297,14 +296,18 @@ func createSchema(db *sql.DB) error {
 			last_seen_at INT NOT NULL
 		);
 		CREATE INDEX IF NOT EXISTS idx_jobs_status_created ON jobs(status, created_at);
-		CREATE INDEX IF NOT EXISTS idx_jobs_owner_created ON jobs(owner_code, created_at);
 		CREATE INDEX IF NOT EXISTS idx_invite_sessions_expires ON invite_sessions(expires_at);
 	`)
 	if err != nil {
 		return err
 	}
 
-	return ensureOwnerColumn(db)
+	if err := ensureOwnerColumn(db); err != nil {
+		return err
+	}
+
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_jobs_owner_created ON jobs(owner_code, created_at)`)
+	return err
 }
 
 func ensureOwnerColumn(db *sql.DB) error {
