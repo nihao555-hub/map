@@ -220,21 +220,44 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			}
 		}
 
-		// 没有 bbox 就用地理编码从地点名生成
+		// 没有 bbox 就用地理编码从地点名生成（含中文→英文、离线城市回退）
 		if bbox.MinLat == 0 && bbox.MaxLat == 0 && job.Data.Locations != "" {
-			log.Printf("geocoding location %q for grid mode", job.Data.Locations)
+			log.Printf("geocoding location %q for grid mode (country=%s)", job.Data.Locations, job.Data.CountryCode)
 
 			var err error
-			bbox, err = geocode(ctx, job.Data.Locations)
+			bbox, err = geocodeInCountry(ctx, job.Data.Locations, job.Data.CountryCode)
 			if err != nil {
-				log.Printf("geocoding failed: %v, falling back to single search", err)
-				// 地理编码失败就退化成普通模式
-				job.Data.GridMode = false
+				log.Printf("geocoding failed: %v", err)
+				// 全量网格不能静默退化成单点 ~20：再用半径锚点最后一搏
+				if alat, aerr := strconv.ParseFloat(job.Data.Lat, 64); aerr == nil {
+					if alon, aerr2 := strconv.ParseFloat(job.Data.Lon, 64); aerr2 == nil && (alat != 0 || alon != 0) {
+						halfKm := float64(job.Data.Radius) / 1000
+						if halfKm <= 0 {
+							halfKm = 10
+						}
+						bbox = anchorBBox(alat, alon, halfKm)
+						log.Printf("grid mode: recovered anchor bbox %.4f,%.4f (±%.1fkm) after geocode failure", alat, alon, halfKm)
+					}
+				}
+				if bbox.MinLat == 0 && bbox.MaxLat == 0 {
+					log.Printf("grid mode aborted: no bbox; falling back to single search (~20 results)")
+					job.Data.GridMode = false
+				}
 			} else {
-				// 向外扩展 10%，确保覆盖完整
-				bbox = expandBBox(bbox, 0.1)
-				log.Printf("geocoded bbox: %.4f,%.4f -> %.4f,%.4f (%s)",
-					bbox.MinLat, bbox.MinLon, bbox.MaxLat, bbox.MaxLon, job.Data.Locations)
+				// 用户给了目标半径：以解析中心为圆心覆盖半径（全量按半径，不按 Nominatim 城市框）
+				clat := (bbox.MinLat + bbox.MaxLat) / 2
+				clon := (bbox.MinLon + bbox.MaxLon) / 2
+				halfKm := float64(job.Data.Radius) / 1000
+				if halfKm <= 0 {
+					halfKm = 10
+					bbox = expandBBox(bbox, 0.1)
+					log.Printf("geocoded bbox: %.4f,%.4f -> %.4f,%.4f (%s)",
+						bbox.MinLat, bbox.MinLon, bbox.MaxLat, bbox.MaxLon, job.Data.Locations)
+				} else {
+					bbox = anchorBBox(clat, clon, halfKm)
+					log.Printf("grid mode: radius-shaped bbox around %.4f,%.4f (±%.1fkm from %q)",
+						clat, clon, halfKm, job.Data.Locations)
+				}
 			}
 		}
 
@@ -244,8 +267,26 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 				cellKm = 1.5 // 默认 1.5km 一格
 			}
 
-			// 估算格子数，打个日志
+			// 深度模式每格要开浏览器：半径大时自动加粗格子，避免上千格跑不完
 			estCells := grid.EstimateCellCount(bbox, cellKm)
+			if !job.Data.FastMode && estCells > 64 {
+				halfKm := float64(job.Data.Radius) / 1000
+				if halfKm <= 0 {
+					halfKm = 10
+				}
+				// 目标约 8×8=64 格覆盖直径
+				target := (2 * halfKm) / 8
+				if target < cellKm {
+					target = cellKm
+				}
+				if target > 12 {
+					target = 12
+				}
+				log.Printf("grid mode: deep auto-coarsen cell %.1fkm -> %.1fkm (was ~%d cells)", cellKm, target, estCells)
+				cellKm = target
+				job.Data.GridCellKm = cellKm
+				estCells = grid.EstimateCellCount(bbox, cellKm)
+			}
 			log.Printf("grid mode: ~%d cells at %.1fkm resolution", estCells, cellKm)
 
 			var err error

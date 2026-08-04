@@ -487,9 +487,9 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	// 前端已锚定 lat/lon 且选定国家时，跳过二次地理编码（可省数秒）
 	skipGeocode := hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) && countryCode != ""
 	if locationsStr != "" && !skipGeocode {
-		geoCtx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+		geoCtx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
 
-		point, geoErr := GeocodeInCountry(geoCtx, locationsStr, "en", countryCode)
+		point, geoErr := ResolveLocationAnchor(geoCtx, locationsStr, countryCode)
 
 		cancel()
 
