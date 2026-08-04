@@ -611,8 +611,9 @@ func lookupLinkedInPeople(ctx context.Context, title, domain string) ([]Decision
 	return out, coURL, nil
 }
 
-// linkedinXRayRelevant 过滤 X-Ray 假阳性：人名里撞上公司品牌（Artan / Lifung）时，
-// 必须在标题残留里仍能看到公司/品牌，否则多半是同名外人。
+// linkedInXRayRelevant 过滤 X-Ray 假阳性。
+// 规则：搜索标题/摘要里必须留下「雇主侧」证据（公司全名或品牌），
+// 否则像 Artan Metaj / Artur @ Tranont 这类撞名结果会被当成决策人。
 func linkedInXRayRelevant(name, label, companyTitle string) bool {
 	name = strings.TrimSpace(name)
 	companyTitle = strings.TrimSpace(companyTitle)
@@ -620,31 +621,12 @@ func linkedInXRayRelevant(name, label, companyTitle string) bool {
 		return false
 	}
 	brand := companyBrandToken(companyTitle)
-	if brand == "" || len(brand) < 4 {
-		return true
-	}
-	brandLow := strings.ToLower(brand)
+	brandLow := strings.ToLower(strings.TrimSpace(brand))
 	nameLow := strings.ToLower(name)
 	labelLow := strings.ToLower(label)
 	companyLow := strings.ToLower(companyTitle)
 
 	nameTokens := strings.Fields(nameLow)
-	overlaps := false
-	for _, tok := range nameTokens {
-		tok = strings.Trim(tok, ".,'")
-		if len(tok) < 4 {
-			continue
-		}
-		if tok == brandLow || strings.HasPrefix(brandLow, tok) || strings.HasPrefix(tok, brandLow) ||
-			commonPrefixLen(tok, brandLow) >= 4 {
-			overlaps = true
-			break
-		}
-	}
-	if !overlaps {
-		return true
-	}
-
 	// 去掉人名后再看标签是否还提到公司/品牌（雇主侧证据）
 	stripped := labelLow
 	for _, tok := range nameTokens {
@@ -655,18 +637,52 @@ func linkedInXRayRelevant(name, label, companyTitle string) bool {
 		stripped = strings.ReplaceAll(stripped, tok, " ")
 	}
 	stripped = strings.Join(strings.Fields(stripped), " ")
-	if strings.Contains(stripped, brandLow) {
-		return true
-	}
+
 	if companyLow != "" && strings.Contains(labelLow, companyLow) {
 		return true
 	}
-	// 标签明确写 at/Company 且含品牌也算
-	if strings.Contains(labelLow, brandLow) &&
-		(strings.Contains(labelLow, " at ") || strings.Contains(labelLow, " @ ") ||
-			strings.Contains(labelLow, " | ") || strings.Contains(labelLow, companyLow)) {
-		// 但若品牌只出现在人名位置，stripped 已不含品牌；这里再放行会误伤。仅当 stripped 仍有品牌。
-		return strings.Contains(stripped, brandLow)
+	if brandLow != "" && len(brandLow) >= 4 && strings.Contains(stripped, brandLow) {
+		return true
+	}
+
+	// 人名撞品牌且无雇主证据 → 直接拒绝
+	overlaps := false
+	for _, tok := range nameTokens {
+		tok = strings.Trim(tok, ".,'")
+		if len(tok) < 4 || brandLow == "" {
+			continue
+		}
+		if tok == brandLow || strings.HasPrefix(brandLow, tok) || strings.HasPrefix(tok, brandLow) ||
+			commonPrefixLen(tok, brandLow) >= 4 {
+			overlaps = true
+			break
+		}
+	}
+	if overlaps {
+		return false
+	}
+
+	// 无撞名时：印尼 PT 公司允许「Indonesia/Jakarta + 采购/老板角色」弱证据
+	lowTitle := strings.ToLower(companyTitle)
+	isID := strings.Contains(lowTitle, "indonesia") || strings.Contains(lowTitle, "pt ") ||
+		strings.HasPrefix(strings.TrimSpace(lowTitle), "pt")
+	if isID {
+		geoOK := strings.Contains(labelLow, "indonesia") || strings.Contains(labelLow, "jakarta")
+		roleOK := false
+		for _, k := range []string{"purchas", "procure", "buyer", "direktur", "director", "owner", "founder", "ceo", "import", "export", "supply chain", "general manager"} {
+			if strings.Contains(labelLow, k) {
+				roleOK = true
+				break
+			}
+		}
+		if geoOK && roleOK {
+			return true
+		}
+	}
+
+	// 标签为空（只有 /in/ URL）时无法核验雇主，宁可不要
+	if strings.TrimSpace(label) == "" || strings.EqualFold(strings.TrimSpace(label), "LinkedIn profile") {
+		return false
 	}
 	return false
 }

@@ -93,13 +93,22 @@ func TestLinkedInXRayRelevantRejectsBrandNameCollision(t *testing.T) {
 	if linkedInXRayRelevant("Artatran Rath", "Artatran Rath - Senior Procurement Analyst - IHIGH", company) {
 		t.Fatal("Artatran~Artan collision should be rejected")
 	}
+	if linkedInXRayRelevant("Artur Yeritsyan", "Artur Yeritsyan - Supply Chain Director at Tranont", company) {
+		t.Fatal("unrelated employer should be rejected")
+	}
+	if linkedInXRayRelevant("Arslan Shafiq", "Arslan Shafiq - LinkedIn profile", company) {
+		t.Fatal("empty employer evidence should be rejected")
+	}
 	if !linkedInXRayRelevant("Mukhtar Ahmed", "Mukhtar Ahmed - Senior Vice President - Lifung Indonesia | LinkedIn", "PT. Lifung Indonesia") {
 		t.Fatal("true employee mention should pass")
 	}
-	if !linkedInXRayRelevant("Subhan Sofyan", "Subhan Sofyan - Procurement & Supply Chain Manager", "PT. Nawasena Mulia Niaga Internasional") {
-		t.Fatal("no brand overlap should pass")
+	if !linkedInXRayRelevant("Subhan Sofyan", "Subhan Sofyan - Procurement & Supply Chain Manager - Jakarta, Indonesia", "PT. Nawasena Mulia Niaga Internasional") {
+		t.Fatal("Indonesia + role weak evidence should pass for PT companies")
+	}
+	if linkedInXRayRelevant("Subhan Sofyan", "Subhan Sofyan - Procurement & Supply Chain Manager", "PT. Nawasena Mulia Niaga Internasional") {
+		t.Fatal("role alone without geo/company should be rejected")
 	}
 	if !linkedInXRayRelevant("Budi Santoso", "Budi Santoso - Purchasing Manager - PT. ARTAN INTERNATIONAL TRADING", company) {
-		t.Fatal("explicit company in label should pass even if uncommon")
+		t.Fatal("explicit company in label should pass")
 	}
 }
