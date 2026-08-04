@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
@@ -93,6 +94,10 @@ func clashSearchNodes() []string {
 		"德国-优化",
 		"美国LA-优化2-GPT",
 		"日本-优化",
+		"香港HK-HY2",
+		"加拿大-优化",
+		"英国-优化-GPT",
+		"新加坡-优化-Gemini-GPT",
 	}
 }
 
@@ -186,6 +191,9 @@ func withSearchEgress(ctx context.Context, fn func(node string) error) error {
 		}
 		if err := fn(node); err != nil {
 			lastErr = err
+			if cachedSearchNode == node {
+				cachedSearchNode = ""
+			}
 			continue
 		}
 		cachedSearchNode = node
@@ -224,16 +232,56 @@ func httpGetSearch(ctx context.Context, rawURL string, timeout time.Duration) (s
 	if err != nil {
 		return "", 0, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+	ua := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	resp, err := searchHTTPClient(timeout).Do(req)
-	if err != nil {
+	if err == nil {
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 700<<10))
+		body := string(raw)
+		if !searchHTMLLooksBlocked(body, resp.StatusCode) {
+			return body, resp.StatusCode, nil
+		}
+		// 429/风控时再试 curl（代理下 Go TLS 有时比 curl 更容易被拦）
+		if body, code, err2 := httpGetSearchCurl(ctx, rawURL, timeout, ua); err2 == nil && !searchHTMLLooksBlocked(body, code) {
+			return body, code, nil
+		}
+		return body, resp.StatusCode, nil
+	}
+	if body, code, err2 := httpGetSearchCurl(ctx, rawURL, timeout, ua); err2 == nil {
+		return body, code, nil
+	}
+	return "", 0, err
+}
+
+func httpGetSearchCurl(ctx context.Context, rawURL string, timeout time.Duration, ua string) (string, int, error) {
+	sec := int(timeout.Seconds())
+	if sec < 5 {
+		sec = 5
+	}
+	args := []string{"-sL", "--max-time", fmt.Sprintf("%d", sec), "-A", ua,
+		"-H", "Accept: text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+		"-H", "Accept-Language: en-US,en;q=0.9",
+		"-w", "\n__HTTP_CODE__:%{http_code}",
+	}
+	if p := searchProxyURL(); p != "" {
+		args = append(args, "--proxy", p)
+	}
+	args = append(args, rawURL)
+	cmd := exec.CommandContext(ctx, "curl", args...) //nolint:gosec
+	out, err := cmd.Output()
+	if err != nil && len(out) == 0 {
 		return "", 0, err
 	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 700<<10))
-	return string(raw), resp.StatusCode, nil
+	body := string(out)
+	code := 0
+	if i := strings.LastIndex(body, "\n__HTTP_CODE__:"); i >= 0 {
+		fmt.Sscanf(body[i+len("\n__HTTP_CODE__:"):], "%d", &code)
+		body = body[:i]
+	}
+	return body, code, nil
 }
 
 type linkedInSearchHit struct {

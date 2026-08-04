@@ -29,8 +29,19 @@ services:
       GRSAI_API_KEY: "${GRSAI_API_KEY:-}"
       GRSAI_API_HOST: "${GRSAI_API_HOST:-https://grsaiapi.com}"
       GRSAI_MODEL: "${GRSAI_MODEL:-gemini-3.1-flash-lite}"
+      AHU_PROXY: "${AHU_PROXY:-}"
+      SEARCH_PROXY: "${SEARCH_PROXY:-}"
+      MEDIA_PROXY: "${MEDIA_PROXY:-}"
+      CROSSLINKED_PROXY: "${CROSSLINKED_PROXY:-}"
+      CLASH_API: "${CLASH_API:-}"
+      CLASH_DEFAULT_NODE: "${CLASH_DEFAULT_NODE:-新加坡SG-HY2}"
+      CLASH_SEARCH_NODE: "${CLASH_SEARCH_NODE:-日本JP-HY2,美国LA-优化-GPT,德国-优化}"
+      GMAPS_REPO_ROOT: "/app"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - scraper-data:/data
+      - ./tools:/app/tools:ro
     expose:
       - "8080"
     mem_limit: 2.5g

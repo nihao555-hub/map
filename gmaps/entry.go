@@ -263,6 +263,10 @@ func (e *Entry) IsWebsiteValidForEmail() bool {
 		"yelp.com",
 		"tripadvisor.",
 		"mobile-webview",
+		"gofood.link",
+		"gofood.co.id",
+		"food.grab.com",
+		"grab.com",
 	}
 
 	for i := range needles {
