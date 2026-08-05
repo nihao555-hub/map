@@ -107,6 +107,20 @@ var countryAlias = map[string]struct{ Code, Name, Lang string }{
 	"缅甸": {"mm", "Myanmar", "my"}, "myanmar": {"mm", "Myanmar", "my"},
 }
 
+// cityCountryHint maps famous cities → country when the user omits the country name.
+var cityCountryHint = map[string]struct{ Code, Name, Lang string }{
+	"雅加达": {"id", "Indonesia", "id"}, "jakarta": {"id", "Indonesia", "id"},
+	"泗水": {"id", "Indonesia", "id"}, "surabaya": {"id", "Indonesia", "id"},
+	"曼谷": {"th", "Thailand", "th"}, "bangkok": {"th", "Thailand", "th"},
+	"胡志明": {"vn", "Vietnam", "vi"}, "河内": {"vn", "Vietnam", "vi"}, "hanoi": {"vn", "Vietnam", "vi"},
+	"吉隆坡": {"my", "Malaysia", "ms"}, "kuala lumpur": {"my", "Malaysia", "ms"},
+	"马尼拉": {"ph", "Philippines", "tl"}, "manila": {"ph", "Philippines", "tl"},
+	"新加坡": {"sg", "Singapore", "en"},
+	"纽约":  {"us", "United States", "en"}, "new york": {"us", "United States", "en"},
+	"洛杉矶": {"us", "United States", "en"}, "东京": {"jp", "Japan", "ja"}, "tokyo": {"jp", "Japan", "ja"},
+	"首尔": {"kr", "South Korea", "ko"}, "迪拜": {"ae", "United Arab Emirates", "en"}, "dubai": {"ae", "United Arab Emirates", "en"},
+}
+
 // UnderstandIntent is IntentAgent: NL goal → structured intent.
 func UnderstandIntent(ctx context.Context, goal, uiLang string) (AgentIntent, error) {
 	goal = strings.TrimSpace(goal)
@@ -267,6 +281,17 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 		}
 	}
 
+	// Infer country from well-known city names when not stated explicitly.
+	if intent.CountryCode == "" {
+		for city, meta := range cityCountryHint {
+			if strings.Contains(goal, city) || strings.Contains(low, strings.ToLower(city)) {
+				intent.CountryCode = meta.Code
+				intent.CountryName = meta.Name
+				break
+			}
+		}
+	}
+
 	if m := reRadiusKm.FindStringSubmatch(goal); len(m) == 2 {
 		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
 			intent.RadiusKm = n
@@ -323,6 +348,7 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 		}
 	}
 	intent.Keywords = cleanKeywordList(intent.Keywords)
+	intent.Keywords = splitCompoundKeywords(intent.Keywords)
 	if len(intent.Keywords) == 0 {
 		// Last resort: whole goal as keyword if short
 		if len([]rune(goal)) <= 40 && !strings.Contains(goal, " ") {
@@ -332,6 +358,21 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 
 	intent = normalizeIntent(intent, goal, uiLang)
 	return intent
+}
+
+// splitCompoundKeywords turns "咖啡馆和进口商" / "cafe and importer" into separate tasks.
+func splitCompoundKeywords(ks []string) []string {
+	var out []string
+	for _, k := range ks {
+		parts := regexp.MustCompile(`(?:\s*(?:和|与|及|、|/|,|，|\band\b)\s*)`).Split(k, -1)
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				out = append(out, p)
+			}
+		}
+	}
+	return cleanKeywordList(out)
 }
 
 // PlanTasks is PlannerAgent: one intent → one or more deep full-scan tasks.

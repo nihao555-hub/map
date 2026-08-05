@@ -11,14 +11,32 @@ func TestUnderstandIntentRulesJakartaCafe(t *testing.T) {
 	if intent.CountryCode != "id" && intent.Location == "" {
 		t.Fatalf("expected country or location, got %+v", intent)
 	}
-	if intent.Location == "" && intent.CountryCode == "id" {
-		// location may be 雅加达
-	}
 	if intent.RadiusKm != 15 {
 		t.Fatalf("radius=%d want 15", intent.RadiusKm)
 	}
 	if len(intent.Keywords) == 0 {
 		t.Fatalf("expected keywords, got %+v", intent)
+	}
+}
+
+func TestUnderstandIntentInfersCountryFromCity(t *testing.T) {
+	intent := understandIntentRules("在雅加达找咖啡馆，半径10公里", "zh")
+	if intent.CountryCode != "id" {
+		t.Fatalf("country=%q want id (from 雅加达)", intent.CountryCode)
+	}
+	if intent.Location == "" {
+		t.Fatal("missing location")
+	}
+}
+
+func TestUnderstandIntentSplitsCompoundKeywords(t *testing.T) {
+	intent := understandIntentRules("在雅加达找咖啡馆和进口商，半径12公里", "zh")
+	if len(intent.Keywords) < 2 {
+		t.Fatalf("want split keywords, got %+v", intent.Keywords)
+	}
+	plan := PlanTasks(intent)
+	if len(plan.Tasks) < 2 {
+		t.Fatalf("want >=2 tasks after split, got %d (%+v)", len(plan.Tasks), plan.Tasks)
 	}
 }
 
