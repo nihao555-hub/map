@@ -102,8 +102,9 @@ func (w *webrunner) work(ctx context.Context) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	maxJobs := web.JobConcurrency()
-	log.Printf("web runner: job concurrency=%d (GMS_WEB_JOB_CONCURRENCY)", maxJobs)
+	maxJobs := web.AdaptiveJobConcurrency()
+	web.LogMemoryPressure("web runner start")
+	log.Printf("web runner: adaptive job concurrency=%d (cap GMS_WEB_JOB_CONCURRENCY=%d)", maxJobs, web.JobConcurrency())
 
 	sem := make(chan struct{}, maxJobs)
 	var eg errgroup.Group
@@ -220,7 +221,14 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 	defer mate.Close()
 
-	var dedup deduper.Deduper = deduper.New()
+	var dedup deduper.Deduper
+	if web.UseBloomDeduper() {
+		// Google Bigtable/LevelDB 风格：海量网格去重时用 Bloom 压内存；前段仍 exact
+		dedup = deduper.NewBloom(web.BloomExpectedKeys(), 0.001)
+		log.Printf("job %s: bloom deduper (expected≈%d)", job.ID, web.BloomExpectedKeys())
+	} else {
+		dedup = deduper.New()
+	}
 	if job.Data.MaxResults > 0 {
 		// 用户设置了目标客户数量上限：去重计数达上限后不再播种新详情任务
 		dedup = newLimitDeduper(dedup, job.Data.MaxResults)
@@ -502,10 +510,10 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.Job) (mateRunner, error) {
 	return func(_ context.Context, writer io.Writer, job *web.Job) (mateRunner, error) {
-		// Split host concurrency across parallel jobs so 4 jobs don't each spawn 16 workers.
-		jobConc := web.PerJobScrapemateConcurrency(cfg.Concurrency, job.Data.FastMode)
-		log.Printf("job %s scrapemate concurrency=%d (host=%d jobs=%d fast=%v)",
-			job.ID, jobConc, cfg.Concurrency, web.JobConcurrency(), job.Data.FastMode)
+		// Split host concurrency across parallel jobs; shrink further under RAM pressure.
+		jobConc := web.AdaptivePerJobConcurrency(cfg.Concurrency, job.Data.FastMode)
+		log.Printf("job %s scrapemate concurrency=%d (host=%d jobs=%d fast=%v availMemMB=%d)",
+			job.ID, jobConc, cfg.Concurrency, web.AdaptiveJobConcurrency(), job.Data.FastMode, web.AvailableMemoryMB())
 		opts := []func(*scrapemateapp.Config) error{
 			scrapemateapp.WithConcurrency(jobConc),
 		}

@@ -202,6 +202,8 @@ func New(svc *Service, addr string, opts ...ServerOption) (*Server, error) {
 	mux.HandleFunc("/api/v1/reverse-geocode", ans.apiReverseGeocode)
 	mux.HandleFunc("/api/v1/ai-translate", ans.apiAITranslate)
 	mux.HandleFunc("/api/v1/ai-status", ans.apiAIStatus)
+	mux.HandleFunc("/api/v1/agent/understand", ans.apiAgentUnderstand)
+	mux.HandleFunc("/api/v1/agent/dispatch", ans.apiAgentDispatch)
 
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
@@ -417,10 +419,6 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Form.Get("fastmode") == "on" {
-		newJob.Data.FastMode = true
-	}
-
 	// 目标半径：优先 radius_km（公里，项目上限 MaxRadiusKm），否则兼容旧 radius（米）
 	newJob.Data.Radius, err = parseTargetRadiusMeters(r)
 	if err != nil {
@@ -433,14 +431,9 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	newJob.Data.Lon = r.Form.Get("longitude")
 
 	newJob.Data.Depth, err = strconv.Atoi(r.Form.Get("depth"))
-	if err != nil {
-		http.Error(w, "invalid depth", http.StatusUnprocessableEntity)
-
-		return
+	if err != nil || newJob.Data.Depth <= 0 {
+		newJob.Data.Depth = 50
 	}
-
-	// 邮箱为获客刚需：快速/深度/网格一律开启，忽略前端关闭
-	newJob.Data.Email = true
 
 	// 背调：用户抓取前勾选；开启后结果照常产出，背调并发进行
 	newJob.Data.EnableIntel = r.Form.Get("enable_intel") == "on" ||
@@ -449,58 +442,22 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 	// 界面/AI 产出语言（与 Maps hl/lang 独立）；缺省英文
 	newJob.Data.UILang = normalizeUILang(r.Form.Get("ui_lang"))
 
-	// 网格全量模式
-	if r.Form.Get("gridmode") == "on" {
-		newJob.Data.GridMode = true
-		// 网格边长（公里），默认 1.5
-		cellKm := 1.5
-		if cellStr := r.Form.Get("gridcell"); cellStr != "" {
-			if v, err := strconv.ParseFloat(cellStr, 64); err == nil && v > 0 {
-				cellKm = v
-			}
-		}
-		newJob.Data.GridCellKm = cellKm
-		// 保存原始地点名（用于地理编码生成 bbox）
-		newJob.Data.Locations = locationsStr
-		// 如果手动传了 bbox 就用手动的
-		if bbox := r.Form.Get("gridbbox"); bbox != "" {
-			newJob.Data.GridBBox = bbox
-		}
-		// 快速模式已原生支持网格（纯 HTTP 搜索接口按格取数），不再强制关闭
-	}
-
-	// 快速模式单点搜索结果很少：自动开粗网格扩量（仍走纯 HTTP）。
-	// 保留用户设定的目标半径；仅在未设网格密度时给粗默认。
-	if newJob.Data.FastMode && !newJob.Data.GridMode {
-		newJob.Data.GridMode = true
-		if newJob.Data.GridCellKm <= 0 {
-			newJob.Data.GridCellKm = 2.5
-		}
-		if newJob.Data.Locations == "" {
-			newJob.Data.Locations = locationsStr
-		}
-		log.Printf("快速模式自动启用粗网格扩量 cell=%.1fkm radius=%dm (%.1fkm)",
-			newJob.Data.GridCellKm, newJob.Data.Radius, float64(newJob.Data.Radius)/1000)
-	}
-
-	// 结果列配置（快速模式可不选；深度/网格模式用户自选表头）
+	// 结果列：深度全量默认全列
 	newJob.Data.Columns = strings.TrimSpace(r.Form.Get("columns"))
-
-	// 不设数量上限：半径内网格全量抓取，忽略前端/历史 maxresults
-	newJob.Data.MaxResults = 0
-
-	// 深度模式：在目标半径内用粗网格覆盖（单点滚动远达不到半径内全量）。
-	if !newJob.Data.FastMode && !newJob.Data.GridMode {
-		newJob.Data.GridMode = true
-		if newJob.Data.GridCellKm <= 0 {
-			newJob.Data.GridCellKm = 2.0 // 深度走浏览器，格子稍粗以免格数爆炸
-		}
-		if newJob.Data.Locations == "" {
-			newJob.Data.Locations = locationsStr
-		}
-		log.Printf("深度模式启用粗网格覆盖目标半径 cell=%.1fkm radius=%dm (%.1fkm) unlimited",
-			newJob.Data.GridCellKm, newJob.Data.Radius, float64(newJob.Data.Radius)/1000)
+	if bbox := r.Form.Get("gridbbox"); bbox != "" {
+		newJob.Data.GridBBox = bbox
 	}
+	if cellStr := r.Form.Get("gridcell"); cellStr != "" {
+		if v, err := strconv.ParseFloat(cellStr, 64); err == nil && v > 0 {
+			newJob.Data.GridCellKm = v
+		}
+	}
+	newJob.Data.Locations = locationsStr
+
+	// 产品策略：一律深度 + 半径内网格全量，不设数量上限；代理只用服务器 GMS_PROXIES
+	ApplyFullVolumeDefaults(&newJob.Data, newJob.Data.Radius)
+	log.Printf("深度全量模式 cell=%.1fkm radius=%dm (%.1fkm) unlimited depth=%d",
+		newJob.Data.GridCellKm, newJob.Data.Radius, float64(newJob.Data.Radius)/1000, newJob.Data.Depth)
 
 	// 用户显式选择的目标国家（优先于地理编码推断）
 	countryCode := strings.ToLower(strings.TrimSpace(r.Form.Get("country_code")))
@@ -628,23 +585,18 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		newJob.Data.Locations = locationsStr
 	}
 
-	// 快速模式必须有真实地理锚点，否则会落到 (0,0) 而不是用户选的国家/城市
-	if newJob.Data.FastMode && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
-		http.Error(w, "快速模式需要有效地点：请选择国家并在地图上选点，或等待地点解析完成后再提交", http.StatusUnprocessableEntity)
-
+	// 必填：关键词 +（国家或地点）+ 半径（已在上方解析）
+	if len(rawKeywords) == 0 {
+		http.Error(w, "请填写「找什么」（必填）", http.StatusUnprocessableEntity)
+		return
+	}
+	if countryCode == "" && locationsStr == "" && !hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon) {
+		http.Error(w, "请填写「目标国家」和「在哪里」（必填），或在地图上选点", http.StatusUnprocessableEntity)
 		return
 	}
 
-	// 提交前校验代理：格式非法、缺用户名密码认证的立即拒绝，
-	// 不要等任务跑到启动 auth proxy 时才失败
-	proxies, err := validateProxyLines(r.Form.Get("proxies"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-
-		return
-	}
-
-	newJob.Data.Proxies = proxies
+	// 代理仅使用服务器配置（GMS_PROXIES / -proxies），不再接受用户表单代理
+	newJob.Data.Proxies = nil
 
 	err = newJob.Validate()
 	if err != nil {
@@ -653,11 +605,10 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("任务意图 name=%q raw=%v search=%v country=%s(%s) lang=%s loc=%q geo=%s,%s fast=%v grid=%v",
+	log.Printf("任务意图 name=%q raw=%v search=%v country=%s(%s) lang=%s loc=%q geo=%s,%s deep+grid unlimited radius=%dm",
 		newJob.Name, newJob.Data.RawKeywords, newJob.Data.Keywords,
 		newJob.Data.CountryName, newJob.Data.CountryCode, newJob.Data.Lang,
-		newJob.Data.Locations, newJob.Data.Lat, newJob.Data.Lon,
-		newJob.Data.FastMode, newJob.Data.GridMode)
+		newJob.Data.Locations, newJob.Data.Lat, newJob.Data.Lon, newJob.Data.Radius)
 
 	if err := s.attachOwner(r, &newJob); err != nil {
 		http.Error(w, "需要有效邀请会话", http.StatusUnauthorized)
@@ -1034,8 +985,8 @@ func (s *Server) apiScrape(w http.ResponseWriter, r *http.Request) {
 
 	// convert to seconds
 	newJob.Data.MaxTime *= time.Second
-	// Web 产品不设数量上限：半径内全量抓取
-	newJob.Data.MaxResults = 0
+	// 一律深度全量：半径内不限数量，忽略客户端 fast/max_results/proxies
+	ApplyFullVolumeDefaults(&newJob.Data, newJob.Data.Radius)
 
 	err = newJob.Validate()
 	if err != nil {

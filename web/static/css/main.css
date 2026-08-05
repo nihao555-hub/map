@@ -1998,3 +1998,51 @@ body.invite-page {
 .invite-submit:active {
   background: var(--brand-primary-active);
 }
+
+/* 深度全量固定模式 + 意图 Agent */
+.req-star { color: var(--brand-error, #ff4d4f); margin-left: 2px; font-weight: 700; }
+
+.mode-fixed-banner {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--radius-ctrl);
+  background: linear-gradient(135deg, #f0f7ff 0%, #e8f4ff 100%);
+  border: 1px solid #91caff;
+  color: #0958d9;
+}
+.mode-fixed-banner strong { display: block; font-size: 14px; margin-bottom: 2px; }
+.mode-fixed-banner p { margin: 0; font-size: 12px; opacity: 0.9; line-height: 1.4; }
+
+.intent-box textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: vertical;
+  min-height: 52px;
+  font: inherit;
+  background: transparent;
+  padding: 8px 0;
+}
+.intent-field { align-items: flex-start; padding-top: 8px; }
+.intent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.btn-secondary-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-ctrl);
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  color: #262626;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-secondary-sm:hover { border-color: #1677ff; color: #1677ff; }

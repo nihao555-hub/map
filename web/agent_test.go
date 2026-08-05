@@ -1,0 +1,100 @@
+package web
+
+import (
+	"context"
+	"testing"
+	"time"
+)
+
+func TestUnderstandIntentRulesJakartaCafe(t *testing.T) {
+	intent := understandIntentRules("在雅加达找咖啡馆，半径15公里", "zh")
+	if intent.CountryCode != "id" && intent.Location == "" {
+		t.Fatalf("expected country or location, got %+v", intent)
+	}
+	if intent.Location == "" && intent.CountryCode == "id" {
+		// location may be 雅加达
+	}
+	if intent.RadiusKm != 15 {
+		t.Fatalf("radius=%d want 15", intent.RadiusKm)
+	}
+	if len(intent.Keywords) == 0 {
+		t.Fatalf("expected keywords, got %+v", intent)
+	}
+}
+
+func TestPlanTasksSplitsKeywords(t *testing.T) {
+	plan := PlanTasks(AgentIntent{
+		RawGoal:     "test",
+		CountryCode: "id",
+		CountryName: "Indonesia",
+		Location:    "Jakarta",
+		Keywords:    []string{"cafe", "importer"},
+		RadiusKm:    20,
+		UILang:      "zh",
+	})
+	if len(plan.Tasks) != 2 {
+		t.Fatalf("tasks=%d want 2", len(plan.Tasks))
+	}
+	for _, task := range plan.Tasks {
+		if task.RadiusKm != 20 {
+			t.Fatalf("task radius=%d", task.RadiusKm)
+		}
+		if task.Role != "scraper" {
+			t.Fatalf("role=%s", task.Role)
+		}
+	}
+	found := false
+	for _, r := range plan.Roles {
+		if r == "DispatcherAgent" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("roles missing DispatcherAgent: %v", plan.Roles)
+	}
+}
+
+func TestApplyFullVolumeDefaults(t *testing.T) {
+	d := JobData{FastMode: true, MaxResults: 20, Depth: 5, MaxTime: time.Minute}
+	ApplyFullVolumeDefaults(&d, 15000)
+	if d.FastMode {
+		t.Fatal("fast mode must be off")
+	}
+	if !d.GridMode {
+		t.Fatal("grid must be on")
+	}
+	if d.MaxResults != 0 {
+		t.Fatalf("maxResults=%d want 0", d.MaxResults)
+	}
+	if d.Radius != 15000 {
+		t.Fatalf("radius=%d", d.Radius)
+	}
+	if d.Depth < 20 {
+		t.Fatalf("depth=%d want >=20", d.Depth)
+	}
+	if len(d.Proxies) != 0 {
+		t.Fatalf("proxies should be empty for server-side only")
+	}
+	if !d.Email {
+		t.Fatal("email required")
+	}
+}
+
+func TestUnderstandIntentEmpty(t *testing.T) {
+	_, err := UnderstandIntent(context.Background(), "  ", "zh")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestAdaptiveJobConcurrencyAtLeastOne(t *testing.T) {
+	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "4")
+	n := AdaptiveJobConcurrency()
+	if n < 1 || n > 4 {
+		t.Fatalf("adaptive=%d", n)
+	}
+	per := AdaptivePerJobConcurrency(16, false)
+	if per < 1 || per > 2 {
+		t.Fatalf("per-job deep=%d", per)
+	}
+}

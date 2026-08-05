@@ -59,9 +59,34 @@
             <input type="hidden" id="ai_translate" name="ai_translate" value="on">
             <input type="hidden" id="ui_lang" name="ui_lang" value="zh">
 
-            <!-- 目标国家：决定语言 + AI 翻译目标（写在「在哪里」之前） -->
+            <!-- 自然语言目标（IntentAgent） -->
+            <div class="field-group intent-box">
+              <label class="field-label" for="intent_goal" data-i18n="intent_label">一句话描述目标（可选）</label>
+              <div class="input-field intent-field">
+                <i data-lucide="sparkles" class="w-4 h-4 input-icon icon-blue"></i>
+                <textarea
+                  id="intent_goal"
+                  rows="2"
+                  data-i18n-placeholder="intent_ph"
+                  placeholder="例如：在雅加达找进口商和咖啡馆，半径 20 公里，并做背调"
+                ></textarea>
+              </div>
+              <div class="intent-actions">
+                <button type="button" id="intent-understand-btn" class="btn-secondary-sm">
+                  <i data-lucide="brain" class="w-4 h-4"></i>
+                  <span data-i18n="intent_understand">理解并填入</span>
+                </button>
+                <button type="button" id="intent-dispatch-btn" class="btn-secondary-sm">
+                  <i data-lucide="bot" class="w-4 h-4"></i>
+                  <span data-i18n="intent_dispatch">智能分发全量任务</span>
+                </button>
+              </div>
+              <p class="field-hint" id="intent-hint" data-i18n="intent_hint">Agent 会拆分目标并一律按深度全量搜索（半径内不限数量）</p>
+            </div>
+
+            <!-- 目标国家：必填 -->
             <div class="field-group">
-              <label class="field-label" for="country-search" data-i18n="country_label">目标国家</label>
+              <label class="field-label" for="country-search" data-i18n="country_label">目标国家 <span class="req-star">*</span></label>
               <div class="country-picker" id="country-picker">
                 <div class="input-field">
                   <i data-lucide="globe-2" class="w-4 h-4 input-icon icon-blue"></i>
@@ -73,6 +98,7 @@
                     autocomplete="off"
                     aria-autocomplete="list"
                     aria-controls="country-dropdown"
+                    required
                   />
                   <button type="button" class="clear-btn" id="country-clear" title="清除">&times;</button>
                 </div>
@@ -86,9 +112,9 @@
               <p class="field-hint" id="country-hint" data-i18n="country_hint">先选国家；中文关键词由 AI 译成当地可搜词（需配置 GRSAI_API_KEY）</p>
             </div>
 
-            <!-- 在哪里 -->
+            <!-- 在哪里：必填 -->
             <div class="field-group">
-              <label class="field-label" for="locations" data-i18n="where_label">在哪里</label>
+              <label class="field-label" for="locations" data-i18n="where_label">在哪里 <span class="req-star">*</span></label>
               <div class="input-field">
                 <i data-lucide="map-pin" class="w-4 h-4 input-icon icon-blue"></i>
                 <input
@@ -98,14 +124,15 @@
                   data-i18n-placeholder="where_ph"
                   placeholder="请输入地点，如：雅加达 / 纽约曼哈顿"
                   autocomplete="off"
+                  required
                 />
               </div>
               <p class="field-hint" data-i18n="where_hint">支持中文地名；会按目标国家锚定地图</p>
             </div>
 
-            <!-- 找什么 -->
+            <!-- 找什么：必填 -->
             <div class="field-group">
-              <label class="field-label" for="keywords" data-i18n="what_label">找什么</label>
+              <label class="field-label" for="keywords" data-i18n="what_label">找什么 <span class="req-star">*</span></label>
               <div class="input-field">
                 <i data-lucide="search" class="w-4 h-4 input-icon"></i>
                 <input
@@ -115,6 +142,7 @@
                   data-i18n-placeholder="what_ph"
                   placeholder="咖啡馆"
                   autocomplete="off"
+                  required
                 />
                 <button type="button" class="clear-btn" id="keywords-clear" title="清除">&times;</button>
               </div>
@@ -133,37 +161,25 @@
               </div>
             </div>
 
-            <!-- 模式选择 -->
+            <!-- 固定深度全量：不再提供快速模式 -->
             <div class="field-group">
-              <label class="field-label">模式选择</label>
-              <div class="mode-cards">
-                <div class="mode-card active" data-mode="quick" onclick="selectMode('quick')">
-                  <div class="mode-head">
-                    <i data-lucide="zap" class="w-4 h-4 mode-icon"></i>
-                    <span class="mode-label">快速模式</span>
-                    <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
-                  </div>
-                  <p class="mode-desc">极速通道，自动扩量+抓邮箱<br/>名称/地址/邮箱/电话/网站</p>
-                </div>
-                <div class="mode-card" data-mode="standard" onclick="selectMode('standard')">
-                  <div class="mode-head">
-                    <i data-lucide="crosshair" class="w-4 h-4 mode-icon"></i>
-                    <span class="mode-label">深度模式</span>
-                    <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
-                  </div>
-                  <p class="mode-desc">深度挖掘详细信息<br/>适合精准分析</p>
+              <div class="mode-fixed-banner">
+                <i data-lucide="crosshair" class="w-4 h-4"></i>
+                <div>
+                  <strong data-i18n="mode_deep_full">深度全量搜索</strong>
+                  <p data-i18n="mode_deep_full_desc">质量最好 · 半径内抓全 · 不设数量上限</p>
                 </div>
               </div>
             </div>
 
-            <!-- 目标半径（公里） -->
+            <!-- 目标半径（公里）— 用户唯一可调的覆盖范围 -->
             <div class="field-group">
-              <label class="field-label" for="radius_km">目标半径（公里）</label>
+              <label class="field-label" for="radius_km" data-i18n="radius_label">目标半径（公里） <span class="req-star">*</span></label>
               <div class="input-field">
                 <i data-lucide="radar" class="w-4 h-4 input-icon"></i>
                 <input type="number" id="radius_km" name="radius_km" min="1" max="50" step="1" value="10" required/>
               </div>
-              <p class="columns-note">以选点/地点为圆心覆盖周边；最大 <strong id="radius-max-label">50</strong> 公里（项目上限）</p>
+              <p class="columns-note" data-i18n="radius_hint">以选点/地点为圆心覆盖周边；最大 <strong id="radius-max-label">50</strong> 公里。数量与深度由系统自动拉满。</p>
             </div>
 
             <!-- 开始搜索 -->
@@ -187,15 +203,15 @@
               <input type="hidden" id="maxresults" name="maxresults" value="0"/>
               <input type="hidden" id="email" name="email" value="on" checked>
               <input type="hidden" id="lang" name="lang" value="">
-              <input type="hidden" id="maxtime" name="maxtime" value="60m">
-              <input type="hidden" id="depth" name="depth" value="20">
-              <input type="hidden" id="gridcell" name="gridcell" value="1.5">
+              <input type="hidden" id="maxtime" name="maxtime" value="120m">
+              <input type="hidden" id="depth" name="depth" value="50">
+              <input type="hidden" id="gridcell" name="gridcell" value="2.0">
               <input type="hidden" id="proxies" name="proxies" value="">
-              <input type="hidden" id="zoom" name="zoom" value="14">
+              <input type="hidden" id="zoom" name="zoom" value="15">
               <input type="hidden" id="latitude" name="latitude" value="0">
               <input type="hidden" id="longitude" name="longitude" value="0">
-              <input type="hidden" id="fastmode" name="fastmode" value="on">
-              <input type="hidden" id="gridmode" name="gridmode" value="">
+              <input type="hidden" id="fastmode" name="fastmode" value="">
+              <input type="hidden" id="gridmode" name="gridmode" value="on">
               <input type="hidden" id="gridbbox" name="gridbbox" value="">
               <input type="hidden" id="radius" name="radius" value="10000">
               <input type="hidden" id="columns" name="columns" value="">
@@ -546,8 +562,8 @@
         }
       }
 
-      // 模式选择：默认快速（后端 API 测试同路径）；全域全量需用户显式点选
-      let currentMode = 'quick';
+      // 固定深度全量：不再提供快速/模式切换
+      let currentMode = 'standard';
       const MAX_RADIUS_KM = 50;
       function syncRadiusMeters() {
         var kmEl = document.getElementById('radius_km');
@@ -562,30 +578,105 @@
         hidden.value = String(Math.round(km * 1000));
       }
       function selectMode(mode) {
-        currentMode = mode;
-        document.querySelectorAll('.mode-card').forEach(function (card) {
-          card.classList.toggle('active', card.dataset.mode === mode);
-        });
-        document.getElementById('fastmode').value = mode === 'quick' ? 'on' : '';
-        document.getElementById('gridmode').value = mode === 'grid' ? 'on' : '';
-        // 快速：稍低缩放；半径由用户「目标半径」决定，不再按模式硬改
-        document.getElementById('zoom').value = mode === 'quick' ? '14' : '15';
+        // 兼容旧调用：一律深度 + 网格全量
+        currentMode = 'standard';
+        var fm = document.getElementById('fastmode');
+        var gm = document.getElementById('gridmode');
+        if (fm) fm.value = '';
+        if (gm) gm.value = 'on';
+        document.getElementById('zoom').value = '15';
         syncRadiusMeters();
         var emailEl = document.getElementById('email');
         if (emailEl) emailEl.checked = true;
-        var emailToggle = document.getElementById('email-toggle');
-        if (emailToggle) emailToggle.classList.add('on');
-        var cols = document.getElementById('columns-section');
-        if (cols) cols.classList.add('hidden');
-        if (mode === 'standard' || mode === 'grid') {
-          if (typeof setAllColumns === 'function') setAllColumns(true);
-          syncColumnsHidden();
-        }
-        if (mode === 'grid' || mode === 'standard') {
-          document.getElementById('advanced-options').classList.add('open');
-          document.getElementById('advanced-icon').classList.add('open');
-        }
+        if (typeof setAllColumns === 'function') setAllColumns(true);
+        syncColumnsHidden();
         updateResultModeLabel();
+      }
+
+      function applyIntentToForm(intent) {
+        if (!intent) return;
+        if (intent.country_code) {
+          document.getElementById('country_code').value = intent.country_code;
+          document.getElementById('country_name').value = intent.country_name || '';
+          var cs = document.getElementById('country-search');
+          if (cs) cs.value = intent.country_name || intent.country_code;
+          if (intent.country_code && window.COUNTRY_LIST) {
+            // keep selectedCountry in sync if picker exists
+            var hit = (window.COUNTRY_LIST || []).find(function (c) { return c.code === intent.country_code; });
+            if (hit && typeof selectedCountry !== 'undefined') {
+              selectedCountry = hit;
+            }
+          }
+        }
+        if (intent.location) {
+          document.getElementById('locations').value = intent.location;
+        }
+        if (intent.keywords && intent.keywords.length) {
+          document.getElementById('keywords').value = intent.keywords.join('\n');
+        }
+        if (intent.radius_km > 0) {
+          document.getElementById('radius_km').value = String(intent.radius_km);
+          syncRadiusMeters();
+        }
+        if (intent.enable_intel) {
+          var intel = document.getElementById('enable_intel');
+          var toggle = document.getElementById('intel-toggle');
+          if (intel) intel.checked = true;
+          if (toggle) toggle.classList.add('on');
+        }
+      }
+
+      async function runIntentUnderstand() {
+        var goal = (document.getElementById('intent_goal').value || '').trim();
+        var hint = document.getElementById('intent-hint');
+        if (!goal) {
+          if (hint) hint.textContent = '请先输入一句话目标';
+          return;
+        }
+        if (hint) hint.textContent = '正在理解目标…';
+        try {
+          var resp = await fetch('/api/v1/agent/understand', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goal: goal, ui_lang: (document.getElementById('ui_lang') || {}).value || 'zh' })
+          });
+          var data = await resp.json();
+          if (!resp.ok) throw new Error((data && data.message) || resp.statusText);
+          applyIntentToForm(data.intent || data);
+          var n = (data.tasks && data.tasks.length) || 0;
+          if (hint) {
+            hint.textContent = '已理解（' + ((data.intent && data.intent.source) || 'rules') + '）· 将拆成 ' + n + ' 个深度全量任务 · roles: ' + ((data.roles || []).join(' → '));
+          }
+        } catch (e) {
+          if (hint) hint.textContent = '理解失败：' + (e.message || e);
+        }
+      }
+
+      async function runIntentDispatch() {
+        var goal = (document.getElementById('intent_goal').value || '').trim();
+        var hint = document.getElementById('intent-hint');
+        if (!goal) {
+          if (hint) hint.textContent = '请先输入一句话目标';
+          return;
+        }
+        if (hint) hint.textContent = '正在分发深度全量任务…';
+        try {
+          var resp = await fetch('/api/v1/agent/dispatch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goal: goal, ui_lang: (document.getElementById('ui_lang') || {}).value || 'zh' })
+          });
+          var data = await resp.json();
+          if (!resp.ok) throw new Error((data && data.message) || resp.statusText);
+          if (data.plan && data.plan.intent) applyIntentToForm(data.plan.intent);
+          if (hint) hint.textContent = data.message || ('已创建 ' + ((data.job_ids || []).length) + ' 个任务');
+          setTimeout(function () {
+            if (window.htmx) htmx.trigger('#job-list', 'load');
+            if (window.syncTaskDock) window.syncTaskDock();
+          }, 200);
+        } catch (e) {
+          if (hint) hint.textContent = '分发失败：' + (e.message || e);
+        }
       }
 
       // 热门搜索词填入
@@ -652,16 +743,41 @@
           params['columns'] = document.getElementById('columns').value;
           params['latitude'] = document.getElementById('latitude').value;
           params['longitude'] = document.getElementById('longitude').value;
-          params['fastmode'] = document.getElementById('fastmode').value;
-          params['gridmode'] = document.getElementById('gridmode').value;
+          params['fastmode'] = '';
+          params['gridmode'] = 'on';
+          params['maxresults'] = '0';
+          params['depth'] = document.getElementById('depth').value || '50';
+          params['maxtime'] = document.getElementById('maxtime').value || '120m';
           params['radius_km'] = document.getElementById('radius_km').value;
           params['radius'] = document.getElementById('radius').value;
           params['enable_intel'] = document.getElementById('enable_intel').checked ? 'on' : '';
           // 邮箱刚需：始终提交 on（与隐藏 checkbox 状态无关）
           params['email'] = 'on';
           document.getElementById('email').checked = true;
+          // 不提交用户代理：由服务器 GMS_PROXIES 统一配置
+          params['proxies'] = '';
         }
       });
+
+      // 表单必填校验：国家 + 地点 + 关键词 + 半径
+      document.getElementById('search-form').addEventListener('submit', function (evt) {
+        var errBox = document.getElementById('error-container');
+        var country = (document.getElementById('country_code').value || '').trim();
+        var loc = (document.getElementById('locations').value || '').trim();
+        var kw = (document.getElementById('keywords').value || '').trim();
+        var rk = parseFloat((document.getElementById('radius_km') || {}).value);
+        var msgs = [];
+        if (!country && !loc) msgs.push('请选择目标国家并填写「在哪里」');
+        else if (!country) msgs.push('请选择目标国家（必填）');
+        else if (!loc) msgs.push('请填写「在哪里」（必填）');
+        if (!kw) msgs.push('请填写「找什么」（必填）');
+        if (!isFinite(rk) || rk < 1) msgs.push('请设置目标半径（公里）');
+        if (msgs.length) {
+          evt.preventDefault();
+          if (typeof evt.stopImmediatePropagation === 'function') evt.stopImmediatePropagation();
+          if (errBox) errBox.textContent = msgs.join('；');
+        }
+      }, true);
 
       // 采集提交成功：只刷新任务坞；不自动展开下方结果（需点击右侧任务）
       function handleScrapeSuccess() {
@@ -696,8 +812,8 @@
 
       // 结果栏模式文案
       function updateResultModeLabel() {
-        const label = { quick: '快速模式', standard: '深度模式', grid: '全域全量模式' }[currentMode] || '快速模式';
-        document.getElementById('result-mode').textContent = '（' + label + '）';
+        const el = document.getElementById('result-mode');
+        if (el) el.textContent = '（深度全量）';
       }
 
       // HTMX 加载完成后处理记录列表
@@ -714,7 +830,7 @@
         }
       });
 
-      // 初始化：国家选择器 + 字段勾选 + 默认快速模式
+      // 初始化：国家选择器 + 深度全量默认
       buildColumnsPicker();
       initCountryPicker();
       var radiusKmEl = document.getElementById('radius_km');
@@ -722,7 +838,11 @@
         radiusKmEl.addEventListener('change', syncRadiusMeters);
         radiusKmEl.addEventListener('input', syncRadiusMeters);
       }
-      selectMode('quick');
+      selectMode('standard');
+      var iu = document.getElementById('intent-understand-btn');
+      var idp = document.getElementById('intent-dispatch-btn');
+      if (iu) iu.addEventListener('click', runIntentUnderstand);
+      if (idp) idp.addEventListener('click', runIntentDispatch);
       fetch('/api/v1/osint-status').then(function (r) { return r.ok ? r.json() : null; }).then(function (st) {
         var note = document.getElementById('osint-status-note');
         if (!note || !st) return;

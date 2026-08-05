@@ -40,6 +40,8 @@ services:
       INVITE_REQUIRED: "${INVITE_REQUIRED:-1}"
       INVITE_SEED_COUNT: "${INVITE_SEED_COUNT:-100}"
       GMS_WEB_JOB_CONCURRENCY: "${GMS_WEB_JOB_CONCURRENCY:-4}"
+      GMS_BLOOM_DEDUP: "${GMS_BLOOM_DEDUP:-}"
+      GMS_BLOOM_EXPECTED_KEYS: "${GMS_BLOOM_EXPECTED_KEYS:-500000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
