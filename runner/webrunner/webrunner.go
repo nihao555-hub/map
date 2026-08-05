@@ -104,9 +104,9 @@ func (w *webrunner) work(ctx context.Context) error {
 
 	maxJobs := web.AdaptiveJobConcurrency()
 	web.LogMemoryPressure("web runner start")
-	log.Printf("web runner: adaptive job concurrency=%d (cap GMS_WEB_JOB_CONCURRENCY=%d)", maxJobs, web.JobConcurrency())
+	log.Printf("web runner: fair-admission slots=%d (env cap GMS_WEB_JOB_CONCURRENCY=%d); queued jobs wait — active jobs keep full speed",
+		maxJobs, web.JobConcurrency())
 
-	sem := make(chan struct{}, maxJobs)
 	var eg errgroup.Group
 
 	for {
@@ -115,31 +115,30 @@ func (w *webrunner) work(ctx context.Context) error {
 			_ = eg.Wait()
 			return nil
 		case <-ticker.C:
-			for {
+			// Re-evaluate slots each tick (memory/CPU change); never oversubscribe.
+			for web.CanAdmitDeepJob() {
 				select {
 				case <-ctx.Done():
 					_ = eg.Wait()
 					return nil
-				case sem <- struct{}{}:
 				default:
-					// all slots busy
-					goto nextTick
 				}
 
 				job, err := w.svc.ClaimPending(ctx)
 				if err != nil {
-					<-sem
 					if errors.Is(err, web.ErrNoPending) {
-						goto nextTick
+						break
 					}
 					_ = eg.Wait()
 					return err
 				}
 
 				j := job
-				log.Printf("claimed job %s name=%q (parallel slots up to %d)", j.ID, j.Name, maxJobs)
+				web.BeginDeepJob()
+				slots := web.AdaptiveJobConcurrency()
+				log.Printf("claimed job %s name=%q (active=%d/%d fair-admission)", j.ID, j.Name, web.ActiveDeepJobs(), slots)
 				eg.Go(func() error {
-					defer func() { <-sem }()
+					defer web.EndDeepJob()
 
 					t0 := time.Now().UTC()
 					if err := w.scrapeJob(ctx, &j); err != nil {
@@ -161,7 +160,6 @@ func (w *webrunner) work(ctx context.Context) error {
 					return nil
 				})
 			}
-		nextTick:
 		}
 	}
 }
@@ -510,10 +508,10 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.Job) (mateRunner, error) {
 	return func(_ context.Context, writer io.Writer, job *web.Job) (mateRunner, error) {
-		// Split host concurrency across parallel jobs; shrink further under RAM pressure.
-		jobConc := web.AdaptivePerJobConcurrency(cfg.Concurrency, job.Data.FastMode)
-		log.Printf("job %s scrapemate concurrency=%d (host=%d jobs=%d fast=%v availMemMB=%d)",
-			job.ID, jobConc, cfg.Concurrency, web.AdaptiveJobConcurrency(), job.Data.FastMode, web.AvailableMemoryMB())
+		// Fair admission: each job keeps a FIXED deep worker budget (does not dilute under load).
+		jobConc := web.ReservedPerJobConcurrency(cfg.Concurrency, job.Data.FastMode)
+		log.Printf("job %s scrapemate concurrency=%d (reserved, fair-admission active=%d/%d availMemMB=%d)",
+			job.ID, jobConc, web.ActiveDeepJobs(), web.AdaptiveJobConcurrency(), web.AvailableMemoryMB())
 		opts := []func(*scrapemateapp.Config) error{
 			scrapemateapp.WithConcurrency(jobConc),
 		}

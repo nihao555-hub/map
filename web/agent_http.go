@@ -19,6 +19,14 @@ type agentDispatchRequest struct {
 	Intent *AgentIntent `json:"intent,omitempty"` // optional pre-parsed
 }
 
+func (s *Server) apiConcurrency(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+		return
+	}
+	renderJSON(w, http.StatusOK, GetConcurrencySnapshot())
+}
+
 // apiAgentUnderstand — IntentAgent only (preview, no job create).
 func (s *Server) apiAgentUnderstand(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

@@ -147,8 +147,12 @@ func UnderstandIntent(ctx context.Context, goal, uiLang string) (AgentIntent, er
 func normalizeIntent(in AgentIntent, goal, uiLang string) AgentIntent {
 	in.RawGoal = goal
 	in.UILang = uiLang
+	explicitRadius := radiusExplicitlyStated(goal)
 	if in.RadiusKm <= 0 {
-		in.RadiusKm = 10
+		in.RadiusKm = preferCoverageRadiusKm(in.Location, goal, 0, false)
+	} else if !explicitRadius {
+		// AI/rules may undershoot; bump known cities toward full coverage.
+		in.RadiusKm = preferCoverageRadiusKm(in.Location, goal, in.RadiusKm, false)
 	}
 	if in.RadiusKm > MaxRadiusKm() {
 		in.RadiusKm = MaxRadiusKm()
@@ -166,6 +170,93 @@ func normalizeIntent(in AgentIntent, goal, uiLang string) AgentIntent {
 		}
 	}
 	return in
+}
+
+func radiusExplicitlyStated(goal string) bool {
+	return reRadiusKm.MatchString(goal) || reRadiusM.MatchString(goal)
+}
+
+var reCityWide = regexp.MustCompile(`整个|全市|全城|都会区|metropolitan|whole\s+city|city[- ]?wide|all\s+of\s+|覆盖`)
+
+// preferCoverageRadiusKm chooses a radius that aims to finish the named place.
+// Product: maximize recall inside the user's target location.
+// Only auto-bumps when radius was missing/tiny (typical AI default ≤10) or city-wide wording;
+// honors larger intentional radii and any km the user typed.
+func preferCoverageRadiusKm(location, goal string, current int, explicit bool) int {
+	if explicit && current > 0 {
+		return current
+	}
+	loc := strings.TrimSpace(location)
+	lowGoal := strings.ToLower(goal)
+	cityWide := reCityWide.MatchString(goal)
+	metro := isKnownMetro(loc) || isKnownMetroFromGoal(goal)
+	if metro || cityWide {
+		if cityWide || current <= 0 || current <= 10 {
+			return 40
+		}
+		return current
+	}
+	// Unspecified radius + some place name → still prefer city-scale over 3–10km samples.
+	if current <= 0 {
+		if loc != "" || strings.Contains(lowGoal, "在") || strings.Contains(lowGoal, " in ") {
+			return 25
+		}
+		return 10
+	}
+	if current > 0 && current <= 10 && loc != "" && !looksLikeSmallArea(loc, goal) {
+		return 25
+	}
+	return current
+}
+
+func isKnownMetro(location string) bool {
+	low := strings.ToLower(strings.TrimSpace(location))
+	if low == "" {
+		return false
+	}
+	for city := range cityCountryHint {
+		if low == strings.ToLower(city) || strings.Contains(low, strings.ToLower(city)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isKnownMetroFromGoal(goal string) bool {
+	low := strings.ToLower(goal)
+	for city := range cityCountryHint {
+		if strings.Contains(goal, city) || strings.Contains(low, strings.ToLower(city)) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeSmallArea(location, goal string) bool {
+	s := location + " " + goal
+	return regexp.MustCompile(`(?i)mall|plaza|街|路|巷|小区|街区|商圈|market|station|机场|airport|码头|港区|园区`).MatchString(s)
+}
+
+// metroDistricts returns overlapping district anchors so a named metro can be
+// fully scraped (one pin + 40km still misses some outskirts; districts help).
+func metroDistricts(location string) []string {
+	low := strings.ToLower(strings.TrimSpace(location))
+	switch {
+	case strings.Contains(low, "jakarta") || strings.Contains(location, "雅加达"):
+		return []string{
+			"Jakarta Pusat", "Jakarta Selatan", "Jakarta Barat", "Jakarta Utara", "Jakarta Timur",
+		}
+	case strings.Contains(low, "bangkok") || strings.Contains(location, "曼谷"):
+		return []string{"Bangkok", "Nonthaburi", "Samut Prakan"}
+	case strings.Contains(low, "surabaya") || strings.Contains(location, "泗水"):
+		return []string{"Surabaya"}
+	case strings.Contains(low, "manila") || strings.Contains(location, "马尼拉"):
+		return []string{"Manila", "Makati", "Quezon City", "Pasig"}
+	case strings.Contains(low, "kuala lumpur") || strings.Contains(location, "吉隆坡"):
+		return []string{"Kuala Lumpur", "Petaling Jaya", "Shah Alam"}
+	default:
+		return nil
+	}
 }
 
 func cleanKeywordList(ks []string) []string {
@@ -193,12 +284,18 @@ func understandIntentAI(ctx context.Context, goal, uiLang string) (AgentIntent, 
 	}
 
 	system := `You are IntentAgent for a Google Maps lead scraper.
+Goal: cover ALL matching businesses in the user's named place (max recall), not a small sample.
 Extract structured search intent from the user's natural language goal.
 Rules:
 - country_code: ISO 3166-1 alpha-2 lowercase when clear, else empty
 - location: city/area to search (not the whole country name unless that is the place)
 - keywords: 1-5 Google Maps category phrases in the user's language (will be localized later)
-- radius_km: integer 1-50; default 10 if unspecified; never invent huge radii
+- radius_km: integer 1-50. Prefer FULL coverage of the named place:
+  * city / metro / "整个/全市/whole city" / city name only → 40
+  * large urban district → 25
+  * neighborhood / mall / street / small area → 5–10
+  * ONLY use a small radius when the user explicitly names a small area or gives a small km
+  * if user gives an explicit km, honor it
 - enable_intel: true only if user asks for background check / decision makers / OSINT
 Reply ONLY valid JSON object with keys: country_code, country_name, location, keywords, radius_km, enable_intel, notes`
 
@@ -269,7 +366,7 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 	intent := AgentIntent{
 		RawGoal:  goal,
 		UILang:   uiLang,
-		RadiusKm: 10,
+		RadiusKm: 0, // filled by preferCoverageRadiusKm unless explicit
 	}
 
 	low := strings.ToLower(goal)
@@ -292,14 +389,20 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 		}
 	}
 
+	explicit := false
 	if m := reRadiusKm.FindStringSubmatch(goal); len(m) == 2 {
 		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
 			intent.RadiusKm = n
+			explicit = true
 		}
 	} else if m := reRadiusM.FindStringSubmatch(goal); len(m) == 2 {
 		if n, err := strconv.Atoi(m[1]); err == nil && n >= 1000 {
 			intent.RadiusKm = n / 1000
+			explicit = true
 		}
+	}
+	if !explicit {
+		intent.RadiusKm = preferCoverageRadiusKm(intent.Location, goal, intent.RadiusKm, false)
 	}
 	if intent.RadiusKm > MaxRadiusKm() {
 		intent.RadiusKm = MaxRadiusKm()
@@ -309,8 +412,8 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 
 	// Heuristic location: after 在/去/到 or in/near/around
 	locPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?:在|去|到)\s*([^\s,，。；;]{2,20}?)(?:\s*(?:找|搜|抓|采集|的|周围|周边|半径|,|，|。)|$)`),
-		regexp.MustCompile(`(?i)(?:in|near|around)\s+([A-Za-z][A-Za-z0-9\s\-]{1,40}?)(?:\s+(?:find|search|for|within|,|\.|$))`),
+		regexp.MustCompile(`(?:在|去|到|覆盖)\s*([^\s,，。；;]{2,20}?)(?:\s*(?:找|搜|抓|采集的|的|周围|周边|半径|,|，|。)|$)`),
+		regexp.MustCompile(`(?i)(?:in|near|around|cover(?:ing)?)\s+([A-Za-z][A-Za-z0-9\s\-]{1,40}?)(?:\s+(?:find|search|for|within|,|\.|$))`),
 	}
 	for _, p := range locPatterns {
 		if m := p.FindStringSubmatch(goal); len(m) == 2 {
@@ -331,6 +434,19 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 				break
 			}
 		}
+	}
+	// If still empty, take known city mentioned in goal.
+	if intent.Location == "" {
+		for city := range cityCountryHint {
+			if strings.Contains(goal, city) || strings.Contains(low, strings.ToLower(city)) {
+				intent.Location = city
+				break
+			}
+		}
+	}
+	// Re-apply coverage preference now that location is known.
+	if !explicit {
+		intent.RadiusKm = preferCoverageRadiusKm(intent.Location, goal, intent.RadiusKm, false)
 	}
 
 	// Keywords: after 找/搜/采集 or leftover business words
@@ -388,25 +504,43 @@ func PlanTasks(intent AgentIntent) AgentPlan {
 		return plan
 	}
 
-	// Split multi-keyword into parallel tasks only when clearly different categories;
-	// same location shared — each keyword gets its own full-radius deep grid job.
-	for _, kw := range intent.Keywords {
-		name := kw
-		if intent.Location != "" {
-			name = intent.Location + " · " + kw
-		} else if intent.CountryName != "" {
-			name = intent.CountryName + " · " + kw
+	// Prefer multi-district anchors for metro-scale coverage so we finish the city.
+	locations := []string{intent.Location}
+	districtRadius := intent.RadiusKm
+	if intent.Location != "" && intent.RadiusKm >= 25 {
+		if districts := metroDistricts(intent.Location); len(districts) > 1 {
+			locations = districts
+			// Overlapping district circles (~18km) cover a metro better than one pin.
+			districtRadius = 18
+			if intent.RadiusKm < 18 {
+				districtRadius = intent.RadiusKm
+			}
+			if intent.Notes == "" {
+				intent.Notes = "metro multi-district full coverage"
+			}
+			plan.Intent = intent
 		}
-		plan.Tasks = append(plan.Tasks, AgentTask{
-			Name:        name,
-			CountryCode: intent.CountryCode,
-			CountryName: intent.CountryName,
-			Location:    intent.Location,
-			Keywords:    []string{kw},
-			RadiusKm:    intent.RadiusKm,
-			EnableIntel: intent.EnableIntel,
-			Role:        "scraper",
-		})
+	}
+
+	for _, loc := range locations {
+		for _, kw := range intent.Keywords {
+			name := kw
+			if loc != "" {
+				name = loc + " · " + kw
+			} else if intent.CountryName != "" {
+				name = intent.CountryName + " · " + kw
+			}
+			plan.Tasks = append(plan.Tasks, AgentTask{
+				Name:        name,
+				CountryCode: intent.CountryCode,
+				CountryName: intent.CountryName,
+				Location:    loc,
+				Keywords:    []string{kw},
+				RadiusKm:    districtRadius,
+				EnableIntel: intent.EnableIntel,
+				Role:        "scraper",
+			})
+		}
 	}
 	return plan
 }

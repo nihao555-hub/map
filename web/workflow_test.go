@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -217,13 +218,12 @@ func TestConcurrencyCeilingReport(t *testing.T) {
 	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "8")
 	capN := JobConcurrency()
 	adaptive := AdaptiveJobConcurrency()
-	perDeep := AdaptivePerJobConcurrency(16, false)
-	perFast := AdaptivePerJobConcurrency(16, true)
+	perDeep := ReservedPerJobConcurrency(16, false)
 	avail := AvailableMemoryMB()
 	bloom := UseBloomDeduper()
 
-	t.Logf("HOST availMemMB=%d jobCap=%d adaptiveJobs=%d perJobDeep=%d perJobFast=%d bloom=%v",
-		avail, capN, adaptive, perDeep, perFast, bloom)
+	t.Logf("HOST availMemMB=%d jobCap=%d admitSlots=%d perJobDeep=%d bloom=%v gomaxprocs=%d",
+		avail, capN, adaptive, perDeep, bloom, runtime.GOMAXPROCS(0))
 
 	if capN != 8 {
 		t.Fatalf("cap=%d want 8", capN)
@@ -231,16 +231,11 @@ func TestConcurrencyCeilingReport(t *testing.T) {
 	if adaptive < 1 || adaptive > capN {
 		t.Fatalf("adaptive=%d invalid", adaptive)
 	}
-	if perDeep > 2 {
-		t.Fatalf("deep inner concurrency must be <=2, got %d", perDeep)
+	if perDeep != 2 {
+		t.Fatalf("per-job deep must stay 2 (fair), got %d", perDeep)
 	}
-
-	theoreticalMax := int((avail - minFreeMemoryMB) / deepReserveMBPerWorker)
-	if theoreticalMax < 1 {
-		theoreticalMax = 1
+	// Fair admission: CPU/2 on 4-core => 2 slots even if RAM allows more
+	if adaptive > runtime.GOMAXPROCS(0)/deepCPUPerJob && runtime.GOMAXPROCS(0) >= 2 {
+		t.Fatalf("admit slots %d should respect CPU budget", adaptive)
 	}
-	t.Logf("theoretical max deep jobs by RAM formula=%d (capped to %d => effective %d)",
-		theoreticalMax, capN, adaptive)
-	t.Logf("prod VPS ~3.6G estimate: free~1500MB => maxJobs≈%d deep inner=2 => ~%d browser workers",
-		(1500-minFreeMemoryMB)/deepReserveMBPerWorker, 2*((1500-minFreeMemoryMB)/deepReserveMBPerWorker))
 }

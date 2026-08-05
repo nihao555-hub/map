@@ -204,6 +204,7 @@ func New(svc *Service, addr string, opts ...ServerOption) (*Server, error) {
 	mux.HandleFunc("/api/v1/ai-status", ans.apiAIStatus)
 	mux.HandleFunc("/api/v1/agent/understand", ans.apiAgentUnderstand)
 	mux.HandleFunc("/api/v1/agent/dispatch", ans.apiAgentDispatch)
+	mux.HandleFunc("/api/v1/system/concurrency", ans.apiConcurrency)
 
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
@@ -796,6 +797,8 @@ func (s *Server) apiAIStatus(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusOK, map[string]any{
 		"enabled": AITranslateEnabled(),
 		"model":   grsaiModel(),
+		"host":    grsaiHost(),
+		"note":    "IntentAgent / 翻译 / 背调均走 GRSAI（OpenAI 兼容）。未配置 GRSAI_API_KEY 时 Intent 回退规则引擎。",
 	})
 }
 

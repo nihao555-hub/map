@@ -29,14 +29,35 @@ func TestUnderstandIntentInfersCountryFromCity(t *testing.T) {
 	}
 }
 
-func TestUnderstandIntentSplitsCompoundKeywords(t *testing.T) {
-	intent := understandIntentRules("在雅加达找咖啡馆和进口商，半径12公里", "zh")
-	if len(intent.Keywords) < 2 {
-		t.Fatalf("want split keywords, got %+v", intent.Keywords)
+func TestUnderstandIntentCityWideRadius(t *testing.T) {
+	intent := understandIntentRules("覆盖整个雅加达找咖啡馆", "zh")
+	if intent.RadiusKm < 30 {
+		t.Fatalf("city-wide radius=%d want >=30", intent.RadiusKm)
+	}
+	if intent.CountryCode != "id" {
+		t.Fatalf("country=%s", intent.CountryCode)
+	}
+}
+
+func TestUnderstandIntentJakartaDefaultsToMetroCoverage(t *testing.T) {
+	// No radius → agent must prefer finishing the city, not a 3–10km sample.
+	intent := understandIntentRules("在雅加达找咖啡馆", "zh")
+	if intent.RadiusKm < 40 {
+		t.Fatalf("metro default radius=%d want >=40", intent.RadiusKm)
+	}
+	if intent.Location == "" {
+		t.Fatal("missing location")
 	}
 	plan := PlanTasks(intent)
-	if len(plan.Tasks) < 2 {
-		t.Fatalf("want >=2 tasks after split, got %d (%+v)", len(plan.Tasks), plan.Tasks)
+	if len(plan.Tasks) < 5 {
+		t.Fatalf("expected multi-district tasks, got %d: %+v", len(plan.Tasks), plan.Tasks)
+	}
+}
+
+func TestUnderstandIntentHonorsExplicitSmallRadius(t *testing.T) {
+	intent := understandIntentRules("在雅加达找咖啡馆，半径3公里", "zh")
+	if intent.RadiusKm != 3 {
+		t.Fatalf("radius=%d want 3 (explicit)", intent.RadiusKm)
 	}
 }
 

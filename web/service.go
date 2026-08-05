@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -155,50 +154,6 @@ func (s *Service) ClaimPending(ctx context.Context) (Job, error) {
 		return Job{}, fmt.Errorf("job repository not configured")
 	}
 	return s.repo.ClaimPending(ctx)
-}
-
-// JobConcurrency is how many scrape jobs may run in parallel (default 4, max 8).
-// Override with GMS_WEB_JOB_CONCURRENCY. On small VPS (2 CPU / ~4GB) keep ≤4.
-func JobConcurrency() int {
-	v := strings.TrimSpace(os.Getenv("GMS_WEB_JOB_CONCURRENCY"))
-	if v == "" {
-		return 4
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < 1 {
-		return 4
-	}
-	if n > 8 {
-		return 8
-	}
-	return n
-}
-
-// PerJobScrapemateConcurrency derives inner worker count so N parallel jobs
-// do not explode CPU/RAM (especially Playwright deep mode).
-func PerJobScrapemateConcurrency(configured int, fastMode bool) int {
-	if configured < 1 {
-		configured = 1
-	}
-	slots := JobConcurrency()
-	if slots < 1 {
-		slots = 1
-	}
-	n := configured / slots
-	if n < 2 {
-		n = 2
-	}
-	if configured < n {
-		n = configured
-	}
-	if !fastMode && n > 2 {
-		// Deep/browser jobs: hard-cap inner concurrency to avoid OOM on small hosts.
-		n = 2
-	}
-	if fastMode && n > 6 {
-		n = 6
-	}
-	return n
 }
 
 // csvPath returns the on-disk path of a job's CSV output, rejecting ids that

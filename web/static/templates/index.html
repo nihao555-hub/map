@@ -40,9 +40,42 @@
         <div id="sidebar-content">
           <h1 class="page-title" data-i18n="page_title">找到精准客户，从地图开始</h1>
           <p class="page-subtitle" data-i18n="page_subtitle">输入位置和需求，智能为您挖掘潜在客户</p>
-          <p class="field-hint" style="margin-top:-8px;margin-bottom:14px" data-i18n="lang_hint">界面与 AI 背调产出将使用此语言；地图搜索仍可用当地原语言</p>
+
+          <!-- 普通 / 智能体 模式切换 -->
+          <div class="entry-mode-switch" role="tablist" aria-label="entry mode">
+            <button type="button" class="entry-mode-btn active" data-entry="normal" id="entry-normal-btn">
+              <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+              <span data-i18n="entry_normal">普通模式</span>
+            </button>
+            <button type="button" class="entry-mode-btn" data-entry="agent" id="entry-agent-btn">
+              <i data-lucide="bot" class="w-4 h-4"></i>
+              <span data-i18n="entry_agent">智能体模式</span>
+            </button>
+          </div>
+          <p class="field-hint" id="entry-mode-hint" data-i18n="entry_normal_hint">表单填写国家/地点/关键词/半径，系统深度全量抓取</p>
 
           <div id="error-container" class="error-message"></div>
+
+          <!-- 智能体工作流可视化 -->
+          <div id="agent-workflow-panel" class="agent-workflow-panel hidden" aria-live="polite">
+            <div class="agent-workflow-title">
+              <i data-lucide="git-branch" class="w-4 h-4"></i>
+              <span data-i18n="workflow_title">Agent 工作流</span>
+              <span id="ai-pill" class="ai-pill" title="AI model">AI —</span>
+              <span id="conc-pill" class="conc-pill" title="fair admission">并发 —</span>
+            </div>
+            <ol class="agent-pipeline" id="agent-pipeline">
+              <li class="pipe-step" data-step="intent"><span class="pipe-dot"></span><span class="pipe-label">理解</span><span class="pipe-role">Intent</span></li>
+              <li class="pipe-step" data-step="plan"><span class="pipe-dot"></span><span class="pipe-label">规划</span><span class="pipe-role">Planner</span></li>
+              <li class="pipe-step" data-step="localize"><span class="pipe-dot"></span><span class="pipe-label">本地化</span><span class="pipe-role">Localizer</span></li>
+              <li class="pipe-step" data-step="dispatch"><span class="pipe-dot"></span><span class="pipe-label">分发</span><span class="pipe-role">Dispatcher</span></li>
+              <li class="pipe-step" data-step="scrape"><span class="pipe-dot"></span><span class="pipe-label">全量抓取</span><span class="pipe-role">Scraper</span></li>
+              <li class="pipe-step" data-step="intel"><span class="pipe-dot"></span><span class="pipe-label">背调</span><span class="pipe-role">Intel</span></li>
+            </ol>
+            <div id="agent-plan-cards" class="agent-plan-cards"></div>
+            <p id="agent-workflow-status" class="agent-workflow-status" data-i18n="workflow_idle">用一句话描述目标，Agent 会拆成多个深度全量任务</p>
+          </div>
+
           <form
             id="search-form"
             hx-post="/scrape"
@@ -52,38 +85,41 @@
             hx-on::before-request="document.getElementById('error-container').innerHTML = ''; document.getElementById('map-area').classList.add('map-loading')"
             hx-on::after-request="document.getElementById('map-area').classList.remove('map-loading'); if(!event.detail.successful) { document.getElementById('error-container').innerHTML = event.detail.xhr.responseText; } else { handleScrapeSuccess(); }"
           >
-            <!-- 隐藏字段：任务名称 = 关键词+地点 -->
             <input type="hidden" id="name" name="name" value="">
             <input type="hidden" id="country_code" name="country_code" value="">
             <input type="hidden" id="country_name" name="country_name" value="">
             <input type="hidden" id="ai_translate" name="ai_translate" value="on">
             <input type="hidden" id="ui_lang" name="ui_lang" value="zh">
 
-            <!-- 自然语言目标（IntentAgent） -->
-            <div class="field-group intent-box">
-              <label class="field-label" for="intent_goal" data-i18n="intent_label">一句话描述目标（可选）</label>
-              <div class="input-field intent-field">
-                <i data-lucide="sparkles" class="w-4 h-4 input-icon icon-blue"></i>
-                <textarea
-                  id="intent_goal"
-                  rows="2"
-                  data-i18n-placeholder="intent_ph"
-                  placeholder="例如：在雅加达找进口商和咖啡馆，半径 20 公里，并做背调"
-                ></textarea>
+            <!-- 智能体模式输入 -->
+            <div id="agent-entry" class="hidden">
+              <div class="field-group intent-box">
+                <label class="field-label" for="intent_goal" data-i18n="intent_label">一句话描述目标</label>
+                <div class="input-field intent-field">
+                  <i data-lucide="sparkles" class="w-4 h-4 input-icon icon-blue"></i>
+                  <textarea
+                    id="intent_goal"
+                    rows="3"
+                    data-i18n-placeholder="intent_ph"
+                    placeholder="例如：覆盖整个雅加达找咖啡馆和进口商，并做背调"
+                  ></textarea>
+                </div>
+                <div class="intent-actions">
+                  <button type="button" id="intent-understand-btn" class="btn-secondary-sm">
+                    <i data-lucide="brain" class="w-4 h-4"></i>
+                    <span data-i18n="intent_understand">理解并预览</span>
+                  </button>
+                  <button type="button" id="intent-dispatch-btn" class="btn-primary btn-agent-go">
+                    <i data-lucide="rocket" class="w-4 h-4"></i>
+                    <span data-i18n="intent_dispatch">智能分发全量任务</span>
+                  </button>
+                </div>
+                <p class="field-hint" id="intent-hint" data-i18n="intent_hint">Agent：理解 → 规划 → 本地化 → 分发深度全量任务（半径内不限数量）</p>
               </div>
-              <div class="intent-actions">
-                <button type="button" id="intent-understand-btn" class="btn-secondary-sm">
-                  <i data-lucide="brain" class="w-4 h-4"></i>
-                  <span data-i18n="intent_understand">理解并填入</span>
-                </button>
-                <button type="button" id="intent-dispatch-btn" class="btn-secondary-sm">
-                  <i data-lucide="bot" class="w-4 h-4"></i>
-                  <span data-i18n="intent_dispatch">智能分发全量任务</span>
-                </button>
-              </div>
-              <p class="field-hint" id="intent-hint" data-i18n="intent_hint">Agent 会拆分目标并一律按深度全量搜索（半径内不限数量）</p>
             </div>
 
+            <!-- 普通模式表单字段 -->
+            <div id="normal-entry">
             <!-- 目标国家：必填 -->
             <div class="field-group">
               <label class="field-label" for="country-search" data-i18n="country_label">目标国家 <span class="req-star">*</span></label>
@@ -161,7 +197,7 @@
               </div>
             </div>
 
-            <!-- 固定深度全量：不再提供快速模式 -->
+            <!-- 固定深度全量 -->
             <div class="field-group">
               <div class="mode-fixed-banner">
                 <i data-lucide="crosshair" class="w-4 h-4"></i>
@@ -172,14 +208,20 @@
               </div>
             </div>
 
-            <!-- 目标半径（公里）— 用户唯一可调的覆盖范围 -->
+            <!-- 目标半径 -->
             <div class="field-group">
               <label class="field-label" for="radius_km" data-i18n="radius_label">目标半径（公里） <span class="req-star">*</span></label>
+              <div class="radius-presets" id="radius-presets">
+                <button type="button" class="radius-chip" data-km="5">5km</button>
+                <button type="button" class="radius-chip active" data-km="10">10km</button>
+                <button type="button" class="radius-chip" data-km="25">25km</button>
+                <button type="button" class="radius-chip" data-km="40" data-i18n-title="radius_metro">都会区 40km</button>
+              </div>
               <div class="input-field">
                 <i data-lucide="radar" class="w-4 h-4 input-icon"></i>
                 <input type="number" id="radius_km" name="radius_km" min="1" max="50" step="1" value="10" required/>
               </div>
-              <p class="columns-note" data-i18n="radius_hint">以选点/地点为圆心覆盖周边；最大 <strong id="radius-max-label">50</strong> 公里。数量与深度由系统自动拉满。</p>
+              <p class="columns-note" id="radius-volume-hint">以选点为圆心；<strong>3km≈街区，10km≈城区一片，40km≈雅加达都会区</strong>。上次测速 3km 出 87 家，不是全市。</p>
             </div>
 
             <!-- 开始搜索 -->
@@ -189,7 +231,6 @@
             </button>
             <div id="spinner" class="spinner htmx-indicator"></div>
 
-            <!-- 用户可见：仅背调开关；技术参数全部隐藏 -->
             <div class="field-group intel-simple-row">
               <div class="switch-row">
                 <span class="switch-label"><i data-lucide="shield-search" class="w-4 h-4"></i>商家背调（结果出齐后再跑）</span>
@@ -197,8 +238,9 @@
                 <div class="toggle-switch" id="intel-toggle" onclick="toggleSwitch(this, 'enable_intel')" title="开启后先出采集结果；抓取结束后后台背调"></div>
               </div>
             </div>
+            </div><!-- /normal-entry -->
 
-            <!-- 技术字段：对用户隐藏，保留后端兼容默认值 -->
+            <!-- 技术字段 -->
             <div class="tech-fields-hidden" hidden aria-hidden="true">
               <input type="hidden" id="maxresults" name="maxresults" value="0"/>
               <input type="hidden" id="email" name="email" value="on" checked>
@@ -593,6 +635,107 @@
         updateResultModeLabel();
       }
 
+      // 普通 / 智能体 入口切换 + Agent 工作流可视化
+      var entryMode = localStorage.getItem('gms_entry_mode') || 'normal';
+      function setEntryMode(mode) {
+        entryMode = mode === 'agent' ? 'agent' : 'normal';
+        localStorage.setItem('gms_entry_mode', entryMode);
+        document.querySelectorAll('.entry-mode-btn').forEach(function (b) {
+          b.classList.toggle('active', b.dataset.entry === entryMode);
+        });
+        var normal = document.getElementById('normal-entry');
+        var agent = document.getElementById('agent-entry');
+        var wf = document.getElementById('agent-workflow-panel');
+        var hint = document.getElementById('entry-mode-hint');
+        if (normal) normal.classList.toggle('hidden', entryMode !== 'normal');
+        if (agent) agent.classList.toggle('hidden', entryMode !== 'agent');
+        if (wf) wf.classList.toggle('hidden', entryMode !== 'agent');
+        if (hint) {
+          hint.textContent = entryMode === 'agent'
+            ? (window.t ? t('entry_agent_hint') : '一句话描述目标，右侧流水线展示 Agent 拆解与分发')
+            : (window.t ? t('entry_normal_hint') : '表单填写国家/地点/关键词/半径，系统深度全量抓取');
+        }
+        // agent mode: don't block HTML5 required on hidden normal fields
+        ['country-search', 'locations', 'keywords', 'radius_km'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          if (entryMode === 'agent') el.removeAttribute('required');
+          else el.setAttribute('required', 'required');
+        });
+        if (window.lucide) lucide.createIcons();
+      }
+      function setPipelineStep(step, state) {
+        // state: idle|active|done|error
+        var el = document.querySelector('.pipe-step[data-step="' + step + '"]');
+        if (!el) return;
+        el.classList.remove('is-active', 'is-done', 'is-error');
+        if (state === 'active') el.classList.add('is-active');
+        if (state === 'done') el.classList.add('is-done');
+        if (state === 'error') el.classList.add('is-error');
+      }
+      function resetPipeline() {
+        document.querySelectorAll('.pipe-step').forEach(function (el) {
+          el.classList.remove('is-active', 'is-done', 'is-error');
+        });
+        var cards = document.getElementById('agent-plan-cards');
+        if (cards) cards.innerHTML = '';
+      }
+      function renderPlanCards(plan) {
+        var cards = document.getElementById('agent-plan-cards');
+        if (!cards) return;
+        var tasks = (plan && plan.tasks) || [];
+        if (!tasks.length) { cards.innerHTML = ''; return; }
+        cards.innerHTML = tasks.map(function (t, i) {
+          return '<div class="plan-card">' +
+            '<div class="plan-card-idx">#' + (i + 1) + '</div>' +
+            '<div class="plan-card-body"><strong>' + escapeHtml(t.name || '') + '</strong>' +
+            '<span>' + escapeHtml((t.keywords || []).join(', ')) +
+            ' · ' + (t.radius_km || '?') + 'km · 深度全量</span></div></div>';
+        }).join('');
+      }
+      function escapeHtml(s) {
+        return String(s || '').replace(/[&<>"']/g, function (c) {
+          return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+      }
+      async function refreshConcurrencyPill() {
+        try {
+          var r = await fetch('/api/v1/system/concurrency');
+          if (!r.ok) return;
+          var s = await r.json();
+          var pill = document.getElementById('conc-pill');
+          if (pill) {
+            pill.textContent = '并发 ' + s.active_jobs + '/' + s.admit_slots +
+              ' · 满速×' + s.per_job_deep_workers;
+            pill.title = s.scale_hint || '';
+          }
+          var dockHint = document.getElementById('task-dock-hint');
+          if (dockHint && s.admit_slots) {
+            dockHint.textContent = '满速并行 ' + s.admit_slots + ' 路（多则排队）';
+          }
+        } catch (e) {}
+      }
+      async function refreshAIPill() {
+        try {
+          var r = await fetch('/api/v1/ai-status');
+          if (!r.ok) return;
+          var s = await r.json();
+          var pill = document.getElementById('ai-pill');
+          if (!pill) return;
+          if (s.enabled) {
+            pill.textContent = 'AI · ' + (s.model || 'live');
+            pill.classList.add('is-live');
+            pill.classList.remove('is-off');
+            pill.title = (s.note || '') + ' host=' + (s.host || '');
+          } else {
+            pill.textContent = (window.t ? t('ai_status_off') : 'AI 未配置（规则引擎）');
+            pill.classList.add('is-off');
+            pill.classList.remove('is-live');
+            pill.title = s.note || 'Set GRSAI_API_KEY for live IntentAgent';
+          }
+        } catch (e) {}
+      }
+
       function applyIntentToForm(intent) {
         if (!intent) return;
         if (intent.country_code) {
@@ -600,13 +743,6 @@
           document.getElementById('country_name').value = intent.country_name || '';
           var cs = document.getElementById('country-search');
           if (cs) cs.value = intent.country_name || intent.country_code;
-          if (intent.country_code && window.COUNTRY_LIST) {
-            // keep selectedCountry in sync if picker exists
-            var hit = (window.COUNTRY_LIST || []).find(function (c) { return c.code === intent.country_code; });
-            if (hit && typeof selectedCountry !== 'undefined') {
-              selectedCountry = hit;
-            }
-          }
         }
         if (intent.location) {
           document.getElementById('locations').value = intent.location;
@@ -617,6 +753,7 @@
         if (intent.radius_km > 0) {
           document.getElementById('radius_km').value = String(intent.radius_km);
           syncRadiusMeters();
+          syncRadiusChips();
         }
         if (intent.enable_intel) {
           var intel = document.getElementById('enable_intel');
@@ -629,11 +766,15 @@
       async function runIntentUnderstand() {
         var goal = (document.getElementById('intent_goal').value || '').trim();
         var hint = document.getElementById('intent-hint');
+        var st = document.getElementById('agent-workflow-status');
         if (!goal) {
           if (hint) hint.textContent = '请先输入一句话目标';
           return;
         }
+        resetPipeline();
+        setPipelineStep('intent', 'active');
         if (hint) hint.textContent = '正在理解目标…';
+        if (st) st.textContent = 'IntentAgent 解析中…';
         try {
           var resp = await fetch('/api/v1/agent/understand', {
             method: 'POST',
@@ -642,24 +783,37 @@
           });
           var data = await resp.json();
           if (!resp.ok) throw new Error((data && data.message) || resp.statusText);
+          setPipelineStep('intent', 'done');
+          setPipelineStep('plan', 'done');
+          setPipelineStep('localize', 'active');
           applyIntentToForm(data.intent || data);
+          renderPlanCards(data);
+          setTimeout(function () {
+            setPipelineStep('localize', 'done');
+          }, 200);
           var n = (data.tasks && data.tasks.length) || 0;
-          if (hint) {
-            hint.textContent = '已理解（' + ((data.intent && data.intent.source) || 'rules') + '）· 将拆成 ' + n + ' 个深度全量任务 · roles: ' + ((data.roles || []).join(' → '));
-          }
+          var msg = '已理解 · 将拆成 ' + n + ' 个深度全量任务 · ' + ((data.roles || []).join(' → '));
+          if (hint) hint.textContent = msg;
+          if (st) st.textContent = msg;
         } catch (e) {
+          setPipelineStep('intent', 'error');
           if (hint) hint.textContent = '理解失败：' + (e.message || e);
+          if (st) st.textContent = '理解失败';
         }
       }
 
       async function runIntentDispatch() {
         var goal = (document.getElementById('intent_goal').value || '').trim();
         var hint = document.getElementById('intent-hint');
+        var st = document.getElementById('agent-workflow-status');
         if (!goal) {
           if (hint) hint.textContent = '请先输入一句话目标';
           return;
         }
+        resetPipeline();
+        setPipelineStep('intent', 'active');
         if (hint) hint.textContent = '正在分发深度全量任务…';
+        if (st) st.textContent = '全链路：理解 → 规划 → 本地化 → 分发…';
         try {
           var resp = await fetch('/api/v1/agent/dispatch', {
             method: 'POST',
@@ -668,14 +822,39 @@
           });
           var data = await resp.json();
           if (!resp.ok) throw new Error((data && data.message) || resp.statusText);
+          ['intent', 'plan', 'localize', 'dispatch'].forEach(function (s) { setPipelineStep(s, 'done'); });
+          setPipelineStep('scrape', 'active');
           if (data.plan && data.plan.intent) applyIntentToForm(data.plan.intent);
-          if (hint) hint.textContent = data.message || ('已创建 ' + ((data.job_ids || []).length) + ' 个任务');
+          renderPlanCards(data.plan || data);
+          if (data.plan && data.plan.intent && data.plan.intent.enable_intel) {
+            setPipelineStep('intel', 'active');
+          }
+          var msg = data.message || ('已创建 ' + ((data.job_ids || []).length) + ' 个任务');
+          if (hint) hint.textContent = msg;
+          if (st) st.textContent = msg + ' · 抓取中（公平准入，满速并行，多出的排队）';
           setTimeout(function () {
             if (window.htmx) htmx.trigger('#job-list', 'load');
             if (window.syncTaskDock) window.syncTaskDock();
+            refreshConcurrencyPill();
           }, 200);
         } catch (e) {
+          setPipelineStep('intent', 'error');
           if (hint) hint.textContent = '分发失败：' + (e.message || e);
+          if (st) st.textContent = '分发失败';
+        }
+      }
+
+      function syncRadiusChips() {
+        var km = parseFloat((document.getElementById('radius_km') || {}).value) || 10;
+        document.querySelectorAll('.radius-chip').forEach(function (c) {
+          c.classList.toggle('active', parseFloat(c.dataset.km) === km);
+        });
+        var hint = document.getElementById('radius-volume-hint');
+        if (hint) {
+          if (km <= 5) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 街区/商圈</strong>。全市请选 25–40km（雅加达都会区）。';
+          else if (km <= 15) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 城区一片</strong>。不是全市；都会区建议 40km。';
+          else if (km <= 30) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 大半个城市</strong>，结果会明显增多，耗时也更长。';
+          else hint.innerHTML = '当前 <strong>' + km + 'km ≈ 都会区覆盖</strong>，深度全量网格格数多，请耐心等待。';
         }
       }
 
@@ -759,8 +938,14 @@
         }
       });
 
-      // 表单必填校验：国家 + 地点 + 关键词 + 半径
+      // 表单必填校验：仅普通模式
       document.getElementById('search-form').addEventListener('submit', function (evt) {
+        if (entryMode === 'agent') {
+          evt.preventDefault();
+          if (typeof evt.stopImmediatePropagation === 'function') evt.stopImmediatePropagation();
+          runIntentDispatch();
+          return;
+        }
         var errBox = document.getElementById('error-container');
         var country = (document.getElementById('country_code').value || '').trim();
         var loc = (document.getElementById('locations').value || '').trim();
@@ -830,15 +1015,31 @@
         }
       });
 
-      // 初始化：国家选择器 + 深度全量默认
+      // 初始化：国家选择器 + 深度全量默认 + 入口模式
       buildColumnsPicker();
       initCountryPicker();
       var radiusKmEl = document.getElementById('radius_km');
       if (radiusKmEl) {
-        radiusKmEl.addEventListener('change', syncRadiusMeters);
-        radiusKmEl.addEventListener('input', syncRadiusMeters);
+        radiusKmEl.addEventListener('change', function () { syncRadiusMeters(); syncRadiusChips(); });
+        radiusKmEl.addEventListener('input', function () { syncRadiusMeters(); syncRadiusChips(); });
       }
+      document.querySelectorAll('.radius-chip').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+          var km = chip.dataset.km;
+          document.getElementById('radius_km').value = km;
+          syncRadiusMeters();
+          syncRadiusChips();
+        });
+      });
+      document.querySelectorAll('.entry-mode-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () { setEntryMode(btn.dataset.entry); });
+      });
       selectMode('standard');
+      syncRadiusChips();
+      setEntryMode(entryMode);
+      refreshConcurrencyPill();
+      refreshAIPill();
+      setInterval(refreshConcurrencyPill, 5000);
       var iu = document.getElementById('intent-understand-btn');
       var idp = document.getElementById('intent-dispatch-btn');
       if (iu) iu.addEventListener('click', runIntentUnderstand);

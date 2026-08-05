@@ -149,8 +149,8 @@ func TestJobConcurrencyDefaultIsFour(t *testing.T) {
 		t.Fatalf("override=%d want 3", got)
 	}
 	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "99")
-	if got := JobConcurrency(); got != 8 {
-		t.Fatalf("cap=%d want 8", got)
+	if got := JobConcurrency(); got != 64 {
+		t.Fatalf("cap=%d want 64", got)
 	}
 	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "4")
 	if got := PerJobScrapemateConcurrency(16, true); got != 4 {
