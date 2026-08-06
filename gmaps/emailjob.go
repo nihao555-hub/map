@@ -134,10 +134,14 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 
 	emails := collectEmailsFromResponse(resp)
 	whatsapp := ""
+	sitePhone := ""
 	var social SocialLinks
 	if resp != nil {
 		whatsapp = extractWhatsApp(resp.Body)
 		social = extractSocialFromHTML(resp.Body)
+		if j.Entry != nil && j.Entry.Phone == "" {
+			sitePhone = extractPhoneFromHTML(resp.Body)
+		}
 	}
 
 	baseURL := j.URL
@@ -148,6 +152,7 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 	// 为联系方式覆盖率：缺邮箱 / WhatsApp / 任一社媒时都跟进联系页（不再因已有邮箱短路）
 	needFollow := len(emails) == 0 ||
 		whatsapp == "" ||
+		(j.Entry != nil && j.Entry.Phone == "" && sitePhone == "") ||
 		socialEmpty(social) ||
 		(resp != nil && resp.Error != nil)
 	if needFollow {
@@ -157,10 +162,13 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 		}
 		followURLs = uniqueURLs(followURLs)
 		if len(followURLs) > 0 {
-			extraMails, extraWA, extraSocial := fetchContactsFromURLs(ctx, followURLs)
+			extraMails, extraWA, extraPhone, extraSocial := fetchContactsFromURLs(ctx, followURLs)
 			emails = mergeEmails(emails, extraMails)
 			if whatsapp == "" {
 				whatsapp = extraWA
+			}
+			if sitePhone == "" {
+				sitePhone = extraPhone
 			}
 			mergeSocialLinks(&social, extraSocial)
 		}
@@ -169,6 +177,9 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 	j.Entry.Emails = filterEmails(emails)
 	if whatsapp != "" {
 		j.Entry.WhatsApp = whatsapp
+	}
+	if j.Entry.Phone == "" && sitePhone != "" {
+		j.Entry.Phone = sitePhone
 	}
 	j.Entry.PromoteSocialFromMapsFields()
 	j.Entry.mergeSocial(social)
@@ -195,7 +206,80 @@ func socialEmpty(s SocialLinks) bool {
 var (
 	waMeRe     = regexp.MustCompile(`(?i)(?:https?://)?(?:wa\.me/|api\.whatsapp\.com/send\?[^"'>\s]*phone=)(\+?\d{8,15})`)
 	waDigitsRe = regexp.MustCompile(`(?i)whatsapp[^0-9+]{0,24}(\+?\d[\d\s\-()]{7,18}\d)`)
+
+	telHrefRe    = regexp.MustCompile(`(?i)tel:(\+?[\d\s\-().]{7,20})`)
+	phoneLabelRe = regexp.MustCompile(`(?i)(?:telp|telepon|tlp|hp|phone|call|hubungi|kontak)[^0-9+]{0,20}(\+?\d[\d\s\-().]{7,18}\d)`)
+	tagStripRe   = regexp.MustCompile(`<[^>]+>`)
 )
+
+// extractPhoneFromHTML pulls a callable number off a merchant page. Google Maps
+// has no phone for a large share of small shops, but their site usually does.
+// tel: links are trusted first; labelled numbers are the fallback.
+func extractPhoneFromHTML(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+
+	text := string(body)
+	for _, m := range telHrefRe.FindAllStringSubmatch(text, -1) {
+		if len(m) > 1 {
+			if p := normalizeSitePhone(m[1]); p != "" {
+				return p
+			}
+		}
+	}
+
+	plain := tagStripRe.ReplaceAllString(text, " ")
+	for _, m := range phoneLabelRe.FindAllStringSubmatch(plain, -1) {
+		if len(m) > 1 {
+			if p := normalizeSitePhone(m[1]); p != "" {
+				return p
+			}
+		}
+	}
+
+	return ""
+}
+
+// normalizeSitePhone keeps digits that plausibly form a reachable number and
+// rejects prices, dates and id-like digit runs common on Indonesian shop pages.
+func normalizeSitePhone(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.Count(raw, ".") >= 2 || strings.Contains(raw, "000 -") {
+		return ""
+	}
+
+	var b strings.Builder
+
+	for _, r := range raw {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+
+	digits := b.String()
+	if len(digits) < 9 || len(digits) > 15 {
+		return ""
+	}
+
+	// Local (0…) and international (+62…/62…) forms only; bare digit blobs are
+	// usually product codes or timestamps.
+	if !strings.HasPrefix(digits, "0") && !strings.Contains(raw, "+") && !strings.HasPrefix(digits, "62") {
+		return ""
+	}
+
+	// 20240115 / 19980101 之类的日期串不是电话
+	if len(digits) >= 8 && (strings.HasPrefix(digits, "20") || strings.HasPrefix(digits, "19")) &&
+		!strings.Contains(raw, "+") && !strings.HasPrefix(digits, "0") {
+		return ""
+	}
+
+	if strings.Contains(raw, "+") {
+		return "+" + digits
+	}
+
+	return digits
+}
 
 func extractWhatsApp(body []byte) string {
 	if len(body) == 0 {
@@ -699,16 +783,16 @@ func sameHost(a, b string) bool {
 }
 
 func fetchEmailsFromURLs(ctx context.Context, urls []string) []string {
-	mails, _, _ := fetchContactsFromURLs(ctx, urls)
+	mails, _, _, _ := fetchContactsFromURLs(ctx, urls)
 
 	return mails
 }
 
-// fetchContactsFromURLs 并行拉取联系页，提取邮箱、WhatsApp 与社媒链接
-func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string, SocialLinks) {
+// fetchContactsFromURLs 并行拉取联系页，提取邮箱、电话、WhatsApp 与社媒链接
+func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string, string, SocialLinks) {
 	var social SocialLinks
 	if len(urls) == 0 {
-		return nil, "", social
+		return nil, "", "", social
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, emailFollowBudget)
@@ -728,6 +812,7 @@ func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string
 	type pageHit struct {
 		emails   []string
 		whatsapp string
+		phone    string
 		social   SocialLinks
 	}
 
@@ -765,6 +850,7 @@ func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string
 					h.emails = mergeEmails(h.emails, docEmailExtractor(doc))
 				}
 				h.whatsapp = extractWhatsApp(body)
+				h.phone = extractPhoneFromHTML(body)
 				h.social = extractSocialFromHTML(body)
 				hits <- h
 			}
@@ -783,15 +869,19 @@ func fetchContactsFromURLs(ctx context.Context, urls []string) ([]string, string
 
 	var emails []string
 	whatsapp := ""
+	phone := ""
 	for h := range hits {
 		emails = mergeEmails(emails, h.emails)
 		if whatsapp == "" {
 			whatsapp = h.whatsapp
 		}
+		if phone == "" {
+			phone = h.phone
+		}
 		mergeSocialLinks(&social, h.social)
 	}
 
-	return emails, whatsapp, social
+	return emails, whatsapp, phone, social
 }
 
 func fetchURLBody(ctx context.Context, client *http.Client, raw string) ([]byte, error) {
