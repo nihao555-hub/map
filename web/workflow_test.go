@@ -241,11 +241,11 @@ func TestConcurrencyCeilingReport(t *testing.T) {
 	}
 	cpus := runtime.GOMAXPROCS(0)
 	if avail >= highRAMPackMB {
-		if perDeep != 1 {
-			t.Fatalf("high-RAM pack per-job deep want 1, got %d", perDeep)
+		if perDeep != 2 {
+			t.Fatalf("high-RAM per-job deep want 2 workers, got %d", perDeep)
 		}
-		if adaptive > cpus {
-			t.Fatalf("admit slots %d should not exceed GOMAXPROCS=%d", adaptive, cpus)
+		if adaptive > cpus+2 {
+			t.Fatalf("admit slots %d should not exceed GOMAXPROCS+2=%d", adaptive, cpus+2)
 		}
 	} else {
 		if perDeep != 2 {

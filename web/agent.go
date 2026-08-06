@@ -291,8 +291,10 @@ func metroDistricts(location string) []string {
 	low := strings.ToLower(strings.TrimSpace(location))
 	switch {
 	case low == "jakarta" || low == "jakarta, indonesia" || strings.TrimSpace(location) == "雅加达":
+		// Three anchors cover the metro without flooding the admit queue with
+		// five overlapping 10km grids (was the main Agent slowdown).
 		return []string{
-			"Jakarta Pusat", "Jakarta Selatan", "Jakarta Barat", "Jakarta Utara", "Jakarta Timur",
+			"Jakarta Selatan", "Jakarta Barat", "Jakarta Utara",
 		}
 	case strings.Contains(low, "jakarta") && !strings.Contains(low, "pusat") &&
 		!strings.Contains(low, "selatan") && !strings.Contains(low, "barat") &&
@@ -301,7 +303,7 @@ func metroDistricts(location string) []string {
 		!strings.Contains(low, "depok") && !strings.Contains(low, "bogor"):
 		// "Jakarta, Indonesia" / "Greater Jakarta" etc.
 		return []string{
-			"Jakarta Pusat", "Jakarta Selatan", "Jakarta Barat", "Jakarta Utara", "Jakarta Timur",
+			"Jakarta Selatan", "Jakarta Barat", "Jakarta Utara",
 		}
 	case low == "bangkok" || low == "bangkok, thailand" || strings.TrimSpace(location) == "曼谷":
 		return []string{"Bangkok", "Nonthaburi", "Samut Prakan"}
@@ -879,12 +881,13 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 	}
 	out = expandMetroPlanTasks(out)
 	out = dedupePlanTasks(out)
+	out = tightenPlan(out)
 	// Prefer richer AI splits, but never shrink a good heuristic metro plan to a single task.
 	if len(out.Tasks) < len(base.Tasks) && len(base.Tasks) >= 3 && len(out.Tasks) == 1 {
 		base.Intent.Thinking = out.Intent.Thinking
 		return base
 	}
-	return tightenPlan(out)
+	return out
 }
 
 // expandMetroPlanTasks turns a single large-metro pin into district anchors so
@@ -904,9 +907,9 @@ func expandMetroPlanTasks(plan AgentPlan) AgentPlan {
 		}
 		districts := metroDistricts(loc)
 		if len(districts) > 1 && r >= 15 {
-			dr := 12
+			dr := 14
 			if r < 18 {
-				dr = 10
+				dr = 12
 			}
 			for _, d := range districts {
 				name := strings.TrimSpace(t.Name)
@@ -1024,39 +1027,54 @@ func preferHighRecallKeywords(keywords []string) []string {
 	return out
 }
 
-// tightenPlan keeps coverage but avoids keyword explosions (e.g. 8 cities × 3 near-dup keywords).
+// tightenPlan keeps coverage but avoids keyword explosions and Agent queue pile-ups
+// (e.g. 5 districts × micro-areas that all wait behind admit slots).
 func tightenPlan(plan AgentPlan) AgentPlan {
-	const maxTasks = 16
-	if len(plan.Tasks) <= maxTasks {
-		return plan
+	const maxTasks = 4
+	const maxLocs = 3
+	// Always cap location fan-out even when under maxTasks (AI often emits all 5
+	// Jakarta districts at once — that starves workers with overlapping grids).
+	if len(plan.Tasks) > maxTasks || countUniqueLocations(plan.Tasks) > maxLocs {
+		return rebuildTightPlan(plan, maxLocs)
 	}
-	// Keep unique locations in order, at most 2 keywords overall.
+	return plan
+}
+
+func countUniqueLocations(tasks []AgentTask) int {
+	seen := map[string]struct{}{}
+	for _, t := range tasks {
+		loc := strings.ToLower(strings.TrimSpace(t.Location))
+		if loc == "" {
+			continue
+		}
+		seen[loc] = struct{}{}
+	}
+	return len(seen)
+}
+
+func rebuildTightPlan(plan AgentPlan, maxLocs int) AgentPlan {
 	kwOrder := make([]string, 0, 2)
 	kwSeen := map[string]struct{}{}
 	for _, t := range plan.Tasks {
-		for _, k := range t.Keywords {
-			k = strings.TrimSpace(k)
-			if k == "" {
-				continue
-			}
+		for _, k := range preferHighRecallKeywords(cleanKeywordList(t.Keywords)) {
 			low := strings.ToLower(k)
 			if _, ok := kwSeen[low]; ok {
 				continue
 			}
 			kwSeen[low] = struct{}{}
 			kwOrder = append(kwOrder, k)
-			if len(kwOrder) >= 2 {
+			if len(kwOrder) >= 1 {
 				break
 			}
 		}
-		if len(kwOrder) >= 2 {
+		if len(kwOrder) >= 1 {
 			break
 		}
 	}
 	if len(kwOrder) == 0 {
 		return plan
 	}
-	locOrder := make([]string, 0, 8)
+	locOrder := make([]string, 0, maxLocs)
 	locSeen := map[string]struct{}{}
 	for _, t := range plan.Tasks {
 		loc := strings.TrimSpace(t.Location)
@@ -1069,9 +1087,12 @@ func tightenPlan(plan AgentPlan) AgentPlan {
 		}
 		locSeen[low] = struct{}{}
 		locOrder = append(locOrder, loc)
-		if len(locOrder) >= 8 {
+		if len(locOrder) >= maxLocs {
 			break
 		}
+	}
+	if len(locOrder) == 0 {
+		return plan
 	}
 	sample := plan.Tasks[0]
 	var next []AgentTask
@@ -1080,6 +1101,9 @@ func tightenPlan(plan AgentPlan) AgentPlan {
 			r := sample.RadiusKm
 			if r <= 0 {
 				r = 15
+			}
+			if r < 12 {
+				r = 12
 			}
 			next = append(next, AgentTask{
 				Name:        loc + " · " + kw,
@@ -1123,12 +1147,15 @@ func ApplyFullVolumeDefaults(d *JobData, radiusMeters int) {
 		d.MaxTime = 120 * time.Minute
 	}
 	if d.GridCellKm <= 0 {
-		// Coarsen cells for larger radii so deep browser stays runnable
+		// Slightly coarser cells: fewer Playwright searches, similar recall with
+		// relevance filter; 10km@2.5km ≈ 64 cells vs 2.0km ≈ 100+.
 		km := float64(d.Radius) / 1000
 		switch {
 		case km >= 30:
-			d.GridCellKm = 3.0
+			d.GridCellKm = 3.5
 		case km >= 15:
+			d.GridCellKm = 3.0
+		case km >= 10:
 			d.GridCellKm = 2.5
 		default:
 			d.GridCellKm = 2.0

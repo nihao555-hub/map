@@ -83,9 +83,9 @@ func JobConcurrency() int {
 // min(env cap, memory budget, CPU budget). New jobs beyond this wait in queue
 // instead of starting and slowing everyone down.
 //
-// Without adding machines: on high-RAM hosts we pack more jobs (≈1 browser
-// worker each) so Agent multi-city plans drain faster; on tight RAM we keep
-// fewer full-speed jobs.
+// High-RAM hosts prefer a few FULL-SPEED jobs (≈2 browser workers each) over
+// many 1-worker jobs — place throughput scales with workers more than with
+// overlapping Agent district tasks.
 func AdaptiveJobConcurrency() int {
 	base := JobConcurrency()
 	avail := AvailableMemoryMB()
@@ -102,10 +102,14 @@ func AdaptiveJobConcurrency() int {
 		byCPU int
 	)
 	if avail >= highRAMPackMB {
-		// Pack mode: budget ~1 worker/job so a 4-CPU/16GB box can admit ~4 jobs.
-		reserve := uint64(deepReserveMBPerWorker + 150)
+		// Budget 2 workers/job; allow up to ~GOMAXPROCS+2 jobs when RAM is fat
+		// (browser work is I/O bound; 4CPU can drive ~6 Playwright contexts).
+		reserve := uint64(deepReserveMBPerWorker * 2)
 		byMem = int((avail - minFreeMemoryMB) / reserve)
-		byCPU = cpus
+		byCPU = cpus + 2
+		if byCPU > 8 {
+			byCPU = 8
+		}
 	} else {
 		// Conservative: 2-CPU + 2-worker memory budget per job.
 		byMem = int((avail - minFreeMemoryMB) / (deepReserveMBPerWorker * uint64(deepCPUPerJob)))
@@ -161,6 +165,8 @@ func CanAdmitDeepJob() bool {
 
 // ReservedPerJobConcurrency is the FIXED inner worker count for an admitted job.
 // It does NOT shrink when more jobs are queued — admission control protects speed.
+//
+// Override with GMS_DEEP_WORKERS (1–4) for ops tuning without code changes.
 func ReservedPerJobConcurrency(configured int, fastMode bool) int {
 	if configured < 1 {
 		configured = 1
@@ -178,11 +184,16 @@ func ReservedPerJobConcurrency(configured int, fastMode bool) int {
 		}
 		return n
 	}
-	// Deep: on high-RAM pack mode use 1 browser worker/job (more parallel city
-	// tasks). On tighter hosts keep 2 workers for full per-job speed.
+	// Deep: prefer 2 browser workers/job (maps cells + email enrich in parallel).
+	// High-RAM used to pack 1-worker jobs; that halved place rate for little gain.
 	n := 2
-	if AvailableMemoryMB() >= highRAMPackMB {
-		n = 1
+	if v := strings.TrimSpace(os.Getenv("GMS_DEEP_WORKERS")); v != "" {
+		if w, err := strconv.Atoi(v); err == nil && w >= 1 && w <= 4 {
+			n = w
+		}
+	} else if AvailableMemoryMB() < highRAMPackMB {
+		// Tight RAM: still 2, but AdaptiveJobConcurrency already admits fewer slots.
+		n = 2
 	}
 	if configured < n {
 		n = configured

@@ -385,8 +385,9 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			}
 
 			// 深度模式每格要开浏览器：半径大时自动加粗格子，避免上千格跑不完。
-			// Agent/全量获客需要更高召回：目标约 12×12=144 格（原 8×8=64 会漏掉大工业城外围）。
-			const maxDeepGridCells = 144
+			// Cap deep grid so 2 workers finish faster; relevance filter keeps quality.
+			// ~10×10=100 (was 12×12=144 which starved 1-worker jobs for 30–40m).
+			const maxDeepGridCells = 100
 			estCells := grid.EstimateCellCount(bbox, cellKm)
 			if !job.Data.FastMode && estCells > maxDeepGridCells {
 				halfKm := float64(job.Data.Radius) / 1000
