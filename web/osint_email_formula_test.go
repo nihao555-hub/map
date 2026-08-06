@@ -88,8 +88,11 @@ func TestAttachMapsContactsAndOrg(t *testing.T) {
 
 func TestSeedRoleEmailsRequiresMXPath(t *testing.T) {
 	roles := seedTradeRoleEmails("acme.id")
-	if len(roles) < 4 || roles[0] != "sales@acme.id" {
+	if len(roles) != 2 || roles[0] != "purchase@acme.id" || roles[1] != "sales@acme.id" {
 		t.Fatalf("roles=%v", roles)
+	}
+	if seedTradeRoleEmails("  ") != nil {
+		t.Fatalf("blank domain must not seed roles")
 	}
 }
 

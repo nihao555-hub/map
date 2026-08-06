@@ -28,7 +28,6 @@ const (
 //
 // Phase is UI-only (not persisted). Persist only Status_*.
 
-
 type SelectParams struct {
 	Status string
 	Limit  int
