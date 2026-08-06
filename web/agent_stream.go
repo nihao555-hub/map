@@ -15,18 +15,18 @@ import (
 )
 
 type agentStreamEvent struct {
-	Type     string          `json:"type"` // thinking_delta | status | result | error | done
+	Type     string          `json:"type"` // thinking_delta | result | error | done
 	Text     string          `json:"text,omitempty"`
 	Message  string          `json:"message,omitempty"`
 	Thinking string          `json:"thinking,omitempty"`
 	Plan     *AgentPlan      `json:"plan,omitempty"`
 	JobIDs   []string        `json:"job_ids,omitempty"`
-	Tools    []AgentToolCall `json:"tools,omitempty"`
 	Model    string          `json:"model,omitempty"`
 	Source   string          `json:"source,omitempty"`
 }
 
-// apiAgentDispatchStream streams user-facing thinking tokens (SSE), then the final plan/jobs.
+// apiAgentDispatchStream streams ONLY real LLM thinking tokens, then the final plan/jobs.
+// No hardcoded "正在理解…" status spam — that looked like a rules engine.
 func (s *Server) apiAgentDispatchStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
@@ -94,8 +94,6 @@ func (s *Server) apiAgentDispatchStream(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	send(agentStreamEvent{Type: "status", Text: "正在连接模型…"})
-
 	var (
 		mu       sync.Mutex
 		thinking strings.Builder
@@ -108,6 +106,7 @@ func (s *Server) apiAgentDispatchStream(w http.ResponseWriter, r *http.Request) 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	// Real model stream only.
 	go func() {
 		defer wg.Done()
 		err := streamAgentThinking(ctx, goal, uiLang, func(delta string) {
@@ -123,7 +122,6 @@ func (s *Server) apiAgentDispatchStream(w http.ResponseWriter, r *http.Request) 
 
 	go func() {
 		defer wg.Done()
-		send(agentStreamEvent{Type: "status", Text: "正在理解目标并拆分抓取任务…"})
 		var err error
 		intent, err = UnderstandIntent(ctx, goal, uiLang)
 		if err != nil {
@@ -139,7 +137,6 @@ func (s *Server) apiAgentDispatchStream(w http.ResponseWriter, r *http.Request) 
 			pipeErr = fmt.Errorf("无法理解目标：请说明「在哪里」和「找什么」")
 			return
 		}
-		send(agentStreamEvent{Type: "status", Text: fmt.Sprintf("已规划 %d 个子任务，正在创建抓取…", len(plan.Tasks))})
 		dispatch, err = s.DispatchPlan(ctx, owner, plan)
 		if err != nil {
 			pipeErr = err
@@ -148,7 +145,6 @@ func (s *Server) apiAgentDispatchStream(w http.ResponseWriter, r *http.Request) 
 		dispatch.Model = grsaiModel()
 		dispatch.Source = intent.Source
 		dispatch.Plan = plan
-		dispatch.Tools = buildAgentTools(plan, dispatch.JobIDs)
 		dispatch.Message = buildUserMessage(plan, dispatch.JobIDs)
 	}()
 
@@ -165,11 +161,10 @@ func (s *Server) apiAgentDispatchStream(w http.ResponseWriter, r *http.Request) 
 	mu.Lock()
 	streamed := strings.TrimSpace(thinking.String())
 	mu.Unlock()
-	finalThinking := streamed
-	if finalThinking == "" {
-		finalThinking = buildUserThinking(plan)
+	if streamed == "" {
+		streamed = buildUserThinking(plan)
 	}
-	dispatch.Thinking = finalThinking
+	dispatch.Thinking = streamed
 
 	send(agentStreamEvent{
 		Type:     "result",
@@ -177,7 +172,6 @@ func (s *Server) apiAgentDispatchStream(w http.ResponseWriter, r *http.Request) 
 		Thinking: dispatch.Thinking,
 		Plan:     &dispatch.Plan,
 		JobIDs:   dispatch.JobIDs,
-		Tools:    dispatch.Tools,
 		Model:    dispatch.Model,
 		Source:   dispatch.Source,
 	})
@@ -191,15 +185,15 @@ func streamAgentThinking(ctx context.Context, goal, uiLang string, onDelta func(
 	if key == "" {
 		return fmt.Errorf("no AI key")
 	}
-	system := `你是地图获客助手。请用用户界面语言，自然地流式说出你的思考过程：
-- 说明你如何理解用户目标
-- 说明为什么要拆成多个区域/品类去抓
-- 说明抓完后会汇总成表并自动背调
-禁止输出 JSON、字段名、API、模型名、UUID、IntentAgent 等技术词。短段落即可，口语化。`
+	system := `你是地图获客助手。请用用户界面语言，自然地流式说出你的思考过程（这是唯一对用户展示的思考，不要重复）：
+- 你理解客户要找什么、在哪里找
+- 打算按哪些城市/区域拆分（点名即可，不要列技术步骤）
+- 会用当地地图常用搜索词去抓，结果汇总成表并自动背调
+禁止输出 JSON、字段名、API、模型名、UUID、Agent 角色名。不要说「正在理解目标并拆分」这类系统状态套话。口语化，2–5 句。`
 	if uiLang == "en" {
-		system = `You are a map lead-gen assistant. Stream your thinking in plain English:
-explain the goal, why you split into multiple area/category scrapes, and that results land in a summary table with auto background checks.
-No JSON, no API/model names, no UUIDs, no agent role names.`
+		system = `You are a map lead-gen assistant. Stream your thinking in plain English only:
+what the user wants, which cities/areas you will split into, that local Maps search terms will be used, and results go to a summary table with auto intel.
+No JSON, no API/model names, no UUIDs, no agent role names, no canned "understanding and splitting tasks" status lines. 2–5 sentences.`
 	}
 
 	body, err := json.Marshal(aiChatRequest{

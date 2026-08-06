@@ -392,25 +392,28 @@ func understandIntentAI(ctx context.Context, goal, uiLang string) (AgentIntent, 
 	}
 
 	system := `You are IntentAgent for a Google Maps lead scraper.
-Goal: cover ALL matching businesses in the user's named place (max recall), not a small sample.
+Goal: cover matching businesses in the user's named place (max recall, but precise categories).
 Extract structured search intent from the user's natural language goal.
 Rules:
-- thinking: 2–5 short sentences in the user's UI language explaining your understanding and why you may split work. NO technical field names, NO JSON keys, NO model/API jargon. Write for a business user.
+- thinking: 2–4 short sentences in the user's UI language. Explain what you understood and how you will split work. NO technical field names, NO JSON keys, NO model/API jargon.
 - country_code: ISO 3166-1 alpha-2 lowercase when clear, else empty
-- location: city/area to search (not the whole country name unless that is the place)
-- keywords: 1-5 Google Maps category phrases. Split compound asks (e.g. cafes AND importers) into separate keywords.
-- radius_km: integer 1-50. Prefer FULL coverage of the named place:
-  * city / metro / "整个/全市/whole city" / city name only → 40
-  * large urban district (区/县) → 15–25
-  * neighborhood / mall / street / small area → 5–10
-  * ONLY use a small radius when the user explicitly names a small area or gives a small km
-  * if user gives an explicit km, honor it
-- enable_intel: true if user asks for background check / decision makers / OSINT OR for lead-gen / 获客 goals (default true for 获客)
-- sub_locations: when the place is a large city OR a big district that needs multiple scrape anchors, list 3–8 commercial hubs / sub-districts INSIDE that place (same language as Maps search). Examples:
-  * 雅加达 → Jakarta Pusat, Jakarta Selatan, ...
-  * 北京市朝阳区 → 朝阳国贸, 朝阳望京, 朝阳三里屯, 朝阳双井, 朝阳常营
-  * single small street → empty array
-Reply ONLY valid JSON object with keys: thinking, country_code, country_name, location, keywords, radius_km, enable_intel, notes, sub_locations`
+- location: city/area (or empty if whole-country multi-city plan)
+- keywords: 1–3 DISTINCT Google Maps search phrases in the BEST language for Maps in that country:
+  * NEVER leave Chinese keywords when country is not China
+  * Indonesia/Malaysia/Philippines/Singapore: prefer short English OR local Maps phrases people type
+    (e.g. "panel listrik", "switchgear", "electrical distributor", "cafe", "importer") — not Chinese
+  * Thailand/Vietnam: prefer English category words common on Maps
+  * China: Chinese is OK
+  * Avoid near-duplicates (配电柜 vs 配电盘制造 vs 开关柜制造 as three separate keywords is too redundant — merge to 1–2 strong phrases)
+- radius_km: integer 1–50. Prefer FULL coverage of the named place:
+  * whole country → 25–40 with multi-city split later
+  * city / metro → 40
+  * large urban district → 15–25
+  * neighborhood / mall / street → 5–10
+  * honor explicit km from user
+- enable_intel: true for 获客 / lead-gen / 背调 goals
+- sub_locations: 3–8 city/district anchors when the user asks for a whole country or large metro; empty for a small street
+Reply ONLY valid JSON: thinking, country_code, country_name, location, keywords, radius_km, enable_intel, notes, sub_locations`
 
 	user := fmt.Sprintf("UI language: %s\nUser goal:\n%s", uiLang, goal)
 
@@ -712,14 +715,17 @@ func PlanTasksAI(ctx context.Context, intent AgentIntent) AgentPlan {
 	}
 
 	system := `You are PlannerAgent for a Maps lead scraper.
-Given a structured intent, produce a multi-task scrape plan that maximizes coverage.
+Turn intent into a PRECISE multi-task plan (not a keyword explosion).
 Rules:
-- thinking: short user-facing Chinese/English (match UI) explaining the split. No JSON keys, no API jargon.
-- Prefer 3–12 tasks for cities/districts; 1 task only for a tiny street/mall.
-- Each task: one location anchor + one keyword + radius_km 5–18 for anchors, up to 40 for single city pin.
-- Split multiple keywords into separate tasks.
-- name: short human label like "望京 · 火锅店"
-Reply ONLY JSON: {"thinking":"...","tasks":[{"name":"...","location":"...","keywords":["..."],"radius_km":8}]}`
+- thinking: optional short note in UI language; may be empty (streaming narrative is separate). No JSON/API jargon.
+- For a whole country (e.g. Indonesia): 6–10 tasks = major commercial/industrial cities × 1–2 strong Maps keywords.
+- For one city/district: 3–6 hub anchors × 1 keyword (or 2 if user asked two distinct categories like cafe AND importer).
+- Each task keywords MUST be Maps-ready for that country (never Chinese outside China). Indonesia examples: "panel listrik", "switchgear", "electrical distributor".
+- Do NOT create near-duplicate tasks (same city + almost same keyword).
+- name: human label in UI language, e.g. "泗水 · 配电柜(panel listrik)"
+- location: geocodable place name (prefer English/local Latin script for SEA cities: Jakarta, Surabaya, Bandung, Medan, Semarang, Makassar, Batam, Bekasi)
+- radius_km: 12–25 for city anchors; 8–12 for district hubs
+Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keywords":["..."],"radius_km":15}]}`
 
 	payload, _ := json.Marshal(map[string]any{
 		"goal":         intent.RawGoal,
@@ -820,7 +826,83 @@ Reply ONLY JSON: {"thinking":"...","tasks":[{"name":"...","location":"...","keyw
 		base.Intent.Thinking = out.Intent.Thinking
 		return base
 	}
-	return out
+	return tightenPlan(out)
+}
+
+// tightenPlan keeps coverage but avoids keyword explosions (e.g. 8 cities × 3 near-dup keywords).
+func tightenPlan(plan AgentPlan) AgentPlan {
+	const maxTasks = 12
+	if len(plan.Tasks) <= maxTasks {
+		return plan
+	}
+	// Keep unique locations in order, at most 2 keywords overall.
+	kwOrder := make([]string, 0, 2)
+	kwSeen := map[string]struct{}{}
+	for _, t := range plan.Tasks {
+		for _, k := range t.Keywords {
+			k = strings.TrimSpace(k)
+			if k == "" {
+				continue
+			}
+			low := strings.ToLower(k)
+			if _, ok := kwSeen[low]; ok {
+				continue
+			}
+			kwSeen[low] = struct{}{}
+			kwOrder = append(kwOrder, k)
+			if len(kwOrder) >= 2 {
+				break
+			}
+		}
+		if len(kwOrder) >= 2 {
+			break
+		}
+	}
+	if len(kwOrder) == 0 {
+		return plan
+	}
+	locOrder := make([]string, 0, 8)
+	locSeen := map[string]struct{}{}
+	for _, t := range plan.Tasks {
+		loc := strings.TrimSpace(t.Location)
+		if loc == "" {
+			continue
+		}
+		low := strings.ToLower(loc)
+		if _, ok := locSeen[low]; ok {
+			continue
+		}
+		locSeen[low] = struct{}{}
+		locOrder = append(locOrder, loc)
+		if len(locOrder) >= 8 {
+			break
+		}
+	}
+	sample := plan.Tasks[0]
+	var next []AgentTask
+	for _, loc := range locOrder {
+		for _, kw := range kwOrder {
+			r := sample.RadiusKm
+			if r <= 0 {
+				r = 15
+			}
+			next = append(next, AgentTask{
+				Name:        loc + " · " + kw,
+				CountryCode: sample.CountryCode,
+				CountryName: sample.CountryName,
+				Location:    loc,
+				Keywords:    []string{kw},
+				RadiusKm:    r,
+				EnableIntel: true,
+				Role:        "scraper",
+			})
+		}
+	}
+	if len(next) == 0 {
+		return plan
+	}
+	plan.Tasks = next
+	return plan
 }
 
 // ApplyFullVolumeDefaults forces product policy onto a job: deep + grid + unlimited.

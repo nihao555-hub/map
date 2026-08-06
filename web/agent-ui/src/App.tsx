@@ -19,7 +19,6 @@ import {
   ReasoningTrigger,
 } from '@/components/ai-elements/reasoning'
 import { Task, TaskContent, TaskItem, TaskItemFile, TaskTrigger } from '@/components/ai-elements/task'
-import { Tool, ToolContent, ToolHeader, ToolOutput } from '@/components/ai-elements/tool'
 import { Suggestion } from '@/components/ai-elements/suggestion'
 import {
   PromptInput,
@@ -37,7 +36,6 @@ import {
   saveSessions,
   titleFromGoal,
   type AgentSession,
-  type AgentToolCall,
   type ChatMessage,
   type JobMeta,
 } from '@/lib/sessions'
@@ -95,7 +93,6 @@ export default function App() {
   const [activeId, setActiveId] = useState(() => sessions[0]?.id)
   const [busy, setBusy] = useState(false)
   const [streamThinking, setStreamThinking] = useState('')
-  const [streamStatus, setStreamStatus] = useState('')
   const [aiMeta, setAiMeta] = useState<{ enabled: boolean; model: string } | null>(null)
   const [suggestions, setSuggestions] = useState(SUGGESTIONS)
   const [showHistory, setShowHistory] = useState(true)
@@ -129,7 +126,6 @@ export default function App() {
     setSessions((prev) => [s, ...prev])
     setActiveId(s.id)
     setStreamThinking('')
-    setStreamStatus('')
     setShowHistory(true)
   }
 
@@ -139,7 +135,6 @@ export default function App() {
     setSessions([s])
     setActiveId(s.id)
     setStreamThinking('')
-    setStreamStatus('')
   }
 
   /**
@@ -153,7 +148,6 @@ export default function App() {
     }
     setBusy(true)
     setStreamThinking('')
-    setStreamStatus('正在连接模型…')
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -194,7 +188,6 @@ export default function App() {
           thinking?: string
           plan?: ChatMessage['plan']
           job_ids?: string[]
-          tools?: AgentToolCall[]
           model?: string
           source?: string
         }
@@ -206,10 +199,6 @@ export default function App() {
         if (ev.type === 'thinking_delta' && ev.text) {
           thinkingAcc += ev.text
           setStreamThinking(thinkingAcc)
-          return
-        }
-        if (ev.type === 'status' && ev.text) {
-          setStreamStatus(ev.text)
           return
         }
         if (ev.type === 'error') {
@@ -228,10 +217,9 @@ export default function App() {
             role: 'assistant',
             text:
               ev.message ||
-              `已启动，创建 ${jobs.length} 个子任务。结果会持续汇总到下方表格。`,
+              `已启动 ${jobs.length} 个子任务，结果会汇总到下方表格。`,
             thinking: ev.thinking || thinkingAcc,
             plan: ev.plan,
-            tools: ev.tools,
             jobs,
             jobIds: ev.job_ids,
             model: ev.model,
@@ -245,7 +233,6 @@ export default function App() {
           }))
           finalized = true
           setStreamThinking('')
-          setStreamStatus('')
         }
       }
 
@@ -274,7 +261,6 @@ export default function App() {
       if (!finalized) throw new Error('流式响应未完成')
     } catch (e) {
       setStreamThinking('')
-      setStreamStatus('')
       patchActive((s) => ({
         ...s,
         messages: [
@@ -345,7 +331,6 @@ export default function App() {
                       onClick={() => {
                         setActiveId(s.id)
                         setStreamThinking('')
-                        setStreamStatus('')
                       }}
                       className={cn(
                         'flex w-full items-start gap-2.5 rounded-[12px] px-2.5 py-2.5 text-left transition',
@@ -511,67 +496,21 @@ export default function App() {
                           <MessageResponse>{m.text}</MessageResponse>
                           {m.error && <p className="mt-2 text-sm text-red-600">{m.error}</p>}
 
-                          {!!m.tools?.length && (
-                            <div className="mt-4 space-y-2">
-                              <div className="text-sm font-medium text-[#374151]">工具调用</div>
-                              {m.tools.map((t) => (
-                                <Tool
-                                  key={t.name}
-                                  defaultOpen={t.status === 'running' || t.status === 'complete'}
-                                >
-                                  <ToolHeader
-                                    title={t.title}
-                                    type="dynamic-tool"
-                                    toolName={t.name}
-                                    state={
-                                      t.status === 'complete'
-                                        ? 'output-available'
-                                        : t.status === 'error'
-                                          ? 'output-error'
-                                          : t.status === 'running'
-                                            ? 'input-available'
-                                            : 'input-streaming'
-                                    }
-                                  />
-                                  <ToolContent>
-                                    {!!t.input && (
-                                      <div className="space-y-1 text-sm text-[#4B5563]">
-                                        {Object.entries(t.input).map(([k, v]) => (
-                                          <div key={k}>
-                                            <span className="text-[#9CA3AF]">{k}：</span>
-                                            {String(v)}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                    <ToolOutput
-                                      output={
-                                        t.output ? (
-                                          <p className="whitespace-pre-wrap p-2 text-sm leading-relaxed">
-                                            {t.output}
-                                          </p>
-                                        ) : undefined
-                                      }
-                                      errorText={
-                                        t.status === 'error' ? t.output || '调用失败' : undefined
-                                      }
-                                    />
-                                  </ToolContent>
-                                </Tool>
-                              ))}
-                            </div>
-                          )}
-
                           {!!m.plan?.tasks?.length && (
                             <Task defaultOpen className="mt-4">
-                              <TaskTrigger title={`子任务 · ${m.plan.tasks.length} 项`} />
+                              <TaskTrigger title={`抓取计划 · ${m.plan.tasks.length} 项`} />
                               <TaskContent>
                                 {m.plan.tasks.map((t, i) => (
                                   <TaskItem key={`${t.name}-${i}`}>
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    <div className="flex flex-col gap-1">
                                       <span className="font-medium text-foreground">{t.name}</span>
-                                      <TaskItemFile>约 {t.radius_km} 公里</TaskItemFile>
-                                      <TaskItemFile>深度全量</TaskItemFile>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <TaskItemFile>{t.location || '—'}</TaskItemFile>
+                                        <TaskItemFile>
+                                          地图搜：{(t.keywords || []).join(' / ') || '—'}
+                                        </TaskItemFile>
+                                        <TaskItemFile>约 {t.radius_km} 公里</TaskItemFile>
+                                      </div>
                                     </div>
                                   </TaskItem>
                                 ))}
@@ -593,12 +532,9 @@ export default function App() {
                     <Reasoning isStreaming defaultOpen>
                       <ReasoningTrigger>思考中</ReasoningTrigger>
                       <ReasoningContent>
-                        {streamThinking || streamStatus || '正在连接模型…'}
+                        {streamThinking || '模型正在思考…'}
                       </ReasoningContent>
                     </Reasoning>
-                    {!!streamStatus && (
-                      <p className="mt-2 text-xs text-[#9CA3AF]">{streamStatus}</p>
-                    )}
                   </MessageContent>
                 </Message>
               )}
