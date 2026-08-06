@@ -471,11 +471,13 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
                       : '等待'
                   : st.status === 'running' || st.note === '背调中'
                     ? '背调中'
-                    : st.summary
-                      ? '已完成'
-                      : st.error
-                        ? '失败'
-                        : '背调中'
+                    : st.status === 'skipped'
+                      ? '已跳过'
+                      : st.summary
+                        ? '已完成'
+                        : st.error
+                          ? '失败'
+                          : '背调中'
               return (
                 <Fragment key={key}>
                   <tr

@@ -1158,13 +1158,15 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.loadAccessibleJob(r, id.String()); err != nil {
+	job, err := s.loadAccessibleJob(r, id.String())
+	if err != nil {
 		renderJSON(w, http.StatusNotFound, apiError{
 			Code:    http.StatusNotFound,
 			Message: http.StatusText(http.StatusNotFound),
 		})
 		return
 	}
+	keywords := job.Data.Keywords
 
 	lite := r.URL.Query().Get("full") != "1"
 	if lite {
@@ -1180,6 +1182,7 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 			}
 			places = []PlaceLite{}
 		}
+		places = FilterRelevantPlacesLite(places, keywords)
 		for i := range places {
 			if places[i].Thumbnail != "" {
 				tmp := Place{Thumbnail: places[i].Thumbnail, StreetViewURL: ""}
@@ -1211,6 +1214,7 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 		places = []Place{}
 	}
 
+	places = FilterRelevantPlaces(places, keywords)
 	for i := range places {
 		rewritePlaceMedia(&places[i])
 	}
@@ -1224,8 +1228,24 @@ func (s *Server) apiGetPlacesCount(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "Invalid ID"})
 		return
 	}
-	if _, err := s.loadAccessibleJob(r, id.String()); err != nil {
+	job, err := s.loadAccessibleJob(r, id.String())
+	if err != nil {
 		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "Not found"})
+		return
+	}
+	if isElectricalKeywordJob(job.Data.Keywords) {
+		places, perr := s.svc.GetPlacesCached(r.Context(), id.String())
+		if perr != nil {
+			if errors.Is(perr, ErrPlacesNotFound) {
+				renderJSON(w, http.StatusOK, map[string]int{"count": 0})
+				return
+			}
+			renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: "internal error"})
+			return
+		}
+		n := len(FilterRelevantPlaces(places, job.Data.Keywords))
+		w.Header().Set("Cache-Control", "private, max-age=2")
+		renderJSON(w, http.StatusOK, map[string]int{"count": n})
 		return
 	}
 	n, err := s.svc.CountPlacesCached(r.Context(), id.String())
@@ -1355,6 +1375,18 @@ func (s *Server) apiPlaceIntel(w http.ResponseWriter, r *http.Request) {
 	}
 	if place.PlaceID == "" {
 		place.PlaceID = placeID
+	}
+
+	// Skip intel for off-brief Maps noise (e.g. malls / police for panel listrik jobs).
+	if !PlaceRelevantToKeywords(place, job.Data.Keywords) {
+		renderJSON(w, http.StatusOK, PlaceIntel{
+			PlaceID: place.PlaceID,
+			Title:   place.Title,
+			Website: place.Website,
+			Status:  IntelSkipped,
+			Note:    "与搜索意图不符，已跳过背调",
+		})
+		return
 	}
 
 	// 任务开启了并发背调：未就绪时异步生成并立即返回「背调中」，不阻塞请求线程

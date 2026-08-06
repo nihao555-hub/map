@@ -441,6 +441,11 @@ func (s *Service) runJobIntel(ctx context.Context, jobID string) {
 	if err != nil || len(places) == 0 {
 		return
 	}
+	var keywords []string
+	if job, gerr := s.Get(ctx, jobID); gerr == nil {
+		keywords = job.Data.Keywords
+		places = FilterRelevantPlaces(places, keywords)
+	}
 	sem := make(chan struct{}, 3) // 并发上限，避免打爆 OSINT 源
 	var wg sync.WaitGroup
 	for i := range places {
@@ -448,6 +453,15 @@ func (s *Service) runJobIntel(ctx context.Context, jobID string) {
 		ensurePlaceKey(&p)
 		places[i] = p
 		if p.PlaceID == "" {
+			continue
+		}
+		if !PlaceRelevantToKeywords(p, keywords) {
+			_ = s.saveIntel(jobID, &PlaceIntel{
+				PlaceID: p.PlaceID, Title: p.Title, Status: IntelSkipped,
+				GeneratedAt: time.Now().UTC(),
+				Note:        "与搜索意图不符，已跳过背调",
+				Confidence:  "low",
+			})
 			continue
 		}
 		if cached, ok := s.loadIntel(jobID, p.PlaceID); ok &&
