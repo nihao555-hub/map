@@ -545,8 +545,13 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 		go exitMonitor.Run(mateCtx)
 
+		// Promote StatusOK (+ start intel) as soon as Maps seeds finish, even while
+		// website-email enrichment still runs. Flat place counts with status=working
+		// confused users into thinking the job was stuck.
+		go w.watchScrapePhaseComplete(mateCtx, job.ID, exitMonitor)
+
 		// 抓取阶段不做背调：先尽快把结果落盘给用户看。
-		// 背调在任务完成后（下方 StatusOK）再统一启动；用户点行时若未完成会显示「背调中」。
+		// 背调在 StatusOK（下方或 watchScrapePhaseComplete）后统一启动。
 		err = mate.Start(mateCtx, seedJobs...)
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 			mateCancel()
@@ -574,6 +579,12 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		return nil
 	}
 
+	// Idempotent: watchScrapePhaseComplete may already have set StatusOK + intel.
+	if latest, gerr := w.svc.Get(ctx, job.ID); gerr == nil && latest.Status == web.StatusOK {
+		log.Printf("job %s scrape finished (already marked ok)", job.ID)
+		return nil
+	}
+
 	job.Status = web.StatusOK
 	if err := w.svc.Update(ctx, job); err != nil {
 		return err
@@ -586,6 +597,79 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 	}
 
 	return nil
+}
+
+// watchScrapePhaseComplete marks the job ok (+ starts intel) when all Maps seeds
+// finish, or when the visible place count plateaus while seeds are nearly done.
+// Email website fetches may still be in flight; StatusOK means "results ready".
+func (w *webrunner) watchScrapePhaseComplete(ctx context.Context, jobID string, mon exiter.Exiter) {
+	ticker := time.NewTicker(8 * time.Second)
+	defer ticker.Stop()
+
+	const (
+		plateauIdle   = 100 * time.Second
+		plateauMinRun = 2 * time.Minute
+		seedNearDone  = 0.92 // 92% of grid cells finished
+	)
+
+	started := time.Now()
+	lastCount := -1
+	lastChange := time.Now()
+	marked := false
+
+	tryMark := func(reason string) {
+		if marked {
+			return
+		}
+		ok, err := w.svc.MarkScrapeComplete(context.Background(), jobID)
+		if err != nil {
+			log.Printf("job %s mark scrape complete: %v", jobID, err)
+			return
+		}
+		if ok {
+			marked = true
+			log.Printf("job %s: %s → status=ok (intel if enabled); email enrichment may continue", jobID, reason)
+		} else {
+			// Already ok/canceled/failed
+			marked = true
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if marked {
+				return
+			}
+			if mon.SeedsFinished() {
+				tryMark("maps seeds finished")
+				return
+			}
+
+			prog := mon.Snapshot()
+			n := 0
+			if cnt, err := w.svc.CountPlacesCached(context.Background(), jobID); err == nil {
+				n = cnt
+			}
+			if n != lastCount {
+				lastCount = n
+				lastChange = time.Now()
+			}
+
+			seedsNearDone := prog.SeedCount > 0 &&
+				float64(prog.SeedCompleted) >= float64(prog.SeedCount)*seedNearDone
+			plateau := n > 0 &&
+				time.Since(started) >= plateauMinRun &&
+				time.Since(lastChange) >= plateauIdle
+
+			if seedsNearDone && plateau {
+				tryMark(fmt.Sprintf("place count plateau at %d with seeds %d/%d", n, prog.SeedCompleted, prog.SeedCount))
+				return
+			}
+		}
+	}
 }
 
 func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.Job) (mateRunner, error) {

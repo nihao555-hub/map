@@ -46,6 +46,10 @@ type Job struct {
 	Name   string
 	Date   time.Time
 	Status string
+	// Phase is a UI-only annotation (not persisted): pending|working|intel|ok|failed|canceled.
+	// When scrape rows have landed but website-email / OSINT backfill still runs, Status may
+	// already be "ok" while Phase stays "intel" until背调 finishes.
+	Phase string `json:"phase,omitempty"`
 	// Owner is the invite code that owns this job (tenant isolation key).
 	Owner string
 	Data  JobData

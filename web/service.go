@@ -85,6 +85,75 @@ func (s *Service) All(ctx context.Context) ([]Job, error) {
 	return s.repo.Select(ctx, SelectParams{})
 }
 
+// Phase constants for Job.Phase (UI annotation, not persisted).
+const (
+	PhasePending  = "pending"
+	PhaseWorking  = "working"
+	PhaseIntel    = "intel"
+	PhaseOK       = "ok"
+	PhaseFailed   = "failed"
+	PhaseCanceled = "canceled"
+)
+
+// EnrichJobPhase sets Job.Phase for API/HTML so the dock can show「背调中」after scrape rows land.
+func (s *Service) EnrichJobPhase(ctx context.Context, job *Job) {
+	if job == nil {
+		return
+	}
+	switch job.Status {
+	case StatusPending:
+		job.Phase = PhasePending
+	case StatusWorking:
+		job.Phase = PhaseWorking
+	case StatusFailed:
+		job.Phase = PhaseFailed
+	case StatusCanceled:
+		job.Phase = PhaseCanceled
+	case StatusOK:
+		job.Phase = PhaseOK
+		if job.Data.EnableIntel {
+			n := 0
+			if places, err := s.GetPlacesLiteCached(ctx, job.ID); err == nil {
+				n = len(FilterRelevantPlacesLite(places, job.Data.Keywords))
+			}
+			st := s.GetJobIntelStatus(job.ID, n)
+			if !st.Done {
+				job.Phase = PhaseIntel
+			}
+		}
+	default:
+		job.Phase = job.Status
+	}
+}
+
+// EnrichJobsPhase annotates a job list in place.
+func (s *Service) EnrichJobsPhase(ctx context.Context, jobs []Job) {
+	for i := range jobs {
+		s.EnrichJobPhase(ctx, &jobs[i])
+	}
+}
+
+// MarkScrapeComplete promotes a still-working job to ok and starts intel once.
+// Used when Maps seeds finished (place rows on disk) while website-email jobs may still run.
+// Returns true when this call performed the transition.
+func (s *Service) MarkScrapeComplete(ctx context.Context, jobID string) (bool, error) {
+	job, err := s.Get(ctx, jobID)
+	if err != nil {
+		return false, err
+	}
+	if job.Status != StatusWorking {
+		return false, nil
+	}
+	job.Status = StatusOK
+	if err := s.Update(ctx, &job); err != nil {
+		return false, err
+	}
+	if job.Data.EnableIntel {
+		s.StartJobIntel(ctx, jobID)
+	}
+	return true, nil
+}
+
 // QueueAhead returns how many pending jobs are ahead of jobID in claim order.
 // ClaimPending takes newest first, so "ahead" = newer pending jobs.
 // Non-pending jobs return ahead=0 with their current status.

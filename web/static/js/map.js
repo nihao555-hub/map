@@ -521,8 +521,10 @@
   }
 
   // ============ 右侧任务进度面板 ============
-  function statusLabel(status) {
+  function statusLabel(status, phase) {
     var tr = (typeof window.t === 'function') ? window.t : null;
+    var ph = phase || status;
+    if (ph === 'intel') return tr ? tr('status_intel') : '背调中';
     if (status === 'working') return tr ? tr('status_working') : '进行中';
     if (status === 'pending') return tr ? tr('status_pending') : '排队中';
     if (status === 'ok') return tr ? tr('status_ok') : '已完成';
@@ -589,27 +591,33 @@
       return;
     }
 
-    // 进行中优先，其次最近完成/失败
+    // 进行中优先；背调中（phase=intel）其次；再展示已完成/失败
     var running = records.filter(function (r) {
       return r.dataset.status === 'working' || r.dataset.status === 'pending';
     });
+    var intel = records.filter(function (r) {
+      return r.dataset.phase === 'intel';
+    });
     var done = records.filter(function (r) {
-      return r.dataset.status === 'ok' || r.dataset.status === 'failed' || r.dataset.status === 'canceled';
+      return (r.dataset.status === 'ok' && r.dataset.phase !== 'intel') ||
+        r.dataset.status === 'failed' || r.dataset.status === 'canceled';
     }).slice(0, 6);
-    var shown = running.concat(done);
+    var shown = running.concat(intel).concat(done);
     var tr = (typeof window.t === 'function') ? window.t : null;
 
     list.innerHTML = shown.map(function (el) {
       var id = el.dataset.jobId;
       var status = el.dataset.status || '';
+      var phase = el.dataset.phase || status;
       var name = (el.querySelector('.record-name') || {}).textContent || '未命名任务';
       var mode = modeFromRecord(el);
       var count = dockCountCache[id];
       var countText = typeof count === 'number'
-        ? (count ? ('已抓 ' + count + ' 家') : (status === 'ok' ? '暂无结果' : '等待首条结果…'))
+        ? (count ? ('已抓 ' + count + ' 家') : (status === 'ok' || phase === 'intel' ? '暂无结果' : '等待首条结果…'))
         : (status === 'working' || status === 'pending' ? '同步进度…' : '查看详情');
       var active = id === currentJobId ? ' active' : '';
-      var exportBtn = (status === 'ok' || status === 'canceled')
+      var badgeStatus = phase === 'intel' ? 'intel' : status;
+      var exportBtn = (status === 'ok' || phase === 'intel' || status === 'canceled')
         ? '<button type="button" class="task-dock-csv" title="导出 CSV" onclick="event.stopPropagation(); window.downloadJobCSV(\'' + id + '\')">' +
             '<i data-lucide="download" class="w-3 h-3"></i> CSV</button>'
         : '';
@@ -617,11 +625,11 @@
         ? '<button type="button" class="task-dock-cancel" title="' + (tr ? tr('cancel_job') : '终止') + '" onclick="event.stopPropagation(); window.cancelJob(\'' + id + '\')">' +
             '<i data-lucide="square" class="w-3 h-3"></i> ' + (tr ? tr('cancel_job') : '终止') + '</button>'
         : '';
-      return '<div class="task-dock-item status-' + status + active + '" data-dock-id="' + id + '">' +
+      return '<div class="task-dock-item status-' + badgeStatus + active + '" data-dock-id="' + id + '">' +
         '<button type="button" class="task-dock-main" onclick="window.focusTaskFromDock(\'' + id + '\')">' +
           '<div class="task-dock-item-top">' +
             '<span class="task-dock-name">' + escapeHtml(name.trim()) + '</span>' +
-            '<span class="task-dock-badge">' + statusLabel(status) + '</span>' +
+            '<span class="task-dock-badge">' + statusLabel(status, phase) + '</span>' +
           '</div>' +
           '<div class="task-dock-item-meta">' +
             '<span>' + escapeHtml(mode) + '</span>' +
@@ -632,9 +640,9 @@
       '</div>';
     }).join('');
 
-    // 进行中的任务持续拉数量（结果逐渐增加）
+    // 进行中的任务持续拉数量；背调中也补一次数量
     running.forEach(function (el) { refreshDockCount(el.dataset.jobId); });
-    done.slice(0, 3).forEach(function (el) {
+    intel.concat(done.slice(0, 3)).forEach(function (el) {
       if (typeof dockCountCache[el.dataset.jobId] !== 'number') {
         refreshDockCount(el.dataset.jobId);
       }

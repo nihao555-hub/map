@@ -230,6 +230,7 @@ func buildAgentTools(plan AgentPlan, jobIDs []string) []AgentToolCall {
 type jobQueueResponse struct {
 	ID           string `json:"id"`
 	Status       string `json:"status"`
+	Phase        string `json:"phase,omitempty"`
 	Ahead        int    `json:"ahead"`
 	PendingTotal int    `json:"pending_total"`
 	ActiveJobs   int    `json:"active_jobs"`
@@ -247,7 +248,8 @@ func (s *Server) apiJobQueue(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "Invalid ID"})
 		return
 	}
-	if _, err := s.loadAccessibleJob(r, id.String()); err != nil {
+	job, err := s.loadAccessibleJob(r, id.String())
+	if err != nil {
 		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "Not found"})
 		return
 	}
@@ -256,10 +258,11 @@ func (s *Server) apiJobQueue(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: err.Error()})
 		return
 	}
+	s.svc.EnrichJobPhase(r.Context(), &job)
 	snap := GetConcurrencySnapshot()
-	msg := queueMessage(status, ahead)
+	msg := queueMessage(job.Phase, status, ahead)
 	renderJSON(w, http.StatusOK, jobQueueResponse{
-		ID: id.String(), Status: status, Ahead: ahead, PendingTotal: pendingTotal,
+		ID: id.String(), Status: status, Phase: job.Phase, Ahead: ahead, PendingTotal: pendingTotal,
 		ActiveJobs: snap.ActiveJobs, AdmitSlots: snap.AdmitSlots, Message: msg,
 	})
 }
@@ -285,23 +288,28 @@ func (s *Server) apiAgentJobsQueue(w http.ResponseWriter, r *http.Request) {
 		if id == "" {
 			continue
 		}
-		if _, err := s.loadAccessibleJob(r, id); err != nil {
+		job, err := s.loadAccessibleJob(r, id)
+		if err != nil {
 			continue
 		}
 		ahead, status, pendingTotal, err := s.svc.QueueAhead(r.Context(), id)
 		if err != nil {
 			continue
 		}
+		s.svc.EnrichJobPhase(r.Context(), &job)
 		out = append(out, jobQueueResponse{
-			ID: id, Status: status, Ahead: ahead, PendingTotal: pendingTotal,
+			ID: id, Status: status, Phase: job.Phase, Ahead: ahead, PendingTotal: pendingTotal,
 			ActiveJobs: snap.ActiveJobs, AdmitSlots: snap.AdmitSlots,
-			Message: queueMessage(status, ahead),
+			Message: queueMessage(job.Phase, status, ahead),
 		})
 	}
 	renderJSON(w, http.StatusOK, map[string]any{"jobs": out, "active_jobs": snap.ActiveJobs, "admit_slots": snap.AdmitSlots})
 }
 
-func queueMessage(status string, ahead int) string {
+func queueMessage(phase, status string, ahead int) string {
+	if phase == PhaseIntel {
+		return "采集完成，背调中"
+	}
 	switch status {
 	case StatusPending:
 		if ahead <= 0 {

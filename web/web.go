@@ -718,6 +718,7 @@ func (s *Server) getJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.svc.EnrichJobsPhase(r.Context(), jobs)
 	_ = tmpl.Execute(w, jobs)
 }
 
@@ -1111,6 +1112,7 @@ func (s *Server) apiGetJobs(w http.ResponseWriter, r *http.Request) {
 		jobs = []Job{}
 	}
 
+	s.svc.EnrichJobsPhase(r.Context(), jobs)
 	renderJSON(w, http.StatusOK, jobs)
 }
 
@@ -1139,6 +1141,7 @@ func (s *Server) apiGetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.svc.EnrichJobPhase(r.Context(), &job)
 	renderJSON(w, http.StatusOK, job)
 }
 

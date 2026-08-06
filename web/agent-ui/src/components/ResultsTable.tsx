@@ -63,6 +63,7 @@ type IntelPayload = {
 type QueueInfo = {
   id: string
   status: string
+  phase?: string
   ahead: number
   pending_total?: number
   message: string
@@ -398,13 +399,16 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
         {jobs.map((j) => {
           const q = queue[j.id]
           const pending = q?.status === 'pending'
+          const phase = q?.phase || ''
           const chipLabel = pending
             ? q.ahead > 0
               ? `${j.name} · 前方 ${q.ahead}`
               : `${j.name} · 排队中`
-            : q?.status === 'working'
-              ? `${j.name} · 抓取中 (${counts[j.id] || 0})`
-              : `${j.name} (${counts[j.id] || 0})`
+            : phase === 'intel'
+              ? `${j.name} · 背调中 (${counts[j.id] || 0})`
+              : q?.status === 'working'
+                ? `${j.name} · 抓取中 (${counts[j.id] || 0})`
+                : `${j.name} (${counts[j.id] || 0})`
           return (
             <button
               key={j.id}

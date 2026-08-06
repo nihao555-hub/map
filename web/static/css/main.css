@@ -996,6 +996,11 @@ svg.lucide { flex-shrink: 0; }
   color: var(--brand-primary);
 }
 
+.task-dock-item.status-intel .task-dock-badge {
+  background: rgba(245, 158, 11, 0.14);
+  color: #D97706;
+}
+
 .task-dock-item.status-ok .task-dock-badge {
   background: rgba(16, 185, 129, 0.12);
   color: #059669;

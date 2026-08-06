@@ -1,15 +1,18 @@
 {{range .}}
-<div class="record-item status-{{.Status}}" data-job-id="{{.ID}}" data-ts="{{.Date.Unix}}" data-status="{{.Status}}" data-lat="{{.Data.Lat}}" data-lon="{{.Data.Lon}}" onclick="selectRecord(this)">
+<div class="record-item status-{{.Status}}" data-job-id="{{.ID}}" data-ts="{{.Date.Unix}}" data-status="{{.Status}}" data-phase="{{.Phase}}" data-enable-intel="{{.Data.EnableIntel}}" data-lat="{{.Data.Lat}}" data-lon="{{.Data.Lon}}" onclick="selectRecord(this)">
   <div class="record-main">
     <div class="record-name">{{.Name}}</div>
-    {{ if eq .Status "working" }}<div class="record-progress">采集中…</div>
+    {{ if eq .Phase "intel" }}<div class="record-progress">背调中…</div>
+    {{ else if eq .Status "working" }}<div class="record-progress">采集中…</div>
     {{ else if eq .Status "pending" }}<div class="record-progress">待启动…</div>
-    {{ else if eq .Status "failed" }}<div class="record-failed">采集失败</div>{{ end }}
+    {{ else if eq .Status "failed" }}<div class="record-failed">采集失败</div>
+    {{ else if eq .Status "canceled" }}<div class="record-progress">已终止</div>
+    {{ else if eq .Status "ok" }}<div class="record-progress">已完成</div>{{ end }}
   </div>
   <div class="record-side">
     <span class="mode-tag tag-grid">深度全量</span>
     <span class="record-time">{{.Date.Format "01-02 15:04"}}</span>
-    {{ if eq .Status "ok" }}
+    {{ if or (eq .Status "ok") (eq .Phase "intel") }}
     <a class="record-csv" href="/download?id={{.ID}}" download title="导出 CSV"
        onclick="event.stopPropagation()">CSV</a>
     {{ end }}
