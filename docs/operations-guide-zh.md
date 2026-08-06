@@ -24,19 +24,21 @@
 
 ## 3. Agent 标准流程（用户输入自然语言之后）
 
-**用户只需发送一句话。** 没有单独的「理解 / 分发」按钮——一次输入跑完整条流水线：
+**用户只需发送一句话。** 没有单独的「理解 / 分发」——一次输入跑完整条流水线：
 
 ```
 用户自然语言
-  → 1. IntentAgent     解析：国家 / 地点 / 关键词 / 半径 / 是否背调
+  → 1. IntentAgent     解析：国家 / 地点 / 关键词 / 半径
   → 2. PlannerAgent    拆成深度全量子任务（大都会多区县重叠覆盖）
   → 3. LocalizerAgent  关键词本地化 + 坐标锚定
-  → 4. DispatcherAgent 创建排队任务（deep + grid + 不限数量）
-  → 5. Scraper         公平准入满速抓取；结果进汇总表
-  → 6. IntelAgent      结果出来后，用户点击表格行再展开背调
+  → 4. DispatcherAgent 创建排队任务（deep + grid + 不限数量 + 自动背调）
+  → 5. Scraper         公平准入满速抓取
+  → 6. 结果汇总大表    全部子任务结果合并；可点子任务筛看持续增加的结果
+  → 7. IntelAgent      每条结果一出现即自动开始背调；点行展开详情
 ```
 
-界面用 AI Elements 展示：`Reasoning` / `ChainOfThought` / `Task` 中间过程，以及结果大表。
+前端用 AI Elements：`Reasoning` / `ChainOfThought` / `Task` / `PromptInput` / `Suggestion`。  
+未实现能力（客户画像营销、R1、联网搜索、附件）不在界面展示。
 
 ### 为什么可能看不到「思考过程」？
 

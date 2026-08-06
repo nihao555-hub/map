@@ -37,12 +37,18 @@ export type PipelineStep = {
   detail?: unknown
 }
 
+export type JobMeta = {
+  id: string
+  name: string
+}
+
 export type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
   text: string
   plan?: AgentPlan
   steps?: PipelineStep[]
+  jobs?: JobMeta[]
   jobIds?: string[]
   model?: string
   source?: string
@@ -56,10 +62,10 @@ export type AgentSession = {
   createdAt: number
   updatedAt: number
   messages: ChatMessage[]
-  jobIds: string[]
+  jobs: JobMeta[]
 }
 
-const KEY = 'gms_agent_sessions_v2'
+const KEY = 'gms_agent_sessions_v3'
 
 export function loadSessions(): AgentSession[] {
   try {
@@ -84,7 +90,7 @@ export function newSession(): AgentSession {
     createdAt: now,
     updatedAt: now,
     messages: [],
-    jobIds: [],
+    jobs: [],
   }
 }
 

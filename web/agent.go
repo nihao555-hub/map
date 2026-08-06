@@ -624,7 +624,8 @@ func (s *Server) DispatchPlan(ctx context.Context, owner string, plan AgentPlan)
 				CountryCode: task.CountryCode,
 				CountryName: task.CountryName,
 				UILang:      normalizeUILang(plan.Intent.UILang),
-				EnableIntel: task.EnableIntel,
+				// Agent path: auto-start intel once places appear (EnsurePlaceIntelAsync).
+				EnableIntel: true,
 				Lang:        "en",
 			},
 		}
