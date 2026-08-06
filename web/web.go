@@ -610,8 +610,9 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		}
 		locCtx, cancel := context.WithTimeout(r.Context(), locTimeout)
 		localized, locUsed, did := localizeSearchQuery(locCtx, rawKeywords, searchLocation, newJob.Data.Lang, localizeOpts{
-			CountryName: countryName,
-			UseAI:       useAI,
+			CountryName:   countryName,
+			UseAI:         useAI,
+			SkipPlaceHint: hasGeoAnchor(newJob.Data.Lat, newJob.Data.Lon),
 		})
 		cancel()
 

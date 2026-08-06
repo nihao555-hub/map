@@ -188,6 +188,10 @@ var camelSplitRE = regexp.MustCompile(`([a-z])([A-Z])`)
 type localizeOpts struct {
 	CountryName string // 目标国家英文/中文名，给 AI 提示用
 	UseAI       bool   // 用户勾选且服务端已配置 GRSAI_API_KEY
+	// SkipPlaceHint omits " in {city}" from keywords. Use when the job already
+	// has a geocoded Lat/Lon / grid pin — appending the city string makes Maps
+	// ignore peripheral grid cells and collapses recall on large metros.
+	SkipPlaceHint bool
 }
 
 // localizeSearchQuery 把中文「找什么 / 在哪里」转成目标国可搜的查询。
@@ -262,8 +266,10 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 			continue
 		}
 
-		if placeHint := mapsPlaceHint(searchLocation, opt.CountryName); placeHint != "" {
-			searchK = searchK + " in " + placeHint
+		if !opt.SkipPlaceHint {
+			if placeHint := mapsPlaceHint(searchLocation, opt.CountryName); placeHint != "" {
+				searchK = searchK + " in " + placeHint
+			}
 		}
 
 		keywords = append(keywords, searchK)
@@ -286,8 +292,10 @@ func localizeSearchQuery(ctx context.Context, rawKeywords []string, locations st
 			}
 		}
 		if fallback != "" && !containsChinese(fallback) {
-			if placeHint := mapsPlaceHint(searchLocation, opt.CountryName); placeHint != "" {
-				fallback = fallback + " in " + placeHint
+			if !opt.SkipPlaceHint {
+				if placeHint := mapsPlaceHint(searchLocation, opt.CountryName); placeHint != "" {
+					fallback = fallback + " in " + placeHint
+				}
 			}
 			keywords = append(keywords, fallback)
 			translated = true

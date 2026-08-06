@@ -286,20 +286,36 @@ func looksLikeSmallArea(location, goal string) bool {
 
 // metroDistricts returns overlapping district anchors so a named metro can be
 // fully scraped (one pin + 40km still misses some outskirts; districts help).
+// Only expands whole-metro names — never re-expands an already-district pin.
 func metroDistricts(location string) []string {
 	low := strings.ToLower(strings.TrimSpace(location))
 	switch {
-	case strings.Contains(low, "jakarta") || strings.Contains(location, "雅加达"):
+	case low == "jakarta" || low == "jakarta, indonesia" || strings.TrimSpace(location) == "雅加达":
 		return []string{
 			"Jakarta Pusat", "Jakarta Selatan", "Jakarta Barat", "Jakarta Utara", "Jakarta Timur",
 		}
-	case strings.Contains(low, "bangkok") || strings.Contains(location, "曼谷"):
+	case strings.Contains(low, "jakarta") && !strings.Contains(low, "pusat") &&
+		!strings.Contains(low, "selatan") && !strings.Contains(low, "barat") &&
+		!strings.Contains(low, "utara") && !strings.Contains(low, "timur") &&
+		!strings.Contains(low, "bekasi") && !strings.Contains(low, "tangerang") &&
+		!strings.Contains(low, "depok") && !strings.Contains(low, "bogor"):
+		// "Jakarta, Indonesia" / "Greater Jakarta" etc.
+		return []string{
+			"Jakarta Pusat", "Jakarta Selatan", "Jakarta Barat", "Jakarta Utara", "Jakarta Timur",
+		}
+	case low == "bangkok" || low == "bangkok, thailand" || strings.TrimSpace(location) == "曼谷":
 		return []string{"Bangkok", "Nonthaburi", "Samut Prakan"}
-	case strings.Contains(low, "surabaya") || strings.Contains(location, "泗水"):
+	case strings.Contains(low, "bangkok") && !strings.Contains(low, "nonthaburi") && !strings.Contains(low, "samut"):
+		return []string{"Bangkok", "Nonthaburi", "Samut Prakan"}
+	case low == "surabaya" || strings.Contains(location, "泗水"):
 		return []string{"Surabaya"}
-	case strings.Contains(low, "manila") || strings.Contains(location, "马尼拉"):
+	case low == "manila" || strings.Contains(location, "马尼拉"):
 		return []string{"Manila", "Makati", "Quezon City", "Pasig"}
-	case strings.Contains(low, "kuala lumpur") || strings.Contains(location, "吉隆坡"):
+	case strings.Contains(low, "manila") && !strings.Contains(low, "makati") && !strings.Contains(low, "quezon") && !strings.Contains(low, "pasig"):
+		return []string{"Manila", "Makati", "Quezon City", "Pasig"}
+	case low == "kuala lumpur" || strings.Contains(location, "吉隆坡"):
+		return []string{"Kuala Lumpur", "Petaling Jaya", "Shah Alam"}
+	case strings.Contains(low, "kuala lumpur") && !strings.Contains(low, "petaling") && !strings.Contains(low, "shah"):
 		return []string{"Kuala Lumpur", "Petaling Jaya", "Shah Alam"}
 	case strings.Contains(location, "北京") && !strings.Contains(location, "区"):
 		return []string{"北京朝阳区", "北京海淀区", "北京东城区", "北京西城区", "北京丰台区", "北京通州区"}
@@ -758,9 +774,10 @@ Rules:
 - For a whole country (e.g. Indonesia): 6–10 tasks = major commercial/industrial cities × 1–2 strong Maps keywords.
 - For one city/district: 3–6 hub anchors × 1 keyword (or 2 if user asked two distinct categories like cafe AND importer).
 - Each task keywords MUST be Maps-ready for that country (never Chinese outside China).
-  * Prefer LOCAL Maps phrases people actually type (Indonesia: "panel listrik", "distributor listrik", "kedai kopi").
-  * English is OK as a secondary broad term ("electrical distributor", "cafe") — NOT narrow jargon alone ("switchgear" ≈ misses most SMEs).
-- Do NOT create near-duplicate tasks (same city + almost same keyword).
+  * Prefer LOCAL high-recall head terms people type (Indonesia: "panel listrik", "distributor listrik", "kedai kopi").
+  * Avoid narrow jargon alone ("switchgear", "supplier switchgear") — those return near-zero SME hits.
+  * English broad terms OK as secondary ("electrical distributor") but prefer local head term first.
+  * Do NOT put " in City" inside keywords; location is a separate field.
 - name: human label in UI language, e.g. "泗水 · 配电柜(panel listrik)"
 - location: geocodable place name (prefer English/local Latin script for SEA cities: Jakarta, Surabaya, Bandung, Medan, Semarang, Makassar, Batam, Bekasi)
 - radius_km: 12–25 for city anchors; 8–12 for district hubs
@@ -860,6 +877,8 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 	if len(out.Tasks) == 0 {
 		return base
 	}
+	out = expandMetroPlanTasks(out)
+	out = dedupePlanTasks(out)
 	// Prefer richer AI splits, but never shrink a good heuristic metro plan to a single task.
 	if len(out.Tasks) < len(base.Tasks) && len(base.Tasks) >= 3 && len(out.Tasks) == 1 {
 		base.Intent.Thinking = out.Intent.Thinking
@@ -868,9 +887,139 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 	return tightenPlan(out)
 }
 
+// expandMetroPlanTasks turns a single large-metro pin into district anchors so
+// one "Jakarta 25km" job does not under-cover a whole industrial city.
+func expandMetroPlanTasks(plan AgentPlan) AgentPlan {
+	out := AgentPlan{Intent: plan.Intent, Roles: plan.Roles}
+	for _, t := range plan.Tasks {
+		kw := cleanKeywordList(t.Keywords)
+		if len(kw) == 0 {
+			continue
+		}
+		kw = preferHighRecallKeywords(kw)
+		loc := strings.TrimSpace(t.Location)
+		r := t.RadiusKm
+		if r <= 0 {
+			r = 15
+		}
+		districts := metroDistricts(loc)
+		if len(districts) > 1 && r >= 15 {
+			dr := 12
+			if r < 18 {
+				dr = 10
+			}
+			for _, d := range districts {
+				name := strings.TrimSpace(t.Name)
+				if name == "" || !strings.Contains(strings.ToLower(name), strings.ToLower(d)) {
+					name = d + " · " + kw[0]
+				}
+				out.Tasks = append(out.Tasks, AgentTask{
+					Name:        name,
+					CountryCode: t.CountryCode,
+					CountryName: t.CountryName,
+					Location:    d,
+					Keywords:    []string{kw[0]},
+					RadiusKm:    dr,
+					EnableIntel: true,
+					Role:        "scraper",
+				})
+			}
+			continue
+		}
+		t.Keywords = []string{kw[0]}
+		t.RadiusKm = r
+		out.Tasks = append(out.Tasks, t)
+	}
+	if len(out.Tasks) == 0 {
+		return plan
+	}
+	return out
+}
+
+// dedupePlanTasks keeps one scrape per location after keyword normalization
+// (AI often emits distributor/supplier/switchboard near-dupes that all become
+// "panel listrik" and waste admission slots).
+func dedupePlanTasks(plan AgentPlan) AgentPlan {
+	out := AgentPlan{Intent: plan.Intent, Roles: plan.Roles}
+	seen := map[string]struct{}{}
+	for _, t := range plan.Tasks {
+		kw := preferHighRecallKeywords(cleanKeywordList(t.Keywords))
+		if len(kw) == 0 {
+			continue
+		}
+		loc := strings.TrimSpace(t.Location)
+		key := strings.ToLower(loc) + "|" + strings.ToLower(kw[0])
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		t.Keywords = []string{kw[0]}
+		if strings.TrimSpace(t.Name) == "" {
+			t.Name = loc + " · " + kw[0]
+		}
+		out.Tasks = append(out.Tasks, t)
+	}
+	if len(out.Tasks) == 0 {
+		return plan
+	}
+	return out
+}
+
+// stripMapsPlaceSuffix removes trailing " in {place}" that Localizer may have
+// attached — redundant when the job already has Lat/Lon / grid pins.
+func stripMapsPlaceSuffix(kw string) string {
+	kw = strings.TrimSpace(kw)
+	low := strings.ToLower(kw)
+	if i := strings.LastIndex(low, " in "); i > 0 {
+		return strings.TrimSpace(kw[:i])
+	}
+	return kw
+}
+
+// preferHighRecallKeywords rewrites narrow English jargon to broader local/Maps
+// head terms that actually return SME density (Jakarta A/B: switchgear≈3 vs panel listrik≈155).
+func preferHighRecallKeywords(keywords []string) []string {
+	out := make([]string, 0, len(keywords))
+	seen := map[string]struct{}{}
+	for _, k := range keywords {
+		k = stripMapsPlaceSuffix(strings.TrimSpace(k))
+		if k == "" {
+			continue
+		}
+		low := strings.ToLower(k)
+		switch {
+		case low == "switchgear" || low == "supplier switchgear" || strings.Contains(low, "switchgear"):
+			k = "panel listrik"
+		case strings.Contains(low, "switchboard") || strings.Contains(low, "electrical panel"):
+			k = "panel listrik"
+		case strings.HasPrefix(low, "supplier ") && strings.Contains(low, "panel"):
+			k = "panel listrik"
+		case low == "distributor panel listrik" || low == "supplier panel listrik" ||
+			low == "electrical distributor" || strings.Contains(low, "panel listrik"):
+			k = "panel listrik"
+		}
+		low = strings.ToLower(k)
+		if _, ok := seen[low]; ok {
+			continue
+		}
+		seen[low] = struct{}{}
+		out = append(out, k)
+	}
+	// Agent tasks use one keyword per job; keep the highest-recall first.
+	if len(out) > 1 {
+		for i, k := range out {
+			if strings.EqualFold(k, "panel listrik") {
+				out[0], out[i] = out[i], out[0]
+				break
+			}
+		}
+	}
+	return out
+}
+
 // tightenPlan keeps coverage but avoids keyword explosions (e.g. 8 cities × 3 near-dup keywords).
 func tightenPlan(plan AgentPlan) AgentPlan {
-	const maxTasks = 12
+	const maxTasks = 16
 	if len(plan.Tasks) <= maxTasks {
 		return plan
 	}
@@ -990,6 +1139,7 @@ func (s *Server) DispatchPlan(ctx context.Context, owner string, plan AgentPlan)
 		return out, fmt.Errorf("PlannerAgent: no tasks (need keywords + location/country)")
 	}
 
+	createdLocKW := map[string]struct{}{}
 	for _, task := range plan.Tasks {
 		if len(task.Keywords) == 0 {
 			continue
@@ -1021,12 +1171,15 @@ func (s *Server) DispatchPlan(ctx context.Context, owner string, plan AgentPlan)
 		}
 		ApplyFullVolumeDefaults(&job.Data, task.RadiusKm*1000)
 
-		// LocalizerAgent: translate keywords for Maps
+		// LocalizerAgent: translate keywords for Maps.
+		// Skip " in {city}" — agent jobs always geocode + grid, and the place
+		// suffix collapses recall on large metros (Maps ignores outer pins).
 		searchLoc := task.Location
 		locCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 		localized, _, _ := localizeSearchQuery(locCtx, task.Keywords, searchLoc, job.Data.Lang, localizeOpts{
-			CountryName: task.CountryName,
-			UseAI:       AITranslateEnabled(),
+			CountryName:   task.CountryName,
+			UseAI:         AITranslateEnabled(),
+			SkipPlaceHint: true,
 		})
 		cancel()
 		if len(localized) == 0 {
@@ -1036,16 +1189,23 @@ func (s *Server) DispatchPlan(ctx context.Context, owner string, plan AgentPlan)
 			clean := make([]string, 0, len(localized))
 			for _, kw := range localized {
 				if !containsChinese(kw) {
-					clean = append(clean, kw)
+					clean = append(clean, stripMapsPlaceSuffix(kw))
 				}
 			}
 			if len(clean) > 0 {
 				localized = clean
 			}
 		}
-		job.Data.Keywords = localized
+		job.Data.Keywords = preferHighRecallKeywords(localized)
+		if len(job.Data.Keywords) == 0 {
+			continue
+		}
+		if len(job.Data.Keywords) > 1 {
+			// One Maps query per agent job — grid already multiplies coverage.
+			job.Data.Keywords = job.Data.Keywords[:1]
+		}
 
-		// Geocode location when possible
+		// Geocode first so Chinese/English aliases can share one pin key.
 		if task.Location != "" {
 			geoCtx, gcancel := context.WithTimeout(ctx, 12*time.Second)
 			point, geoErr := ResolveLocationAnchor(geoCtx, task.Location, task.CountryCode)
@@ -1064,6 +1224,18 @@ func (s *Server) DispatchPlan(ctx context.Context, owner string, plan AgentPlan)
 			}
 		}
 
+		dedupeKey := strings.ToLower(job.Data.Keywords[0]) + "|"
+		if job.Data.Lat != "" && job.Data.Lon != "" {
+			// ~1km bucket — enough to collapse alias pins, not districts.
+			dedupeKey += truncateCoord(job.Data.Lat, 2) + "," + truncateCoord(job.Data.Lon, 2)
+		} else {
+			dedupeKey += normalizeLocationKey(task.Location)
+		}
+		if _, ok := createdLocKW[dedupeKey]; ok {
+			continue
+		}
+		createdLocKW[dedupeKey] = struct{}{}
+
 		if err := job.Validate(); err != nil {
 			return out, fmt.Errorf("job validate: %w", err)
 		}
@@ -1071,10 +1243,37 @@ func (s *Server) DispatchPlan(ctx context.Context, owner string, plan AgentPlan)
 			return out, err
 		}
 		out.JobIDs = append(out.JobIDs, job.ID)
-		log.Printf("DispatcherAgent created job %s name=%q deep+grid unlimited radius=%dm",
-			job.ID, job.Name, job.Data.Radius)
+		log.Printf("DispatcherAgent created job %s name=%q deep+grid unlimited radius=%dm kw=%v",
+			job.ID, job.Name, job.Data.Radius, job.Data.Keywords)
 	}
 
 	out.Message = fmt.Sprintf("已创建 %d 个深度全量任务（半径内不限数量）", len(out.JobIDs))
 	return out, nil
+}
+
+func truncateCoord(s string, decimals int) string {
+	s = strings.TrimSpace(s)
+	if i := strings.Index(s, "."); i >= 0 && i+1+decimals < len(s) {
+		return s[:i+1+decimals]
+	}
+	return s
+}
+
+// normalizeLocationKey collapses common city aliases for plan dedupe.
+func normalizeLocationKey(loc string) string {
+	low := strings.ToLower(strings.TrimSpace(loc))
+	if i := strings.Index(low, ","); i > 0 {
+		low = strings.TrimSpace(low[:i])
+	}
+	repl := []struct{ from, to string }{
+		{"雅加达", "jakarta"}, {"泗水", "surabaya"}, {"万隆", "bandung"},
+		{"棉兰", "medan"}, {"三宝垄", "semarang"}, {"望加锡", "makassar"},
+		{"巴淡", "batam"}, {"勿加泗", "bekasi"}, {"日惹", "yogyakarta"},
+	}
+	for _, r := range repl {
+		if strings.Contains(loc, r.from) || strings.Contains(low, r.to) {
+			return r.to
+		}
+	}
+	return low
 }

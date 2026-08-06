@@ -384,22 +384,23 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 				cellKm = 1.5 // 默认 1.5km 一格
 			}
 
-			// 深度模式每格要开浏览器：半径大时自动加粗格子，避免上千格跑不完
+			// 深度模式每格要开浏览器：半径大时自动加粗格子，避免上千格跑不完。
+			// Agent/全量获客需要更高召回：目标约 12×12=144 格（原 8×8=64 会漏掉大工业城外围）。
+			const maxDeepGridCells = 144
 			estCells := grid.EstimateCellCount(bbox, cellKm)
-			if !job.Data.FastMode && estCells > 64 {
+			if !job.Data.FastMode && estCells > maxDeepGridCells {
 				halfKm := float64(job.Data.Radius) / 1000
 				if halfKm <= 0 {
 					halfKm = 10
 				}
-				// 目标约 8×8=64 格覆盖直径
-				target := (2 * halfKm) / 8
+				target := (2 * halfKm) / 12
 				if target < cellKm {
 					target = cellKm
 				}
-				if target > 12 {
-					target = 12
+				if target > 10 {
+					target = 10
 				}
-				log.Printf("grid mode: deep auto-coarsen cell %.1fkm -> %.1fkm (was ~%d cells)", cellKm, target, estCells)
+				log.Printf("grid mode: deep auto-coarsen cell %.1fkm -> %.1fkm (was ~%d cells, cap=%d)", cellKm, target, estCells, maxDeepGridCells)
 				cellKm = target
 				job.Data.GridCellKm = cellKm
 				estCells = grid.EstimateCellCount(bbox, cellKm)
