@@ -16,6 +16,9 @@ func TestPlaceRelevantElectricalDropsNoise(t *testing.T) {
 		{Title: "PT DUTA LIANA JAYA", Category: "Pabrik Kertas"},
 		{Title: "Green Soris Elektronik", Category: "Reparasi Oven Microwave"},
 		{Title: "Lapak scrup,panel,mmc,hp jadul", Category: "Gudang"},
+		// Maps miscategorizes HVAC/CCTV under electrical install categories.
+		{Title: "Instalasi AC central, ducting", Category: "Jasa Instalasi Listrik"},
+		{Title: "Instalasi CCTV", Category: "Jasa Instalasi Listrik"},
 	}
 	for _, p := range noise {
 		if PlaceRelevantToKeywords(p, kw) {
@@ -35,6 +38,9 @@ func TestPlaceRelevantElectricalKeepsLeads(t *testing.T) {
 		{Title: "Panelenginer box panel", Category: "Kantor Perusahaan"},
 		{Title: "Pratama Listrik", Category: "Toko Alat Listrik"},
 		{Title: "PT. Sahabat Harapan Nusantara", Category: "Insinyur Elektro"},
+		// Mixed electricians who also mention AC still keep via listrik in title.
+		{Title: "TUKANG LISTRIK BSD | service AC Cisauk", Category: "Tukang Listrik"},
+		{Title: "ACK Tech (Jasa Pemasangan dan Perbaikan Instalasi Listrik, AC, CCTV)", Category: "Jasa Instalasi Listrik"},
 	}
 	for _, p := range good {
 		if !PlaceRelevantToKeywords(p, kw) {

@@ -26,12 +26,23 @@ var electricalPositivePhrases = []string{
 }
 
 // Word-boundary positives — avoid matching "electric" inside "electronic".
+// Note: bare "instalasi" is NOT enough (Maps often labels AC/CCTV as
+// "Jasa Instalasi Listrik"); require listrik/panel/etc. or the phrase below.
 var electricalPositiveWords = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(` +
 	`listrik|elektrik|elektro|electrical|electric|switchgear|switchboard|` +
 	`trafo|transformer|kabel|kontaktor|breaker|mcb|mdb|sdp|genset|inverter|` +
-	`instalasi|otomasi|plc|mcc|gardu|tegangan|solar|surya|fotovolta|` +
+	`otomasi|plc|mcc|gardu|tegangan|solar|surya|fotovolta|` +
 	`mechatronic|panel` +
 	`)(?:[^a-z0-9]|$)`)
+
+// Titles that are clearly HVAC / CCTV / appliance work even when Maps puts them
+// under an electrical category. Drop unless the title itself also looks electrical.
+var electricalTitlePrimaryNoise = []string{
+	"instalasi ac", "service ac", "servis ac", "ac central", "central ac",
+	"ducting", "ac duct", "air conditioning",
+	"instalasi cctv", "pasang cctv", "pasang kamera",
+	"servis kulkas", "service kulkas", "mesin cuci",
+}
 
 // Hard noise for electrical jobs: consumer / civic / unrelated services.
 var electricalNoiseHints = []string{
@@ -118,6 +129,13 @@ func PlaceRelevantToKeywords(p Place, keywords []string) bool {
 	// Hard-drop scrap / phone-resale style listings even if they mention "panel".
 	hardDrop := []string{"hp jadul", "handphone jadul", "lapak scrup", "scrap", "scrup", "polsek", "polres", "kantor polisi"}
 	if containsAny(blob, hardDrop) {
+		return false
+	}
+
+	// Maps often miscategorizes AC/CCTV shops as "Jasa Instalasi Listrik".
+	// Trust the title: if it is HVAC/CCTV-primary and lacks an electrical signal
+	// in the title itself, drop — category alone must not rescue it.
+	if containsAny(title, electricalTitlePrimaryNoise) && !hasElectricalPositive(title) {
 		return false
 	}
 
