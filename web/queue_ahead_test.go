@@ -96,4 +96,26 @@ func TestListJobsHidesFromAgent(t *testing.T) {
 	if len(jobs) != 1 || jobs[0].ID != "m1" {
 		t.Fatalf("got %+v want only map job", jobs)
 	}
+
+	legacy := &Job{
+		ID: "legacy", Name: "泗水 · 配电柜", Date: time.Now().UTC(), Status: StatusPending,
+		Data: JobData{
+			Keywords: []string{"panel listrik"}, RawKeywords: []string{"配电柜"},
+			Lang: "id", Zoom: 15, Radius: 15000, Depth: 10, MaxTime: time.Hour, Email: true,
+			EnableIntel: true,
+		},
+	}
+	if err := legacy.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Create(ctx, legacy); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err = srv.listJobsForRequest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 1 || jobs[0].ID != "m1" {
+		t.Fatalf("legacy agent job still visible: %+v", jobs)
+	}
 }

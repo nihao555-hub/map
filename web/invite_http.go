@@ -248,13 +248,26 @@ func (s *Server) listJobsForRequest(r *http.Request) ([]Job, error) {
 	}
 	out := make([]Job, 0, len(jobs))
 	for _, j := range jobs {
-		// Hide Agent-mode jobs from the standard Map Mode task list.
-		if j.Data.FromAgent || strings.HasPrefix(j.Name, "Agent:") {
+		if isHiddenFromMapJobList(j) {
 			continue
 		}
 		out = append(out, j)
 	}
 	return out, nil
+}
+
+// isHiddenFromMapJobList reports Agent-workspace jobs that must not appear in
+// the standard map-mode right-hand task list.
+func isHiddenFromMapJobList(j Job) bool {
+	if j.Data.FromAgent || strings.HasPrefix(j.Name, "Agent:") {
+		return true
+	}
+	// Legacy agent jobs created before FromAgent was persisted: planner labels
+	// look like "Jakarta · panel listrik" with intel + raw keywords.
+	if j.Data.EnableIntel && strings.Contains(j.Name, " · ") && len(j.Data.RawKeywords) > 0 {
+		return true
+	}
+	return false
 }
 
 // attachOwner stamps the invite-code tenant onto a new job when the gate is on.
