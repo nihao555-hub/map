@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Loader2, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Download, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { JobMeta } from '@/lib/sessions'
+import { IntelPanel, type PlaceIntel } from '@/components/IntelPanel'
 
 /** Full Place payload from GET /api/v1/jobs/{id}/places?full=1 */
 type PlaceRow = {
@@ -52,14 +53,6 @@ type PlaceRow = {
   street_view_url?: string
 }
 
-type IntelPayload = {
-  summary?: string
-  status?: string
-  note?: string
-  decision_makers?: Array<{ name?: string; title?: string; email?: string; phone?: string }>
-  error?: string
-}
-
 type QueueInfo = {
   id: string
   status: string
@@ -104,7 +97,42 @@ const COLS = [
   { key: 'intel', label: '背调', min: 80 },
 ] as const
 
-const COLSPAN = COLS.length + 1 // + chevron
+const CSV_HEADERS = [
+  'job_id',
+  'place_id',
+  'title',
+  'category',
+  'phone',
+  'emails',
+  'whatsapp',
+  'website',
+  'address',
+  'complete_address',
+  'review_rating',
+  'review_count',
+  'status',
+  'open_hours',
+  'price_range',
+  'owner',
+  'descriptions',
+  'about',
+  'latitude',
+  'longitude',
+  'plus_code',
+  'timezone',
+  'facebook',
+  'instagram',
+  'linkedin',
+  'twitter',
+  'tiktok',
+  'youtube',
+  'telegram',
+  'pinterest',
+  'cid',
+  'link',
+  'intel_status',
+  'intel_summary',
+] as const
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { credentials: 'same-origin', ...init })
@@ -196,6 +224,20 @@ function cellValue(row: PlaceRow, key: string): string {
   }
 }
 
+function csvEscape(v: string): string {
+  if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`
+  return v
+}
+
+function intelFinished(data: PlaceIntel): boolean {
+  return (
+    (!!data.summary || data.status === 'ready' || data.status === 'skipped' || data.status === 'failed') &&
+    data.status !== 'running' &&
+    data.status !== 'pending' &&
+    data.note !== '背调中'
+  )
+}
+
 function CellContent({ row, colKey }: { row: PlaceRow; colKey: string }) {
   const raw = cellValue(row, colKey)
   if (colKey === 'link' && raw) {
@@ -247,8 +289,9 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
   const [queue, setQueue] = useState<Record<string, QueueInfo>>({})
   const [activeJob, setActiveJob] = useState<string>('all')
   const [loading, setLoading] = useState(false)
-  const [openId, setOpenId] = useState<string | null>(null)
-  const [intel, setIntel] = useState<Record<string, IntelPayload | 'loading'>>({})
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [intel, setIntel] = useState<Record<string, PlaceIntel | 'loading'>>({})
+  const [refreshingIntel, setRefreshingIntel] = useState(false)
   const autoIntelStarted = useRef<Set<string>>(new Set())
   const intelDone = useRef<Set<string>>(new Set())
 
@@ -285,7 +328,6 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
           nextCounts[j.id] = 0
         }
         try {
-          // full=1: all CSV lead fields (emails, socials, coords, owner, …)
           const data = await fetchJSON<Record<string, unknown>[] | { places?: Record<string, unknown>[] }>(
             `/api/v1/jobs/${j.id}/places?full=1`,
           )
@@ -305,13 +347,9 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
         const key = `${row.job_id}:${row.place_id}`
         if (intelDone.current.has(key)) continue
         autoIntelStarted.current.add(key)
-        fetchJSON<IntelPayload>(
-          `/api/v1/jobs/${row.job_id}/places/${encodeURIComponent(row.place_id)}/intel`,
-        )
+        fetchJSON<PlaceIntel>(`/api/v1/jobs/${row.job_id}/places/${encodeURIComponent(row.place_id)}/intel`)
           .then((data) => {
-            const finished =
-              !!data.summary && data.status !== 'running' && data.note !== '背调中' && !data.error
-            if (finished) intelDone.current.add(key)
+            if (intelFinished(data)) intelDone.current.add(key)
             setIntel((m) => ({ ...m, [key]: data }))
           })
           .catch(() => {})
@@ -328,6 +366,15 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobs.map((j) => j.id).join(',')])
 
+  useEffect(() => {
+    if (!selectedKey) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedKey(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedKey])
+
   const pendingQueueHint = useMemo(() => {
     const pending = jobs
       .map((j) => queue[j.id])
@@ -343,171 +390,264 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
     [rows, activeJob],
   )
 
-  const tableMinWidth = useMemo(() => COLS.reduce((s, c) => s + c.min, 40), [])
+  const tableMinWidth = useMemo(() => COLS.reduce((s, c) => s + c.min, 0), [])
 
-  const toggleRow = async (row: PlaceRow) => {
+  const allDone = useMemo(() => {
+    if (!jobs.length) return false
+    return jobs.every((j) => {
+      const q = queue[j.id]
+      return q && (q.status === 'ok' || q.status === 'failed' || q.status === 'canceled')
+    })
+  }, [jobs, queue])
+
+  const selectedRow = useMemo(() => {
+    if (!selectedKey) return null
+    return rows.find((r) => `${r.job_id}:${r.place_id}` === selectedKey) || null
+  }, [rows, selectedKey])
+
+  const fetchIntel = async (row: PlaceRow, refresh = false) => {
     const key = `${row.job_id}:${row.place_id}`
-    if (openId === key) {
-      setOpenId(null)
-      return
-    }
-    setOpenId(key)
-    if (intel[key] && intel[key] !== 'loading') return
     setIntel((m) => ({ ...m, [key]: 'loading' }))
     try {
-      const data = await fetchJSON<IntelPayload>(
-        `/api/v1/jobs/${row.job_id}/places/${encodeURIComponent(row.place_id)}/intel`,
+      const qs = refresh ? '?refresh=1' : ''
+      const data = await fetchJSON<PlaceIntel>(
+        `/api/v1/jobs/${row.job_id}/places/${encodeURIComponent(row.place_id)}/intel${qs}`,
       )
+      if (intelFinished(data)) intelDone.current.add(key)
+      else intelDone.current.delete(key)
       setIntel((m) => ({ ...m, [key]: data }))
     } catch (e) {
       setIntel((m) => ({
         ...m,
-        [key]: { error: e instanceof Error ? e.message : '背调失败' },
+        [key]: { error: e instanceof Error ? e.message : '背调失败', status: 'failed' },
       }))
     }
   }
 
+  const selectRow = async (row: PlaceRow) => {
+    const key = `${row.job_id}:${row.place_id}`
+    if (selectedKey === key) {
+      setSelectedKey(null)
+      return
+    }
+    setSelectedKey(key)
+    const cur = intel[key]
+    if (cur && cur !== 'loading' && intelFinished(cur)) return
+    await fetchIntel(row, false)
+  }
+
+  const refreshSelectedIntel = async () => {
+    if (!selectedRow) return
+    setRefreshingIntel(true)
+    try {
+      await fetchIntel(selectedRow, true)
+    } finally {
+      setRefreshingIntel(false)
+    }
+  }
+
+  const downloadCSV = () => {
+    const exportRows = visible
+    if (!exportRows.length) return
+
+    // Single completed sub-job: use server CSV for full fidelity.
+    if (activeJob !== 'all') {
+      window.location.href = `/download?id=${encodeURIComponent(activeJob)}`
+      return
+    }
+
+    const lines = [CSV_HEADERS.join(',')]
+    for (const row of exportRows) {
+      const key = `${row.job_id}:${row.place_id}`
+      const st = intel[key]
+      let intelStatus = ''
+      let intelSummary = ''
+      if (st && st !== 'loading') {
+        intelStatus = st.status || (st.error ? 'failed' : st.summary ? 'ready' : '')
+        intelSummary = st.summary || st.note || st.error || ''
+      }
+      const vals = CSV_HEADERS.map((h) => {
+        if (h === 'intel_status') return csvEscape(intelStatus)
+        if (h === 'intel_summary') return csvEscape(intelSummary)
+        if (h === 'review_rating') return csvEscape(row.review_rating != null ? String(row.review_rating) : '')
+        if (h === 'review_count') return csvEscape(row.review_count != null ? String(row.review_count) : '')
+        if (h === 'latitude') return csvEscape(row.latitude != null ? String(row.latitude) : '')
+        if (h === 'longitude') return csvEscape(row.longitude != null ? String(row.longitude) : '')
+        const v = (row as Record<string, unknown>)[h]
+        return csvEscape(v == null ? '' : String(v))
+      })
+      lines.push(vals.join(','))
+    }
+    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `agent-results-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
   if (!jobs.length) return null
 
+  const selectedIntel = selectedKey ? intel[selectedKey] : undefined
+
   return (
-    <div className="mt-4 w-full min-w-0 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E5E7EB] px-4 py-3">
-        <div>
-          <div className="text-sm font-semibold text-[#1F2937]">结果汇总</div>
-          <div className="text-xs text-[#6B7280]">
-            共 {rows.length} 家 · 全量字段 · 列多时可左右滑动 · 结果出现后自动背调 · 点击行查看详情
-            {pendingQueueHint ? ` · ${pendingQueueHint}` : ''}
+    <>
+      <div className="mt-4 w-full min-w-0 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E5E7EB] px-4 py-3">
+          <div>
+            <div className="text-sm font-semibold text-[#1F2937]">结果汇总</div>
+            <div className="text-xs text-[#6B7280]">
+              共 {rows.length} 家 · 与标准模式同一套背调 · 点击行在右侧查看详情
+              {pendingQueueHint ? ` · ${pendingQueueHint}` : ''}
+              {allDone ? ' · 任务已完成，可下载 CSV' : ''}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={allDone && visible.length > 0 ? 'default' : 'outline'}
+              onClick={downloadCSV}
+              disabled={!visible.length}
+              className={cn(
+                'rounded-full',
+                allDone && visible.length > 0 && 'bg-[#2F6BFF] text-white hover:bg-[#2563EB]',
+              )}
+              title={activeJob === 'all' ? '下载汇总 CSV' : '下载该子任务 CSV'}
+            >
+              <Download className="size-3.5" />
+              下载 CSV
+            </Button>
+            <Button size="sm" variant="outline" onClick={load} disabled={loading} className="rounded-full">
+              {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+              刷新
+            </Button>
           </div>
         </div>
-        <Button size="sm" variant="outline" onClick={load} disabled={loading} className="rounded-full">
-          {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-          刷新
-        </Button>
-      </div>
 
-      <div className="flex gap-2 overflow-x-auto border-b border-[#E5E7EB] px-3 py-2">
-        <button
-          type="button"
-          onClick={() => setActiveJob('all')}
-          className={cn(
-            'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium',
-            activeJob === 'all' ? 'bg-[#2F6BFF] text-white' : 'bg-[#F3F4F6] text-[#4B5563]',
-          )}
-        >
-          全部 ({rows.length})
-        </button>
-        {jobs.map((j) => {
-          const q = queue[j.id]
-          const pending = q?.status === 'pending'
-          const phase = q?.phase || ''
-          const chipLabel = pending
-            ? q.ahead > 0
-              ? `${j.name} · 前方 ${q.ahead}`
-              : `${j.name} · 排队中`
-            : phase === 'intel'
-              ? `${j.name} · 背调中 (${counts[j.id] || 0})`
-              : q?.status === 'working'
-                ? `${j.name} · 采集中 (${counts[j.id] || 0})`
-                : q?.status === 'failed'
-                  ? `${j.name} · 失败`
-                  : q?.status === 'canceled'
-                    ? `${j.name} · 已终止`
-                    : q?.status === 'ok'
-                      ? `${j.name} · 已完成 (${counts[j.id] || 0})`
-                      : `${j.name} (${counts[j.id] || 0})`
-          return (
-            <button
-              key={j.id}
-              type="button"
-              onClick={() => setActiveJob(j.id)}
-              className={cn(
-                'max-w-[260px] shrink-0 truncate rounded-full px-3 py-1.5 text-xs font-medium',
-                activeJob === j.id ? 'bg-[#2F6BFF] text-white' : 'bg-[#F3F4F6] text-[#4B5563]',
-              )}
-              title={pending ? q.message || j.name : j.name}
-            >
-              {chipLabel}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Wide full-field table: horizontal + vertical scroll */}
-      <div className="max-h-[520px] w-full overflow-auto">
-        <table className="w-max text-left text-sm" style={{ minWidth: tableMinWidth }}>
-          <thead className="sticky top-0 z-10 bg-[#F9FAFB] text-xs text-[#6B7280]">
-            <tr>
-              {COLS.map((c) => (
-                <th
-                  key={c.key}
-                  className="whitespace-nowrap px-3 py-2.5 font-medium"
-                  style={{ minWidth: c.min }}
-                >
-                  {c.label}
-                </th>
-              ))}
-              <th className="w-8 px-3 py-2.5" />
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 && (
-              <tr>
-                <td colSpan={COLSPAN} className="px-3 py-12 text-center text-[#9CA3AF]">
-                  {loading
-                    ? '正在拉取结果…'
-                    : (() => {
-                        const focus =
-                          activeJob === 'all'
-                            ? jobs.map((j) => queue[j.id]).find((q) => q?.status === 'pending')
-                            : queue[activeJob]
-                        if (focus?.status === 'pending') {
-                          return focus.message || '排队中，等待执行'
-                        }
-                        if (focus?.phase === 'intel') {
-                          return focus.message || '采集已完成，背调进行中'
-                        }
-                        if (focus?.status === 'failed') {
-                          return '任务失败'
-                        }
-                        if (focus?.status === 'canceled') {
-                          return '任务已终止'
-                        }
-                        if (focus?.status === 'ok') {
-                          return '已完成，暂无结果'
-                        }
-                        return '子任务采集中，结果会持续增加'
-                      })()}
-                </td>
-              </tr>
+        <div className="flex gap-2 overflow-x-auto border-b border-[#E5E7EB] px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setActiveJob('all')}
+            className={cn(
+              'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium',
+              activeJob === 'all' ? 'bg-[#2F6BFF] text-white' : 'bg-[#F3F4F6] text-[#4B5563]',
             )}
-            {visible.map((row) => {
-              const key = `${row.job_id}:${row.place_id}`
-              const open = openId === key
-              const st = intel[key]
-              const intelLabel =
-                !st || st === 'loading'
-                  ? st === 'loading'
-                    ? '加载中'
-                    : autoIntelStarted.current.has(key)
+          >
+            全部 ({rows.length})
+          </button>
+          {jobs.map((j) => {
+            const q = queue[j.id]
+            const pending = q?.status === 'pending'
+            const phase = q?.phase || ''
+            const chipLabel = pending
+              ? q.ahead > 0
+                ? `${j.name} · 前方 ${q.ahead}`
+                : `${j.name} · 排队中`
+              : phase === 'intel'
+                ? `${j.name} · 背调中 (${counts[j.id] || 0})`
+                : q?.status === 'working'
+                  ? `${j.name} · 采集中 (${counts[j.id] || 0})`
+                  : q?.status === 'failed'
+                    ? `${j.name} · 失败`
+                    : q?.status === 'canceled'
+                      ? `${j.name} · 已终止`
+                      : q?.status === 'ok'
+                        ? `${j.name} · 已完成 (${counts[j.id] || 0})`
+                        : `${j.name} (${counts[j.id] || 0})`
+            return (
+              <button
+                key={j.id}
+                type="button"
+                onClick={() => setActiveJob(j.id)}
+                className={cn(
+                  'max-w-[260px] shrink-0 truncate rounded-full px-3 py-1.5 text-xs font-medium',
+                  activeJob === j.id ? 'bg-[#2F6BFF] text-white' : 'bg-[#F3F4F6] text-[#4B5563]',
+                )}
+                title={pending ? q.message || j.name : j.name}
+              >
+                {chipLabel}
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="max-h-[520px] w-full overflow-auto">
+          <table className="w-max text-left text-sm" style={{ minWidth: tableMinWidth }}>
+            <thead className="sticky top-0 z-10 bg-[#F9FAFB] text-xs text-[#6B7280]">
+              <tr>
+                {COLS.map((c) => (
+                  <th
+                    key={c.key}
+                    className="whitespace-nowrap px-3 py-2.5 font-medium"
+                    style={{ minWidth: c.min }}
+                  >
+                    {c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visible.length === 0 && (
+                <tr>
+                  <td colSpan={COLS.length} className="px-3 py-12 text-center text-[#9CA3AF]">
+                    {loading
+                      ? '正在拉取结果…'
+                      : (() => {
+                          const focus =
+                            activeJob === 'all'
+                              ? jobs.map((j) => queue[j.id]).find((q) => q?.status === 'pending')
+                              : queue[activeJob]
+                          if (focus?.status === 'pending') {
+                            return focus.message || '排队中，等待执行'
+                          }
+                          if (focus?.phase === 'intel') {
+                            return focus.message || '采集已完成，背调进行中'
+                          }
+                          if (focus?.status === 'failed') {
+                            return '任务失败'
+                          }
+                          if (focus?.status === 'canceled') {
+                            return '任务已终止'
+                          }
+                          if (focus?.status === 'ok') {
+                            return '已完成，暂无结果'
+                          }
+                          return '子任务采集中，结果会持续增加'
+                        })()}
+                  </td>
+                </tr>
+              )}
+              {visible.map((row) => {
+                const key = `${row.job_id}:${row.place_id}`
+                const selected = selectedKey === key
+                const st = intel[key]
+                const intelLabel =
+                  !st || st === 'loading'
+                    ? st === 'loading'
+                      ? '加载中'
+                      : autoIntelStarted.current.has(key)
+                        ? '背调中'
+                        : '等待'
+                    : st.status === 'running' || st.status === 'pending' || st.note === '背调中'
                       ? '背调中'
-                      : '等待'
-                  : st.status === 'running' || st.note === '背调中'
-                    ? '背调中'
-                    : st.status === 'skipped'
-                      ? '已跳过'
-                      : st.summary
-                        ? '已完成'
-                        : st.error
-                          ? '失败'
-                          : '背调中'
-              return (
-                <Fragment key={key}>
+                      : st.status === 'skipped'
+                        ? '已跳过'
+                        : st.summary || st.status === 'ready'
+                          ? '已完成'
+                          : st.error || st.status === 'failed'
+                            ? '失败'
+                            : '背调中'
+                return (
                   <tr
+                    key={key}
                     className={cn(
                       'cursor-pointer border-t border-[#F3F4F6] hover:bg-[#F5F8FF]',
-                      open && 'bg-[#F5F8FF]',
+                      selected && 'bg-[#EEF2FF]',
                     )}
-                    onClick={() => toggleRow(row)}
+                    onClick={() => selectRow(row)}
                   >
                     {COLS.map((c) => (
                       <td
@@ -538,59 +678,38 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
                         )}
                       </td>
                     ))}
-                    <td className="px-3 py-2.5">
-                      <ChevronDown
-                        className={cn('size-4 text-[#9CA3AF] transition', open && 'rotate-180')}
-                      />
-                    </td>
                   </tr>
-                  {open && (
-                    <tr className="border-t border-[#F3F4F6] bg-[#F9FAFB]">
-                      <td colSpan={COLSPAN} className="px-4 py-3 text-sm">
-                        {st === 'loading' && (
-                          <div className="flex items-center gap-2 text-[#6B7280]">
-                            <Loader2 className="size-4 animate-spin" /> 加载背调…
-                          </div>
-                        )}
-                        {st && st !== 'loading' && (
-                          <div className="space-y-2">
-                            {st.error ? (
-                              <p className="text-red-600">{st.error}</p>
-                            ) : (
-                              <>
-                                <p className="leading-relaxed text-[#374151]">
-                                  {st.summary || st.note || '背调进行中，稍后自动更新'}
-                                </p>
-                                {!!st.decision_makers?.length && (
-                                  <p className="text-xs text-[#6B7280]">
-                                    决策人：
-                                    {st.decision_makers
-                                      .map((d) =>
-                                        [d.name, d.title, d.email, d.phone].filter(Boolean).join(' / '),
-                                      )
-                                      .join('；')}
-                                  </p>
-                                )}
-                              </>
-                            )}
-                            {(row.about || row.descriptions || row.open_hours) && (
-                              <div className="mt-2 grid gap-1 border-t border-[#E5E7EB] pt-2 text-xs text-[#6B7280]">
-                                {row.open_hours ? <p>营业：{truncate(row.open_hours, 240)}</p> : null}
-                                {row.descriptions ? <p>描述：{truncate(row.descriptions, 320)}</p> : null}
-                                {row.about ? <p>About：{truncate(row.about, 320)}</p> : null}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              )
-            })}
-          </tbody>
-        </table>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+
+      {selectedRow ? (
+        <>
+          <button
+            type="button"
+            aria-label="关闭背调面板"
+            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]"
+            onClick={() => setSelectedKey(null)}
+          />
+          <IntelPanel
+            place={{
+              title: selectedRow.title,
+              address: selectedRow.address || selectedRow.complete_address,
+              website: selectedRow.website,
+              phone: selectedRow.phone,
+              emails: selectedRow.emails,
+              link: selectedRow.link,
+            }}
+            intel={selectedIntel}
+            onClose={() => setSelectedKey(null)}
+            onRefresh={refreshSelectedIntel}
+            refreshing={refreshingIntel}
+          />
+        </>
+      ) : null}
+    </>
   )
 }
