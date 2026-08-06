@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -16,6 +17,26 @@ func TestUnderstandIntentRulesJakartaCafe(t *testing.T) {
 	}
 	if len(intent.Keywords) == 0 {
 		t.Fatalf("expected keywords, got %+v", intent)
+	}
+}
+
+func TestUnderstandIntentBeijingHotpotSuggestion(t *testing.T) {
+	intent := understandIntentRules("帮我找北京市朝阳区的火锅店", "zh")
+	if intent.CountryCode != "cn" {
+		t.Fatalf("country=%q want cn", intent.CountryCode)
+	}
+	if intent.Location == "" || (!strings.Contains(intent.Location, "朝阳") && !strings.Contains(intent.Location, "北京")) {
+		t.Fatalf("location=%q want Beijing/Chaoyang", intent.Location)
+	}
+	found := false
+	for _, kw := range intent.Keywords {
+		if strings.Contains(kw, "火锅") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("keywords=%v want 火锅店", intent.Keywords)
 	}
 }
 

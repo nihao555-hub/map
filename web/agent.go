@@ -122,6 +122,13 @@ var countryAlias = map[string]struct{ Code, Name, Lang string }{
 
 // cityCountryHint maps famous cities → country when the user omits the country name.
 var cityCountryHint = map[string]struct{ Code, Name, Lang string }{
+	"北京": {"cn", "China", "zh"}, "beijing": {"cn", "China", "zh"},
+	"上海": {"cn", "China", "zh"}, "shanghai": {"cn", "China", "zh"},
+	"广州": {"cn", "China", "zh"}, "guangzhou": {"cn", "China", "zh"},
+	"深圳": {"cn", "China", "zh"}, "shenzhen": {"cn", "China", "zh"},
+	"成都": {"cn", "China", "zh"}, "杭州": {"cn", "China", "zh"}, "hangzhou": {"cn", "China", "zh"},
+	"重庆": {"cn", "China", "zh"}, "武汉": {"cn", "China", "zh"}, "西安": {"cn", "China", "zh"},
+	"南京": {"cn", "China", "zh"}, "苏州": {"cn", "China", "zh"}, "天津": {"cn", "China", "zh"},
 	"雅加达": {"id", "Indonesia", "id"}, "jakarta": {"id", "Indonesia", "id"},
 	"泗水": {"id", "Indonesia", "id"}, "surabaya": {"id", "Indonesia", "id"},
 	"曼谷": {"th", "Thailand", "th"}, "bangkok": {"th", "Thailand", "th"},
@@ -423,15 +430,17 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 
 	intent.EnableIntel = reIntel.MatchString(goal)
 
-	// Heuristic location: after 在/去/到 or in/near/around
+	// Heuristic location: after 在/去/到, or 「找A的B」 place A, or in/near/around
 	locPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(?:在|去|到|覆盖)\s*([^\s,，。；;]{2,20}?)(?:\s*(?:找|搜|抓|采集的|的|周围|周边|半径|,|，|。)|$)`),
+		regexp.MustCompile(`(?:在|去|到|覆盖)\s*([^\s,，。；;]{2,24}?)(?:\s*(?:找|搜|抓|采集的|的|周围|周边|半径|,|，|。)|$)`),
+		// 帮我找北京市朝阳区的火锅店 → location=北京市朝阳区
+		regexp.MustCompile(`(?:找|搜|搜索|采集|挖掘)\s*([^\s,，。；;]{2,24}?)的([^\s,，。；;]{2,20})`),
 		regexp.MustCompile(`(?i)(?:in|near|around|cover(?:ing)?)\s+([A-Za-z][A-Za-z0-9\s\-]{1,40}?)(?:\s+(?:find|search|for|within|,|\.|$))`),
 	}
-	for _, p := range locPatterns {
-		if m := p.FindStringSubmatch(goal); len(m) == 2 {
+	var zhPlaceKeyword string
+	for i, p := range locPatterns {
+		if m := p.FindStringSubmatch(goal); len(m) >= 2 {
 			loc := strings.TrimSpace(m[1])
-			// Don't treat country name as city
 			if intent.CountryName != "" && (strings.EqualFold(loc, intent.CountryName) || loc == intent.CountryCode) {
 				continue
 			}
@@ -444,17 +453,29 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 			}
 			if !skip && loc != "" {
 				intent.Location = loc
+				if i == 1 && len(m) == 3 {
+					zhPlaceKeyword = strings.TrimSpace(m[2])
+				}
 				break
 			}
 		}
 	}
-	// If still empty, take known city mentioned in goal.
+	// If still empty, take known city mentioned in goal (prefer longest match).
 	if intent.Location == "" {
+		best := ""
 		for city := range cityCountryHint {
 			if strings.Contains(goal, city) || strings.Contains(low, strings.ToLower(city)) {
-				intent.Location = city
-				break
+				if len([]rune(city)) > len([]rune(best)) {
+					best = city
+				}
 			}
+		}
+		intent.Location = best
+	}
+	// Prefer richer Chinese admin area when present, e.g. 北京市朝阳区.
+	if intent.Location != "" {
+		if m := regexp.MustCompile(regexp.QuoteMeta(intent.Location) + `(?:市)?(?:\p{Han}{1,8}?(?:区|县|市))?`).FindString(goal); m != "" {
+			intent.Location = m
 		}
 	}
 	// Re-apply coverage preference now that location is known.
@@ -463,6 +484,9 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 	}
 
 	// Keywords: after 找/搜/采集 or leftover business words
+	if zhPlaceKeyword != "" {
+		intent.Keywords = append(intent.Keywords, zhPlaceKeyword)
+	}
 	kwPatterns := []*regexp.Regexp{
 		regexp.MustCompile(`(?:找|搜|搜索|采集|挖掘)\s*([^\s,，。；;0-9]{2,30})`),
 		regexp.MustCompile(`(?i)(?:find|search|scrape)\s+(?:for\s+)?([A-Za-z][A-Za-z0-9\s\-]{1,40})`),
@@ -471,6 +495,11 @@ func understandIntentRules(goal, uiLang string) AgentIntent {
 		if m := p.FindStringSubmatch(goal); len(m) == 2 {
 			kw := strings.TrimSpace(m[1])
 			kw = strings.TrimSuffix(kw, "的")
+			// Strip leading place when 「找地点的品类」 already parsed.
+			if intent.Location != "" && strings.HasPrefix(kw, intent.Location) {
+				kw = strings.TrimPrefix(kw, intent.Location)
+				kw = strings.TrimPrefix(kw, "的")
+			}
 			if kw != "" && kw != intent.Location {
 				intent.Keywords = append(intent.Keywords, kw)
 			}
