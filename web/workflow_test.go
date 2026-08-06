@@ -224,9 +224,10 @@ func TestWorkflowAgentUnderstandAndDispatch(t *testing.T) {
 
 func TestConcurrencyCeilingReport(t *testing.T) {
 	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "8")
+	t.Setenv("GMS_DEEP_WORKERS", "")
 	capN := JobConcurrency()
 	adaptive := AdaptiveJobConcurrency()
-	perDeep := ReservedPerJobConcurrency(16, false)
+	perDeep := ReservedPerJobConcurrency(2, false)
 	avail := AvailableMemoryMB()
 	bloom := UseBloomDeduper()
 
@@ -242,7 +243,10 @@ func TestConcurrencyCeilingReport(t *testing.T) {
 	cpus := runtime.GOMAXPROCS(0)
 	if avail >= highRAMPackMB {
 		if perDeep != 2 {
-			t.Fatalf("high-RAM per-job deep want 2 workers, got %d", perDeep)
+			t.Fatalf("high-RAM per-job deep want 2 workers at -c=2, got %d", perDeep)
+		}
+		if got := ReservedPerJobConcurrency(16, false); got != 4 {
+			t.Fatalf("raised -c should cap at 4 workers, got %d", got)
 		}
 		if adaptive > cpus+2 {
 			t.Fatalf("admit slots %d should not exceed GOMAXPROCS+2=%d", adaptive, cpus+2)

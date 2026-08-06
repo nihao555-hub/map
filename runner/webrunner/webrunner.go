@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -394,12 +395,18 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 				if halfKm <= 0 {
 					halfKm = 10
 				}
-				target := (2 * halfKm) / 12
+				// Side length ≈ diameter / sqrt(cap) so cell count ≈ cap.
+				side := math.Sqrt(float64(maxDeepGridCells))
+				target := (2 * halfKm) / side
 				if target < cellKm {
 					target = cellKm
 				}
 				if target > 10 {
 					target = 10
+				}
+				// Nudge up until under cap (float rounding can leave 101–120).
+				for grid.EstimateCellCount(bbox, target) > maxDeepGridCells && target < 10 {
+					target += 0.25
 				}
 				log.Printf("grid mode: deep auto-coarsen cell %.1fkm -> %.1fkm (was ~%d cells, cap=%d)", cellKm, target, estCells, maxDeepGridCells)
 				cellKm = target

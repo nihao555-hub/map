@@ -166,7 +166,7 @@ func CanAdmitDeepJob() bool {
 // ReservedPerJobConcurrency is the FIXED inner worker count for an admitted job.
 // It does NOT shrink when more jobs are queued — admission control protects speed.
 //
-// Override with GMS_DEEP_WORKERS (1–4) for ops tuning without code changes.
+// Override with GMS_DEEP_WORKERS (1–4) for ops tuning; when set it wins over -c.
 func ReservedPerJobConcurrency(configured int, fastMode bool) int {
 	if configured < 1 {
 		configured = 1
@@ -184,22 +184,18 @@ func ReservedPerJobConcurrency(configured int, fastMode bool) int {
 		}
 		return n
 	}
-	// Deep: prefer 2 browser workers/job (maps cells + email enrich in parallel).
-	// High-RAM used to pack 1-worker jobs; that halved place rate for little gain.
-	n := 2
 	if v := strings.TrimSpace(os.Getenv("GMS_DEEP_WORKERS")); v != "" {
 		if w, err := strconv.Atoi(v); err == nil && w >= 1 && w <= 4 {
-			n = w
+			return w
 		}
-	} else if AvailableMemoryMB() < highRAMPackMB {
-		// Tight RAM: still 2, but AdaptiveJobConcurrency already admits fewer slots.
+	}
+	// Deep floor 2 workers; -c may raise up to 4 (half-CPU default alone used to cap at 1–2).
+	n := configured
+	if n < 2 {
 		n = 2
 	}
-	if configured < n {
-		n = configured
-	}
-	if n < 1 {
-		n = 1
+	if n > 4 {
+		n = 4
 	}
 	return n
 }

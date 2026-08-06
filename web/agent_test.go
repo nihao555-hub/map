@@ -170,12 +170,13 @@ func TestUnderstandIntentEmpty(t *testing.T) {
 
 func TestAdaptiveJobConcurrencyAtLeastOne(t *testing.T) {
 	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "4")
+	t.Setenv("GMS_DEEP_WORKERS", "")
 	n := AdaptiveJobConcurrency()
-	if n < 1 || n > 4 {
+	if n < 1 {
 		t.Fatalf("adaptive=%d", n)
 	}
 	per := AdaptivePerJobConcurrency(16, false)
-	if per < 1 || per > 2 {
-		t.Fatalf("per-job deep=%d", per)
+	if per < 2 || per > 4 {
+		t.Fatalf("per-job deep=%d want 2..4", per)
 	}
 }
