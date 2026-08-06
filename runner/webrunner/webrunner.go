@@ -102,9 +102,17 @@ func (w *webrunner) work(ctx context.Context) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
+	// Crash recovery: jobs left in "working" after kill/OOM would otherwise never finish.
+	// 3h exceeds typical deep+grid budgets so live multi-worker scrapes are not stolen.
+	if n, err := w.svc.RequeueStaleWorking(ctx, 3*time.Hour); err != nil {
+		log.Printf("requeue stale working: %v", err)
+	} else if n > 0 {
+		log.Printf("requeued %d stale working job(s) back to pending", n)
+	}
+
 	maxJobs := web.AdaptiveJobConcurrency()
 	web.LogMemoryPressure("web runner start")
-	log.Printf("web runner: fair-admission slots=%d (env cap GMS_WEB_JOB_CONCURRENCY=%d); queued jobs wait — active jobs keep full speed",
+	log.Printf("web runner: fair-admission slots=%d (env cap GMS_WEB_JOB_CONCURRENCY=%d); newest pending first; queued jobs wait",
 		maxJobs, web.JobConcurrency())
 
 	var eg errgroup.Group

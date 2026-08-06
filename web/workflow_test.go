@@ -71,13 +71,21 @@ func (r *workflowRepo) Update(_ context.Context, job *Job) error {
 }
 
 func (r *workflowRepo) ClaimPending(_ context.Context) (Job, error) {
+	// Newest-first (match sqlite store).
+	var best *Job
 	for _, j := range r.jobs {
-		if j.Status == StatusPending {
-			j.Status = StatusWorking
-			return *j, nil
+		if j.Status != StatusPending {
+			continue
+		}
+		if best == nil || j.Date.After(best.Date) || (j.Date.Equal(best.Date) && j.ID > best.ID) {
+			best = j
 		}
 	}
-	return Job{}, ErrNoPending
+	if best == nil {
+		return Job{}, ErrNoPending
+	}
+	best.Status = StatusWorking
+	return *best, nil
 }
 
 func TestWorkflowDecisionsEnforceDeepFullVolume(t *testing.T) {
@@ -231,11 +239,20 @@ func TestConcurrencyCeilingReport(t *testing.T) {
 	if adaptive < 1 || adaptive > capN {
 		t.Fatalf("adaptive=%d invalid", adaptive)
 	}
-	if perDeep != 2 {
-		t.Fatalf("per-job deep must stay 2 (fair), got %d", perDeep)
-	}
-	// Fair admission: CPU/2 on 4-core => 2 slots even if RAM allows more
-	if adaptive > runtime.GOMAXPROCS(0)/deepCPUPerJob && runtime.GOMAXPROCS(0) >= 2 {
-		t.Fatalf("admit slots %d should respect CPU budget", adaptive)
+	cpus := runtime.GOMAXPROCS(0)
+	if avail >= highRAMPackMB {
+		if perDeep != 1 {
+			t.Fatalf("high-RAM pack per-job deep want 1, got %d", perDeep)
+		}
+		if adaptive > cpus {
+			t.Fatalf("admit slots %d should not exceed GOMAXPROCS=%d", adaptive, cpus)
+		}
+	} else {
+		if perDeep != 2 {
+			t.Fatalf("low-RAM per-job deep must stay 2, got %d", perDeep)
+		}
+		if adaptive > cpus/deepCPUPerJob && cpus >= 2 {
+			t.Fatalf("admit slots %d should respect CPU budget", adaptive)
+		}
 	}
 }

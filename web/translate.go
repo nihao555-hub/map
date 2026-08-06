@@ -368,15 +368,10 @@ func translateBusinessTerm(term, targetLang string) (string, bool) {
 	}
 
 	pick := func(byLang map[string]string) (string, bool) {
-		// 印尼/泰国/越南等：英文品类更容易命中带官网、带邮箱的商家（获客更看邮箱）
-		preferEnglishSearch := map[string]bool{
-			"id": true, "th": true, "vi": true, "ms": true, "tl": true,
-		}
-		if preferEnglishSearch[targetLang] {
-			if v, ok := byLang["en"]; ok && v != "" {
-				return v, true
-			}
-		}
+		// A/B on Jakarta electrical (2026-08): local "panel listrik" ≈155 hits;
+		// English "electrical distributor" ≈172 but broader (toko listrik);
+		// English-only jargon "switchgear" ≈3 (too narrow). Prefer local Maps
+		// phrases when the lexicon has them; fall back to English.
 		if v, ok := byLang[targetLang]; ok && v != "" {
 			return v, true
 		}

@@ -136,7 +136,8 @@ func (r *memoryJobRepo) ClaimPending(_ context.Context) (web.Job, error) {
 		if job.Status != web.StatusPending {
 			continue
 		}
-		if !found || job.Date.Before(best.Date) {
+		// Newest-first (match sqlite store).
+		if !found || job.Date.After(best.Date) || (job.Date.Equal(best.Date) && id > bestID) {
 			best = job
 			bestID = id
 			found = true

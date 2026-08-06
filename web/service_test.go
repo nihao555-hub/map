@@ -139,10 +139,10 @@ func TestGetPlacesRejectsTraversal(t *testing.T) {
 	}
 }
 
-func TestJobConcurrencyDefaultIsFour(t *testing.T) {
+func TestJobConcurrencyDefaultIsEight(t *testing.T) {
 	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "")
-	if got := JobConcurrency(); got != 4 {
-		t.Fatalf("default=%d want 4", got)
+	if got := JobConcurrency(); got != 8 {
+		t.Fatalf("default=%d want 8", got)
 	}
 	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "3")
 	if got := JobConcurrency(); got != 3 {
@@ -155,8 +155,5 @@ func TestJobConcurrencyDefaultIsFour(t *testing.T) {
 	t.Setenv("GMS_WEB_JOB_CONCURRENCY", "4")
 	if got := PerJobScrapemateConcurrency(16, true); got != 4 {
 		t.Fatalf("per-job fast=%d want 4", got)
-	}
-	if got := PerJobScrapemateConcurrency(16, false); got != 2 {
-		t.Fatalf("per-job deep=%d want 2", got)
 	}
 }

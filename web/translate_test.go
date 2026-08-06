@@ -30,12 +30,16 @@ func TestTranslateBusinessTerm(t *testing.T) {
 		{"书店", "en", "bookstore"},
 		// 后缀回退：词典只有「美甲」时，「美甲店」也可命中
 		{"咖啡馆", "en", "cafe"},
-		// B2B：印尼等优先英文品类，避免中文「采购商」直接进 Maps
+		// B2B：海外绝不以中文进 Maps；有当地词时优先当地（印尼实测 panel listrik ≫ switchgear）
 		{"采购商", "en", "importer"},
-		{"采购商", "id", "importer"},
+		{"采购商", "id", "importir"},
 		{"批发商", "en", "wholesaler"},
-		{"进口商", "id", "importer"},
+		{"批发商", "id", "grosir"},
+		{"进口商", "id", "importir"},
+		{"配电柜", "id", "panel listrik"},
+		{"配电柜", "en", "switchgear"},
 		{"贸易公司", "en", "trading company"},
+		{"贸易公司", "id", "perusahaan dagang"},
 	}
 
 	for _, tt := range tests {
@@ -62,7 +66,7 @@ func TestLocalizeSearchQueryBuyerNeverShipsChinese(t *testing.T) {
 	if containsChinese(kws[0]) {
 		t.Fatalf("must not ship chinese to maps: %q", kws[0])
 	}
-	if kws[0] != "importer in Bojongsari Baru, Bojongsari" {
+	if kws[0] != "importir in Bojongsari Baru, Bojongsari" {
 		t.Fatalf("keywords=%v", kws)
 	}
 }
@@ -85,8 +89,8 @@ func TestLocalizeSearchQueryLexiconPreferredOverAI(t *testing.T) {
 	if !did {
 		t.Fatal("expected translation")
 	}
-	// 词典优先：id 市场偏好英文品类 importer（获客更容易出官网邮箱）
-	if len(kws) != 1 || kws[0] != "importer in Jakarta" {
+	// 词典优先：印尼用当地词 importir
+	if len(kws) != 1 || kws[0] != "importir in Jakarta" {
 		t.Fatalf("lexicon should win; got %v", kws)
 	}
 }
@@ -120,14 +124,14 @@ func TestTranslateBusinessTermFuzzyTypo(t *testing.T) {
 	if !ok || got != "coffee shop" {
 		t.Fatalf("fuzzy 啡店 -> got (%q,%v)", got, ok)
 	}
-	// 印尼优先英文品类（更容易出官网邮箱），不再用 kedai kopi
+	// 印尼优先当地 Maps 词
 	got, ok = translateBusinessTerm("啡店", "id")
-	if !ok || got != "coffee shop" {
+	if !ok || got != "kedai kopi" {
 		t.Fatalf("fuzzy 啡店 id -> got (%q,%v)", got, ok)
 	}
 	got, ok = translateBusinessTerm("咖啡店", "id")
-	if !ok || got != "coffee shop" {
-		t.Fatalf("咖啡店 id prefer en -> got (%q,%v)", got, ok)
+	if !ok || got != "kedai kopi" {
+		t.Fatalf("咖啡店 id local -> got (%q,%v)", got, ok)
 	}
 }
 

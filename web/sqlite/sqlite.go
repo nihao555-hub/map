@@ -130,7 +130,9 @@ func (s *Store) Update(ctx context.Context, job *web.Job) error {
 	return err
 }
 
-// ClaimPending atomically takes the oldest pending job.
+// ClaimPending atomically takes the newest pending job.
+// Newest-first keeps interactive Agent / standard-mode submissions from waiting
+// behind a long backlog of older demos or abandoned tasks (no extra machines needed).
 func (s *Store) ClaimPending(ctx context.Context) (web.Job, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -138,7 +140,7 @@ func (s *Store) ClaimPending(ctx context.Context) (web.Job, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	const sel = `SELECT id FROM jobs WHERE status = ? ORDER BY created_at ASC LIMIT 1`
+	const sel = `SELECT id FROM jobs WHERE status = ? ORDER BY created_at DESC LIMIT 1`
 
 	var id string
 	err = tx.QueryRowContext(ctx, sel, web.StatusPending).Scan(&id)
@@ -177,6 +179,29 @@ func (s *Store) ClaimPending(ctx context.Context) (web.Job, error) {
 
 	job.Status = web.StatusWorking
 	return job, nil
+}
+
+// RequeueStaleWorking resets jobs stuck in "working" longer than maxAge
+// (process crash / kill without status update). Safe for multi-worker if maxAge
+// exceeds a normal job runtime.
+func (s *Store) RequeueStaleWorking(ctx context.Context, maxAge time.Duration) (int, error) {
+	if maxAge < time.Minute {
+		maxAge = time.Minute
+	}
+	cutoff := time.Now().UTC().Add(-maxAge).Unix()
+	now := time.Now().UTC().Unix()
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE jobs SET status = ?, updated_at = ? WHERE status = ? AND updated_at < ?`,
+		web.StatusPending, now, web.StatusWorking, cutoff,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return int(n), nil
 }
 
 type scannable interface {

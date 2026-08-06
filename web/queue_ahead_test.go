@@ -35,7 +35,8 @@ func TestQueueAheadPendingOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ahead, status, total, err := svc.QueueAhead(ctx, newer.ID)
+	// Newest-first: newer runs immediately; older has 1 ahead.
+	aheadNew, status, total, err := svc.QueueAhead(ctx, newer.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,16 +46,16 @@ func TestQueueAheadPendingOrder(t *testing.T) {
 	if total != 2 {
 		t.Fatalf("pendingTotal=%d", total)
 	}
-	if ahead != 1 {
-		t.Fatalf("ahead=%d want 1", ahead)
+	if aheadNew != 0 {
+		t.Fatalf("newer ahead=%d want 0", aheadNew)
 	}
 
 	aheadOld, _, _, err := svc.QueueAhead(ctx, older.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if aheadOld != 0 {
-		t.Fatalf("older ahead=%d want 0", aheadOld)
+	if aheadOld != 1 {
+		t.Fatalf("older ahead=%d want 1", aheadOld)
 	}
 }
 

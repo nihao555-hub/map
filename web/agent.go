@@ -437,9 +437,9 @@ Rules:
 - location: city/area (or empty if whole-country multi-city plan)
 - keywords: 1–3 DISTINCT Google Maps search phrases in the BEST language for Maps in that country:
   * NEVER leave Chinese keywords when country is not China
-  * Indonesia/Malaysia/Philippines/Singapore: prefer short English OR local Maps phrases people type
-    (e.g. "panel listrik", "switchgear", "electrical distributor", "cafe", "importer") — not Chinese
-  * Thailand/Vietnam: prefer English category words common on Maps
+  * Prefer LOCAL phrases people type on Maps; English as fallback/broad term — avoid narrow jargon alone
+    (Indonesia: "panel listrik", "distributor listrik" beat "switchgear"; "kedai kopi" / "cafe" both OK)
+  * Thailand/Vietnam: local OR English category words common on Maps
   * China: Chinese is OK
   * Avoid near-duplicates (配电柜 vs 配电盘制造 vs 开关柜制造 as three separate keywords is too redundant — merge to 1–2 strong phrases)
 - radius_km: integer 1–50. Prefer FULL coverage of the named place:
@@ -757,7 +757,9 @@ Rules:
 - thinking: optional short note in UI language; may be empty (streaming narrative is separate). No JSON/API jargon.
 - For a whole country (e.g. Indonesia): 6–10 tasks = major commercial/industrial cities × 1–2 strong Maps keywords.
 - For one city/district: 3–6 hub anchors × 1 keyword (or 2 if user asked two distinct categories like cafe AND importer).
-- Each task keywords MUST be Maps-ready for that country (never Chinese outside China). Indonesia examples: "panel listrik", "switchgear", "electrical distributor".
+- Each task keywords MUST be Maps-ready for that country (never Chinese outside China).
+  * Prefer LOCAL Maps phrases people actually type (Indonesia: "panel listrik", "distributor listrik", "kedai kopi").
+  * English is OK as a secondary broad term ("electrical distributor", "cafe") — NOT narrow jargon alone ("switchgear" ≈ misses most SMEs).
 - Do NOT create near-duplicate tasks (same city + almost same keyword).
 - name: human label in UI language, e.g. "泗水 · 配电柜(panel listrik)"
 - location: geocodable place name (prefer English/local Latin script for SEA cities: Jakarta, Surabaya, Bandung, Medan, Semarang, Makassar, Batam, Bekasi)

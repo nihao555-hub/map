@@ -24,11 +24,13 @@ import (
 // not one VPS oversubscribing browsers. See docs/operations-guide-zh.md.
 
 const (
-	// Deep Playwright jobs need headroom (~400–700MB per active browser worker).
-	deepReserveMBPerWorker = 450
+	// Deep Playwright jobs need headroom (~350–600MB per active browser worker).
+	deepReserveMBPerWorker = 400
 	fastReserveMBPerWorker = 80
 	minFreeMemoryMB        = 400
-	// Each deep job is assumed to want ~2 logical CPUs for stable page speed.
+	// High-RAM threshold: pack more parallel jobs with thinner workers.
+	highRAMPackMB = 6000
+	// Each deep job is assumed to want ~2 logical CPUs when memory is tight.
 	deepCPUPerJob = 2
 )
 
@@ -59,17 +61,17 @@ func AvailableMemoryMB() uint64 {
 	return memAvailMB
 }
 
-// JobConcurrency is the hard cap on parallel scrape jobs (default 4).
+// JobConcurrency is the hard cap on parallel scrape jobs (default 8).
 // Override with GMS_WEB_JOB_CONCURRENCY. Raised max to 64 for worker fleets;
-// a single small VPS should still keep this at 2–4.
+// a small low-RAM VPS is still clamped by AdaptiveJobConcurrency.
 func JobConcurrency() int {
 	v := strings.TrimSpace(os.Getenv("GMS_WEB_JOB_CONCURRENCY"))
 	if v == "" {
-		return 4
+		return 8
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil || n < 1 {
-		return 4
+		return 8
 	}
 	if n > 64 {
 		return 64
@@ -80,17 +82,38 @@ func JobConcurrency() int {
 // AdaptiveJobConcurrency is the fair-admission slot count for THIS process:
 // min(env cap, memory budget, CPU budget). New jobs beyond this wait in queue
 // instead of starting and slowing everyone down.
+//
+// Without adding machines: on high-RAM hosts we pack more jobs (≈1 browser
+// worker each) so Agent multi-city plans drain faster; on tight RAM we keep
+// fewer full-speed jobs.
 func AdaptiveJobConcurrency() int {
 	base := JobConcurrency()
 	avail := AvailableMemoryMB()
 	if avail <= minFreeMemoryMB {
 		return 1
 	}
-	byMem := int((avail - minFreeMemoryMB) / (deepReserveMBPerWorker * uint64(deepCPUPerJob)))
+	cpus := runtime.GOMAXPROCS(0)
+	if cpus < 1 {
+		cpus = 1
+	}
+
+	var (
+		byMem int
+		byCPU int
+	)
+	if avail >= highRAMPackMB {
+		// Pack mode: budget ~1 worker/job so a 4-CPU/16GB box can admit ~4 jobs.
+		reserve := uint64(deepReserveMBPerWorker + 150)
+		byMem = int((avail - minFreeMemoryMB) / reserve)
+		byCPU = cpus
+	} else {
+		// Conservative: 2-CPU + 2-worker memory budget per job.
+		byMem = int((avail - minFreeMemoryMB) / (deepReserveMBPerWorker * uint64(deepCPUPerJob)))
+		byCPU = cpus / deepCPUPerJob
+	}
 	if byMem < 1 {
 		byMem = 1
 	}
-	byCPU := runtime.GOMAXPROCS(0) / deepCPUPerJob
 	if byCPU < 1 {
 		byCPU = 1
 	}
@@ -155,8 +178,12 @@ func ReservedPerJobConcurrency(configured int, fastMode bool) int {
 		}
 		return n
 	}
-	// Deep: always give full reserved budget (2), never dilute under load.
+	// Deep: on high-RAM pack mode use 1 browser worker/job (more parallel city
+	// tasks). On tighter hosts keep 2 workers for full per-job speed.
 	n := 2
+	if AvailableMemoryMB() >= highRAMPackMB {
+		n = 1
+	}
 	if configured < n {
 		n = configured
 	}
@@ -214,7 +241,7 @@ func GetConcurrencySnapshot() ConcurrencySnapshot {
 		Bloom:         UseBloomDeduper(),
 		GOMAXPROCS:    runtime.GOMAXPROCS(0),
 		FairAdmission: true,
-		ScaleHint:     "单机公平准入：宁少勿慢。数百并发请水平扩展多个 -web worker（共享同一 jobs.db / 队列）。",
+		ScaleHint:     "单机：内存充足时提高并行任务数（每任务更薄）；内存紧张时宁少勿慢。数百并发请水平扩展多个 -web worker（共享同一 jobs.db）。",
 	}
 }
 

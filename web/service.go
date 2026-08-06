@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Service struct {
@@ -84,7 +85,8 @@ func (s *Service) All(ctx context.Context) ([]Job, error) {
 	return s.repo.Select(ctx, SelectParams{})
 }
 
-// QueueAhead returns how many pending jobs are ahead of jobID in FIFO claim order.
+// QueueAhead returns how many pending jobs are ahead of jobID in claim order.
+// ClaimPending takes newest first, so "ahead" = newer pending jobs.
 // Non-pending jobs return ahead=0 with their current status.
 func (s *Service) QueueAhead(ctx context.Context, jobID string) (ahead int, status string, pendingTotal int, err error) {
 	job, err := s.Get(ctx, jobID)
@@ -103,12 +105,23 @@ func (s *Service) QueueAhead(ctx context.Context, jobID string) (ahead int, stat
 		if j.ID == jobID {
 			continue
 		}
-		// ClaimPending uses created_at ASC — older pending jobs run first.
-		if j.Date.Before(job.Date) || (j.Date.Equal(job.Date) && j.ID < jobID) {
+		// Newest-first claim: jobs created later run before this one.
+		if j.Date.After(job.Date) || (j.Date.Equal(job.Date) && j.ID > jobID) {
 			ahead++
 		}
 	}
 	return ahead, job.Status, pendingTotal, nil
+}
+
+// RequeueStaleWorking recovers jobs stuck in working after a process crash.
+func (s *Service) RequeueStaleWorking(ctx context.Context, maxAge time.Duration) (int, error) {
+	type requeuer interface {
+		RequeueStaleWorking(context.Context, time.Duration) (int, error)
+	}
+	if r, ok := s.repo.(requeuer); ok {
+		return r.RequeueStaleWorking(ctx, maxAge)
+	}
+	return 0, nil
 }
 
 // AllForOwner lists jobs belonging to one invite-code tenant.
