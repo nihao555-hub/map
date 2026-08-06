@@ -220,3 +220,19 @@ func diffStrings(a, b []string) []string {
 	}
 	return out
 }
+
+func TestFilterPlaceholderEmailsDropsTemplateDomains(t *testing.T) {
+	got := filterPlaceholderEmails([]string{
+		"needhelp@company.com",
+		"info@yourdomain.com",
+		"sales@volt-solar.co.id",
+		"owner@gmail.com",
+	})
+	joined := strings.Join(got, ",")
+	if strings.Contains(joined, "company.com") || strings.Contains(joined, "yourdomain.com") {
+		t.Fatalf("template placeholder kept: %v", got)
+	}
+	if !strings.Contains(joined, "sales@volt-solar.co.id") || !strings.Contains(joined, "owner@gmail.com") {
+		t.Fatalf("real contacts dropped: %v", got)
+	}
+}

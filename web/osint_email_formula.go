@@ -151,6 +151,15 @@ func extractEmailsFromHTML(html, domain string) []string {
 	return found
 }
 
+// placeholderEmailHosts are sample domains shipped with website templates
+// (needhelp@company.com survived to a live run) plus scraped government pages.
+var placeholderEmailHosts = map[string]bool{
+	"irs.gov": true, "example.com": true, "example.org": true, "example.net": true,
+	"company.com": true, "yourcompany.com": true, "domain.com": true,
+	"yourdomain.com": true, "yoursite.com": true, "website.com": true,
+	"email.com": true, "mail.com": true, "sentry.io": true, "wixpress.com": true,
+}
+
 func filterPlaceholderEmails(in []string) []string {
 	var out []string
 	for _, e := range in {
@@ -176,8 +185,8 @@ func filterPlaceholderEmails(in []string) []string {
 		if strings.Contains(local, "first.middle") {
 			continue
 		}
-		if host == "irs.gov" || host == "example.com" || strings.HasSuffix(host, ".gov") && !strings.Contains(host, "custom") {
-			// 页面正文误抓的政府/样例域名
+		if placeholderEmailHosts[host] || strings.HasSuffix(host, ".gov") && !strings.Contains(host, "custom") {
+			// 页面正文误抓的政府/样例域名，或网站模板未替换的占位地址
 			continue
 		}
 		out = append(out, e)
