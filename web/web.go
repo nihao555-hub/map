@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -78,6 +79,11 @@ func New(svc *Service, addr string, opts ...ServerOption) (*Server, error) {
 	mux := http.NewServeMux()
 
 	mux.Handle("/static/", http.StripPrefix("/static/", fileServer))
+	// Doubao-style Agent SPA (Vite build → static/agent), served at /agent/
+	mux.HandleFunc("/agent", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/agent/", http.StatusFound)
+	})
+	mux.Handle("/agent/", http.HandlerFunc(ans.serveAgentApp))
 	mux.HandleFunc("/invite", ans.invitePage)
 	mux.HandleFunc("/scrape", ans.scrape)
 	mux.HandleFunc("/download", func(w http.ResponseWriter, r *http.Request) {
@@ -350,6 +356,57 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = tmpl.Execute(w, data)
+}
+
+// serveAgentApp serves the React Agent workspace (ai-elements UI) built into static/agent.
+// SPA fallback: unknown paths under /agent/ return index.html.
+func (s *Server) serveAgentApp(w http.ResponseWriter, r *http.Request) {
+	rel := strings.TrimPrefix(r.URL.Path, "/agent/")
+	if rel == "" || strings.HasSuffix(rel, "/") {
+		rel = "index.html"
+	}
+	// Prevent path traversal
+	rel = path.Clean("/" + rel)
+	rel = strings.TrimPrefix(rel, "/")
+	if rel == "." || rel == "" {
+		rel = "index.html"
+	}
+
+	data, err := static.ReadFile("static/agent/" + rel)
+	if err != nil {
+		// SPA fallback for client routes
+		data, err = static.ReadFile("static/agent/index.html")
+		if err != nil {
+			http.Error(w, "agent UI not built — run: cd web/agent-ui && npm run build", http.StatusNotFound)
+			return
+		}
+		rel = "index.html"
+	}
+
+	ctype := "text/html; charset=utf-8"
+	switch {
+	case strings.HasSuffix(rel, ".js"):
+		ctype = "application/javascript; charset=utf-8"
+	case strings.HasSuffix(rel, ".css"):
+		ctype = "text/css; charset=utf-8"
+	case strings.HasSuffix(rel, ".svg"):
+		ctype = "image/svg+xml"
+	case strings.HasSuffix(rel, ".png"):
+		ctype = "image/png"
+	case strings.HasSuffix(rel, ".woff2"):
+		ctype = "font/woff2"
+	case strings.HasSuffix(rel, ".json"):
+		ctype = "application/json"
+	case strings.HasSuffix(rel, ".map"):
+		ctype = "application/json"
+	}
+	w.Header().Set("Content-Type", ctype)
+	if rel != "index.html" {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+	_, _ = w.Write(data)
 }
 
 func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {

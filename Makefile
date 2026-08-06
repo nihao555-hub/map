@@ -42,6 +42,9 @@ cross-compile: ## cross compiles the application
 	GOOS=darwin GOARCH=amd64 go build -o bin/$(APP_NAME)-${VERSION}-darwin-amd64
 	GOOS=windows GOARCH=amd64 go build -o bin/$(APP_NAME)-${VERSION}-windows-amd64.exe
 
+build-agent-ui: ## builds Doubao-style Agent React UI into web/static/agent
+	cd web/agent-ui && npm ci && npm run build
+
 build: ## builds the application (default: playwright)
 	go build -o bin/$(APP_NAME) .
 
