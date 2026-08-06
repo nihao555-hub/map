@@ -186,7 +186,7 @@ func discoverImportYetiSlugs(ctx context.Context, title, domain string) []iySlug
 		fmt.Sprintf(`site:importyeti.com/company "%s"`, title),
 		fmt.Sprintf(`site:importyeti.com/supplier "%s"`, title),
 	}
-	if brand != "" && !strings.EqualFold(brand, title) {
+	if brand != "" && !strings.EqualFold(brand, title) && IdentifiableCompanyName(brand) {
 		queries = append(queries,
 			fmt.Sprintf(`site:importyeti.com/company "%s"`, brand),
 			fmt.Sprintf(`site:importyeti.com/supplier "%s"`, brand),
@@ -415,8 +415,11 @@ func mapImportYetiData(data map[string]any, role, slug string) *TradeIntel {
 }
 
 func lookupKirchnerCompany(ctx context.Context, title string) (*TradeIntel, error) {
+	if !IdentifiableCompanyName(title) {
+		return nil, fmt.Errorf("kirchner: business name too generic to match")
+	}
 	names := []string{title}
-	if b := companyBrandToken(title); b != "" && !strings.EqualFold(b, title) {
+	if b := companyBrandToken(title); b != "" && !strings.EqualFold(b, title) && IdentifiableCompanyName(b) {
 		names = append(names, b, strings.ToUpper(b))
 	}
 	year := time.Now().UTC().Year()
@@ -428,9 +431,16 @@ func lookupKirchnerCompany(ctx context.Context, title string) (*TradeIntel, erro
 				lastErr = err
 				continue
 			}
-			if t != nil && (t.TotalShipments > 0 || len(t.TopHSCodes) > 0) {
-				return t, nil
+			if t == nil || (t.TotalShipments == 0 && len(t.TopHSCodes) == 0) {
+				continue
 			}
+			// Kirchner matches on name prefixes, so a generic query can return a
+			// different importer. Keep only profiles that echo the business name.
+			if !ExternalRecordMatchesBusiness(t.Name, title) {
+				lastErr = fmt.Errorf("kirchner: profile %q does not match %q", t.Name, title)
+				continue
+			}
+			return t, nil
 		}
 	}
 	if lastErr != nil {

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -409,6 +410,12 @@ func lookupWikipediaExtract(ctx context.Context, title string) ([]DecisionMaker,
 			continue
 		}
 		pageTitle := search.Query.Search[0].Title
+		// Wikipedia always returns a best-effort hit: "Johan panel maker" matched
+		// the painting "The Lace Maker". Only accept pages that carry a
+		// distinctive token of the business.
+		if !ExternalRecordMatchesBusiness(pageTitle, title) {
+			continue
+		}
 		eq := "https://" + lang + ".wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&titles=" +
 			url.QueryEscape(pageTitle) + "&format=json"
 		eraw, err := httpGetJSON(ctx, eq, 8*time.Second)
@@ -779,6 +786,87 @@ func companyBrandToken(title string) string {
 		return cleaned
 	}
 	return best
+}
+
+// genericBrandWords appear in a large share of Indonesian shop names, so they
+// cannot identify one company. Querying customs / encyclopedia sources with one
+// of them alone returns a different business (e.g. "Indo" matched a US bedding
+// importer for a Jakarta panel shop).
+var genericBrandWords = map[string]bool{
+	"indo": true, "indonesia": true, "nusantara": true, "jakarta": true,
+	"jaya": true, "maju": true, "abadi": true, "makmur": true, "sejahtera": true,
+	"mandiri": true, "sentosa": true, "utama": true, "karya": true, "sukses": true,
+	"bersama": true, "putra": true, "putri": true, "cahaya": true, "sinar": true,
+	"berkah": true, "mitra": true, "agung": true, "baru": true, "raya": true,
+	"panel": true, "listrik": true, "elektrik": true, "electric": true,
+	"electrical": true, "teknik": true, "teknika": true, "maker": true,
+	"toko": true, "shop": true, "store": true, "jasa": true, "usaha": true,
+	"pusat": true, "grosir": true, "sumber": true, "anugerah": true,
+}
+
+// distinctiveNameTokens returns the lowercase tokens that can actually pin down
+// a specific company (drops generic words, legal forms, digits and addresses).
+func distinctiveNameTokens(name string) []string {
+	var out []string
+	for _, tok := range keywordTokens(strings.ToLower(name)) {
+		if len(tok) < 4 || genericBrandWords[tok] {
+			continue
+		}
+		if _, err := strconv.Atoi(tok); err == nil {
+			continue
+		}
+		out = append(out, tok)
+	}
+	return out
+}
+
+// IdentifiableCompanyName reports whether a name is specific enough to look up
+// in third-party company databases without risking a wrong-company match.
+func IdentifiableCompanyName(name string) bool {
+	return len(distinctiveNameTokens(name)) > 0
+}
+
+// significantNameTokens keeps the words that carry meaning in a company name,
+// including common ones like "listrik" (dropping only legal forms and numbers).
+func significantNameTokens(name string) []string {
+	legal := map[string]bool{"pt": true, "cv": true, "tbk": true, "ltd": true, "inc": true, "llc": true, "corp": true}
+	var out []string
+	for _, tok := range keywordTokens(strings.ToLower(name)) {
+		if len(tok) < 3 || legal[tok] {
+			continue
+		}
+		if _, err := strconv.Atoi(tok); err == nil {
+			continue
+		}
+		out = append(out, tok)
+	}
+	return out
+}
+
+// ExternalRecordMatchesBusiness gates third-party records (customs profiles,
+// encyclopedia pages) against the Maps business name. A record qualifies when it
+// echoes a distinctive token, or repeats at least two of the business's words —
+// so a bare generic prefix such as "Indo" is rejected.
+func ExternalRecordMatchesBusiness(recordName, businessName string) bool {
+	if len(distinctiveNameTokens(businessName)) == 0 {
+		return false
+	}
+	record := strings.ToLower(strings.TrimSpace(recordName))
+	if record == "" {
+		return false
+	}
+	for _, tok := range distinctiveNameTokens(businessName) {
+		if strings.Contains(record, tok) {
+			return true
+		}
+	}
+	shared := 0
+	for _, tok := range significantNameTokens(businessName) {
+		if strings.Contains(record, tok) {
+			shared++
+		}
+	}
+	return shared >= 2
 }
 
 func fetchDDGHTML(ctx context.Context, q string) (string, error) {
