@@ -14,12 +14,6 @@ import {
 } from '@/components/ai-elements/conversation'
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
 import {
-  ChainOfThought,
-  ChainOfThoughtContent,
-  ChainOfThoughtHeader,
-  ChainOfThoughtStep,
-} from '@/components/ai-elements/chain-of-thought'
-import {
   Reasoning,
   ReasoningContent,
   ReasoningTrigger,
@@ -46,13 +40,12 @@ import {
   type AgentToolCall,
   type ChatMessage,
   type JobMeta,
-  type PipelineStep,
 } from '@/lib/sessions'
 import { cn } from '@/lib/utils'
 
 /** Only real capabilities — no mock persona/marketing cards. */
 const SUGGESTIONS = [
-  '帮我找北京市朝阳区的火锅店',
+  '覆盖整个印尼，找全所有配电柜、配电设备、电气分销商和开关柜供应商',
   '帮我找雅加达的咖啡馆，尽量找全',
   '覆盖整个雅加达找进口商和咖啡馆',
   '在曼谷找美容店，半径15公里',
@@ -101,7 +94,8 @@ export default function App() {
   })
   const [activeId, setActiveId] = useState(() => sessions[0]?.id)
   const [busy, setBusy] = useState(false)
-  const [liveSteps, setLiveSteps] = useState<PipelineStep[]>([])
+  const [streamThinking, setStreamThinking] = useState('')
+  const [streamStatus, setStreamStatus] = useState('')
   const [aiMeta, setAiMeta] = useState<{ enabled: boolean; model: string } | null>(null)
   const [suggestions, setSuggestions] = useState(SUGGESTIONS)
   const [showHistory, setShowHistory] = useState(true)
@@ -134,7 +128,8 @@ export default function App() {
     const s = newSession()
     setSessions((prev) => [s, ...prev])
     setActiveId(s.id)
-    setLiveSteps([])
+    setStreamThinking('')
+    setStreamStatus('')
     setShowHistory(true)
   }
 
@@ -143,23 +138,22 @@ export default function App() {
     const s = newSession()
     setSessions([s])
     setActiveId(s.id)
-    setLiveSteps([])
+    setStreamThinking('')
+    setStreamStatus('')
   }
 
   /**
-   * Complete agent flow (one user message):
-   * Intent → Plan → Localize → Dispatch → Scrape → auto-intel on places
+   * Complete agent flow with SSE streaming thinking (real LLM).
    */
   const runGoal = async (goal: string) => {
     if (!goal.trim() || busy) return
+    if (aiMeta && !aiMeta.enabled) {
+      alert('未配置真实 AI（GRSAI_API_KEY）。请先在环境中配置后再试。')
+      return
+    }
     setBusy(true)
-    setLiveSteps([
-      { id: 'intent', role: 'IntentAgent', title: '理解目标', status: 'active', summary: '解析自然语言…' },
-      { id: 'plan', role: 'PlannerAgent', title: '规划全量任务', status: 'pending', summary: '等待' },
-      { id: 'localize', role: 'LocalizerAgent', title: '本地化与锚定', status: 'pending', summary: '等待' },
-      { id: 'dispatch', role: 'DispatcherAgent', title: '创建抓取任务', status: 'pending', summary: '等待' },
-      { id: 'scrape', role: 'Scraper', title: '深度全量抓取', status: 'pending', summary: '等待' },
-    ])
+    setStreamThinking('')
+    setStreamStatus('正在连接模型…')
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -174,47 +168,113 @@ export default function App() {
     }))
 
     try {
-      const result = await apiJSON<{
-        plan: NonNullable<ChatMessage['plan']>
-        job_ids: string[]
-        message: string
-        thinking?: string
-        steps: PipelineStep[]
-        tools?: AgentToolCall[]
-        model: string
-        source: string
-      }>('/api/v1/agent/dispatch', {
+      const res = await fetch('/api/v1/agent/dispatch/stream', {
         method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ goal: goal.trim(), ui_lang: 'zh' }),
       })
-
-      setLiveSteps(result.steps || [])
-      const jobs: JobMeta[] = (result.job_ids || []).map((id, i) => ({
-        id,
-        name: result.plan?.tasks?.[i]?.name || `任务 ${i + 1}`,
-      }))
-
-      const assistant: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        text: result.message || `已启动，创建 ${jobs.length} 个子任务。结果会持续汇总到下方表格。`,
-        thinking: result.thinking || result.plan?.intent?.thinking,
-        plan: result.plan,
-        steps: result.steps,
-        tools: result.tools,
-        jobs,
-        jobIds: result.job_ids,
-        model: result.model,
-        source: result.source,
-        createdAt: Date.now(),
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as { message?: string }).message || res.statusText)
       }
-      patchActive((s) => ({
-        ...s,
-        jobs,
-        messages: [...s.messages, assistant],
-      }))
+      if (!res.body) throw new Error('浏览器不支持流式响应')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let thinkingAcc = ''
+      let finalized = false
+
+      const handleEvent = (raw: string) => {
+        let ev: {
+          type: string
+          text?: string
+          message?: string
+          thinking?: string
+          plan?: ChatMessage['plan']
+          job_ids?: string[]
+          tools?: AgentToolCall[]
+          model?: string
+          source?: string
+        }
+        try {
+          ev = JSON.parse(raw)
+        } catch {
+          return
+        }
+        if (ev.type === 'thinking_delta' && ev.text) {
+          thinkingAcc += ev.text
+          setStreamThinking(thinkingAcc)
+          return
+        }
+        if (ev.type === 'status' && ev.text) {
+          setStreamStatus(ev.text)
+          return
+        }
+        if (ev.type === 'error') {
+          throw new Error(ev.text || '流式任务失败')
+        }
+        if (ev.type === 'result') {
+          if (ev.source && ev.source !== 'ai') {
+            throw new Error('未走真实 AI，请检查 GRSAI_API_KEY')
+          }
+          const jobs: JobMeta[] = (ev.job_ids || []).map((id, i) => ({
+            id,
+            name: ev.plan?.tasks?.[i]?.name || `任务 ${i + 1}`,
+          }))
+          const assistant: ChatMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            text:
+              ev.message ||
+              `已启动，创建 ${jobs.length} 个子任务。结果会持续汇总到下方表格。`,
+            thinking: ev.thinking || thinkingAcc,
+            plan: ev.plan,
+            tools: ev.tools,
+            jobs,
+            jobIds: ev.job_ids,
+            model: ev.model,
+            source: ev.source,
+            createdAt: Date.now(),
+          }
+          patchActive((s) => ({
+            ...s,
+            jobs,
+            messages: [...s.messages, assistant],
+          }))
+          finalized = true
+          setStreamThinking('')
+          setStreamStatus('')
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() || ''
+        for (const part of parts) {
+          const line = part
+            .split('\n')
+            .map((l) => l.trim())
+            .find((l) => l.startsWith('data:'))
+          if (!line) continue
+          handleEvent(line.slice(5).trim())
+        }
+      }
+      if (buffer.trim()) {
+        const line = buffer
+          .split('\n')
+          .map((l) => l.trim())
+          .find((l) => l.startsWith('data:'))
+        if (line) handleEvent(line.slice(5).trim())
+      }
+      if (!finalized) throw new Error('流式响应未完成')
     } catch (e) {
-      setLiveSteps([])
+      setStreamThinking('')
+      setStreamStatus('')
       patchActive((s) => ({
         ...s,
         messages: [
@@ -284,7 +344,8 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setActiveId(s.id)
-                        setLiveSteps([])
+                        setStreamThinking('')
+                        setStreamStatus('')
                       }}
                       className={cn(
                         'flex w-full items-start gap-2.5 rounded-[12px] px-2.5 py-2.5 text-left transition',
@@ -450,28 +511,6 @@ export default function App() {
                           <MessageResponse>{m.text}</MessageResponse>
                           {m.error && <p className="mt-2 text-sm text-red-600">{m.error}</p>}
 
-                          {!!m.steps?.length && (
-                            <ChainOfThought defaultOpen className="mt-4">
-                              <ChainOfThoughtHeader>思维链</ChainOfThoughtHeader>
-                              <ChainOfThoughtContent>
-                                {m.steps.map((s) => (
-                                  <ChainOfThoughtStep
-                                    key={s.id}
-                                    label={s.title}
-                                    description={s.summary}
-                                    status={
-                                      s.status === 'active'
-                                        ? 'active'
-                                        : s.status === 'complete'
-                                          ? 'complete'
-                                          : 'pending'
-                                    }
-                                  />
-                                ))}
-                              </ChainOfThoughtContent>
-                            </ChainOfThought>
-                          )}
-
                           {!!m.tools?.length && (
                             <div className="mt-4 space-y-2">
                               <div className="text-sm font-medium text-[#374151]">工具调用</div>
@@ -552,33 +591,13 @@ export default function App() {
                 <Message from="assistant">
                   <MessageContent className="w-full max-w-full">
                     <Reasoning isStreaming defaultOpen>
-                      <ReasoningTrigger>正在思考并规划任务…</ReasoningTrigger>
+                      <ReasoningTrigger>思考中</ReasoningTrigger>
                       <ReasoningContent>
-                        {liveSteps.length
-                          ? liveSteps.map((s) => `- **${s.title}**：${s.summary}`).join('\n')
-                          : '正在调用模型理解你的需求…'}
+                        {streamThinking || streamStatus || '正在连接模型…'}
                       </ReasoningContent>
                     </Reasoning>
-                    {!!liveSteps.length && (
-                      <ChainOfThought defaultOpen className="mt-3">
-                        <ChainOfThoughtHeader>思维链</ChainOfThoughtHeader>
-                        <ChainOfThoughtContent>
-                          {liveSteps.map((s) => (
-                            <ChainOfThoughtStep
-                              key={s.id}
-                              label={s.title}
-                              description={s.summary}
-                              status={
-                                s.status === 'active'
-                                  ? 'active'
-                                  : s.status === 'complete'
-                                    ? 'complete'
-                                    : 'pending'
-                              }
-                            />
-                          ))}
-                        </ChainOfThoughtContent>
-                      </ChainOfThought>
+                    {!!streamStatus && (
+                      <p className="mt-2 text-xs text-[#9CA3AF]">{streamStatus}</p>
                     )}
                   </MessageContent>
                 </Message>
@@ -608,8 +627,8 @@ export default function App() {
                   <div className="text-[11px] text-[#9CA3AF]">
                     {aiMeta
                       ? aiMeta.enabled
-                        ? `模型 ${aiMeta.model}`
-                        : `AI 未配置 · 规则引擎（${aiMeta.model}）`
+                        ? '真实 AI 流式输出已启用'
+                        : 'AI 未配置 · 无法启动真实模型'
                       : '检测模型…'}
                   </div>
                   <PromptInputSubmit

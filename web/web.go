@@ -210,6 +210,7 @@ func New(svc *Service, addr string, opts ...ServerOption) (*Server, error) {
 	mux.HandleFunc("/api/v1/ai-status", ans.apiAIStatus)
 	mux.HandleFunc("/api/v1/agent/understand", ans.apiAgentUnderstand)
 	mux.HandleFunc("/api/v1/agent/dispatch", ans.apiAgentDispatch)
+	mux.HandleFunc("/api/v1/agent/dispatch/stream", ans.apiAgentDispatchStream)
 	mux.HandleFunc("/api/v1/system/concurrency", ans.apiConcurrency)
 
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
