@@ -13,15 +13,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Upload code to server
-        uses: appleboy/scp-action@master
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "."
+          port: ${{ secrets.SSH_PORT || 22 }}
+          source: ".,!./.git,!./web/agent-ui/node_modules"
           target: "/home/ubuntu/gmaps_deploy"
-          rm: false
+          rm: true
+          strip_components: 0
+          overwrite: true
+          tar_dereference: true
 
       - name: Build and restart on server
         uses: appleboy/ssh-action@v1.0.3
@@ -29,37 +32,91 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           password: ${{ secrets.SSH_PASSWORD }}
-          port: ${{ secrets.SSH_PORT }}
+          port: ${{ secrets.SSH_PORT || 22 }}
           script_stop: true
+          command_timeout: 45m
+          envs: GRSAI_API_KEY,GRSAI_API_HOST,GRSAI_MODEL
           script: |
-            set -e
+            set -euo pipefail
 
-            echo "Step 1: Replace old code..."
-            if [ -d "/home/ubuntu/gmaps" ]; then
-              rm -rf /home/ubuntu/gmaps_old
-              mv /home/ubuntu/gmaps /home/ubuntu/gmaps_old
+            DEST=/home/ubuntu/gmaps
+            STAGING=/home/ubuntu/gmaps_deploy
+
+            echo "Step 1: Validate staging upload..."
+            if [ ! -f "$STAGING/docker-compose.deploy.yaml" ]; then
+              echo "ERROR: docker-compose.deploy.yaml missing under $STAGING" >&2
+              ls -la "$STAGING" || true
+              find "$STAGING" -maxdepth 3 -name 'docker-compose*.yaml' || true
+              exit 1
             fi
-            mv /home/ubuntu/gmaps_deploy /home/ubuntu/gmaps
-            echo "Step 1 done"
 
-            cd /home/ubuntu/gmaps
+            echo "Step 2: Preserve previous .env and swap code..."
+            mkdir -p "$DEST"
+            if [ -f "$DEST/.env" ]; then
+              cp -a "$DEST/.env" /tmp/gmaps.env.bak
+            fi
+            rm -rf /home/ubuntu/gmaps_old
+            if [ -d "$DEST" ] && [ "$(ls -A "$DEST" 2>/dev/null || true)" != "" ]; then
+              mv "$DEST" /home/ubuntu/gmaps_old
+            else
+              rm -rf "$DEST"
+            fi
+            mv "$STAGING" "$DEST"
+            cd "$DEST"
 
-            echo "Step 2: Configure environment..."
-            cat > .env << 'EOF'
-            GOPROXY=https://goproxy.cn,direct
-            PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
-            EOF
-            echo "Step 2 done"
+            if [ -f /tmp/gmaps.env.bak ]; then
+              cp -a /tmp/gmaps.env.bak .env
+              echo "Restored previous .env"
+            fi
 
-            echo "Step 3: Build Docker image (takes 5-10 min)..."
-            sudo -E docker compose --env-file .env -f docker-compose.deploy.yaml build --no-cache
-            echo "Step 3 done"
+            echo "Step 3: Ensure .env has required keys (merge, do not wipe)..."
+            touch .env
+            ensure_kv() {
+              local key="$1"
+              local val="$2"
+              if [ -z "$val" ]; then
+                return 0
+              fi
+              if grep -q "^${key}=" .env; then
+                sed -i "s|^${key}=.*|${key}=${val}|" .env
+              else
+                echo "${key}=${val}" >> .env
+              fi
+            }
+            ensure_kv GOPROXY "https://goproxy.cn,direct"
+            ensure_kv PLAYWRIGHT_DOWNLOAD_HOST "https://cdn.npmmirror.com/binaries/playwright"
+            ensure_kv APT_MIRROR "mirrors.tencentyun.com"
+            ensure_kv DISABLE_TELEMETRY "1"
+            ensure_kv INVITE_REQUIRED "1"
+            # Optional: override from Actions secrets when provided
+            ensure_kv GRSAI_API_KEY "${GRSAI_API_KEY:-}"
+            ensure_kv GRSAI_API_HOST "${GRSAI_API_HOST:-https://grsaiapi.com}"
+            ensure_kv GRSAI_MODEL "${GRSAI_MODEL:-gemini-3.1-flash-lite}"
 
-            echo "Step 4: Start service..."
-            sudo -E docker compose --env-file .env -f docker-compose.deploy.yaml up -d
+            if ! grep -q '^GRSAI_API_KEY=.\+' .env; then
+              echo "WARNING: GRSAI_API_KEY empty — Agent stream will refuse rules fallback" >&2
+            else
+              echo "GRSAI_API_KEY is set (Agent real LLM enabled)"
+            fi
+
+            echo "Step 4: Build Docker image..."
+            sudo -E docker compose --env-file .env -f docker-compose.deploy.yaml build
             echo "Step 4 done"
+
+            echo "Step 5: Start service..."
+            sudo -E docker compose --env-file .env -f docker-compose.deploy.yaml up -d
+            echo "Step 5 done"
+
+            sudo docker restart gmaps-nginx-1 >/dev/null 2>&1 || true
+            sleep 3
+            curl -fsS -o /dev/null -m 15 http://127.0.0.1:8080/invite || \
+              curl -fsS -o /dev/null -m 15 http://127.0.0.1:8080/ || true
 
             rm -rf /home/ubuntu/gmaps_old
             echo "=========================================="
             echo "  Deploy completed at $(date)"
             echo "=========================================="
+        env:
+          GRSAI_API_KEY: ${{ secrets.GRSAI_API_KEY }}
+          GRSAI_API_HOST: ${{ secrets.GRSAI_API_HOST }}
+          GRSAI_MODEL: ${{ secrets.GRSAI_MODEL }}
