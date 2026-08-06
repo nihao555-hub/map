@@ -85,8 +85,10 @@ func TestHarvestContactChannelsFromHTML(t *testing.T) {
 
 // TestLiveFreshUncommon20Channels 对全新 20 家冷门公司测：邮箱/电话/WhatsApp/社媒 + 决策人 + 架构。
 func TestLiveFreshUncommon20Channels(t *testing.T) {
-	if testing.Short() {
-		t.Skip("short")
+	// Opt-in like the other live benches: 20 concurrent OSINT runs exceed the
+	// default 10m package timeout and fail the whole suite.
+	if testing.Short() || os.Getenv("LIVE_OSINT_CHANNELS") == "" {
+		t.Skip("set LIVE_OSINT_CHANNELS=1")
 	}
 	type row struct {
 		Title             string   `json:"title"`

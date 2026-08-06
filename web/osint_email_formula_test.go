@@ -98,7 +98,9 @@ func TestSeedRoleEmailsRequiresMXPath(t *testing.T) {
 
 // TestLiveContactFormula20 联网实测约 20 组：官网深挖 + Brave @domain（过滤占位）命中率。
 func TestLiveContactFormula20(t *testing.T) {
-	if os.Getenv("LIVE_CONTACT_FORMULA") == "" && os.Getenv("CI") != "" {
+	// Opt-in everywhere: the run crawls ~20 live sites and blows the default
+	// 10m package timeout, which made plain `go test ./web/` unusable locally.
+	if os.Getenv("LIVE_CONTACT_FORMULA") == "" {
 		t.Skip("set LIVE_CONTACT_FORMULA=1")
 	}
 	fixtures := []struct {
