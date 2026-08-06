@@ -2,12 +2,14 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/gosom/google-maps-scraper/web"
 	"github.com/gosom/google-maps-scraper/web/sqlite"
+	_ "modernc.org/sqlite"
 )
 
 func TestInviteSeedRedeemAndGate(t *testing.T) {
@@ -174,5 +176,64 @@ func TestClaimPending(t *testing.T) {
 	_, err = store.ClaimPending(context.Background())
 	if err != web.ErrNoPending {
 		t.Fatalf("second claim: %v", err)
+	}
+}
+
+func TestFailStaleWorkingAndTouch(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "jobs.db")
+	store, err := sqlite.New(dbPath)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx := context.Background()
+	job := &web.Job{
+		ID: "stale1", Name: "zombie", Status: web.StatusPending, Date: time.Now().UTC(),
+		Data: web.JobData{Keywords: []string{"cafe"}, Lang: "en", Zoom: 15, Depth: 1, MaxTime: time.Minute},
+	}
+	if err := store.Create(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := store.ClaimPending(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.TouchJob(ctx, claimed.ID); err != nil {
+		t.Fatal(err)
+	}
+	n, err := store.FailStaleWorking(ctx, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("fresh heartbeat should not fail, got %d", n)
+	}
+
+	// Backdate updated_at to simulate a dead worker with no heartbeat.
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	old := time.Now().UTC().Add(-2 * time.Hour).Unix()
+	if _, err := db.Exec(`UPDATE jobs SET updated_at = ? WHERE id = ?`, old, claimed.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err = store.FailStaleWorking(ctx, 25*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 stale fail, got %d", n)
+	}
+	got, err := store.Get(ctx, claimed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != web.StatusFailed {
+		t.Fatalf("want failed, got %s", got.Status)
 	}
 }

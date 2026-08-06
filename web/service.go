@@ -124,6 +124,28 @@ func (s *Service) RequeueStaleWorking(ctx context.Context, maxAge time.Duration)
 	return 0, nil
 }
 
+// FailStaleWorking marks heartbeat-dead working jobs as failed (zombie cleanup).
+func (s *Service) FailStaleWorking(ctx context.Context, maxAge time.Duration) (int, error) {
+	type failer interface {
+		FailStaleWorking(context.Context, time.Duration) (int, error)
+	}
+	if f, ok := s.repo.(failer); ok {
+		return f.FailStaleWorking(ctx, maxAge)
+	}
+	return 0, nil
+}
+
+// TouchJob refreshes the working heartbeat timestamp.
+func (s *Service) TouchJob(ctx context.Context, id string) error {
+	type toucher interface {
+		TouchJob(context.Context, string) error
+	}
+	if t, ok := s.repo.(toucher); ok {
+		return t.TouchJob(ctx, id)
+	}
+	return nil
+}
+
 // AllForOwner lists jobs belonging to one invite-code tenant.
 // When owner is empty, returns an empty list (never falls back to global listing).
 func (s *Service) AllForOwner(ctx context.Context, owner string) ([]Job, error) {

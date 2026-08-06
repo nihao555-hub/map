@@ -182,8 +182,8 @@ func (s *Store) ClaimPending(ctx context.Context) (web.Job, error) {
 }
 
 // RequeueStaleWorking resets jobs stuck in "working" longer than maxAge
-// (process crash / kill without status update). Safe for multi-worker if maxAge
-// exceeds a normal job runtime.
+// (process crash / kill without status update). Prefer FailStaleWorking for
+// zombie slot recovery; this helper remains for tests / manual ops.
 func (s *Store) RequeueStaleWorking(ctx context.Context, maxAge time.Duration) (int, error) {
 	if maxAge < time.Minute {
 		maxAge = time.Minute
@@ -202,6 +202,38 @@ func (s *Store) RequeueStaleWorking(ctx context.Context, maxAge time.Duration) (
 		return 0, err
 	}
 	return int(n), nil
+}
+
+// FailStaleWorking marks heartbeat-dead working jobs as failed so they stop
+// looking "in progress" and cannot confuse the queue after a crash/hang.
+func (s *Store) FailStaleWorking(ctx context.Context, maxAge time.Duration) (int, error) {
+	if maxAge < time.Minute {
+		maxAge = time.Minute
+	}
+	cutoff := time.Now().UTC().Add(-maxAge).Unix()
+	now := time.Now().UTC().Unix()
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE jobs SET status = ?, updated_at = ? WHERE status = ? AND updated_at < ?`,
+		web.StatusFailed, now, web.StatusWorking, cutoff,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return int(n), nil
+}
+
+// TouchJob refreshes updated_at for a running job (heartbeat against zombie detection).
+func (s *Store) TouchJob(ctx context.Context, id string) error {
+	now := time.Now().UTC().Unix()
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE jobs SET updated_at = ? WHERE id = ? AND status = ?`,
+		now, id, web.StatusWorking,
+	)
+	return err
 }
 
 type scannable interface {

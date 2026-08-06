@@ -102,20 +102,21 @@ func (w *webrunner) work(ctx context.Context) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	// Crash recovery: jobs left in "working" after kill/OOM would otherwise never finish.
-	// 3h exceeds typical deep+grid budgets so live multi-worker scrapes are not stolen.
-	if n, err := w.svc.RequeueStaleWorking(ctx, 3*time.Hour); err != nil {
-		log.Printf("requeue stale working: %v", err)
+	staleAge := web.StaleWorkingAge()
+	// Crash / hung-browser recovery: no heartbeat → fail so UI/queue stay honest.
+	if n, err := w.svc.FailStaleWorking(ctx, staleAge); err != nil {
+		log.Printf("fail stale working: %v", err)
 	} else if n > 0 {
-		log.Printf("requeued %d stale working job(s) back to pending", n)
+		log.Printf("watchdog: failed %d zombie working job(s) with no heartbeat for %s", n, staleAge)
 	}
 
 	maxJobs := web.AdaptiveJobConcurrency()
 	web.LogMemoryPressure("web runner start")
-	log.Printf("web runner: fair-admission slots=%d (env cap GMS_WEB_JOB_CONCURRENCY=%d); newest pending first; queued jobs wait",
-		maxJobs, web.JobConcurrency())
+	log.Printf("web runner: fair-admission slots=%d (env cap GMS_WEB_JOB_CONCURRENCY=%d); newest pending first; stale zombie=%s",
+		maxJobs, web.JobConcurrency(), staleAge)
 
 	var eg errgroup.Group
+	var watchdogAt time.Time
 
 	for {
 		select {
@@ -123,6 +124,16 @@ func (w *webrunner) work(ctx context.Context) error {
 			_ = eg.Wait()
 			return nil
 		case <-ticker.C:
+			// Periodic zombie sweep (every ~30s): frees DB "working" ghosts after crash.
+			if time.Since(watchdogAt) >= 30*time.Second {
+				watchdogAt = time.Now()
+				if n, err := w.svc.FailStaleWorking(ctx, web.StaleWorkingAge()); err != nil {
+					log.Printf("watchdog fail stale: %v", err)
+				} else if n > 0 {
+					log.Printf("watchdog: failed %d zombie working job(s)", n)
+				}
+			}
+
 			// Re-evaluate slots each tick (memory/CPU change); never oversubscribe.
 			for web.CanAdmitDeepJob() {
 				select {
@@ -142,26 +153,48 @@ func (w *webrunner) work(ctx context.Context) error {
 				}
 
 				j := job
+				wall := web.JobWallClock(j.Data.MaxTime)
 				web.BeginDeepJob()
 				slots := web.AdaptiveJobConcurrency()
-				log.Printf("claimed job %s name=%q (active=%d/%d fair-admission)", j.ID, j.Name, web.ActiveDeepJobs(), slots)
+				log.Printf("claimed job %s name=%q (active=%d/%d fair-admission wall=%s)",
+					j.ID, j.Name, web.ActiveDeepJobs(), slots, wall)
 				eg.Go(func() error {
 					defer web.EndDeepJob()
 
 					t0 := time.Now().UTC()
-					if err := w.scrapeJob(ctx, &j); err != nil {
-						params := map[string]any{
-							"job_count": len(j.Data.Keywords),
-							"duration":  time.Now().UTC().Sub(t0).String(),
-							"error":     err.Error(),
+					jobCtx, cancel := context.WithTimeout(ctx, wall)
+					defer cancel()
+					w.svc.RegisterJobCancel(j.ID, cancel)
+					defer w.svc.UnregisterJobCancel(j.ID)
+
+					done := make(chan error, 1)
+					go func() {
+						done <- w.scrapeJob(jobCtx, &j)
+					}()
+
+					var err error
+					select {
+					case err = <-done:
+					case <-jobCtx.Done():
+						select {
+						case err = <-done:
+						case <-time.After(90 * time.Second):
+							log.Printf("job %s zombie: wall clock %s exceeded — force fail, free admit slot", j.ID, wall)
+							j.Status = web.StatusFailed
+							_ = w.svc.Update(context.Background(), &j)
+							err = fmt.Errorf("job %s wall clock exceeded (%s)", j.ID, wall)
 						}
+					}
+
+					params := map[string]any{
+						"job_count": len(j.Data.Keywords),
+						"duration":  time.Now().UTC().Sub(t0).String(),
+					}
+					if err != nil {
+						params["error"] = err.Error()
 						_ = runner.Telemetry().Send(ctx, tlmt.NewEvent("web_runner", params))
 						log.Printf("error scraping job %s: %v", j.ID, err)
 					} else {
-						params := map[string]any{
-							"job_count": len(j.Data.Keywords),
-							"duration":  time.Now().UTC().Sub(t0).String(),
-						}
 						_ = runner.Telemetry().Send(ctx, tlmt.NewEvent("web_runner", params))
 						log.Printf("job %s scraped successfully", j.ID)
 					}
@@ -173,28 +206,46 @@ func (w *webrunner) work(ctx context.Context) error {
 }
 
 func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
-	jobCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	w.svc.RegisterJobCancel(job.ID, cancel)
-	defer w.svc.UnregisterJobCancel(job.ID)
+	// ctx already carries the wall-clock timeout + cancel registered by work().
+	jobCtx := ctx
 
 	// Re-read status: user may have canceled while queued.
-	if latest, err := w.svc.Get(ctx, job.ID); err == nil && latest.Status == web.StatusCanceled {
+	if latest, err := w.svc.Get(jobCtx, job.ID); err == nil && latest.Status == web.StatusCanceled {
 		log.Printf("job %s canceled before start", job.ID)
 		return nil
 	}
 
 	job.Status = web.StatusWorking
 
-	err := w.svc.Update(ctx, job)
+	err := w.svc.Update(jobCtx, job)
 	if err != nil {
 		return err
 	}
 
+	// Heartbeat so FailStaleWorking does not kill a healthy long scrape.
+	stopHB := make(chan struct{})
+	defer close(stopHB)
+	go func() {
+		t := time.NewTicker(60 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-stopHB:
+				return
+			case <-jobCtx.Done():
+				return
+			case <-t.C:
+				if terr := w.svc.TouchJob(context.Background(), job.ID); terr != nil {
+					log.Printf("job %s heartbeat: %v", job.ID, terr)
+				}
+			}
+		}
+	}()
+
 	if len(job.Data.Keywords) == 0 {
 		job.Status = web.StatusFailed
 
-		return w.svc.Update(ctx, job)
+		return w.svc.Update(jobCtx, job)
 	}
 
 	outpath := filepath.Join(w.cfg.DataFolder, job.ID+".csv")
@@ -213,11 +264,14 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		setupMate = defaultSetupMate(w.cfg)
 	}
 
-	mate, err := setupMate(ctx, outfile, job)
+	// Cap browser setup (download/launch) so a hang cannot hold the admit slot forever.
+	setupCtx, setupCancel := context.WithTimeout(jobCtx, 3*time.Minute)
+	mate, err := setupMate(setupCtx, outfile, job)
+	setupCancel()
 	if err != nil {
 		job.Status = web.StatusFailed
 
-		err2 := w.svc.Update(ctx, job)
+		err2 := w.svc.Update(jobCtx, job)
 		if err2 != nil {
 			log.Printf("failed to update job status: %v", err2)
 		}
@@ -225,7 +279,18 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		return err
 	}
 
-	defer mate.Close()
+	defer func() {
+		done := make(chan struct{})
+		go func() {
+			_ = mate.Close()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(30 * time.Second):
+			log.Printf("job %s mate.Close hung — abandoning browser cleanup", job.ID)
+		}
+	}()
 
 	var dedup deduper.Deduper
 	if web.UseBloomDeduper() {
