@@ -16,16 +16,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// Agent roles for natural-language → full-volume deep scrape workflow:
+// Agent standard pipeline (single user action → full run, no separate "understand/dispatch" UX):
 //
-//	IntentAgent     — understand user goal (country / place / what / radius / intel)
-//	PlannerAgent    — split multi-target goals into atomic scrape tasks
-//	LocalizerAgent  — translate keywords to Maps-searchable local terms
-//	DispatcherAgent — create deep+grid+unlimited jobs (radius is the only volume knob)
-//	IntelAgent      — optional post-scrape enrichment (flag only at create time)
+//  1. IntentAgent     — NL → country / place / keywords / radius / intel flag
+//  2. PlannerAgent    — split into atomic deep full-coverage scrape tasks
+//  3. LocalizerAgent  — Maps-local keywords + geocode anchors
+//  4. DispatcherAgent — create pending deep+grid+unlimited jobs
+//  5. Scraper         — fair-admission browser scrape (queued if busy)
+//  6. IntelAgent      — optional; starts after place results exist (on demand / post-scrape)
 //
-// Product policy: every dispatched job is deep mode + grid full coverage + MaxResults=0.
-// Fast mode and fixed quantity caps are never used.
+// Product policy: every job is deep + grid + MaxResults=0. Fast mode / quantity caps never used.
 
 // AgentIntent is the structured understanding of a user goal.
 type AgentIntent struct {
@@ -60,11 +60,24 @@ type AgentPlan struct {
 	Roles  []string    `json:"roles"`
 }
 
-// AgentDispatchResult is DispatcherAgent output.
+// AgentPipelineStep is one visible intermediate step in the standard agent run.
+type AgentPipelineStep struct {
+	ID      string `json:"id"`
+	Role    string `json:"role"`
+	Title   string `json:"title"`
+	Status  string `json:"status"` // pending | active | complete | error
+	Summary string `json:"summary"`
+	Detail  any    `json:"detail,omitempty"`
+}
+
+// AgentDispatchResult is the full-pipeline output (Intent→…→Dispatcher).
 type AgentDispatchResult struct {
-	Plan    AgentPlan `json:"plan"`
-	JobIDs  []string  `json:"job_ids"`
-	Message string    `json:"message"`
+	Plan    AgentPlan           `json:"plan"`
+	JobIDs  []string            `json:"job_ids"`
+	Message string              `json:"message"`
+	Steps   []AgentPipelineStep `json:"steps"`
+	Model   string              `json:"model"`
+	Source  string              `json:"source"` // ai | rules
 }
 
 type agentIntentJSON struct {

@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  Bot,
-  Compass,
-  Loader2,
-  MapPin,
+  ArrowRight,
+  Bell,
   Menu,
   MessageSquarePlus,
   PanelLeftClose,
-  Rocket,
-  Sparkles,
+  RefreshCw,
+  UserRound,
 } from 'lucide-react'
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
 import { Message, MessageContent, MessageResponse } from '@/components/ai-elements/message'
@@ -21,50 +18,71 @@ import {
   ChainOfThought,
   ChainOfThoughtContent,
   ChainOfThoughtHeader,
-  ChainOfThoughtSearchResult,
-  ChainOfThoughtSearchResults,
   ChainOfThoughtStep,
 } from '@/components/ai-elements/chain-of-thought'
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from '@/components/ai-elements/reasoning'
 import { Task, TaskContent, TaskItem, TaskItemFile, TaskTrigger } from '@/components/ai-elements/task'
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
-import { PromptInput } from '@/components/ai-elements/prompt-input'
+import {
+  PromptInput,
+  PromptInputBody,
+  PromptInputFooter,
+  PromptInputSubmit,
+  PromptInputTextarea,
+} from '@/components/ai-elements/prompt-input'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { ResultsTable } from '@/components/ResultsTable'
 import {
   loadSessions,
   newSession,
   saveSessions,
   titleFromGoal,
-  type AgentPlan,
   type AgentSession,
   type ChatMessage,
+  type PipelineStep,
 } from '@/lib/sessions'
 import { cn } from '@/lib/utils'
 
 const SUGGESTIONS = [
-  '覆盖整个雅加达找咖啡馆和进口商',
-  '在曼谷找美容店，半径 15 公里并做背调',
+  '帮我找雅加达的咖啡馆，尽量找全',
+  '覆盖整个雅加达找进口商和咖啡馆',
+  '在曼谷找美容店，半径15公里并做背调',
   'Find importers in Surabaya within 20km',
-  '在吉隆坡找咖啡馆，尽量找全',
+  '在吉隆坡找咖啡馆',
+  '在胡志明市找餐饮店，半径10公里',
 ]
 
-type StepStatus = 'complete' | 'active' | 'pending'
-
-type PipelineState = {
-  intent: StepStatus
-  plan: StepStatus
-  localize: StepStatus
-  dispatch: StepStatus
-  scrape: StepStatus
-}
-
-const idlePipeline = (): PipelineState => ({
-  intent: 'pending',
-  plan: 'pending',
-  localize: 'pending',
-  dispatch: 'pending',
-  scrape: 'pending',
-})
+const QUICK_START = [
+  {
+    title: '智能搜索线索',
+    desc: '一句话描述地点与品类，自动深度全量抓取',
+    icon: '/agent/decor/qs-search.png',
+    prompt: '帮我找雅加达的咖啡馆，尽量找全',
+  },
+  {
+    title: '地图区域获客',
+    desc: '回地图模式圈选区域后继续搜索',
+    icon: '/agent/decor/qs-map.png',
+    href: '/',
+  },
+  {
+    title: '结果汇总表',
+    desc: '抓取完成后在此汇总查看与导出',
+    icon: '/agent/decor/qs-chart.png',
+    prompt: '覆盖整个雅加达找咖啡馆和进口商',
+  },
+  {
+    title: '商家背调',
+    desc: '结果出来后点击表格行展开背调',
+    icon: '/agent/decor/qs-shop.png',
+    prompt: '在雅加达找咖啡馆并做背调',
+  },
+]
 
 async function apiJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, {
@@ -73,14 +91,8 @@ async function apiJSON<T>(url: string, init?: RequestInit): Promise<T> {
     ...init,
   })
   const data = await r.json().catch(() => ({}))
-  if (!r.ok) {
-    throw new Error((data && (data.message || data.error)) || r.statusText)
-  }
+  if (!r.ok) throw new Error((data as { message?: string }).message || r.statusText)
   return data as T
-}
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms))
 }
 
 export default function App() {
@@ -90,11 +102,10 @@ export default function App() {
   })
   const [activeId, setActiveId] = useState(() => sessions[0]?.id)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
-  const [pipeline, setPipeline] = useState<PipelineState>(idlePipeline)
-  const [aiStatus, setAiStatus] = useState<{ enabled: boolean; model: string } | null>(null)
-  const [conc, setConc] = useState<string>('')
+  const [liveSteps, setLiveSteps] = useState<PipelineStep[]>([])
+  const [aiMeta, setAiMeta] = useState<{ enabled: boolean; model: string } | null>(null)
+  const [suggestions, setSuggestions] = useState(SUGGESTIONS)
 
   const active = useMemo(
     () => sessions.find((s) => s.id === activeId) || sessions[0],
@@ -107,19 +118,8 @@ export default function App() {
 
   useEffect(() => {
     apiJSON<{ enabled: boolean; model: string }>('/api/v1/ai-status')
-      .then(setAiStatus)
-      .catch(() => setAiStatus({ enabled: false, model: '—' }))
-    const tick = () =>
-      apiJSON<{ active_jobs: number; admit_slots: number; per_job_deep_workers: number }>(
-        '/api/v1/system/concurrency',
-      )
-        .then((s) =>
-          setConc(`并发 ${s.active_jobs}/${s.admit_slots} · 满速×${s.per_job_deep_workers}`),
-        )
-        .catch(() => {})
-    tick()
-    const id = setInterval(tick, 5000)
-    return () => clearInterval(id)
+      .then(setAiMeta)
+      .catch(() => setAiMeta({ enabled: false, model: 'gemini-3.1-flash-lite' }))
   }, [])
 
   const patchActive = useCallback(
@@ -135,20 +135,20 @@ export default function App() {
     const s = newSession()
     setSessions((prev) => [s, ...prev])
     setActiveId(s.id)
-    setDraft('')
-    setPipeline(idlePipeline())
+    setLiveSteps([])
   }
 
-  const runGoal = async (goal: string, dispatchAfter = true) => {
+  /** Single standard pipeline: NL → Intent→Plan→Localize→Dispatch→Scrape (intel later). */
+  const runGoal = async (goal: string) => {
     if (!goal.trim() || busy) return
     setBusy(true)
-    setPipeline({
-      intent: 'active',
-      plan: 'pending',
-      localize: 'pending',
-      dispatch: 'pending',
-      scrape: 'pending',
-    })
+    setLiveSteps([
+      { id: 'intent', role: 'IntentAgent', title: '理解目标', status: 'active', summary: '解析自然语言…' },
+      { id: 'plan', role: 'PlannerAgent', title: '规划全量任务', status: 'pending', summary: '等待' },
+      { id: 'localize', role: 'LocalizerAgent', title: '本地化与锚定', status: 'pending', summary: '等待' },
+      { id: 'dispatch', role: 'DispatcherAgent', title: '创建抓取任务', status: 'pending', summary: '等待' },
+      { id: 'scrape', role: 'Scraper', title: '深度全量抓取', status: 'pending', summary: '等待' },
+    ])
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -161,389 +161,367 @@ export default function App() {
       title: s.messages.length === 0 ? titleFromGoal(goal) : s.title,
       messages: [...s.messages, userMsg],
     }))
-    setDraft('')
 
     try {
-      await sleep(280)
-      const plan = await apiJSON<AgentPlan>('/api/v1/agent/understand', {
+      // One API = full pipeline. Intermediate steps returned for UI.
+      const result = await apiJSON<{
+        plan: ChatMessage['plan']
+        job_ids: string[]
+        message: string
+        steps: PipelineStep[]
+        model: string
+        source: string
+      }>('/api/v1/agent/dispatch', {
         method: 'POST',
         body: JSON.stringify({ goal: goal.trim(), ui_lang: 'zh' }),
       })
-      setPipeline((p) => ({ ...p, intent: 'complete', plan: 'active' }))
-      await sleep(220)
-      setPipeline((p) => ({ ...p, plan: 'complete', localize: 'active' }))
-      await sleep(180)
-      setPipeline((p) => ({ ...p, localize: 'complete' }))
 
-      let jobIds: string[] | undefined
-      if (dispatchAfter) {
-        setPipeline((p) => ({ ...p, dispatch: 'active' }))
-        const dispatched = await apiJSON<{ plan: AgentPlan; job_ids: string[]; message: string }>(
-          '/api/v1/agent/dispatch',
+      setLiveSteps(result.steps || [])
+      const n = result.plan?.tasks?.length || 0
+      const src =
+        result.source === 'ai'
+          ? `真实 AI（${result.model}）`
+          : `规则引擎（未配置 GRSAI_API_KEY；默认模型 ${result.model}）`
+
+      const assistant: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        text: `已按标准流程跑完规划并创建 ${n} 个深度全量子任务。\n引擎：${src}\n抓取进行中；下方汇总表会随结果更新，点击行可展开背调。`,
+        plan: result.plan,
+        steps: result.steps,
+        jobIds: result.job_ids,
+        model: result.model,
+        source: result.source,
+        createdAt: Date.now(),
+      }
+      patchActive((s) => ({
+        ...s,
+        jobIds: result.job_ids || [],
+        messages: [...s.messages, assistant],
+      }))
+    } catch (e) {
+      setLiveSteps([])
+      patchActive((s) => ({
+        ...s,
+        messages: [
+          ...s.messages,
           {
-            method: 'POST',
-            body: JSON.stringify({ goal: goal.trim(), ui_lang: 'zh', intent: plan.intent }),
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            text: '处理失败',
+            error: e instanceof Error ? e.message : String(e),
+            createdAt: Date.now(),
           },
-        )
-        jobIds = dispatched.job_ids || []
-        setPipeline((p) => ({ ...p, dispatch: 'complete', scrape: 'active' }))
-      }
-
-      const n = plan.tasks?.length || 0
-      const src = plan.intent?.source === 'ai' ? '真实 AI' : '规则引擎'
-      const assistant: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        text: dispatchAfter
-          ? `已理解并分发 ${n} 个深度全量子任务（${src}）。公平准入下满速并行，其余排队。`
-          : `已规划 ${n} 个深度全量子任务（${src}）。确认后可一键开始抓取。`,
-        plan,
-        jobIds,
-        createdAt: Date.now(),
-      }
-      patchActive((s) => ({ ...s, messages: [...s.messages, assistant] }))
-    } catch (e) {
-      setPipeline(idlePipeline())
-      const assistant: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        text: '处理失败',
-        error: e instanceof Error ? e.message : String(e),
-        createdAt: Date.now(),
-      }
-      patchActive((s) => ({ ...s, messages: [...s.messages, assistant] }))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const dispatchOnly = async (plan: AgentPlan) => {
-    if (busy) return
-    setBusy(true)
-    setPipeline((p) => ({ ...p, dispatch: 'active' }))
-    try {
-      const dispatched = await apiJSON<{ job_ids: string[]; message: string }>(
-        '/api/v1/agent/dispatch',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            goal: plan.intent.raw_goal,
-            ui_lang: 'zh',
-            intent: plan.intent,
-          }),
-        },
-      )
-      setPipeline((p) => ({ ...p, dispatch: 'complete', scrape: 'active' }))
-      const assistant: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        text: dispatched.message || `已创建 ${(dispatched.job_ids || []).length} 个任务`,
-        jobIds: dispatched.job_ids,
-        createdAt: Date.now(),
-      }
-      patchActive((s) => ({ ...s, messages: [...s.messages, assistant] }))
-    } catch (e) {
-      const assistant: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        text: '分发失败',
-        error: e instanceof Error ? e.message : String(e),
-        createdAt: Date.now(),
-      }
-      patchActive((s) => ({ ...s, messages: [...s.messages, assistant] }))
+        ],
+      }))
     } finally {
       setBusy(false)
     }
   }
 
   const empty = !active?.messages.length
+  const shuffleSuggestions = () => {
+    setSuggestions((prev) => {
+      const next = [...prev]
+      for (let i = next.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[next[i], next[j]] = [next[j], next[i]]
+      }
+      return next
+    })
+  }
 
   return (
-    <div className="flex h-full min-h-0">
-      {/* Sidebar — Doubao-like task rail */}
-      <aside
-        className={cn(
-          'flex h-full shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-card)]/80 backdrop-blur transition-all',
-          sidebarOpen ? 'w-[272px]' : 'w-0 overflow-hidden border-0',
-        )}
-      >
-        <div className="flex items-center gap-2 px-4 pt-4 pb-3">
-          <div className="flex size-8 items-center justify-center rounded-xl bg-[var(--color-primary)] text-[var(--color-primary-foreground)]">
-            <Bot className="size-4" />
+    <TooltipProvider>
+      <div className="flex h-full min-h-0 bg-background">
+        {/* Left: 新建任务 + 历史 */}
+        <aside
+          className={cn(
+            'flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width]',
+            sidebarOpen ? 'w-[260px]' : 'w-0 overflow-hidden border-0',
+          )}
+        >
+          <div className="px-3 pt-4 pb-2">
+            <Button className="w-full justify-start gap-2 rounded-xl" onClick={createTask}>
+              <MessageSquarePlus className="size-4" />
+              新建任务
+            </Button>
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">地图获客 Agent</div>
-            <div className="truncate text-[11px] text-[var(--color-muted-foreground)]">
-              深度全量 · 目标找全
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+            <p className="px-2 py-2 text-xs font-medium text-muted-foreground">历史任务</p>
+            <div className="space-y-1">
+              {sessions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveId(s.id)
+                    setLiveSteps([])
+                  }}
+                  className={cn(
+                    'flex w-full flex-col rounded-xl px-3 py-2.5 text-left transition-colors',
+                    s.id === activeId ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-muted',
+                  )}
+                >
+                  <span className="truncate text-sm font-medium">{s.title}</span>
+                  <span className="truncate text-[11px] text-muted-foreground">
+                    {new Date(s.updatedAt).toLocaleString()}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
-        </div>
+        </aside>
 
-        <div className="px-3 pb-3">
-          <Button className="w-full justify-start gap-2" onClick={createTask}>
-            <MessageSquarePlus className="size-4" />
-            新建任务
-          </Button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-          <p className="px-2 pb-2 text-[11px] font-medium tracking-wide text-[var(--color-muted-foreground)] uppercase">
-            最近任务
-          </p>
-          <div className="space-y-1">
-            {sessions.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => {
-                  setActiveId(s.id)
-                  setPipeline(idlePipeline())
-                }}
-                className={cn(
-                  'flex w-full flex-col rounded-xl px-3 py-2.5 text-left transition-colors',
-                  s.id === activeId
-                    ? 'bg-[var(--color-accent)] text-[var(--color-accent-foreground)]'
-                    : 'hover:bg-[var(--color-muted)]',
-                )}
-              >
-                <span className="truncate text-sm font-medium">{s.title}</span>
-                <span className="truncate text-[11px] opacity-70">
-                  {new Date(s.updatedAt).toLocaleString()}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="border-t border-[var(--color-border)] p-3 text-[11px] text-[var(--color-muted-foreground)]">
-          <a href="/" className="inline-flex items-center gap-1 hover:text-[var(--color-foreground)]">
-            <Compass className="size-3.5" />
-            返回普通地图模式
-          </a>
-        </div>
-      </aside>
-
-      {/* Main chat */}
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-card)]/70 px-4 py-3 backdrop-blur">
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={() => setSidebarOpen((v) => !v)}
-            aria-label="切换侧栏"
-          >
-            {sidebarOpen ? <PanelLeftClose className="size-4" /> : <Menu className="size-4" />}
-          </Button>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{active?.title || '新任务'}</div>
-            <div className="truncate text-[11px] text-[var(--color-muted-foreground)]">
-              {aiStatus
-                ? aiStatus.enabled
-                  ? `AI · ${aiStatus.model}`
-                  : `AI 未配置 · 规则引擎 · 默认 ${aiStatus.model}`
-                : 'AI …'}
-              {conc ? ` · ${conc}` : ''}
+        <main className="flex min-w-0 flex-1 flex-col">
+          {/* Top bar */}
+          <header className="flex items-center justify-between px-5 py-3">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="rounded-full"
+              onClick={() => setSidebarOpen((v) => !v)}
+            >
+              {sidebarOpen ? <PanelLeftClose className="size-4" /> : <Menu className="size-4" />}
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="icon" variant="ghost" className="rounded-full" aria-label="通知">
+                <Bell className="size-4" />
+              </Button>
+              <div className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <UserRound className="size-4" />
+              </div>
             </div>
-          </div>
-          <Badge variant="secondary">智能体工作区</Badge>
-        </header>
+          </header>
 
-        <Conversation className="min-h-0">
-          <ConversationContent className="mx-auto w-full max-w-3xl">
-            {empty ? (
-              <ConversationEmptyState
-                className="min-h-[52vh]"
-                icon={<Sparkles className="size-10 text-[var(--color-primary)]" />}
-                title="用一句话描述获客目标"
-                description="Agent 会理解地点与品类，拆成深度全量子任务，尽量把目标地点符合的全部找出来"
-              >
-                <div className="mt-2 w-full max-w-xl space-y-5">
-                  <div className="text-center">
-                    <h2 className="text-2xl font-semibold tracking-tight">地图获客 Agent</h2>
-                    <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">
-                      新建任务 → 描述目标 → 查看推理与计划 → 一键全量抓取
-                    </p>
-                  </div>
-                  <Suggestions>
-                    {SUGGESTIONS.map((s) => (
-                      <Suggestion key={s} suggestion={s} onClick={(v) => runGoal(v, true)} />
-                    ))}
-                  </Suggestions>
-                </div>
-              </ConversationEmptyState>
-            ) : (
-              active?.messages.map((m) => (
-                <Message key={m.id} from={m.role}>
-                  <MessageContent>
-                    <MessageResponse>{m.text}</MessageResponse>
-                    {m.error && (
-                      <p className="mt-2 text-sm text-[var(--color-destructive)]">{m.error}</p>
-                    )}
-                    {m.role === 'assistant' && m.plan && (
-                      <div className="mt-4 space-y-4">
-                        <ChainOfThought defaultOpen>
-                          <ChainOfThoughtHeader>Agent 推理过程</ChainOfThoughtHeader>
-                          <ChainOfThoughtContent>
-                            <ChainOfThoughtStep
-                              icon={Bot}
-                              label="IntentAgent · 理解目标"
-                              description={`${m.plan.intent.location || '—'} · ${m.plan.intent.country_name || m.plan.intent.country_code} · ${m.plan.intent.radius_km}km · source=${m.plan.intent.source}`}
-                              status={pipeline.intent === 'pending' ? 'complete' : pipeline.intent}
-                            >
-                              <ChainOfThoughtSearchResults>
-                                {(m.plan.intent.keywords || []).map((k) => (
-                                  <ChainOfThoughtSearchResult key={k}>{k}</ChainOfThoughtSearchResult>
-                                ))}
-                              </ChainOfThoughtSearchResults>
-                            </ChainOfThoughtStep>
-                            <ChainOfThoughtStep
-                              icon={MapPin}
-                              label="PlannerAgent · 拆分子任务"
-                              description={
-                                m.plan.intent.notes ||
-                                `共 ${m.plan.tasks.length} 个深度全量任务（多区县重叠覆盖）`
-                              }
-                              status="complete"
-                            />
-                            <ChainOfThoughtStep
-                              icon={Sparkles}
-                              label="LocalizerAgent · 本地化关键词"
-                              description="译成 Maps 可搜词并锚定坐标"
-                              status="complete"
-                            />
-                            <ChainOfThoughtStep
-                              icon={Rocket}
-                              label="DispatcherAgent · 分发抓取"
-                              description={
-                                m.jobIds?.length
-                                  ? `已创建 ${m.jobIds.length} 个任务`
-                                  : '等待确认分发'
-                              }
-                              status={m.jobIds?.length ? 'complete' : 'pending'}
-                            />
-                          </ChainOfThoughtContent>
-                        </ChainOfThought>
-
-                        <Task defaultOpen>
-                          <TaskTrigger title={`抓取计划 · ${m.plan.tasks.length} 项`} />
-                          <TaskContent>
-                            {m.plan.tasks.map((t, i) => (
-                              <TaskItem key={`${t.name}-${i}`}>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-medium text-[var(--color-foreground)]">
-                                    {t.name}
-                                  </span>
-                                  <TaskItemFile>{t.radius_km}km</TaskItemFile>
-                                  <TaskItemFile>深度全量</TaskItemFile>
-                                  {t.enable_intel && <TaskItemFile>背调</TaskItemFile>}
-                                </div>
-                                <div className="mt-1 text-xs">
-                                  {(t.keywords || []).join(', ')} · {t.location}
-                                </div>
-                              </TaskItem>
-                            ))}
-                          </TaskContent>
-                        </Task>
-
-                        {!m.jobIds?.length && (
-                          <Button
-                            disabled={busy}
-                            onClick={() => dispatchOnly(m.plan!)}
-                            className="gap-2"
-                          >
-                            {busy ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Rocket className="size-4" />
-                            )}
-                            开始全量抓取
-                          </Button>
-                        )}
-
-                        {!!m.jobIds?.length && (
-                          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-muted)]/50 p-3 text-xs">
-                            <div className="mb-1 font-medium">已分发任务 ID</div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {m.jobIds.map((id) => (
-                                <a
-                                  key={id}
-                                  href={`/?focus=${id}`}
-                                  className="rounded-md bg-[var(--color-card)] px-2 py-1 font-mono text-[11px] underline-offset-2 hover:underline"
-                                >
-                                  {id.slice(0, 8)}…
-                                </a>
-                              ))}
+          <Conversation className="min-h-0">
+            <ConversationContent className="mx-auto w-full max-w-5xl gap-6 px-4 pb-4 md:px-8">
+              {empty ? (
+                <>
+                  {/* Hero — 1:1 mockup */}
+                  <section className="grid items-center gap-6 md:grid-cols-[1.15fr_0.85fr]">
+                    <div>
+                      <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
+                        你好，我是
+                        <span className="text-primary">地图获客助手</span>
+                      </h1>
+                      <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground md:text-base">
+                        用自然语言描述「在哪里找什么」，系统自动按标准 Agent 流程深度全量找客户。
+                        <br />
+                        精准线索、结果汇总、出结果后再背调。
+                      </p>
+                      <div className="mt-5 flex flex-wrap gap-4">
+                        {[
+                          { icon: '/agent/decor/feat-pin.png', title: '精准定位', desc: '国家/地点/半径全覆盖' },
+                          { icon: '/agent/decor/feat-db.png', title: '海量线索', desc: '深度网格不限数量' },
+                          { icon: '/agent/decor/feat-ai.png', title: '智能分析', desc: '结果表 + 按需背调' },
+                        ].map((f) => (
+                          <div key={f.title} className="flex min-w-[140px] items-start gap-2">
+                            <img src={f.icon} alt="" className="size-9 rounded-full object-cover" />
+                            <div>
+                              <div className="text-sm font-semibold">{f.title}</div>
+                              <div className="text-xs text-muted-foreground">{f.desc}</div>
                             </div>
-                            <a
-                              href="/"
-                              className="mt-2 inline-flex text-[var(--color-primary)] hover:underline"
-                            >
-                              在地图模式查看进度 →
-                            </a>
                           </div>
-                        )}
+                        ))}
                       </div>
-                    )}
-                  </MessageContent>
-                </Message>
-              ))
-            )}
+                    </div>
+                    <div className="relative mx-auto w-full max-w-md">
+                      <img
+                        src="/agent/decor/hero-map.png"
+                        alt="地图获客示意"
+                        className="w-full rounded-3xl object-cover shadow-sm"
+                      />
+                    </div>
+                  </section>
 
-            {busy && (
-              <Message from="assistant">
-                <MessageContent>
-                  <div className="flex items-center gap-2 text-sm text-[var(--color-muted-foreground)]">
-                    <Loader2 className="size-4 animate-spin text-[var(--color-primary)]" />
-                    Agent 正在理解与规划…
-                  </div>
-                  <div className="mt-3">
-                    <ChainOfThought defaultOpen>
+                  {/* Quick start */}
+                  <section>
+                    <h2 className="mb-3 text-base font-semibold">快速开始</h2>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {QUICK_START.map((card) => (
+                        <button
+                          key={card.title}
+                          type="button"
+                          className="group rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                          onClick={() => {
+                            if (card.href) window.location.href = card.href
+                            else if (card.prompt) runGoal(card.prompt)
+                          }}
+                        >
+                          <img src={card.icon} alt="" className="mb-3 size-10 rounded-xl object-cover" />
+                          <div className="text-sm font-semibold">{card.title}</div>
+                          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{card.desc}</p>
+                          <ArrowRight className="mt-3 size-4 text-primary opacity-70 transition group-hover:translate-x-0.5" />
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Suggestions */}
+                  <section>
+                    <div className="mb-3 flex items-center justify-between">
+                      <h2 className="text-base font-semibold">你可以这样问</h2>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs text-primary"
+                        onClick={shuffleSuggestions}
+                      >
+                        <RefreshCw className="size-3.5" /> 换一换
+                      </button>
+                    </div>
+                    <Suggestions className="grid w-full grid-cols-1 gap-2 md:grid-cols-2">
+                      {suggestions.slice(0, 6).map((s) => (
+                        <Suggestion
+                          key={s}
+                          suggestion={s}
+                          onClick={(v) => runGoal(v)}
+                          className="h-auto w-full justify-between rounded-xl px-4 py-3 text-left font-normal whitespace-normal"
+                        >
+                          <span className="pr-2">{s}</span>
+                          <ArrowRight className="size-4 shrink-0 text-primary" />
+                        </Suggestion>
+                      ))}
+                    </Suggestions>
+                  </section>
+                </>
+              ) : (
+                active?.messages.map((m) => (
+                  <Message key={m.id} from={m.role}>
+                    <MessageContent>
+                      <MessageResponse>{m.text}</MessageResponse>
+                      {m.error && <p className="mt-2 text-sm text-destructive">{m.error}</p>}
+
+                      {m.role === 'assistant' && !!m.steps?.length && (
+                        <div className="mt-4 space-y-3">
+                          <div className="text-xs text-muted-foreground">
+                            模型：{m.source === 'ai' ? m.model : `未启用 AI（规则引擎）· 配置模型 ${m.model}`}
+                          </div>
+
+                          <Reasoning defaultOpen>
+                            <ReasoningTrigger>Agent 中间过程</ReasoningTrigger>
+                            <ReasoningContent>
+                              {m.steps
+                                .map((s) => `### ${s.title}（${s.role}）\n${s.summary}`)
+                                .join('\n\n')}
+                            </ReasoningContent>
+                          </Reasoning>
+
+                          <ChainOfThought defaultOpen>
+                            <ChainOfThoughtHeader>标准流程</ChainOfThoughtHeader>
+                            <ChainOfThoughtContent>
+                              {m.steps.map((s) => (
+                                <ChainOfThoughtStep
+                                  key={s.id}
+                                  label={`${s.title} · ${s.role}`}
+                                  description={s.summary}
+                                  status={
+                                    s.status === 'active'
+                                      ? 'active'
+                                      : s.status === 'complete'
+                                        ? 'complete'
+                                        : 'pending'
+                                  }
+                                />
+                              ))}
+                            </ChainOfThoughtContent>
+                          </ChainOfThought>
+
+                          {!!m.plan?.tasks?.length && (
+                            <Task defaultOpen>
+                              <TaskTrigger title={`抓取计划 · ${m.plan.tasks.length} 项`} />
+                              <TaskContent>
+                                {m.plan.tasks.map((t, i) => (
+                                  <TaskItem key={`${t.name}-${i}`}>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="font-medium text-foreground">{t.name}</span>
+                                      <TaskItemFile>{t.radius_km}km</TaskItemFile>
+                                      <TaskItemFile>深度全量</TaskItemFile>
+                                    </div>
+                                  </TaskItem>
+                                ))}
+                              </TaskContent>
+                            </Task>
+                          )}
+
+                          {!!m.jobIds?.length && <ResultsTable jobIds={m.jobIds} />}
+                        </div>
+                      )}
+                    </MessageContent>
+                  </Message>
+                ))
+              )}
+
+              {busy && (
+                <Message from="assistant">
+                  <MessageContent>
+                    <Reasoning isStreaming defaultOpen>
+                      <ReasoningTrigger>正在执行标准 Agent 流程…</ReasoningTrigger>
+                      <ReasoningContent>
+                        {liveSteps.map((s) => `${s.title}: ${s.summary}`).join('\n')}
+                      </ReasoningContent>
+                    </Reasoning>
+                    <ChainOfThought defaultOpen className="mt-3">
                       <ChainOfThoughtHeader>实时步骤</ChainOfThoughtHeader>
                       <ChainOfThoughtContent>
-                        {(
-                          [
-                            ['intent', 'IntentAgent'],
-                            ['plan', 'PlannerAgent'],
-                            ['localize', 'LocalizerAgent'],
-                            ['dispatch', 'DispatcherAgent'],
-                            ['scrape', 'Scraper'],
-                          ] as const
-                        ).map(([key, label]) => (
+                        {liveSteps.map((s) => (
                           <ChainOfThoughtStep
-                            key={key}
-                            label={label}
-                            status={pipeline[key]}
-                            description={
-                              pipeline[key] === 'active'
-                                ? '进行中'
-                                : pipeline[key] === 'complete'
-                                  ? '完成'
-                                  : '等待'
+                            key={s.id}
+                            label={s.title}
+                            description={s.summary}
+                            status={
+                              s.status === 'active'
+                                ? 'active'
+                                : s.status === 'complete'
+                                  ? 'complete'
+                                  : 'pending'
                             }
                           />
                         ))}
                       </ChainOfThoughtContent>
                     </ChainOfThought>
-                  </div>
-                </MessageContent>
-              </Message>
-            )}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
+                  </MessageContent>
+                </Message>
+              )}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
 
-        <div className="border-t border-[var(--color-border)] bg-[var(--color-card)]/80 px-4 py-3 backdrop-blur">
-          <div className="mx-auto w-full max-w-3xl">
-            <PromptInput
-              value={draft}
-              onValueChange={setDraft}
-              busy={busy}
-              onSubmit={(text) => runGoal(text, true)}
-              placeholder="例如：覆盖整个雅加达找咖啡馆和进口商，并做背调"
-            />
+          {/* Prompt — ai-elements; no fake R1 / web-search */}
+          <div className="border-t border-border bg-background/90 px-4 py-3 backdrop-blur md:px-8">
+            <div className="mx-auto w-full max-w-3xl">
+              <PromptInput
+                className="rounded-2xl border border-border bg-card shadow-sm"
+                onSubmit={async (msg) => {
+                  const text = (msg.text || '').trim()
+                  if (text) await runGoal(text)
+                }}
+              >
+                <PromptInputBody>
+                  <PromptInputTextarea
+                    placeholder="输入你的需求，例如：帮我找雅加达的咖啡馆，尽量找全"
+                    className="min-h-[56px]"
+                    disabled={busy}
+                  />
+                </PromptInputBody>
+                <PromptInputFooter className="justify-between px-2 pb-2">
+                  <div className="text-[11px] text-muted-foreground">
+                    {aiMeta
+                      ? aiMeta.enabled
+                        ? `模型 ${aiMeta.model}`
+                        : `AI 未配置 · 规则引擎（${aiMeta.model}）`
+                      : '检测模型…'}
+                  </div>
+                  <PromptInputSubmit disabled={busy} />
+                </PromptInputFooter>
+              </PromptInput>
+              <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                内容由 AI / 规则引擎生成，仅供参考
+              </p>
+            </div>
           </div>
-        </div>
-      </main>
-    </div>
+        </main>
+      </div>
+    </TooltipProvider>
   )
 }

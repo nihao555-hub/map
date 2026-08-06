@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -106,5 +107,46 @@ func (s *Server) apiAgentDispatch(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: err.Error()})
 		return
 	}
+	result.Model = grsaiModel()
+	result.Source = intent.Source
+	result.Steps = buildAgentPipelineSteps(plan, result.JobIDs, intent.Source)
 	renderJSON(w, http.StatusCreated, result)
+}
+
+func buildAgentPipelineSteps(plan AgentPlan, jobIDs []string, source string) []AgentPipelineStep {
+	in := plan.Intent
+	srcLabel := "规则引擎"
+	if source == "ai" {
+		srcLabel = "AI · " + grsaiModel()
+	}
+	kw := strings.Join(in.Keywords, "、")
+	taskNames := make([]string, 0, len(plan.Tasks))
+	for _, t := range plan.Tasks {
+		taskNames = append(taskNames, t.Name)
+	}
+	return []AgentPipelineStep{
+		{
+			ID: "intent", Role: "IntentAgent", Title: "理解目标", Status: "complete",
+			Summary: fmt.Sprintf("[%s] %s · %s · %s · %dkm", srcLabel, in.Location, in.CountryName, kw, in.RadiusKm),
+			Detail:  in,
+		},
+		{
+			ID: "plan", Role: "PlannerAgent", Title: "规划全量任务", Status: "complete",
+			Summary: fmt.Sprintf("拆成 %d 个深度全量子任务（尽量覆盖目标地点）", len(plan.Tasks)),
+			Detail:  taskNames,
+		},
+		{
+			ID: "localize", Role: "LocalizerAgent", Title: "本地化与锚定", Status: "complete",
+			Summary: "关键词本地化 + 坐标锚定（Maps 可搜）",
+		},
+		{
+			ID: "dispatch", Role: "DispatcherAgent", Title: "创建抓取任务", Status: "complete",
+			Summary: fmt.Sprintf("已创建 %d 个排队/运行任务", len(jobIDs)),
+			Detail:  jobIDs,
+		},
+		{
+			ID: "scrape", Role: "Scraper", Title: "深度全量抓取", Status: "active",
+			Summary: "公平准入满速执行；结果进入汇总表，背调在出结果后按需展开",
+		},
+	}
 }
