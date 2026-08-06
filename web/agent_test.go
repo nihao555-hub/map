@@ -69,9 +69,21 @@ func TestUnderstandIntentJakartaDefaultsToMetroCoverage(t *testing.T) {
 	if intent.Location == "" {
 		t.Fatal("missing location")
 	}
+	// Districts are capped so overlapping tasks do not starve admission slots,
+	// but coverage must still fan out across several districts of the metro.
 	plan := PlanTasks(intent)
-	if len(plan.Tasks) < 5 {
+	if len(plan.Tasks) < 3 {
 		t.Fatalf("expected multi-district tasks, got %d: %+v", len(plan.Tasks), plan.Tasks)
+	}
+	seen := map[string]bool{}
+	for _, task := range plan.Tasks {
+		if task.Location == "" || task.Location == intent.Location {
+			t.Fatalf("task not anchored to a district: %+v", task)
+		}
+		seen[task.Location] = true
+	}
+	if len(seen) != len(plan.Tasks) {
+		t.Fatalf("districts repeated across tasks: %+v", plan.Tasks)
 	}
 }
 
