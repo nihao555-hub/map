@@ -76,6 +76,7 @@ func TestPhaseLabelZH(t *testing.T) {
 	}
 }
 
+func TestEnrichJobPhaseIntelWhenPending(t *testing.T) {
 	dir := t.TempDir()
 	jobID := "j2"
 	// minimal CSV with one place so intel is not done
