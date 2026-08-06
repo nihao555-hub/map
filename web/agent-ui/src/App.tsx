@@ -375,7 +375,7 @@ export default function App() {
         {/* ===== Main ===== */}
         <main className="flex min-w-0 flex-1 flex-col">
           <Conversation className="min-h-0">
-            <ConversationContent className="mx-auto w-full max-w-[1040px] gap-8 px-6 py-7 md:px-12">
+            <ConversationContent className="mx-auto w-full max-w-[1280px] gap-8 px-4 py-7 md:px-8">
               {empty ? (
                 <>
                   {/* Hero — brand + copy left, decor right */}
@@ -481,7 +481,13 @@ export default function App() {
               ) : (
                 active?.messages.map((m) => (
                   <Message key={m.id} from={m.role}>
-                    <MessageContent className="w-full max-w-full">
+                    <MessageContent
+                      className={
+                        m.role === 'assistant' && m.jobs?.length
+                          ? 'w-full max-w-full min-w-0 overflow-visible'
+                          : 'w-full max-w-full'
+                      }
+                    >
                       {m.role === 'user' ? (
                         <MessageResponse>{m.text}</MessageResponse>
                       ) : (

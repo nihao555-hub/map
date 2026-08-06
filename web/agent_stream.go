@@ -15,14 +15,14 @@ import (
 )
 
 type agentStreamEvent struct {
-	Type     string          `json:"type"` // thinking_delta | result | error | done
-	Text     string          `json:"text,omitempty"`
-	Message  string          `json:"message,omitempty"`
-	Thinking string          `json:"thinking,omitempty"`
-	Plan     *AgentPlan      `json:"plan,omitempty"`
-	JobIDs   []string        `json:"job_ids,omitempty"`
-	Model    string          `json:"model,omitempty"`
-	Source   string          `json:"source,omitempty"`
+	Type     string     `json:"type"` // thinking_delta | result | error | done
+	Text     string     `json:"text,omitempty"`
+	Message  string     `json:"message,omitempty"`
+	Thinking string     `json:"thinking,omitempty"`
+	Plan     *AgentPlan `json:"plan,omitempty"`
+	JobIDs   []string   `json:"job_ids,omitempty"`
+	Model    string     `json:"model,omitempty"`
+	Source   string     `json:"source,omitempty"`
 }
 
 // apiAgentDispatchStream streams ONLY real LLM thinking tokens, then the final plan/jobs.

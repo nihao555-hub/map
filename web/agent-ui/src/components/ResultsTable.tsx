@@ -4,15 +4,52 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { JobMeta } from '@/lib/sessions'
 
+/** Full Place payload from GET /api/v1/jobs/{id}/places?full=1 */
 type PlaceRow = {
   job_id: string
   place_id: string
   title: string
   category?: string
   address?: string
+  complete_address?: string
   phone?: string
   website?: string
+  emails?: string
+  whatsapp?: string
+  facebook?: string
+  instagram?: string
+  linkedin?: string
+  twitter?: string
+  tiktok?: string
+  youtube?: string
+  telegram?: string
+  pinterest?: string
   status?: string
+  open_hours?: string
+  popular_times?: string
+  price_range?: string
+  descriptions?: string
+  about?: string
+  menu?: string
+  owner?: string
+  review_rating?: number
+  review_count?: number
+  reviews_per_rating?: string
+  reviews_link?: string
+  user_reviews?: string
+  latitude?: number
+  longitude?: number
+  plus_code?: string
+  timezone?: string
+  link?: string
+  thumbnail?: string
+  images?: string
+  cid?: string
+  data_id?: string
+  credit_cards_accepted?: string
+  reservations?: string
+  order_online?: string
+  street_view_url?: string
 }
 
 type IntelPayload = {
@@ -31,6 +68,43 @@ type QueueInfo = {
   message: string
 }
 
+const COLS = [
+  { key: 'title', label: '名称', min: 160 },
+  { key: 'category', label: '类别', min: 120 },
+  { key: 'phone', label: '电话', min: 120 },
+  { key: 'emails', label: '邮箱', min: 160 },
+  { key: 'whatsapp', label: 'WhatsApp', min: 110 },
+  { key: 'website', label: '网站', min: 160 },
+  { key: 'address', label: '地址', min: 220 },
+  { key: 'complete_address', label: '完整地址', min: 200 },
+  { key: 'review_rating', label: '评分', min: 64 },
+  { key: 'review_count', label: '评论数', min: 72 },
+  { key: 'status', label: '状态', min: 80 },
+  { key: 'open_hours', label: '营业时间', min: 140 },
+  { key: 'price_range', label: '价格区间', min: 80 },
+  { key: 'owner', label: '店主', min: 120 },
+  { key: 'descriptions', label: '描述', min: 180 },
+  { key: 'about', label: 'About', min: 160 },
+  { key: 'latitude', label: '纬度', min: 90 },
+  { key: 'longitude', label: '经度', min: 90 },
+  { key: 'plus_code', label: 'Plus Code', min: 110 },
+  { key: 'timezone', label: '时区', min: 100 },
+  { key: 'facebook', label: 'Facebook', min: 120 },
+  { key: 'instagram', label: 'Instagram', min: 120 },
+  { key: 'linkedin', label: 'LinkedIn', min: 120 },
+  { key: 'twitter', label: 'Twitter', min: 100 },
+  { key: 'tiktok', label: 'TikTok', min: 100 },
+  { key: 'youtube', label: 'YouTube', min: 100 },
+  { key: 'telegram', label: 'Telegram', min: 100 },
+  { key: 'pinterest', label: 'Pinterest', min: 100 },
+  { key: 'cid', label: 'CID', min: 100 },
+  { key: 'place_id', label: 'Place ID', min: 120 },
+  { key: 'link', label: 'Maps', min: 72 },
+  { key: 'intel', label: '背调', min: 80 },
+] as const
+
+const COLSPAN = COLS.length + 1 // + chevron
+
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { credentials: 'same-origin', ...init })
   const data = await r.json().catch(() => ({}))
@@ -38,16 +112,132 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T
 }
 
+function str(v: unknown): string {
+  if (v === undefined || v === null) return ''
+  return String(v).trim()
+}
+
+function truncate(s: string, n: number): string {
+  if (!s) return ''
+  return s.length > n ? `${s.slice(0, n)}…` : s
+}
+
 function normalizePlace(p: Record<string, unknown>, jobId: string): PlaceRow {
+  const placeId = str(p.place_id || p.PlaceID || p.cid || p.Cid)
   return {
     job_id: jobId,
-    place_id: String(p.place_id || p.PlaceID || p.cid || p.Cid || ''),
-    title: String(p.title || p.Title || '未命名'),
-    category: (p.category || p.Category || p.categories || '') as string,
-    address: (p.address || p.Address || '') as string,
-    phone: (p.phone || p.Phone || p.phone_number || '') as string,
-    website: (p.website || p.Website || '') as string,
+    place_id: placeId,
+    title: str(p.title || p.Title) || '未命名',
+    category: str(p.category || p.Category),
+    address: str(p.address || p.Address),
+    complete_address: str(p.complete_address || p.CompleteAddress),
+    phone: str(p.phone || p.Phone),
+    website: str(p.website || p.Website),
+    emails: str(p.emails || p.Emails),
+    whatsapp: str(p.whatsapp || p.WhatsApp),
+    facebook: str(p.facebook || p.Facebook),
+    instagram: str(p.instagram || p.Instagram),
+    linkedin: str(p.linkedin || p.LinkedIn),
+    twitter: str(p.twitter || p.Twitter),
+    tiktok: str(p.tiktok || p.TikTok),
+    youtube: str(p.youtube || p.YouTube),
+    telegram: str(p.telegram || p.Telegram),
+    pinterest: str(p.pinterest || p.Pinterest),
+    status: str(p.status || p.Status),
+    open_hours: str(p.open_hours || p.OpenHours),
+    popular_times: str(p.popular_times || p.PopularTimes),
+    price_range: str(p.price_range || p.PriceRange),
+    descriptions: str(p.descriptions || p.Descriptions),
+    about: str(p.about || p.About),
+    menu: str(p.menu || p.Menu),
+    owner: str(p.owner || p.Owner),
+    review_rating: typeof p.review_rating === 'number' ? p.review_rating : Number(p.review_rating) || undefined,
+    review_count: typeof p.review_count === 'number' ? p.review_count : Number(p.review_count) || undefined,
+    reviews_per_rating: str(p.reviews_per_rating),
+    reviews_link: str(p.reviews_link),
+    user_reviews: str(p.user_reviews),
+    latitude: typeof p.latitude === 'number' ? p.latitude : Number(p.latitude) || undefined,
+    longitude: typeof p.longitude === 'number' ? p.longitude : Number(p.longitude) || undefined,
+    plus_code: str(p.plus_code),
+    timezone: str(p.timezone),
+    link: str(p.link || p.Link),
+    thumbnail: str(p.thumbnail),
+    images: str(p.images),
+    cid: str(p.cid || p.Cid),
+    data_id: str(p.data_id),
+    credit_cards_accepted: str(p.credit_cards_accepted),
+    reservations: str(p.reservations),
+    order_online: str(p.order_online),
+    street_view_url: str(p.street_view_url),
   }
+}
+
+function cellValue(row: PlaceRow, key: string): string {
+  switch (key) {
+    case 'title':
+      return row.title
+    case 'review_rating':
+      return row.review_rating != null ? row.review_rating.toFixed(1) : ''
+    case 'review_count':
+      return row.review_count != null ? String(row.review_count) : ''
+    case 'latitude':
+      return row.latitude != null ? row.latitude.toFixed(5) : ''
+    case 'longitude':
+      return row.longitude != null ? row.longitude.toFixed(5) : ''
+    case 'link':
+      return row.link || ''
+    case 'intel':
+      return ''
+    default: {
+      const v = (row as Record<string, unknown>)[key]
+      return typeof v === 'string' || typeof v === 'number' ? String(v) : ''
+    }
+  }
+}
+
+function CellContent({ row, colKey }: { row: PlaceRow; colKey: string }) {
+  const raw = cellValue(row, colKey)
+  if (colKey === 'link' && raw) {
+    return (
+      <a href={raw} target="_blank" rel="noreferrer" className="text-[#2F6BFF] hover:underline" onClick={(e) => e.stopPropagation()}>
+        打开
+      </a>
+    )
+  }
+  if (colKey === 'website' && raw) {
+    const href = raw.startsWith('http') ? raw : `https://${raw}`
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="text-[#2F6BFF] hover:underline"
+        title={raw}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {truncate(raw.replace(/^https?:\/\//, ''), 36)}
+      </a>
+    )
+  }
+  if (['facebook', 'instagram', 'linkedin', 'twitter', 'tiktok', 'youtube', 'telegram', 'pinterest', 'whatsapp'].includes(colKey) && raw) {
+    const href = raw.startsWith('http') || raw.startsWith('wa.me') || raw.startsWith('+')
+      ? raw.startsWith('+')
+        ? `https://wa.me/${raw.replace(/\D/g, '')}`
+        : raw.startsWith('http')
+          ? raw
+          : `https://${raw}`
+      : raw
+    if (href.startsWith('http')) {
+      return (
+        <a href={href} target="_blank" rel="noreferrer" className="text-[#2F6BFF] hover:underline" title={raw} onClick={(e) => e.stopPropagation()}>
+          {truncate(raw.replace(/^https?:\/\//, ''), 28)}
+        </a>
+      )
+    }
+  }
+  if (!raw) return <span className="text-[#9CA3AF]">—</span>
+  const max = ['descriptions', 'about', 'open_hours', 'complete_address', 'address', 'emails'].includes(colKey) ? 80 : 48
+  return <span title={raw}>{truncate(raw, max)}</span>
 }
 
 export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
@@ -94,8 +284,9 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
           nextCounts[j.id] = 0
         }
         try {
+          // full=1: all CSV lead fields (emails, socials, coords, owner, …)
           const data = await fetchJSON<Record<string, unknown>[] | { places?: Record<string, unknown>[] }>(
-            `/api/v1/jobs/${j.id}/places`,
+            `/api/v1/jobs/${j.id}/places?full=1`,
           )
           const list = Array.isArray(data) ? data : data.places || []
           for (const p of list) {
@@ -109,7 +300,6 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
       setCounts(nextCounts)
       setRows(all)
 
-      // Auto-start / refresh intel as soon as places appear (EnableIntel=true on agent jobs).
       for (const row of all) {
         const key = `${row.job_id}:${row.place_id}`
         if (intelDone.current.has(key)) continue
@@ -134,6 +324,7 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
     load()
     const t = setInterval(load, 5000)
     return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobs.map((j) => j.id).join(',')])
 
   const pendingQueueHint = useMemo(() => {
@@ -150,6 +341,8 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
     () => (activeJob === 'all' ? rows : rows.filter((r) => r.job_id === activeJob)),
     [rows, activeJob],
   )
+
+  const tableMinWidth = useMemo(() => COLS.reduce((s, c) => s + c.min, 40), [])
 
   const toggleRow = async (row: PlaceRow) => {
     const key = `${row.job_id}:${row.place_id}`
@@ -176,12 +369,12 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
   if (!jobs.length) return null
 
   return (
-    <div className="mt-4 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+    <div className="mt-4 w-full min-w-0 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E5E7EB] px-4 py-3">
         <div>
           <div className="text-sm font-semibold text-[#1F2937]">结果汇总</div>
           <div className="text-xs text-[#6B7280]">
-            共 {rows.length} 家 · 结果出现后自动开始背调 · 点击行查看详情
+            共 {rows.length} 家 · 全量字段 · 列多时可左右滑动 · 结果出现后自动背调 · 点击行查看详情
             {pendingQueueHint ? ` · ${pendingQueueHint}` : ''}
           </div>
         </div>
@@ -191,7 +384,6 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
         </Button>
       </div>
 
-      {/* Sub-task chips: click to filter growing results */}
       <div className="flex gap-2 overflow-x-auto border-b border-[#E5E7EB] px-3 py-2">
         <button
           type="button"
@@ -230,22 +422,27 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
         })}
       </div>
 
-      <div className="max-h-[480px] overflow-auto">
-        <table className="w-full min-w-[780px] text-left text-sm">
-          <thead className="sticky top-0 bg-[#F9FAFB] text-xs text-[#6B7280]">
+      {/* Wide full-field table: horizontal + vertical scroll */}
+      <div className="max-h-[520px] w-full overflow-auto">
+        <table className="w-max text-left text-sm" style={{ minWidth: tableMinWidth }}>
+          <thead className="sticky top-0 z-10 bg-[#F9FAFB] text-xs text-[#6B7280]">
             <tr>
-              <th className="px-3 py-2.5 font-medium">商家</th>
-              <th className="px-3 py-2.5 font-medium">品类</th>
-              <th className="px-3 py-2.5 font-medium">电话</th>
-              <th className="px-3 py-2.5 font-medium">地址</th>
-              <th className="px-3 py-2.5 font-medium">背调</th>
+              {COLS.map((c) => (
+                <th
+                  key={c.key}
+                  className="whitespace-nowrap px-3 py-2.5 font-medium"
+                  style={{ minWidth: c.min }}
+                >
+                  {c.label}
+                </th>
+              ))}
               <th className="w-8 px-3 py-2.5" />
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-12 text-center text-[#9CA3AF]">
+                <td colSpan={COLSPAN} className="px-3 py-12 text-center text-[#9CA3AF]">
                   {loading
                     ? '正在拉取结果…'
                     : (() => {
@@ -288,26 +485,35 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
                     )}
                     onClick={() => toggleRow(row)}
                   >
-                    <td className="px-3 py-2.5 font-medium text-[#111827]">{row.title}</td>
-                    <td className="px-3 py-2.5 text-[#6B7280]">{row.category || '—'}</td>
-                    <td className="px-3 py-2.5">{row.phone || '—'}</td>
-                    <td className="max-w-[240px] truncate px-3 py-2.5 text-[#6B7280]">
-                      {row.address || '—'}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span
+                    {COLS.map((c) => (
+                      <td
+                        key={c.key}
                         className={cn(
-                          'rounded-full px-2 py-0.5 text-[11px]',
-                          intelLabel === '已完成'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : intelLabel === '失败'
-                              ? 'bg-red-50 text-red-600'
-                              : 'bg-blue-50 text-[#2F6BFF]',
+                          'px-3 py-2.5 align-top',
+                          c.key === 'title' && 'font-medium text-[#111827]',
+                          ['category', 'address', 'complete_address', 'descriptions', 'about'].includes(c.key) &&
+                            'text-[#6B7280]',
+                          'max-w-[280px]',
                         )}
                       >
-                        {intelLabel}
-                      </span>
-                    </td>
+                        {c.key === 'intel' ? (
+                          <span
+                            className={cn(
+                              'rounded-full px-2 py-0.5 text-[11px]',
+                              intelLabel === '已完成'
+                                ? 'bg-emerald-50 text-emerald-700'
+                                : intelLabel === '失败'
+                                  ? 'bg-red-50 text-red-600'
+                                  : 'bg-blue-50 text-[#2F6BFF]',
+                            )}
+                          >
+                            {intelLabel}
+                          </span>
+                        ) : (
+                          <CellContent row={row} colKey={c.key} />
+                        )}
+                      </td>
+                    ))}
                     <td className="px-3 py-2.5">
                       <ChevronDown
                         className={cn('size-4 text-[#9CA3AF] transition', open && 'rotate-180')}
@@ -316,7 +522,7 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
                   </tr>
                   {open && (
                     <tr className="border-t border-[#F3F4F6] bg-[#F9FAFB]">
-                      <td colSpan={6} className="px-4 py-3 text-sm">
+                      <td colSpan={COLSPAN} className="px-4 py-3 text-sm">
                         {st === 'loading' && (
                           <div className="flex items-center gap-2 text-[#6B7280]">
                             <Loader2 className="size-4 animate-spin" /> 加载背调…
@@ -342,6 +548,13 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
                                   </p>
                                 )}
                               </>
+                            )}
+                            {(row.about || row.descriptions || row.open_hours) && (
+                              <div className="mt-2 grid gap-1 border-t border-[#E5E7EB] pt-2 text-xs text-[#6B7280]">
+                                {row.open_hours ? <p>营业：{truncate(row.open_hours, 240)}</p> : null}
+                                {row.descriptions ? <p>描述：{truncate(row.descriptions, 320)}</p> : null}
+                                {row.about ? <p>About：{truncate(row.about, 320)}</p> : null}
+                              </div>
                             )}
                           </div>
                         )}

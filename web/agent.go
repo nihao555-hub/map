@@ -997,6 +997,9 @@ func preferHighRecallKeywords(keywords []string) []string {
 		case low == "distributor panel listrik" || low == "supplier panel listrik" ||
 			low == "electrical distributor" || strings.Contains(low, "panel listrik"):
 			k = "panel listrik"
+		case strings.Contains(low, "komponen listrik") || strings.Contains(low, "toko komponen"):
+			// Too broad (electronics / EV / homework shops); keep industrial head term.
+			k = "panel listrik"
 		}
 		low = strings.ToLower(k)
 		if _, ok := seen[low]; ok {
