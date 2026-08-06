@@ -38,7 +38,8 @@ type AgentIntent struct {
 	EnableIntel bool     `json:"enable_intel"`
 	UILang      string   `json:"ui_lang"`
 	Notes       string   `json:"notes,omitempty"`
-	Source      string   `json:"source"` // "ai" | "rules"
+	Thinking    string   `json:"thinking,omitempty"` // user-facing reasoning (no tech fields)
+	Source      string   `json:"source"`             // "ai" | "rules"
 }
 
 // AgentTask is one atomic scrape unit after planning.
@@ -61,26 +62,37 @@ type AgentPlan struct {
 }
 
 // AgentPipelineStep is one visible intermediate step in the standard agent run.
+// Title/Summary are user-facing only — no internal role names or raw JSON.
 type AgentPipelineStep struct {
 	ID      string `json:"id"`
-	Role    string `json:"role"`
 	Title   string `json:"title"`
 	Status  string `json:"status"` // pending | active | complete | error
 	Summary string `json:"summary"`
-	Detail  any    `json:"detail,omitempty"`
+}
+
+// AgentToolCall is a user-facing tool invocation for the AI Elements Tool UI.
+type AgentToolCall struct {
+	Name   string         `json:"name"`
+	Title  string         `json:"title"`
+	Status string         `json:"status"` // pending | running | complete | error
+	Input  map[string]any `json:"input,omitempty"`
+	Output string         `json:"output,omitempty"`
 }
 
 // AgentDispatchResult is the full-pipeline output (Intent→…→Dispatcher).
 type AgentDispatchResult struct {
-	Plan    AgentPlan           `json:"plan"`
-	JobIDs  []string            `json:"job_ids"`
-	Message string              `json:"message"`
-	Steps   []AgentPipelineStep `json:"steps"`
-	Model   string              `json:"model"`
-	Source  string              `json:"source"` // ai | rules
+	Plan     AgentPlan           `json:"plan"`
+	JobIDs   []string            `json:"job_ids"`
+	Message  string              `json:"message"`
+	Thinking string              `json:"thinking,omitempty"`
+	Steps    []AgentPipelineStep `json:"steps"`
+	Tools    []AgentToolCall     `json:"tools,omitempty"`
+	Model    string              `json:"model"`
+	Source   string              `json:"source"` // ai | rules
 }
 
 type agentIntentJSON struct {
+	Thinking    string   `json:"thinking"`
 	CountryCode string   `json:"country_code"`
 	CountryName string   `json:"country_name"`
 	Location    string   `json:"location"`
@@ -88,6 +100,20 @@ type agentIntentJSON struct {
 	RadiusKm    int      `json:"radius_km"`
 	EnableIntel bool     `json:"enable_intel"`
 	Notes       string   `json:"notes"`
+	// Optional AI-proposed coverage anchors (商圈/区县) for multi-task split.
+	SubLocations []string `json:"sub_locations"`
+}
+
+type agentPlanTaskJSON struct {
+	Name     string   `json:"name"`
+	Location string   `json:"location"`
+	Keywords []string `json:"keywords"`
+	RadiusKm int      `json:"radius_km"`
+}
+
+type agentPlanJSON struct {
+	Thinking string              `json:"thinking"`
+	Tasks    []agentPlanTaskJSON `json:"tasks"`
 }
 
 var (
@@ -274,9 +300,71 @@ func metroDistricts(location string) []string {
 		return []string{"Manila", "Makati", "Quezon City", "Pasig"}
 	case strings.Contains(low, "kuala lumpur") || strings.Contains(location, "吉隆坡"):
 		return []string{"Kuala Lumpur", "Petaling Jaya", "Shah Alam"}
+	case strings.Contains(location, "北京") && !strings.Contains(location, "区"):
+		return []string{"北京朝阳区", "北京海淀区", "北京东城区", "北京西城区", "北京丰台区", "北京通州区"}
+	case strings.Contains(location, "上海") && !strings.Contains(location, "区"):
+		return []string{"上海静安区", "上海黄浦区", "上海徐汇区", "上海浦东新区", "上海长宁区", "上海闵行区"}
+	case strings.Contains(location, "广州") && !strings.Contains(location, "区"):
+		return []string{"广州天河区", "广州越秀区", "广州海珠区", "广州白云区", "广州番禺区"}
+	case strings.Contains(location, "深圳") && !strings.Contains(location, "区"):
+		return []string{"深圳南山区", "深圳福田区", "深圳罗湖区", "深圳宝安区", "深圳龙岗区"}
+	default:
+		return districtHubs(location)
+	}
+}
+
+// districtHubs expands a large urban district into commercial anchors.
+func districtHubs(location string) []string {
+	switch {
+	case strings.Contains(location, "朝阳"):
+		return []string{"北京朝阳国贸", "北京朝阳望京", "北京朝阳三里屯", "北京朝阳双井", "北京朝阳常营", "北京朝阳定福庄"}
+	case strings.Contains(location, "海淀"):
+		return []string{"北京海淀中关村", "北京海淀五道口", "北京海淀西二旗", "北京海淀万柳"}
+	case strings.Contains(location, "浦东"):
+		return []string{"上海陆家嘴", "上海张江", "上海金桥", "上海世纪公园"}
+	case strings.Contains(location, "天河"):
+		return []string{"广州天河城", "广州珠江新城", "广州岗顶"}
+	case strings.Contains(location, "南山区") || (strings.Contains(location, "南山") && strings.Contains(location, "深圳")):
+		return []string{"深圳南山科技园", "深圳南山后海", "深圳南山蛇口"}
 	default:
 		return nil
 	}
+}
+
+// coverageAnchors picks scrape pins for a location (AI sub_locations > metro/district hubs).
+func coverageAnchors(intent AgentIntent) ([]string, int) {
+	radius := intent.RadiusKm
+	if locs := parseSubLocationsFromNotes(intent.Notes); len(locs) > 1 {
+		r := radius
+		if r >= 20 {
+			r = 12
+		} else if r >= 12 {
+			r = 8
+		}
+		if r < 5 {
+			r = 5
+		}
+		return locs, r
+	}
+	if intent.Location == "" {
+		return []string{""}, radius
+	}
+	if radius >= 15 {
+		if districts := metroDistricts(intent.Location); len(districts) > 1 {
+			r := 18
+			if radius < 18 {
+				r = radius
+			}
+			if strings.Contains(intent.Location, "区") || len(districts) >= 4 && radius <= 25 {
+				// District hubs are denser — smaller circles.
+				if r > 10 {
+					r = 10
+				}
+			}
+			return districts, r
+		}
+	}
+	return []string{intent.Location}, radius
 }
 
 func cleanKeywordList(ks []string) []string {
@@ -307,17 +395,22 @@ func understandIntentAI(ctx context.Context, goal, uiLang string) (AgentIntent, 
 Goal: cover ALL matching businesses in the user's named place (max recall), not a small sample.
 Extract structured search intent from the user's natural language goal.
 Rules:
+- thinking: 2–5 short sentences in the user's UI language explaining your understanding and why you may split work. NO technical field names, NO JSON keys, NO model/API jargon. Write for a business user.
 - country_code: ISO 3166-1 alpha-2 lowercase when clear, else empty
 - location: city/area to search (not the whole country name unless that is the place)
-- keywords: 1-5 Google Maps category phrases in the user's language (will be localized later)
+- keywords: 1-5 Google Maps category phrases. Split compound asks (e.g. cafes AND importers) into separate keywords.
 - radius_km: integer 1-50. Prefer FULL coverage of the named place:
   * city / metro / "整个/全市/whole city" / city name only → 40
-  * large urban district → 25
+  * large urban district (区/县) → 15–25
   * neighborhood / mall / street / small area → 5–10
   * ONLY use a small radius when the user explicitly names a small area or gives a small km
   * if user gives an explicit km, honor it
-- enable_intel: true only if user asks for background check / decision makers / OSINT
-Reply ONLY valid JSON object with keys: country_code, country_name, location, keywords, radius_km, enable_intel, notes`
+- enable_intel: true if user asks for background check / decision makers / OSINT OR for lead-gen / 获客 goals (default true for 获客)
+- sub_locations: when the place is a large city OR a big district that needs multiple scrape anchors, list 3–8 commercial hubs / sub-districts INSIDE that place (same language as Maps search). Examples:
+  * 雅加达 → Jakarta Pusat, Jakarta Selatan, ...
+  * 北京市朝阳区 → 朝阳国贸, 朝阳望京, 朝阳三里屯, 朝阳双井, 朝阳常营
+  * single small street → empty array
+Reply ONLY valid JSON object with keys: thinking, country_code, country_name, location, keywords, radius_km, enable_intel, notes, sub_locations`
 
 	user := fmt.Sprintf("UI language: %s\nUser goal:\n%s", uiLang, goal)
 
@@ -371,15 +464,41 @@ Reply ONLY valid JSON object with keys: country_code, country_name, location, ke
 		return AgentIntent{}, fmt.Errorf("intent JSON: %w", err)
 	}
 
+	notes := j.Notes
+	if len(j.SubLocations) > 0 {
+		notes = strings.TrimSpace(notes + " | sub_locations=" + strings.Join(j.SubLocations, ";"))
+	}
 	return AgentIntent{
+		Thinking:    strings.TrimSpace(j.Thinking),
 		CountryCode: j.CountryCode,
 		CountryName: j.CountryName,
 		Location:    j.Location,
 		Keywords:    j.Keywords,
 		RadiusKm:    j.RadiusKm,
 		EnableIntel: j.EnableIntel,
-		Notes:       j.Notes,
+		Notes:       notes,
 	}, nil
+}
+
+func parseSubLocationsFromNotes(notes string) []string {
+	const marker = "sub_locations="
+	idx := strings.Index(notes, marker)
+	if idx < 0 {
+		return nil
+	}
+	raw := strings.TrimSpace(notes[idx+len(marker):])
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ";")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func understandIntentRules(goal, uiLang string) AgentIntent {
@@ -546,22 +665,15 @@ func PlanTasks(intent AgentIntent) AgentPlan {
 		return plan
 	}
 
-	// Prefer multi-district anchors for metro-scale coverage so we finish the city.
-	locations := []string{intent.Location}
-	districtRadius := intent.RadiusKm
-	if intent.Location != "" && intent.RadiusKm >= 25 {
-		if districts := metroDistricts(intent.Location); len(districts) > 1 {
-			locations = districts
-			// Overlapping district circles (~18km) cover a metro better than one pin.
-			districtRadius = 18
-			if intent.RadiusKm < 18 {
-				districtRadius = intent.RadiusKm
-			}
-			if intent.Notes == "" {
-				intent.Notes = "metro multi-district full coverage"
-			}
-			plan.Intent = intent
-		}
+	locations, districtRadius := coverageAnchors(intent)
+	if len(locations) > 1 && intent.Thinking == "" {
+		intent.Thinking = fmt.Sprintf(
+			"目标区域较大，我会拆成 %d 个区域锚点分别深度抓取，尽量把匹配商家找全。",
+			len(locations),
+		)
+		plan.Intent = intent
+	} else {
+		plan.Intent = intent
 	}
 
 	for _, loc := range locations {
@@ -579,12 +691,136 @@ func PlanTasks(intent AgentIntent) AgentPlan {
 				Location:    loc,
 				Keywords:    []string{kw},
 				RadiusKm:    districtRadius,
-				EnableIntel: intent.EnableIntel,
+				EnableIntel: true, // agent path always prepares intel once places appear
 				Role:        "scraper",
 			})
 		}
 	}
 	return plan
+}
+
+// PlanTasksAI asks the LLM to refine multi-task splits when AI is enabled.
+// Falls back to PlanTasks on any failure.
+func PlanTasksAI(ctx context.Context, intent AgentIntent) AgentPlan {
+	base := PlanTasks(intent)
+	if !AITranslateEnabled() || len(base.Tasks) == 0 {
+		return base
+	}
+	key := grsaiAPIKey()
+	if key == "" {
+		return base
+	}
+
+	system := `You are PlannerAgent for a Maps lead scraper.
+Given a structured intent, produce a multi-task scrape plan that maximizes coverage.
+Rules:
+- thinking: short user-facing Chinese/English (match UI) explaining the split. No JSON keys, no API jargon.
+- Prefer 3–12 tasks for cities/districts; 1 task only for a tiny street/mall.
+- Each task: one location anchor + one keyword + radius_km 5–18 for anchors, up to 40 for single city pin.
+- Split multiple keywords into separate tasks.
+- name: short human label like "望京 · 火锅店"
+Reply ONLY JSON: {"thinking":"...","tasks":[{"name":"...","location":"...","keywords":["..."],"radius_km":8}]}`
+
+	payload, _ := json.Marshal(map[string]any{
+		"goal":         intent.RawGoal,
+		"location":     intent.Location,
+		"country_code": intent.CountryCode,
+		"keywords":     intent.Keywords,
+		"radius_km":    intent.RadiusKm,
+		"ui_lang":      intent.UILang,
+		"seed_tasks":   len(base.Tasks),
+	})
+	user := "Intent JSON:\n" + string(payload)
+
+	body, err := json.Marshal(aiChatRequest{
+		Model:  grsaiModel(),
+		Stream: false,
+		Messages: []aiChatMessage{
+			{Role: "system", Content: system},
+			{Role: "user", Content: user},
+		},
+	})
+	if err != nil {
+		return base
+	}
+	url := grsaiHost() + "/v1/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return base
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+key)
+	client := &http.Client{Timeout: 45 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("PlannerAgent AI failed, use heuristic plan: %v", err)
+		return base
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("PlannerAgent AI status %d: %s", resp.StatusCode, truncate(string(raw), 160))
+		return base
+	}
+	var parsed aiChatResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Choices) == 0 {
+		return base
+	}
+	content := strings.TrimSpace(parsed.Choices[0].Message.Content)
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+	var pj agentPlanJSON
+	if err := json.Unmarshal([]byte(content), &pj); err != nil || len(pj.Tasks) == 0 {
+		return base
+	}
+
+	out := AgentPlan{Intent: intent, Roles: base.Roles}
+	if t := strings.TrimSpace(pj.Thinking); t != "" {
+		out.Intent.Thinking = t
+		intent.Thinking = t
+	}
+	for _, t := range pj.Tasks {
+		kw := cleanKeywordList(t.Keywords)
+		if len(kw) == 0 {
+			continue
+		}
+		loc := strings.TrimSpace(t.Location)
+		if loc == "" {
+			loc = intent.Location
+		}
+		r := t.RadiusKm
+		if r <= 0 {
+			r = 10
+		}
+		if r > MaxRadiusKm() {
+			r = MaxRadiusKm()
+		}
+		name := strings.TrimSpace(t.Name)
+		if name == "" {
+			name = loc + " · " + kw[0]
+		}
+		out.Tasks = append(out.Tasks, AgentTask{
+			Name:        name,
+			CountryCode: intent.CountryCode,
+			CountryName: intent.CountryName,
+			Location:    loc,
+			Keywords:    kw[:1],
+			RadiusKm:    r,
+			EnableIntel: true,
+			Role:        "scraper",
+		})
+	}
+	if len(out.Tasks) == 0 {
+		return base
+	}
+	// Prefer richer AI splits, but never shrink a good heuristic metro plan to a single task.
+	if len(out.Tasks) < len(base.Tasks) && len(base.Tasks) >= 3 && len(out.Tasks) == 1 {
+		base.Intent.Thinking = out.Intent.Thinking
+		return base
+	}
+	return out
 }
 
 // ApplyFullVolumeDefaults forces product policy onto a job: deep + grid + unlimited.

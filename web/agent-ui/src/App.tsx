@@ -25,6 +25,7 @@ import {
   ReasoningTrigger,
 } from '@/components/ai-elements/reasoning'
 import { Task, TaskContent, TaskItem, TaskItemFile, TaskTrigger } from '@/components/ai-elements/task'
+import { Tool, ToolContent, ToolHeader, ToolOutput } from '@/components/ai-elements/tool'
 import { Suggestion } from '@/components/ai-elements/suggestion'
 import {
   PromptInput,
@@ -42,6 +43,7 @@ import {
   saveSessions,
   titleFromGoal,
   type AgentSession,
+  type AgentToolCall,
   type ChatMessage,
   type JobMeta,
   type PipelineStep,
@@ -176,7 +178,9 @@ export default function App() {
         plan: NonNullable<ChatMessage['plan']>
         job_ids: string[]
         message: string
+        thinking?: string
         steps: PipelineStep[]
+        tools?: AgentToolCall[]
         model: string
         source: string
       }>('/api/v1/agent/dispatch', {
@@ -189,17 +193,15 @@ export default function App() {
         id,
         name: result.plan?.tasks?.[i]?.name || `任务 ${i + 1}`,
       }))
-      const src =
-        result.source === 'ai'
-          ? `真实 AI（${result.model}）`
-          : `规则引擎（未配置 GRSAI_API_KEY；${result.model}）`
 
       const assistant: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        text: `已启动标准 Agent 流程，创建 ${jobs.length} 个抓取子任务。\n引擎：${src}\n下方可点击子任务查看持续增加的结果；结果出现后自动开始背调。`,
+        text: result.message || `已启动，创建 ${jobs.length} 个子任务。结果会持续汇总到下方表格。`,
+        thinking: result.thinking || result.plan?.intent?.thinking,
         plan: result.plan,
         steps: result.steps,
+        tools: result.tools,
         jobs,
         jobIds: result.job_ids,
         model: result.model,
@@ -433,59 +435,104 @@ export default function App() {
               ) : (
                 active?.messages.map((m) => (
                   <Message key={m.id} from={m.role}>
-                    <MessageContent>
-                      <MessageResponse>{m.text}</MessageResponse>
-                      {m.error && <p className="mt-2 text-sm text-red-600">{m.error}</p>}
+                    <MessageContent className="w-full max-w-full">
+                      {m.role === 'user' ? (
+                        <MessageResponse>{m.text}</MessageResponse>
+                      ) : (
+                        <>
+                          {!!m.thinking && (
+                            <Reasoning defaultOpen className="mb-3">
+                              <ReasoningTrigger>思考过程</ReasoningTrigger>
+                              <ReasoningContent>{m.thinking}</ReasoningContent>
+                            </Reasoning>
+                          )}
 
-                      {m.role === 'assistant' && !!m.steps?.length && (
-                        <div className="mt-4 space-y-3">
-                          <div className="text-xs text-[#6B7280]">
-                            模型：
-                            {m.source === 'ai'
-                              ? m.model
-                              : `未启用 AI（规则引擎）· ${m.model}`}
-                          </div>
+                          <MessageResponse>{m.text}</MessageResponse>
+                          {m.error && <p className="mt-2 text-sm text-red-600">{m.error}</p>}
 
-                          <Reasoning defaultOpen>
-                            <ReasoningTrigger>Agent 中间过程</ReasoningTrigger>
-                            <ReasoningContent>
-                              {(m.steps || [])
-                                .map((s) => `### ${s.title}（${s.role}）\n${s.summary}`)
-                                .join('\n\n')}
-                            </ReasoningContent>
-                          </Reasoning>
+                          {!!m.steps?.length && (
+                            <ChainOfThought defaultOpen className="mt-4">
+                              <ChainOfThoughtHeader>思维链</ChainOfThoughtHeader>
+                              <ChainOfThoughtContent>
+                                {m.steps.map((s) => (
+                                  <ChainOfThoughtStep
+                                    key={s.id}
+                                    label={s.title}
+                                    description={s.summary}
+                                    status={
+                                      s.status === 'active'
+                                        ? 'active'
+                                        : s.status === 'complete'
+                                          ? 'complete'
+                                          : 'pending'
+                                    }
+                                  />
+                                ))}
+                              </ChainOfThoughtContent>
+                            </ChainOfThought>
+                          )}
 
-                          <ChainOfThought defaultOpen>
-                            <ChainOfThoughtHeader>标准流程</ChainOfThoughtHeader>
-                            <ChainOfThoughtContent>
-                              {m.steps.map((s) => (
-                                <ChainOfThoughtStep
-                                  key={s.id}
-                                  label={`${s.title} · ${s.role}`}
-                                  description={s.summary}
-                                  status={
-                                    s.status === 'active'
-                                      ? 'active'
-                                      : s.status === 'complete'
-                                        ? 'complete'
-                                        : 'pending'
-                                  }
-                                />
+                          {!!m.tools?.length && (
+                            <div className="mt-4 space-y-2">
+                              <div className="text-sm font-medium text-[#374151]">工具调用</div>
+                              {m.tools.map((t) => (
+                                <Tool
+                                  key={t.name}
+                                  defaultOpen={t.status === 'running' || t.status === 'complete'}
+                                >
+                                  <ToolHeader
+                                    title={t.title}
+                                    type="dynamic-tool"
+                                    toolName={t.name}
+                                    state={
+                                      t.status === 'complete'
+                                        ? 'output-available'
+                                        : t.status === 'error'
+                                          ? 'output-error'
+                                          : t.status === 'running'
+                                            ? 'input-available'
+                                            : 'input-streaming'
+                                    }
+                                  />
+                                  <ToolContent>
+                                    {!!t.input && (
+                                      <div className="space-y-1 text-sm text-[#4B5563]">
+                                        {Object.entries(t.input).map(([k, v]) => (
+                                          <div key={k}>
+                                            <span className="text-[#9CA3AF]">{k}：</span>
+                                            {String(v)}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <ToolOutput
+                                      output={
+                                        t.output ? (
+                                          <p className="whitespace-pre-wrap p-2 text-sm leading-relaxed">
+                                            {t.output}
+                                          </p>
+                                        ) : undefined
+                                      }
+                                      errorText={
+                                        t.status === 'error' ? t.output || '调用失败' : undefined
+                                      }
+                                    />
+                                  </ToolContent>
+                                </Tool>
                               ))}
-                            </ChainOfThoughtContent>
-                          </ChainOfThought>
+                            </div>
+                          )}
 
                           {!!m.plan?.tasks?.length && (
-                            <Task defaultOpen>
-                              <TaskTrigger title={`抓取子任务 · ${m.plan.tasks.length} 项`} />
+                            <Task defaultOpen className="mt-4">
+                              <TaskTrigger title={`子任务 · ${m.plan.tasks.length} 项`} />
                               <TaskContent>
                                 {m.plan.tasks.map((t, i) => (
                                   <TaskItem key={`${t.name}-${i}`}>
                                     <div className="flex flex-wrap items-center gap-2">
                                       <span className="font-medium text-foreground">{t.name}</span>
-                                      <TaskItemFile>{t.radius_km}km</TaskItemFile>
+                                      <TaskItemFile>约 {t.radius_km} 公里</TaskItemFile>
                                       <TaskItemFile>深度全量</TaskItemFile>
-                                      <TaskItemFile>自动背调</TaskItemFile>
                                     </div>
                                   </TaskItem>
                                 ))}
@@ -494,7 +541,7 @@ export default function App() {
                           )}
 
                           {!!m.jobs?.length && <ResultsTable jobs={m.jobs} />}
-                        </div>
+                        </>
                       )}
                     </MessageContent>
                   </Message>
@@ -503,32 +550,36 @@ export default function App() {
 
               {busy && (
                 <Message from="assistant">
-                  <MessageContent>
+                  <MessageContent className="w-full max-w-full">
                     <Reasoning isStreaming defaultOpen>
-                      <ReasoningTrigger>正在执行标准 Agent 流程…</ReasoningTrigger>
+                      <ReasoningTrigger>正在思考并规划任务…</ReasoningTrigger>
                       <ReasoningContent>
-                        {liveSteps.map((s) => `${s.title}: ${s.summary}`).join('\n')}
+                        {liveSteps.length
+                          ? liveSteps.map((s) => `- **${s.title}**：${s.summary}`).join('\n')
+                          : '正在调用模型理解你的需求…'}
                       </ReasoningContent>
                     </Reasoning>
-                    <ChainOfThought defaultOpen className="mt-3">
-                      <ChainOfThoughtHeader>实时步骤</ChainOfThoughtHeader>
-                      <ChainOfThoughtContent>
-                        {liveSteps.map((s) => (
-                          <ChainOfThoughtStep
-                            key={s.id}
-                            label={s.title}
-                            description={s.summary}
-                            status={
-                              s.status === 'active'
-                                ? 'active'
-                                : s.status === 'complete'
-                                  ? 'complete'
-                                  : 'pending'
-                            }
-                          />
-                        ))}
-                      </ChainOfThoughtContent>
-                    </ChainOfThought>
+                    {!!liveSteps.length && (
+                      <ChainOfThought defaultOpen className="mt-3">
+                        <ChainOfThoughtHeader>思维链</ChainOfThoughtHeader>
+                        <ChainOfThoughtContent>
+                          {liveSteps.map((s) => (
+                            <ChainOfThoughtStep
+                              key={s.id}
+                              label={s.title}
+                              description={s.summary}
+                              status={
+                                s.status === 'active'
+                                  ? 'active'
+                                  : s.status === 'complete'
+                                    ? 'complete'
+                                    : 'pending'
+                              }
+                            />
+                          ))}
+                        </ChainOfThoughtContent>
+                      </ChainOfThought>
+                    )}
                   </MessageContent>
                 </Message>
               )}

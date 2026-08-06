@@ -46,7 +46,7 @@ func (s *Server) apiAgentUnderstand(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: err.Error()})
 		return
 	}
-	plan := PlanTasks(intent)
+	plan := PlanTasksAI(ctx, intent)
 	renderJSON(w, http.StatusOK, plan)
 }
 
@@ -68,7 +68,7 @@ func (s *Server) apiAgentDispatch(w http.ResponseWriter, r *http.Request) {
 	}
 	owner := s.requestOwner(r)
 
-	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
 	var intent AgentIntent
@@ -84,7 +84,7 @@ func (s *Server) apiAgentDispatch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	plan := PlanTasks(intent)
+	plan := PlanTasksAI(ctx, intent)
 	if len(plan.Tasks) == 0 {
 		renderJSON(w, http.StatusUnprocessableEntity, apiError{
 			Code:    http.StatusUnprocessableEntity,
@@ -109,44 +109,120 @@ func (s *Server) apiAgentDispatch(w http.ResponseWriter, r *http.Request) {
 	}
 	result.Model = grsaiModel()
 	result.Source = intent.Source
-	result.Steps = buildAgentPipelineSteps(plan, result.JobIDs, intent.Source)
+	result.Thinking = buildUserThinking(plan)
+	result.Steps = buildAgentPipelineSteps(plan, result.JobIDs)
+	result.Tools = buildAgentTools(plan, result.JobIDs)
+	result.Message = buildUserMessage(plan, result.JobIDs)
 	renderJSON(w, http.StatusCreated, result)
 }
 
-func buildAgentPipelineSteps(plan AgentPlan, jobIDs []string, source string) []AgentPipelineStep {
-	in := plan.Intent
-	srcLabel := "规则引擎"
-	if source == "ai" {
-		srcLabel = "AI · " + grsaiModel()
+func buildUserThinking(plan AgentPlan) string {
+	if t := strings.TrimSpace(plan.Intent.Thinking); t != "" {
+		return t
 	}
+	in := plan.Intent
 	kw := strings.Join(in.Keywords, "、")
+	if kw == "" {
+		kw = "目标商家"
+	}
+	loc := in.Location
+	if loc == "" {
+		loc = in.CountryName
+	}
+	if len(plan.Tasks) > 1 {
+		return fmt.Sprintf(
+			"你想在「%s」找「%s」。区域覆盖面比较大，我会拆成 %d 个子任务分区域深度抓取，并把结果汇总到一张表里；商家出现后会自动开始背调。",
+			loc, kw, len(plan.Tasks),
+		)
+	}
+	return fmt.Sprintf(
+		"你想在「%s」找「%s」。我会按深度全量方式抓取，结果汇总成表格，商家出现后自动背调。",
+		loc, kw,
+	)
+}
+
+func buildUserMessage(plan AgentPlan, jobIDs []string) string {
+	n := len(jobIDs)
+	if n == 0 {
+		n = len(plan.Tasks)
+	}
+	if n > 1 {
+		return fmt.Sprintf("已启动，拆成 %d 个子任务并行/排队深度抓取。下方可查看思考过程、工具调用与持续增长的结果表。", n)
+	}
+	return "已启动深度全量抓取。下方可查看思考过程、工具调用与结果汇总表。"
+}
+
+func buildAgentPipelineSteps(plan AgentPlan, jobIDs []string) []AgentPipelineStep {
+	in := plan.Intent
+	kw := strings.Join(in.Keywords, "、")
+	loc := in.Location
+	if loc == "" {
+		loc = in.CountryName
+	}
+	taskLabels := make([]string, 0, len(plan.Tasks))
+	for _, t := range plan.Tasks {
+		taskLabels = append(taskLabels, t.Name)
+	}
+	return []AgentPipelineStep{
+		{
+			ID: "intent", Title: "理解需求", Status: "complete",
+			Summary: fmt.Sprintf("在「%s」寻找「%s」，尽量找全", loc, kw),
+		},
+		{
+			ID: "plan", Title: "拆分子任务", Status: "complete",
+			Summary: fmt.Sprintf("拆成 %d 项：%s", len(plan.Tasks), strings.Join(taskLabels, "；")),
+		},
+		{
+			ID: "localize", Title: "本地化搜索词", Status: "complete",
+			Summary: "把关键词翻译/对齐到当地地图可搜的说法，并锚定搜索中心",
+		},
+		{
+			ID: "dispatch", Title: "创建抓取任务", Status: "complete",
+			Summary: fmt.Sprintf("已创建 %d 个抓取任务（忙时排队，执行中保持满速）", len(jobIDs)),
+		},
+		{
+			ID: "scrape", Title: "深度抓取中", Status: "active",
+			Summary: "结果会持续写入汇总表；出现商家后自动开始背调",
+		},
+	}
+}
+
+func buildAgentTools(plan AgentPlan, jobIDs []string) []AgentToolCall {
+	in := plan.Intent
+	kw := strings.Join(in.Keywords, "、")
+	loc := in.Location
+	if loc == "" {
+		loc = in.CountryName
+	}
 	taskNames := make([]string, 0, len(plan.Tasks))
 	for _, t := range plan.Tasks {
 		taskNames = append(taskNames, t.Name)
 	}
-	return []AgentPipelineStep{
+	return []AgentToolCall{
 		{
-			ID: "intent", Role: "IntentAgent", Title: "理解目标", Status: "complete",
-			Summary: fmt.Sprintf("[%s] %s · %s · %s · %dkm", srcLabel, in.Location, in.CountryName, kw, in.RadiusKm),
-			Detail:  in,
+			Name: "understand_goal", Title: "理解用户目标", Status: "complete",
+			Input:  map[string]any{"地点": loc, "品类": kw},
+			Output: fmt.Sprintf("已理解：在 %s 找 %s", loc, kw),
 		},
 		{
-			ID: "plan", Role: "PlannerAgent", Title: "规划全量任务", Status: "complete",
-			Summary: fmt.Sprintf("拆成 %d 个深度全量子任务（尽量覆盖目标地点）", len(plan.Tasks)),
-			Detail:  taskNames,
+			Name: "plan_subtasks", Title: "规划抓取子任务", Status: "complete",
+			Input:  map[string]any{"子任务数": len(plan.Tasks)},
+			Output: strings.Join(taskNames, "\n"),
 		},
 		{
-			ID: "localize", Role: "LocalizerAgent", Title: "本地化与锚定", Status: "complete",
-			Summary: "关键词本地化 + 坐标锚定（Maps 可搜）",
+			Name: "localize_keywords", Title: "本地化关键词", Status: "complete",
+			Input:  map[string]any{"原始品类": kw},
+			Output: "已生成本地可搜关键词并完成坐标锚定",
 		},
 		{
-			ID: "dispatch", Role: "DispatcherAgent", Title: "创建抓取任务", Status: "complete",
-			Summary: fmt.Sprintf("已创建 %d 个排队/运行任务", len(jobIDs)),
-			Detail:  jobIDs,
+			Name: "dispatch_scrape", Title: "派发地图抓取", Status: "complete",
+			Input:  map[string]any{"任务数": len(jobIDs)},
+			Output: fmt.Sprintf("已派发 %d 个深度全量抓取任务", len(jobIDs)),
 		},
 		{
-			ID: "scrape", Role: "Scraper", Title: "深度全量抓取", Status: "active",
-			Summary: "公平准入满速执行；结果进入汇总表，背调在出结果后按需展开",
+			Name: "collect_results", Title: "汇总结果与背调", Status: "running",
+			Input:  map[string]any{"说明": "结果出现后自动背调"},
+			Output: "抓取进行中，表格将持续更新",
 		},
 	}
 }

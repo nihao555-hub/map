@@ -30,11 +30,18 @@ export type AgentPlan = {
 
 export type PipelineStep = {
   id: string
-  role: string
   title: string
   status: string
   summary: string
-  detail?: unknown
+  role?: string
+}
+
+export type AgentToolCall = {
+  name: string
+  title: string
+  status: string
+  input?: Record<string, unknown>
+  output?: string
 }
 
 export type JobMeta = {
@@ -46,8 +53,10 @@ export type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
   text: string
+  thinking?: string
   plan?: AgentPlan
   steps?: PipelineStep[]
+  tools?: AgentToolCall[]
   jobs?: JobMeta[]
   jobIds?: string[]
   model?: string

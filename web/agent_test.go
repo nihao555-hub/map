@@ -89,19 +89,25 @@ func TestPlanTasksSplitsKeywords(t *testing.T) {
 		CountryName: "Indonesia",
 		Location:    "Jakarta",
 		Keywords:    []string{"cafe", "importer"},
-		RadiusKm:    20,
+		RadiusKm:    40,
 		UILang:      "zh",
 	})
-	if len(plan.Tasks) != 2 {
-		t.Fatalf("tasks=%d want 2", len(plan.Tasks))
+	// Jakarta metro × 2 keywords → multi-district coverage tasks
+	if len(plan.Tasks) < 4 {
+		t.Fatalf("tasks=%d want >=4 (district × keyword split)", len(plan.Tasks))
 	}
+	kw := map[string]bool{}
 	for _, task := range plan.Tasks {
-		if task.RadiusKm != 20 {
-			t.Fatalf("task radius=%d", task.RadiusKm)
-		}
 		if task.Role != "scraper" {
 			t.Fatalf("role=%s", task.Role)
 		}
+		if len(task.Keywords) != 1 {
+			t.Fatalf("keywords=%v", task.Keywords)
+		}
+		kw[task.Keywords[0]] = true
+	}
+	if !kw["cafe"] || !kw["importer"] {
+		t.Fatalf("missing keyword split: %v", kw)
 	}
 	found := false
 	for _, r := range plan.Roles {
@@ -111,6 +117,21 @@ func TestPlanTasksSplitsKeywords(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("roles missing DispatcherAgent: %v", plan.Roles)
+	}
+}
+
+func TestPlanTasksBeijingChaoyangSplitsHubs(t *testing.T) {
+	plan := PlanTasks(AgentIntent{
+		RawGoal:     "帮我找北京市朝阳区的火锅店",
+		CountryCode: "cn",
+		CountryName: "China",
+		Location:    "北京市朝阳区",
+		Keywords:    []string{"火锅店"},
+		RadiusKm:    25,
+		UILang:      "zh",
+	})
+	if len(plan.Tasks) < 3 {
+		t.Fatalf("tasks=%d want multi-hub split for 朝阳区, got %+v", len(plan.Tasks), plan.Tasks)
 	}
 }
 

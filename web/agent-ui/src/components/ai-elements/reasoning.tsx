@@ -19,6 +19,8 @@ import {
   useRef,
   useState,
 } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { Shimmer } from "./shimmer";
 
@@ -209,7 +211,9 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <div className="whitespace-pre-wrap break-words">{children}</div>
+      <div className="prose prose-sm max-w-none break-words text-muted-foreground dark:prose-invert prose-p:my-1.5">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+      </div>
     </CollapsibleContent>
   )
 );

@@ -24,6 +24,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -320,14 +322,21 @@ export type MessageResponseProps = HTMLAttributes<HTMLDivElement> & {
 };
 
 export const MessageResponse = memo(
-  ({ className, children, isAnimating: _a, ...props }: MessageResponseProps) => (
-    <div
-      className={cn("size-full whitespace-pre-wrap break-words", className)}
-      {...props}
-    >
-      {children}
-    </div>
-  ),
+  ({ className, children, isAnimating: _a, ...props }: MessageResponseProps) => {
+    const text = typeof children === "string" ? children : String(children ?? "");
+    return (
+      <div
+        className={cn(
+          "size-full break-words prose prose-sm max-w-none dark:prose-invert",
+          "prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-headings:mb-2 prose-headings:mt-3",
+          className
+        )}
+        {...props}
+      >
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      </div>
+    );
+  },
   (prevProps, nextProps) => prevProps.children === nextProps.children
 );
 
