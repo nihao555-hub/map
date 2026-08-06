@@ -84,6 +84,33 @@ func (s *Service) All(ctx context.Context) ([]Job, error) {
 	return s.repo.Select(ctx, SelectParams{})
 }
 
+// QueueAhead returns how many pending jobs are ahead of jobID in FIFO claim order.
+// Non-pending jobs return ahead=0 with their current status.
+func (s *Service) QueueAhead(ctx context.Context, jobID string) (ahead int, status string, pendingTotal int, err error) {
+	job, err := s.Get(ctx, jobID)
+	if err != nil {
+		return 0, "", 0, err
+	}
+	pending, err := s.repo.Select(ctx, SelectParams{Status: StatusPending})
+	if err != nil {
+		return 0, job.Status, 0, err
+	}
+	pendingTotal = len(pending)
+	if job.Status != StatusPending {
+		return 0, job.Status, pendingTotal, nil
+	}
+	for _, j := range pending {
+		if j.ID == jobID {
+			continue
+		}
+		// ClaimPending uses created_at ASC — older pending jobs run first.
+		if j.Date.Before(job.Date) || (j.Date.Equal(job.Date) && j.ID < jobID) {
+			ahead++
+		}
+	}
+	return ahead, job.Status, pendingTotal, nil
+}
+
 // AllForOwner lists jobs belonging to one invite-code tenant.
 // When owner is empty, returns an empty list (never falls back to global listing).
 func (s *Service) AllForOwner(ctx context.Context, owner string) ([]Job, error) {

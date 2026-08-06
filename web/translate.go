@@ -97,8 +97,19 @@ var zhBusinessLexicon = map[string]map[string]string{
 	"工厂":   {"en": "factory", "id": "pabrik", "ms": "kilang", "th": "โรงงาน", "vi": "nhà máy", "ja": "工場", "ko": "공장", "fr": "usine", "de": "Fabrik", "es": "fábrica"},
 	"制造商":  {"en": "manufacturer", "id": "produsen", "ms": "pengilang", "th": "ผู้ผลิต", "vi": "nhà sản xuất", "ja": "メーカー", "ko": "제조사", "fr": "fabricant", "de": "Hersteller"},
 	"生产厂家": {"en": "manufacturer", "id": "produsen", "ms": "pengilang", "ja": "メーカー", "ko": "제조사"},
-	"商家":   {"en": "business", "id": "bisnis", "ms": "perniagaan", "th": "ธุรกิจ", "vi": "doanh nghiệp", "ja": "事業者", "ko": "업체"},
-	"公司":   {"en": "company", "id": "perusahaan", "ms": "syarikat", "th": "บริษัท", "vi": "công ty", "ja": "会社", "ko": "회사"},
+	// 工业电气 / 配电（海外 Maps 用当地/英文工业词，中文几乎搜不到）
+	"配电":    {"en": "switchgear", "id": "panel listrik", "ms": "suis elektrik"},
+	"配电柜":   {"en": "switchgear", "id": "panel listrik", "ms": "panel elektrik"},
+	"配电箱":   {"en": "electrical panel", "id": "panel listrik", "ms": "panel elektrik"},
+	"开关柜":   {"en": "switchgear", "id": "switchgear", "ms": "switchgear"},
+	"电气":    {"en": "electrical", "id": "listrik", "ms": "elektrik"},
+	"电气设备":  {"en": "electrical equipment", "id": "peralatan listrik", "ms": "peralatan elektrik"},
+	"电气经销商": {"en": "electrical distributor", "id": "distributor listrik", "ms": "pengedar elektrik"},
+	"电力设备":  {"en": "power equipment", "id": "peralatan listrik", "ms": "peralatan kuasa"},
+	"变压器":   {"en": "transformer", "id": "trafo", "ms": "transformer"},
+	"电缆":    {"en": "cable", "id": "kabel listrik", "ms": "kabel"},
+	"商家":    {"en": "business", "id": "bisnis", "ms": "perniagaan", "th": "ธุรกิจ", "vi": "doanh nghiệp", "ja": "事業者", "ko": "업체"},
+	"公司":    {"en": "company", "id": "perusahaan", "ms": "syarikat", "th": "บริษัท", "vi": "công ty", "ja": "会社", "ko": "회사"},
 }
 
 // zhPlaceLexicon 常见中文地名 → Google Maps 更友好的英文/当地写法

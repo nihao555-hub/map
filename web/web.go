@@ -175,6 +175,12 @@ func New(svc *Service, addr string, opts ...ServerOption) (*Server, error) {
 		ans.apiCancelJob(w, r)
 	})
 
+	mux.HandleFunc("/api/v1/jobs/{id}/queue", func(w http.ResponseWriter, r *http.Request) {
+		r = requestWithID(r)
+		ans.apiJobQueue(w, r)
+	})
+	mux.HandleFunc("/api/v1/agent/jobs/queue", ans.apiAgentJobsQueue)
+
 	mux.HandleFunc("/cancel", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 		ans.cancelJob(w, r)

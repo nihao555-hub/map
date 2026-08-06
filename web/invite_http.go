@@ -232,11 +232,29 @@ func safeNext(raw string) string {
 }
 
 // listJobsForRequest returns jobs visible to the current tenant.
+// Agent-created jobs are excluded from the standard map UI job list.
 func (s *Server) listJobsForRequest(r *http.Request) ([]Job, error) {
+	var (
+		jobs []Job
+		err  error
+	)
 	if s.inviteRequired() {
-		return s.svc.AllForOwner(r.Context(), s.requestOwner(r))
+		jobs, err = s.svc.AllForOwner(r.Context(), s.requestOwner(r))
+	} else {
+		jobs, err = s.svc.All(r.Context())
 	}
-	return s.svc.All(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Job, 0, len(jobs))
+	for _, j := range jobs {
+		// Hide Agent-mode jobs from the standard Map Mode task list.
+		if j.Data.FromAgent || strings.HasPrefix(j.Name, "Agent:") {
+			continue
+		}
+		out = append(out, j)
+	}
+	return out, nil
 }
 
 // attachOwner stamps the invite-code tenant onto a new job when the gate is on.

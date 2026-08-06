@@ -113,6 +113,9 @@ type JobData struct {
 	MaxResults int `json:"max_results"`
 	// EnableIntel：抓取前由用户确认是否并发背调（theHarvester/SpiderFoot/OC/AI）
 	EnableIntel bool `json:"enable_intel"`
+	// FromAgent marks jobs created by the Agent workspace so they stay out of
+	// the standard map-mode right-hand job list.
+	FromAgent bool `json:"from_agent,omitempty"`
 	// UILang：界面/AI 产出语言（与 Maps 搜索 hl/lang 独立）。如 zh、en、id…
 	UILang string `json:"ui_lang,omitempty"`
 	// 目标半径由 Radius（米）表达；前端以公里输入，上限见 MaxRadiusKm()

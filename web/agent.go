@@ -204,6 +204,7 @@ func normalizeIntent(in AgentIntent, goal, uiLang string) AgentIntent {
 		in.RadiusKm = MaxRadiusKm()
 	}
 	in.Keywords = cleanKeywordList(in.Keywords)
+	in.Keywords = preferMapsLocalKeywords(in.Keywords, in.CountryCode)
 	if in.CountryCode != "" {
 		in.CountryCode = strings.ToLower(strings.TrimSpace(in.CountryCode))
 		if in.CountryName == "" {
@@ -383,6 +384,42 @@ func cleanKeywordList(ks []string) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// preferMapsLocalKeywords rewrites Chinese category terms to Maps-ready local/English
+// phrases when the target country is outside Greater China (Chinese Maps queries fail abroad).
+func preferMapsLocalKeywords(keywords []string, countryCode string) []string {
+	cc := strings.ToLower(strings.TrimSpace(countryCode))
+	switch cc {
+	case "", "cn", "hk", "tw", "mo":
+		return keywords
+	}
+	lang := langForCountryCode(cc)
+	if lang == "" {
+		lang = "en"
+	}
+	out := make([]string, 0, len(keywords))
+	for _, k := range keywords {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		if !containsChinese(k) {
+			out = append(out, k)
+			continue
+		}
+		if t, ok := translateBusinessTerm(k, lang); ok && !containsChinese(t) {
+			out = append(out, t)
+			continue
+		}
+		if t, ok := translateBusinessTerm(k, "en"); ok && !containsChinese(t) {
+			out = append(out, t)
+			continue
+		}
+		// Keep original so LocalizerAgent AI can still translate at dispatch.
+		out = append(out, k)
+	}
+	return cleanKeywordList(out)
 }
 
 func understandIntentAI(ctx context.Context, goal, uiLang string) (AgentIntent, error) {
@@ -973,6 +1010,7 @@ func (s *Server) DispatchPlan(ctx context.Context, owner string, plan AgentPlan)
 				UILang:      normalizeUILang(plan.Intent.UILang),
 				// Agent path: auto-start intel once places appear (EnsurePlaceIntelAsync).
 				EnableIntel: true,
+				FromAgent:   true,
 				Lang:        "en",
 			},
 		}

@@ -23,6 +23,14 @@ type IntelPayload = {
   error?: string
 }
 
+type QueueInfo = {
+  id: string
+  status: string
+  ahead: number
+  pending_total?: number
+  message: string
+}
+
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, { credentials: 'same-origin', ...init })
   const data = await r.json().catch(() => ({}))
@@ -45,6 +53,7 @@ function normalizePlace(p: Record<string, unknown>, jobId: string): PlaceRow {
 export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
   const [rows, setRows] = useState<PlaceRow[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
+  const [queue, setQueue] = useState<Record<string, QueueInfo>>({})
   const [activeJob, setActiveJob] = useState<string>('all')
   const [loading, setLoading] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
@@ -52,10 +61,29 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
   const autoIntelStarted = useRef<Set<string>>(new Set())
   const intelDone = useRef<Set<string>>(new Set())
 
+  const loadQueue = async () => {
+    if (!jobs.length) return
+    try {
+      const data = await fetchJSON<{ jobs?: QueueInfo[] }>('/api/v1/agent/jobs/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_ids: jobs.map((j) => j.id) }),
+      })
+      const next: Record<string, QueueInfo> = {}
+      for (const q of data.jobs || []) {
+        if (q.id) next[q.id] = q
+      }
+      setQueue(next)
+    } catch {
+      /* ignore */
+    }
+  }
+
   const load = async () => {
     if (!jobs.length) return
     setLoading(true)
     try {
+      await loadQueue()
       const all: PlaceRow[] = []
       const nextCounts: Record<string, number> = {}
       for (const j of jobs) {
@@ -108,6 +136,16 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
     return () => clearInterval(t)
   }, [jobs.map((j) => j.id).join(',')])
 
+  const pendingQueueHint = useMemo(() => {
+    const pending = jobs
+      .map((j) => queue[j.id])
+      .filter((q): q is QueueInfo => !!q && q.status === 'pending')
+    if (!pending.length) return ''
+    const minAhead = Math.min(...pending.map((q) => q.ahead))
+    if (minAhead <= 0) return '部分子任务排队中，即将开始'
+    return `部分子任务排队中，前面还有 ${minAhead} 个任务`
+  }, [jobs, queue])
+
   const visible = useMemo(
     () => (activeJob === 'all' ? rows : rows.filter((r) => r.job_id === activeJob)),
     [rows, activeJob],
@@ -144,6 +182,7 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
           <div className="text-sm font-semibold text-[#1F2937]">结果汇总</div>
           <div className="text-xs text-[#6B7280]">
             共 {rows.length} 家 · 结果出现后自动开始背调 · 点击行查看详情
+            {pendingQueueHint ? ` · ${pendingQueueHint}` : ''}
           </div>
         </div>
         <Button size="sm" variant="outline" onClick={load} disabled={loading} className="rounded-full">
@@ -164,20 +203,31 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
         >
           全部 ({rows.length})
         </button>
-        {jobs.map((j) => (
-          <button
-            key={j.id}
-            type="button"
-            onClick={() => setActiveJob(j.id)}
-            className={cn(
-              'max-w-[220px] shrink-0 truncate rounded-full px-3 py-1.5 text-xs font-medium',
-              activeJob === j.id ? 'bg-[#2F6BFF] text-white' : 'bg-[#F3F4F6] text-[#4B5563]',
-            )}
-            title={j.name}
-          >
-            {j.name} ({counts[j.id] || 0})
-          </button>
-        ))}
+        {jobs.map((j) => {
+          const q = queue[j.id]
+          const pending = q?.status === 'pending'
+          const chipLabel = pending
+            ? q.ahead > 0
+              ? `${j.name} · 前方 ${q.ahead}`
+              : `${j.name} · 排队中`
+            : q?.status === 'working'
+              ? `${j.name} · 抓取中 (${counts[j.id] || 0})`
+              : `${j.name} (${counts[j.id] || 0})`
+          return (
+            <button
+              key={j.id}
+              type="button"
+              onClick={() => setActiveJob(j.id)}
+              className={cn(
+                'max-w-[260px] shrink-0 truncate rounded-full px-3 py-1.5 text-xs font-medium',
+                activeJob === j.id ? 'bg-[#2F6BFF] text-white' : 'bg-[#F3F4F6] text-[#4B5563]',
+              )}
+              title={pending ? q.message || j.name : j.name}
+            >
+              {chipLabel}
+            </button>
+          )
+        })}
       </div>
 
       <div className="max-h-[480px] overflow-auto">
@@ -196,7 +246,18 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
             {visible.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-3 py-12 text-center text-[#9CA3AF]">
-                  {loading ? '正在拉取结果…' : '子任务抓取中，结果会持续增加'}
+                  {loading
+                    ? '正在拉取结果…'
+                    : (() => {
+                        const focus =
+                          activeJob === 'all'
+                            ? jobs.map((j) => queue[j.id]).find((q) => q?.status === 'pending')
+                            : queue[activeJob]
+                        if (focus?.status === 'pending') {
+                          return focus.message || '排队中，等待执行'
+                        }
+                        return '子任务抓取中，结果会持续增加'
+                      })()}
                 </td>
               </tr>
             )}

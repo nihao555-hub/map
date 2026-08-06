@@ -147,9 +147,9 @@ func buildUserMessage(plan AgentPlan, jobIDs []string) string {
 		n = len(plan.Tasks)
 	}
 	if n > 1 {
-		return fmt.Sprintf("已启动，拆成 %d 个子任务并行/排队深度抓取。下方可查看思考过程、工具调用与持续增长的结果表。", n)
+		return fmt.Sprintf("已启动，拆成 %d 个子任务深度抓取（忙时排队）。下方结果表会持续增长，商家出现后自动背调。", n)
 	}
-	return "已启动深度全量抓取。下方可查看思考过程、工具调用与结果汇总表。"
+	return "已启动深度全量抓取。下方结果表会持续增长，商家出现后自动背调。"
 }
 
 func buildAgentPipelineSteps(plan AgentPlan, jobIDs []string) []AgentPipelineStep {
@@ -224,5 +224,99 @@ func buildAgentTools(plan AgentPlan, jobIDs []string) []AgentToolCall {
 			Input:  map[string]any{"说明": "结果出现后自动背调"},
 			Output: "抓取进行中，表格将持续更新",
 		},
+	}
+}
+
+type jobQueueResponse struct {
+	ID           string `json:"id"`
+	Status       string `json:"status"`
+	Ahead        int    `json:"ahead"`
+	PendingTotal int    `json:"pending_total"`
+	ActiveJobs   int    `json:"active_jobs"`
+	AdmitSlots   int    `json:"admit_slots"`
+	Message      string `json:"message"`
+}
+
+func (s *Server) apiJobQueue(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+		return
+	}
+	id, ok := getIDFromRequest(r)
+	if !ok {
+		renderJSON(w, http.StatusUnprocessableEntity, apiError{Code: http.StatusUnprocessableEntity, Message: "Invalid ID"})
+		return
+	}
+	if _, err := s.loadAccessibleJob(r, id.String()); err != nil {
+		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "Not found"})
+		return
+	}
+	ahead, status, pendingTotal, err := s.svc.QueueAhead(r.Context(), id.String())
+	if err != nil {
+		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: err.Error()})
+		return
+	}
+	snap := GetConcurrencySnapshot()
+	msg := queueMessage(status, ahead)
+	renderJSON(w, http.StatusOK, jobQueueResponse{
+		ID: id.String(), Status: status, Ahead: ahead, PendingTotal: pendingTotal,
+		ActiveJobs: snap.ActiveJobs, AdmitSlots: snap.AdmitSlots, Message: msg,
+	})
+}
+
+type agentJobsQueueRequest struct {
+	JobIDs []string `json:"job_ids"`
+}
+
+func (s *Server) apiAgentJobsQueue(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{Code: http.StatusMethodNotAllowed, Message: "Method not allowed"})
+		return
+	}
+	var req agentJobsQueueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{Code: http.StatusBadRequest, Message: "invalid JSON"})
+		return
+	}
+	snap := GetConcurrencySnapshot()
+	out := make([]jobQueueResponse, 0, len(req.JobIDs))
+	for _, id := range req.JobIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, err := s.loadAccessibleJob(r, id); err != nil {
+			continue
+		}
+		ahead, status, pendingTotal, err := s.svc.QueueAhead(r.Context(), id)
+		if err != nil {
+			continue
+		}
+		out = append(out, jobQueueResponse{
+			ID: id, Status: status, Ahead: ahead, PendingTotal: pendingTotal,
+			ActiveJobs: snap.ActiveJobs, AdmitSlots: snap.AdmitSlots,
+			Message: queueMessage(status, ahead),
+		})
+	}
+	renderJSON(w, http.StatusOK, map[string]any{"jobs": out, "active_jobs": snap.ActiveJobs, "admit_slots": snap.AdmitSlots})
+}
+
+func queueMessage(status string, ahead int) string {
+	switch status {
+	case StatusPending:
+		if ahead <= 0 {
+			return "排队中，即将开始"
+		}
+		return fmt.Sprintf("排队中，前面还有 %d 个任务", ahead)
+	case StatusWorking:
+		return "抓取中"
+	case StatusOK:
+		return "已完成"
+	case StatusFailed:
+		return "失败"
+	case StatusCanceled:
+		return "已取消"
+	default:
+		return status
 	}
 }
