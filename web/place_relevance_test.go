@@ -16,6 +16,12 @@ func TestPlaceRelevantElectricalDropsNoise(t *testing.T) {
 		{Title: "PT DUTA LIANA JAYA", Category: "Pabrik Kertas"},
 		{Title: "Green Soris Elektronik", Category: "Reparasi Oven Microwave"},
 		{Title: "Lapak scrup,panel,mmc,hp jadul", Category: "Gudang"},
+		// Junk dealers advertise the materials they buy (kabel/panel/aluminium).
+		{
+			Title:    "Jual Beli Barang Bekas Besi Tembaga Kabel Kertas Aluminium UD Lapak Berkah Mandiri",
+			Category: "Toko Barang Bekas",
+		},
+		{Title: "Pengepul Rongsok Jaya", Category: "Jasa Daur Ulang"},
 		// Maps miscategorizes HVAC/CCTV under electrical install categories.
 		{Title: "Instalasi AC central, ducting", Category: "Jasa Instalasi Listrik"},
 		{Title: "Instalasi CCTV", Category: "Jasa Instalasi Listrik"},

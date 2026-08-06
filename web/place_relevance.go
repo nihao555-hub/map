@@ -126,8 +126,14 @@ func PlaceRelevantToKeywords(p Place, keywords []string) bool {
 	title := strings.ToLower(p.Title)
 	cat := strings.ToLower(p.Category)
 
-	// Hard-drop scrap / phone-resale style listings even if they mention "panel".
-	hardDrop := []string{"hp jadul", "handphone jadul", "lapak scrup", "scrap", "scrup", "polsek", "polres", "kantor polisi"}
+	// Hard-drop scrap / secondhand / phone-resale listings even when they mention
+	// electrical words: junk dealers list "kabel"/"panel" as materials they buy.
+	hardDrop := []string{
+		"hp jadul", "handphone jadul", "lapak scrup", "scrap", "scrup",
+		"barang bekas", "besi bekas", "besi tua", "rongsok", "rosok", "loakan",
+		"pengepul", "jual beli bekas",
+		"polsek", "polres", "kantor polisi",
+	}
 	if containsAny(blob, hardDrop) {
 		return false
 	}
