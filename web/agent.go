@@ -1000,6 +1000,10 @@ func preferHighRecallKeywords(keywords []string) []string {
 		case strings.Contains(low, "komponen listrik") || strings.Contains(low, "toko komponen"):
 			// Too broad (electronics / EV / homework shops); keep industrial head term.
 			k = "panel listrik"
+		case strings.Contains(low, "electrical supply") || strings.Contains(low, "electric equipment") ||
+			strings.Contains(low, "electrical wholesaler") || strings.Contains(low, "electrical distributor"):
+			// English jargon often under-recalls overseas; keep Maps-friendly head term when ID context.
+			k = "panel listrik"
 		}
 		low = strings.ToLower(k)
 		if _, ok := seen[low]; ok {

@@ -15,6 +15,7 @@ func TestPlaceRelevantElectricalDropsNoise(t *testing.T) {
 		{Title: "Nasional Pedia Payment", Category: "Kantor Perusahaan"},
 		{Title: "PT DUTA LIANA JAYA", Category: "Pabrik Kertas"},
 		{Title: "Green Soris Elektronik", Category: "Reparasi Oven Microwave"},
+		{Title: "Lapak scrup,panel,mmc,hp jadul", Category: "Gudang"},
 	}
 	for _, p := range noise {
 		if PlaceRelevantToKeywords(p, kw) {

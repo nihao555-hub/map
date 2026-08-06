@@ -259,12 +259,11 @@ func (s *Server) listJobsForRequest(r *http.Request) ([]Job, error) {
 // isHiddenFromMapJobList reports Agent-workspace jobs that must not appear in
 // the standard map-mode right-hand task list.
 func isHiddenFromMapJobList(j Job) bool {
-	if j.Data.FromAgent || strings.HasPrefix(j.Name, "Agent:") {
+	if j.Data.FromAgent {
 		return true
 	}
-	// Legacy agent jobs created before FromAgent was persisted: planner labels
-	// look like "Jakarta · panel listrik" with intel + raw keywords.
-	if j.Data.EnableIntel && strings.Contains(j.Name, " · ") && len(j.Data.RawKeywords) > 0 {
+	// Legacy agent jobs created before FromAgent was persisted.
+	if strings.HasPrefix(j.Name, "Agent:") {
 		return true
 	}
 	return false

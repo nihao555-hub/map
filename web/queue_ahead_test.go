@@ -116,7 +116,35 @@ func TestListJobsHidesFromAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(jobs) != 1 || jobs[0].ID != "m1" {
-		t.Fatalf("legacy agent job still visible: %+v", jobs)
+	// Standard-mode jobs with intel + " · " names must stay visible (not treated as agent).
+	ids := map[string]bool{}
+	for _, j := range jobs {
+		ids[j.ID] = true
+	}
+	if !ids["m1"] || !ids["legacy"] || ids["a1"] {
+		t.Fatalf("got %+v want map+legacy visible, agent hidden", jobs)
+	}
+
+	prefixed := &Job{
+		ID: "pref", Name: "Agent: old run", Date: time.Now().UTC(), Status: StatusPending,
+		Data: JobData{
+			Keywords: []string{"panel listrik"}, Lang: "id", Zoom: 15,
+			Radius: 15000, Depth: 10, MaxTime: time.Hour, Email: true,
+		},
+	}
+	if err := prefixed.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Create(ctx, prefixed); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err = srv.listJobsForRequest(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, j := range jobs {
+		if j.ID == "pref" {
+			t.Fatalf("Agent: prefix job should be hidden: %+v", jobs)
+		}
 	}
 }

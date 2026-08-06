@@ -50,6 +50,7 @@ var electricalNoiseHints = []string{
 	"pabrik kertas", "paper mill", "fotokopi", "print shop",
 	"payment", "fintech", "asuransi", "insurance",
 	"electronic city", "toko elektronik", "komponen elektronik",
+	"hp jadul", "handphone jadul", "lapak scrup", "scrap", "scrup",
 }
 
 // Categories that are too broad unless the title itself looks electrical.
@@ -113,6 +114,12 @@ func PlaceRelevantToKeywords(p Place, keywords []string) bool {
 	blob := placeTextBlob(p)
 	title := strings.ToLower(p.Title)
 	cat := strings.ToLower(p.Category)
+
+	// Hard-drop scrap / phone-resale style listings even if they mention "panel".
+	hardDrop := []string{"hp jadul", "handphone jadul", "lapak scrup", "scrap", "scrup", "polsek", "polres", "kantor polisi"}
+	if containsAny(blob, hardDrop) {
+		return false
+	}
 
 	if containsAny(blob, electricalNoiseHints) && !hasElectricalPositive(title+" "+cat) {
 		return false
