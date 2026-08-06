@@ -4,12 +4,12 @@
     <div class="record-progress" style="opacity:0.75">
       {{ if .Data.CountryName }}{{.Data.CountryName}} · {{ end }}{{ if .Data.Keywords }}{{ index .Data.Keywords 0 }}{{ end }}{{ if .Data.GeoAnchor }} · {{.Data.GeoAnchor}}{{ end }}
     </div>
-    {{ if eq .Phase "intel" }}<div class="record-progress">背调中…</div>
-    {{ else if eq .Status "working" }}<div class="record-progress">采集中…</div>
-    {{ else if eq .Status "pending" }}<div class="record-progress">待启动…</div>
-    {{ else if eq .Status "failed" }}<div class="record-failed">采集失败</div>
-    {{ else if eq .Status "canceled" }}<div class="record-progress">已终止</div>
-    {{ else if eq .Status "ok" }}<div class="record-progress">已完成</div>{{ end }}
+    {{ if eq .Phase "intel" }}<div class="record-progress" title="采集已完成，正在商家背调">背调中…</div>
+    {{ else if eq .Status "working" }}<div class="record-progress" title="正在抓取地图商家结果">采集中…</div>
+    {{ else if eq .Status "pending" }}<div class="record-progress" title="等待空闲执行槽位">排队中…</div>
+    {{ else if eq .Status "failed" }}<div class="record-failed" title="任务失败，可重新发起">失败</div>
+    {{ else if eq .Status "canceled" }}<div class="record-progress" title="任务已手动终止">已终止</div>
+    {{ else if eq .Status "ok" }}<div class="record-progress" title="采集与背调均已结束">已完成</div>{{ end }}
   </div>
   <div class="record-side">
     <span class="mode-tag tag-grid">深度全量</span>

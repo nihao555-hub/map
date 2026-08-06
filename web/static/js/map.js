@@ -525,12 +525,37 @@
     var tr = (typeof window.t === 'function') ? window.t : null;
     var ph = phase || status;
     if (ph === 'intel') return tr ? tr('status_intel') : '背调中';
-    if (status === 'working') return tr ? tr('status_working') : '进行中';
+    if (status === 'working') return tr ? tr('status_working') : '采集中';
     if (status === 'pending') return tr ? tr('status_pending') : '排队中';
     if (status === 'ok') return tr ? tr('status_ok') : '已完成';
     if (status === 'failed') return tr ? tr('status_failed') : '失败';
     if (status === 'canceled') return tr ? tr('status_canceled') : '已终止';
     return status || (tr ? tr('status_unknown') : '未知');
+  }
+
+  function statusHint(status, phase) {
+    var tr = (typeof window.t === 'function') ? window.t : null;
+    var ph = phase || status;
+    var key = 'status_unknown';
+    if (ph === 'intel') key = 'status_intel_hint';
+    else if (status === 'working') key = 'status_working_hint';
+    else if (status === 'pending') key = 'status_pending_hint';
+    else if (status === 'ok') key = 'status_ok_hint';
+    else if (status === 'failed') key = 'status_failed_hint';
+    else if (status === 'canceled') key = 'status_canceled_hint';
+    if (tr) {
+      var v = tr(key);
+      if (v && v !== key) return v;
+    }
+    var fallback = {
+      status_intel_hint: '采集已完成，正在商家背调',
+      status_working_hint: '正在抓取地图商家结果',
+      status_pending_hint: '等待空闲执行槽位',
+      status_ok_hint: '采集与背调均已结束',
+      status_failed_hint: '任务失败，可重新发起',
+      status_canceled_hint: '任务已手动终止'
+    };
+    return fallback[key] || '';
   }
 
   window.cancelJob = function (jobId) {
@@ -629,7 +654,7 @@
         '<button type="button" class="task-dock-main" onclick="window.focusTaskFromDock(\'' + id + '\')">' +
           '<div class="task-dock-item-top">' +
             '<span class="task-dock-name">' + escapeHtml(name.trim()) + '</span>' +
-            '<span class="task-dock-badge">' + statusLabel(status, phase) + '</span>' +
+            '<span class="task-dock-badge" title="' + escapeHtml(statusHint(status, phase)) + '">' + statusLabel(status, phase) + '</span>' +
           '</div>' +
           '<div class="task-dock-item-meta">' +
             '<span>' + escapeHtml(mode) + '</span>' +

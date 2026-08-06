@@ -245,7 +245,7 @@
           <div class="toggle-switch" id="heatmap-toggle" onclick="toggleHeatmap(this)"></div>
         </div>
 
-        <!-- 右侧任务进度面板：进行中 / 已完成 -->
+        <!-- 右侧任务进度面板：排队中 / 采集中 / 背调中 / 已完成 / 失败 / 已终止 -->
         <aside id="task-dock" aria-label="任务进度">
           <div class="task-dock-head">
             <div class="task-dock-title">
@@ -254,6 +254,7 @@
             </div>
             <span id="task-dock-hint" class="task-dock-hint" data-i18n="task_hint">实时更新</span>
           </div>
+          <p class="task-dock-legend" data-i18n="dock_status_legend">排队中 → 采集中 → 背调中 → 已完成</p>
           <div id="task-dock-list" class="task-dock-list">
             <p class="task-dock-empty" data-i18n="task_empty">还没有任务。填写左侧表单后点击「开始搜索」。</p>
           </div>

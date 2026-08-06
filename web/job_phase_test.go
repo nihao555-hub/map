@@ -60,7 +60,22 @@ func TestMarkScrapeCompleteStartsIntelPhase(t *testing.T) {
 	}
 }
 
-func TestEnrichJobPhaseIntelWhenPending(t *testing.T) {
+func TestPhaseLabelZH(t *testing.T) {
+	cases := []struct{ phase, status, want string }{
+		{"intel", "ok", "背调中"},
+		{"", "working", "采集中"},
+		{"", "pending", "排队中"},
+		{"ok", "ok", "已完成"},
+		{"", "failed", "失败"},
+		{"", "canceled", "已终止"},
+	}
+	for _, c := range cases {
+		if got := PhaseLabelZH(c.phase, c.status); got != c.want {
+			t.Fatalf("phase=%q status=%q got %q want %q", c.phase, c.status, got, c.want)
+		}
+	}
+}
+
 	dir := t.TempDir()
 	jobID := "j2"
 	// minimal CSV with one place so intel is not done

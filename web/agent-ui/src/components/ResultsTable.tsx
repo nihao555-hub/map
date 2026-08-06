@@ -407,8 +407,14 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
             : phase === 'intel'
               ? `${j.name} · 背调中 (${counts[j.id] || 0})`
               : q?.status === 'working'
-                ? `${j.name} · 抓取中 (${counts[j.id] || 0})`
-                : `${j.name} (${counts[j.id] || 0})`
+                ? `${j.name} · 采集中 (${counts[j.id] || 0})`
+                : q?.status === 'failed'
+                  ? `${j.name} · 失败`
+                  : q?.status === 'canceled'
+                    ? `${j.name} · 已终止`
+                    : q?.status === 'ok'
+                      ? `${j.name} · 已完成 (${counts[j.id] || 0})`
+                      : `${j.name} (${counts[j.id] || 0})`
           return (
             <button
               key={j.id}
@@ -457,7 +463,19 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
                         if (focus?.status === 'pending') {
                           return focus.message || '排队中，等待执行'
                         }
-                        return '子任务抓取中，结果会持续增加'
+                        if (focus?.phase === 'intel') {
+                          return focus.message || '采集已完成，背调进行中'
+                        }
+                        if (focus?.status === 'failed') {
+                          return '任务失败'
+                        }
+                        if (focus?.status === 'canceled') {
+                          return '任务已终止'
+                        }
+                        if (focus?.status === 'ok') {
+                          return '已完成，暂无结果'
+                        }
+                        return '子任务采集中，结果会持续增加'
                       })()}
                 </td>
               </tr>

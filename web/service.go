@@ -95,6 +95,26 @@ const (
 	PhaseCanceled = "canceled"
 )
 
+// PhaseLabelZH returns the canonical Chinese badge for a job phase/status.
+func PhaseLabelZH(phase, status string) string {
+	switch {
+	case phase == PhaseIntel:
+		return "背调中"
+	case status == StatusPending || phase == PhasePending:
+		return "排队中"
+	case status == StatusWorking || phase == PhaseWorking:
+		return "采集中"
+	case status == StatusFailed || phase == PhaseFailed:
+		return "失败"
+	case status == StatusCanceled || phase == PhaseCanceled:
+		return "已终止"
+	case status == StatusOK || phase == PhaseOK:
+		return "已完成"
+	default:
+		return status
+	}
+}
+
 // EnrichJobPhase sets Job.Phase for API/HTML so the dock can show「背调中」after scrape rows land.
 func (s *Service) EnrichJobPhase(ctx context.Context, job *Job) {
 	if job == nil {

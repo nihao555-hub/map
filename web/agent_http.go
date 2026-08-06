@@ -313,17 +313,17 @@ func queueMessage(phase, status string, ahead int) string {
 	switch status {
 	case StatusPending:
 		if ahead <= 0 {
-			return "排队中，即将开始"
+			return "排队中，即将开始采集"
 		}
 		return fmt.Sprintf("排队中，前面还有 %d 个任务", ahead)
 	case StatusWorking:
-		return "抓取中"
+		return "采集中，结果持续增加"
 	case StatusOK:
 		return "已完成"
 	case StatusFailed:
 		return "失败"
 	case StatusCanceled:
-		return "已取消"
+		return "已终止"
 	default:
 		return status
 	}

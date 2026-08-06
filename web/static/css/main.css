@@ -894,6 +894,16 @@ svg.lucide { flex-shrink: 0; }
   color: var(--text-aux);
 }
 
+.task-dock-legend {
+  margin: 0 12px 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-aux);
+  background: rgba(15, 23, 42, 0.03);
+  border-radius: 8px;
+}
+
 .task-dock-list {
   flex: 1;
   overflow: auto;

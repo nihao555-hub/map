@@ -17,6 +17,18 @@ const (
 	StatusCanceled = "canceled"
 )
 
+// User-facing job lifecycle (Status + Phase):
+//
+//	排队中 pending  — waiting for an admission slot
+//	采集中 working  — Maps grid scrape in progress
+//	背调中 ok+intel — scrape rows ready; OSINT / AI intel still running
+//	已完成 ok       — scrape done (and intel done, or intel disabled)
+//	失败   failed   — scrape errored
+//	已终止 canceled — stopped by user
+//
+// Phase is UI-only (not persisted). Persist only Status_*.
+
+
 type SelectParams struct {
 	Status string
 	Limit  int
