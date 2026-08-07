@@ -34,7 +34,7 @@ type GmapJob struct {
 func NewGmapJob(
 	id, langCode, query string,
 	maxDepth int,
-	extractEmail bool,
+	_ bool,
 	geoCoordinates string,
 	zoom int,
 	opts ...GmapJobOptions,
@@ -71,9 +71,10 @@ func NewGmapJob(
 			MaxRetries: maxRetries,
 			Priority:   prio,
 		},
-		MaxDepth:     maxDepth,
-		LangCode:     langCode,
-		ExtractEmail: extractEmail,
+		MaxDepth: maxDepth,
+		LangCode: langCode,
+		// Product policy: contact enrichment is mandatory in every run mode.
+		ExtractEmail: true,
 	}
 
 	for _, opt := range opts {

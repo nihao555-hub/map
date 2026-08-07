@@ -214,6 +214,8 @@ func (w *webrunner) work(ctx context.Context) error {
 func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 	// ctx already carries the wall-clock timeout + cancel registered by work().
 	jobCtx := ctx
+	// Also covers old queued jobs created before email enrichment became mandatory.
+	job.Data.Email = true
 
 	// Re-read status: user may have canceled while queued.
 	if latest, err := w.svc.Get(jobCtx, job.ID); err == nil && latest.Status == web.StatusCanceled {

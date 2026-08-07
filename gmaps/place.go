@@ -27,7 +27,7 @@ type PlaceJob struct {
 	WriterManagedCompletion bool
 }
 
-func NewPlaceJob(parentID, langCode, u string, extractEmail, extraExtraReviews bool, opts ...PlaceJobOptions) *PlaceJob {
+func NewPlaceJob(parentID, langCode, u string, _ bool, extraExtraReviews bool, opts ...PlaceJobOptions) *PlaceJob {
 	const (
 		defaultPrio       = scrapemate.PriorityMedium
 		defaultMaxRetries = 3
@@ -46,7 +46,8 @@ func NewPlaceJob(parentID, langCode, u string, extractEmail, extraExtraReviews b
 	}
 
 	job.UsageInResults = true
-	job.ExtractEmail = extractEmail
+	// Product policy: every place run must enrich contacts from its website.
+	job.ExtractEmail = true
 	job.ExtractExtraReviews = extraExtraReviews
 
 	for _, opt := range opts {

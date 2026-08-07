@@ -94,7 +94,6 @@ export default function App() {
   })
   const [activeId, setActiveId] = useState(() => sessions[0]?.id)
   const [busy, setBusy] = useState(false)
-  const [streamThinking, setStreamThinking] = useState('')
   const [aiMeta, setAiMeta] = useState<{ enabled: boolean; model: string } | null>(null)
   const [suggestions, setSuggestions] = useState(SUGGESTIONS)
   const [showHistory, setShowHistory] = useState(true)
@@ -127,7 +126,6 @@ export default function App() {
     const s = newSession()
     setSessions((prev) => [s, ...prev])
     setActiveId(s.id)
-    setStreamThinking('')
     setShowHistory(true)
   }
 
@@ -136,7 +134,6 @@ export default function App() {
     const s = newSession()
     setSessions([s])
     setActiveId(s.id)
-    setStreamThinking('')
   }
 
   /**
@@ -145,11 +142,10 @@ export default function App() {
   const runGoal = async (goal: string) => {
     if (!goal.trim() || busy) return
     if (aiMeta && !aiMeta.enabled) {
-      alert('未配置真实 AI（GRSAI_API_KEY）。请先在环境中配置后再试。')
+      alert('智能分析服务暂不可用，请稍后重试。')
       return
     }
     setBusy(true)
-    setStreamThinking('')
 
     const userMsg: ChatMessage = {
       id: createId(),
@@ -200,7 +196,6 @@ export default function App() {
         }
         if (ev.type === 'thinking_delta' && ev.text) {
           thinkingAcc += ev.text
-          setStreamThinking(thinkingAcc)
           return
         }
         if (ev.type === 'error') {
@@ -208,7 +203,7 @@ export default function App() {
         }
         if (ev.type === 'result') {
           if (ev.source && ev.source !== 'ai') {
-            throw new Error('未走真实 AI，请检查 GRSAI_API_KEY')
+            throw new Error('智能分析服务暂不可用')
           }
           const jobs: JobMeta[] = (ev.job_ids || []).map((id, i) => ({
             id,
@@ -220,7 +215,6 @@ export default function App() {
             text:
               ev.message ||
               `已启动 ${jobs.length} 个子任务，结果会汇总到下方表格。`,
-            thinking: ev.thinking || thinkingAcc,
             plan: ev.plan,
             jobs,
             jobIds: ev.job_ids,
@@ -234,7 +228,6 @@ export default function App() {
             messages: [...s.messages, assistant],
           }))
           finalized = true
-          setStreamThinking('')
         }
       }
 
@@ -261,8 +254,7 @@ export default function App() {
         if (line) handleEvent(line.slice(5).trim())
       }
       if (!finalized) throw new Error('流式响应未完成')
-    } catch (e) {
-      setStreamThinking('')
+    } catch {
       patchActive((s) => ({
         ...s,
         messages: [
@@ -270,8 +262,8 @@ export default function App() {
           {
             id: createId(),
             role: 'assistant',
-            text: '处理失败',
-            error: e instanceof Error ? e.message : String(e),
+            text: '暂时无法处理，请稍后重试。',
+            error: '如果多次重试仍失败，请联系管理员。',
             createdAt: Date.now(),
           },
         ],
@@ -334,7 +326,6 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setActiveId(s.id)
-                        setStreamThinking('')
                       }}
                       className={cn(
                         'flex w-full items-start gap-2.5 rounded-[12px] px-2.5 py-2.5 text-left transition',
@@ -509,19 +500,12 @@ export default function App() {
                         <MessageResponse>{m.text}</MessageResponse>
                       ) : (
                         <>
-                          {!!m.thinking && (
-                            <Reasoning defaultOpen className="mb-3">
-                              <ReasoningTrigger>思考过程</ReasoningTrigger>
-                              <ReasoningContent>{m.thinking}</ReasoningContent>
-                            </Reasoning>
-                          )}
-
                           <MessageResponse>{m.text}</MessageResponse>
                           {m.error && <p className="mt-2 text-sm text-red-600">{m.error}</p>}
 
                           {!!m.plan?.tasks?.length && (
                             <Task defaultOpen className="mt-4">
-                              <TaskTrigger title={`抓取计划 · ${m.plan.tasks.length} 项`} />
+                              <TaskTrigger title={`搜索计划 · ${m.plan.tasks.length} 个区域`} />
                               <TaskContent>
                                 {m.plan.tasks.map((t, i) => (
                                   <TaskItem key={`${t.name}-${i}`}>
@@ -529,9 +513,6 @@ export default function App() {
                                       <span className="font-medium text-foreground">{t.name}</span>
                                       <div className="flex flex-wrap items-center gap-2">
                                         <TaskItemFile>{t.location || '—'}</TaskItemFile>
-                                        <TaskItemFile>
-                                          地图搜：{(t.keywords || []).join(' / ') || '—'}
-                                        </TaskItemFile>
                                         <TaskItemFile>约 {t.radius_km} 公里</TaskItemFile>
                                       </div>
                                     </div>
@@ -563,10 +544,8 @@ export default function App() {
                 <Message from="assistant">
                   <MessageContent className="w-full max-w-full">
                     <Reasoning isStreaming defaultOpen>
-                      <ReasoningTrigger>思考中</ReasoningTrigger>
-                      <ReasoningContent>
-                        {streamThinking || '模型正在思考…'}
-                      </ReasoningContent>
+                      <ReasoningTrigger>正在分析需求</ReasoningTrigger>
+                      <ReasoningContent>正在整理地点、目标客户和搜索范围…</ReasoningContent>
                     </Reasoning>
                   </MessageContent>
                 </Message>
@@ -596,9 +575,9 @@ export default function App() {
                   <div className="text-[11px] text-[#9CA3AF]">
                     {aiMeta
                       ? aiMeta.enabled
-                        ? '真实 AI 流式输出已启用'
-                        : 'AI 未配置 · 无法启动真实模型'
-                      : '检测模型…'}
+                        ? '智能分析已就绪'
+                        : '服务暂不可用'
+                      : '正在连接服务…'}
                   </div>
                   <PromptInputSubmit
                     disabled={busy}

@@ -64,3 +64,15 @@ func TestNewGmapJobBuildsURLFromQuery(t *testing.T) {
 		})
 	}
 }
+
+func TestEmailExtractionCannotBeDisabled(t *testing.T) {
+	search := gmaps.NewGmapJob("", "en", "coffee", 1, false, "", 0)
+	if !search.ExtractEmail {
+		t.Fatal("search job must force email extraction")
+	}
+
+	place := gmaps.NewPlaceJob("parent", "en", "https://example.com/place", false, false)
+	if !place.ExtractEmail {
+		t.Fatal("place job must force email extraction")
+	}
+}

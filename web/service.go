@@ -79,6 +79,10 @@ func (s *Service) CancelOwned(ctx context.Context, id, owner string) error {
 }
 
 func (s *Service) Create(ctx context.Context, job *Job) error {
+	if job != nil {
+		// Server-side invariant: no UI/API path may disable contact enrichment.
+		job.Data.Email = true
+	}
 	return s.repo.Create(ctx, job)
 }
 

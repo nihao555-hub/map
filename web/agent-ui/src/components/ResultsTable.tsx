@@ -73,16 +73,12 @@ const COLS = [
   { key: 'complete_address', label: '完整地址', min: 200 },
   { key: 'review_rating', label: '评分', min: 64 },
   { key: 'review_count', label: '评论数', min: 72 },
-  { key: 'status', label: '状态', min: 80 },
+  { key: 'status', label: '营业状态', min: 80 },
   { key: 'open_hours', label: '营业时间', min: 140 },
   { key: 'price_range', label: '价格区间', min: 80 },
   { key: 'owner', label: '店主', min: 120 },
   { key: 'descriptions', label: '描述', min: 180 },
   { key: 'about', label: 'About', min: 160 },
-  { key: 'latitude', label: '纬度', min: 90 },
-  { key: 'longitude', label: '经度', min: 90 },
-  { key: 'plus_code', label: 'Plus Code', min: 110 },
-  { key: 'timezone', label: '时区', min: 100 },
   { key: 'facebook', label: 'Facebook', min: 120 },
   { key: 'instagram', label: 'Instagram', min: 120 },
   { key: 'linkedin', label: 'LinkedIn', min: 120 },
@@ -91,47 +87,37 @@ const COLS = [
   { key: 'youtube', label: 'YouTube', min: 100 },
   { key: 'telegram', label: 'Telegram', min: 100 },
   { key: 'pinterest', label: 'Pinterest', min: 100 },
-  { key: 'cid', label: 'CID', min: 100 },
-  { key: 'place_id', label: 'Place ID', min: 120 },
   { key: 'link', label: 'Maps', min: 72 },
   { key: 'intel', label: '背调', min: 80 },
 ] as const
 
-const CSV_HEADERS = [
-  'job_id',
-  'place_id',
-  'title',
-  'category',
-  'phone',
-  'emails',
-  'whatsapp',
-  'website',
-  'address',
-  'complete_address',
-  'review_rating',
-  'review_count',
-  'status',
-  'open_hours',
-  'price_range',
-  'owner',
-  'descriptions',
-  'about',
-  'latitude',
-  'longitude',
-  'plus_code',
-  'timezone',
-  'facebook',
-  'instagram',
-  'linkedin',
-  'twitter',
-  'tiktok',
-  'youtube',
-  'telegram',
-  'pinterest',
-  'cid',
-  'link',
-  'intel_status',
-  'intel_summary',
+const CSV_COLS = [
+  { key: 'title', label: '名称' },
+  { key: 'category', label: '类别' },
+  { key: 'phone', label: '电话' },
+  { key: 'emails', label: '邮箱' },
+  { key: 'whatsapp', label: 'WhatsApp' },
+  { key: 'website', label: '网站' },
+  { key: 'address', label: '地址' },
+  { key: 'complete_address', label: '完整地址' },
+  { key: 'review_rating', label: '评分' },
+  { key: 'review_count', label: '评论数' },
+  { key: 'status', label: '营业状态' },
+  { key: 'open_hours', label: '营业时间' },
+  { key: 'price_range', label: '价格区间' },
+  { key: 'owner', label: '店主' },
+  { key: 'descriptions', label: '描述' },
+  { key: 'about', label: '公司介绍' },
+  { key: 'facebook', label: 'Facebook' },
+  { key: 'instagram', label: 'Instagram' },
+  { key: 'linkedin', label: 'LinkedIn' },
+  { key: 'twitter', label: 'Twitter' },
+  { key: 'tiktok', label: 'TikTok' },
+  { key: 'youtube', label: 'YouTube' },
+  { key: 'telegram', label: 'Telegram' },
+  { key: 'pinterest', label: 'Pinterest' },
+  { key: 'link', label: '地图链接' },
+  { key: 'intel_summary', label: '背调摘要' },
 ] as const
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -368,13 +354,13 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
             }
             placesCache.set(j.id, parsed)
             return { id: j.id, rows: parsed, err: '' }
-          } catch (e) {
+          } catch {
             const cached = placesCache.get(j.id)
             if (cached) return { id: j.id, rows: cached, err: '' }
             return {
               id: j.id,
               rows: [] as PlaceRow[],
-              err: e instanceof Error ? e.message : '加载失败',
+              err: '暂时无法加载结果，请稍后刷新',
             }
           }
         }),
@@ -552,30 +538,21 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
     const exportRows = visible
     if (!exportRows.length) return
 
-    // Single completed sub-job: use server CSV for full fidelity.
-    if (activeJob !== 'all') {
-      window.location.href = `/download?id=${encodeURIComponent(activeJob)}`
-      return
-    }
-
-    const lines = [CSV_HEADERS.join(',')]
+    // Agent exports are business-facing: omit internal IDs, coordinates,
+    // provider states, and other implementation fields in every filter mode.
+    const lines = [CSV_COLS.map((c) => csvEscape(c.label)).join(',')]
     for (const row of exportRows) {
       const key = `${row.job_id}:${row.place_id}`
       const st = intel[key]
-      let intelStatus = ''
       let intelSummary = ''
       if (st && st !== 'loading') {
-        intelStatus = st.status || (st.error ? 'failed' : st.summary ? 'ready' : '')
-        intelSummary = st.summary || st.note || st.error || ''
+        intelSummary = st.summary || st.note || (st.error ? '背调暂不可用' : '')
       }
-      const vals = CSV_HEADERS.map((h) => {
-        if (h === 'intel_status') return csvEscape(intelStatus)
-        if (h === 'intel_summary') return csvEscape(intelSummary)
-        if (h === 'review_rating') return csvEscape(row.review_rating != null ? String(row.review_rating) : '')
-        if (h === 'review_count') return csvEscape(row.review_count != null ? String(row.review_count) : '')
-        if (h === 'latitude') return csvEscape(row.latitude != null ? String(row.latitude) : '')
-        if (h === 'longitude') return csvEscape(row.longitude != null ? String(row.longitude) : '')
-        const v = (row as Record<string, unknown>)[h]
+      const vals = CSV_COLS.map(({ key: columnKey }) => {
+        if (columnKey === 'intel_summary') return csvEscape(intelSummary)
+        if (columnKey === 'review_rating') return csvEscape(row.review_rating != null ? String(row.review_rating) : '')
+        if (columnKey === 'review_count') return csvEscape(row.review_count != null ? String(row.review_count) : '')
+        const v = (row as Record<string, unknown>)[columnKey]
         return csvEscape(v == null ? '' : String(v))
       })
       lines.push(vals.join(','))
@@ -602,7 +579,7 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
           <div>
             <div className="text-sm font-semibold text-[#1F2937]">结果汇总</div>
             <div className="text-xs text-[#6B7280]">
-              共 {rows.length} 家 · 与标准模式同一套背调 · 点击行在右侧查看详情
+              共 {rows.length} 家 · 点击行查看商户详情
               {pendingQueueHint ? ` · ${pendingQueueHint}` : ''}
               {allDone ? ' · 任务已完成，可下载 CSV' : ''}
             </div>

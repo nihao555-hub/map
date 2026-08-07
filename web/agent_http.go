@@ -131,7 +131,7 @@ func buildUserThinking(plan AgentPlan) string {
 	}
 	if len(plan.Tasks) > 1 {
 		return fmt.Sprintf(
-			"你想在「%s」找「%s」。区域覆盖面比较大，我会拆成 %d 个子任务分区域深度抓取，并把结果汇总到一张表里；商家出现后会自动开始背调。",
+			"你想在「%s」找「%s」。我会覆盖 %d 个区域进行深度搜索，并把结果汇总到一张表里；商家出现后会自动开始背调。",
 			loc, kw, len(plan.Tasks),
 		)
 	}
@@ -147,9 +147,9 @@ func buildUserMessage(plan AgentPlan, jobIDs []string) string {
 		n = len(plan.Tasks)
 	}
 	if n > 1 {
-		return fmt.Sprintf("已启动，拆成 %d 个子任务深度抓取（忙时排队）。下方结果表会持续增长，商家出现后自动背调。", n)
+		return fmt.Sprintf("已开始覆盖 %d 个区域进行深度搜索。下方结果会持续增加，商家出现后自动背调。", n)
 	}
-	return "已启动深度全量抓取。下方结果表会持续增长，商家出现后自动背调。"
+	return "已开始深度搜索。下方结果会持续增加，商家出现后自动背调。"
 }
 
 func buildAgentPipelineSteps(plan AgentPlan, jobIDs []string) []AgentPipelineStep {
@@ -299,7 +299,7 @@ func (s *Server) apiAgentJobsQueue(w http.ResponseWriter, r *http.Request) {
 		s.svc.EnrichJobPhase(r.Context(), &job)
 		msg := queueMessage(job.Phase, status, ahead)
 		if status == StatusFailed && strings.TrimSpace(job.Data.LastError) != "" {
-			msg = "抓取失败：" + truncateRunes(job.Data.LastError, 80)
+			msg = "抓取失败，请重新发起任务"
 		} else if status == StatusOK && strings.HasPrefix(strings.TrimSpace(job.Data.LastError), "interrupted:") {
 			msg = "已完成（中途中断，已保留已抓结果）"
 		}

@@ -149,6 +149,9 @@ func ParseConfig() *Config {
 	flag.BoolVar(&cfg.Version, "version", false, "returns the version of the tool")
 
 	flag.Parse()
+	// Product policy: email/contact enrichment cannot be disabled in any mode.
+	cfg.Email = true
+	cfg.FastMode = false
 
 	// Web 部署常用环境变量（docker-compose 的 GMS_WEB_*）。
 	// 旧版只写了 env、没接到 -c，2 核机器会落到 Concurrency=1，速度崩到 2 家/分钟。

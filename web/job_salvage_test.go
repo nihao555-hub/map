@@ -79,3 +79,16 @@ func TestFinishJobWithOutcomeFailsWhenEmpty(t *testing.T) {
 		t.Fatalf("want failed, got %s", got.Status)
 	}
 }
+
+func TestServiceCreateForcesEmail(t *testing.T) {
+	repo := &memRepo{jobs: map[string]Job{}}
+	svc := NewService(repo, t.TempDir())
+	job := &Job{ID: "email-required", Data: JobData{Email: false}}
+
+	if err := svc.Create(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if !repo.jobs[job.ID].Data.Email {
+		t.Fatal("service must force email extraction")
+	}
+}

@@ -80,7 +80,7 @@ export type PlaceLite = {
   link?: string
 }
 
-type TabId = 'people' | 'overview' | 'customs' | 'org' | 'domain' | 'sources'
+type TabId = 'people' | 'overview' | 'customs' | 'org' | 'domain'
 
 function isGenericEmail(em: string): boolean {
   const local = em.split('@')[0]?.toLowerCase() || ''
@@ -267,10 +267,6 @@ export function IntelPanel({ place, intel, onClose, onRefresh, refreshing }: Pro
     list.push(
       { id: 'org', label: `架构${orgs.length ? ` (${orgs.length})` : ''}` },
       { id: 'domain', label: '主体' },
-      {
-        id: 'sources',
-        label: `来源${intel.sources?.length ? ` (${intel.sources.length})` : ''}`,
-      },
     )
     return list
   }, [intel])
@@ -356,17 +352,12 @@ export function IntelPanel({ place, intel, onClose, onRefresh, refreshing }: Pro
             <Loader2 className="size-4 animate-spin" /> 加载背调…
           </div>
         ) : intel.error && !intel.summary ? (
-          <p className="text-sm text-red-600">{intel.error}</p>
+          <p className="text-sm text-red-600">暂时无法加载背调，请稍后重试。</p>
         ) : (
           <IntelTabBody tab={tab} intel={intel} place={place} linkedInXray={linkedInXray} />
         )}
       </div>
 
-      {intel && intel !== 'loading' && intel.provider ? (
-        <footer className="shrink-0 border-t border-[#E5E7EB] px-4 py-2 text-[11px] text-[#9CA3AF]">
-          {intel.provider}
-        </footer>
-      ) : null}
     </aside>
   )
 }
@@ -410,7 +401,6 @@ function IntelTabBody({
     return true
   })
   const reg = intel.company_registry
-  const tech = (intel.technologies || []).filter((t) => t && !/^hosts:\d+/i.test(t) && t !== 'WHOIS')
   const trade = intel.trade
 
   if (tab === 'people') {
@@ -550,9 +540,6 @@ function IntelTabBody({
             '—'
           )}
         </KV>
-        {intel.has_mx && intel.mx_hosts?.length ? (
-          <KV label="企业邮箱 MX">{intel.mx_hosts.join(', ')}</KV>
-        ) : null}
       </dl>
     )
   }
@@ -564,7 +551,6 @@ function IntelTabBody({
           {trade.summary || '美国海关海运提单记录（ImportYeti / Kirchner）'}
         </p>
         <dl>
-          <KV label="数据源">{trade.source || '—'}</KV>
           <KV label="角色">{trade.role === 'supplier' ? '对美出口供应商' : '美国进口商'}</KV>
           <KV label="主体">{trade.name || '—'}</KV>
           <KV label="提单数">{trade.total_shipments ? String(trade.total_shipments) : '—'}</KV>
@@ -633,7 +619,6 @@ function IntelTabBody({
             <strong>{o.name}</strong>
             {o.role ? ` · ${o.role}` : ''}
             {o.parent ? <div className="text-xs text-[#9CA3AF]">上级：{o.parent}</div> : null}
-            {o.evidence ? <div className="text-xs text-[#9CA3AF]">证据：{o.evidence}</div> : null}
           </li>
         ))}
       </ul>
@@ -662,31 +647,9 @@ function IntelTabBody({
         ) : (
           <Empty text="未匹配公开主体" />
         )}
-        {tech.length > 0 ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">网站技术</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {tech.map((t) => (
-                <Chip key={t}>{t}</Chip>
-              ))}
-            </div>
-          </section>
-        ) : null}
       </div>
     )
   }
 
-  // sources
-  const sources = intel.sources || []
-  return sources.length ? (
-    <ol className="list-decimal space-y-1.5 pl-4 text-sm text-[#374151]">
-      {sources.map((s, i) => (
-        <li key={i}>
-          {/^https?:\/\//i.test(s) ? <ExtLink href={s}>{s}</ExtLink> : s}
-        </li>
-      ))}
-    </ol>
-  ) : (
-    <Empty text="无网页来源（可能无官网）" />
-  )
+  return null
 }
