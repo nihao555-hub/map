@@ -67,6 +67,29 @@ func TestTightenPlanCapsJakartaDistrictFanout(t *testing.T) {
 	}
 }
 
+func TestNormalizeIntentHonorsExplicitSmallRadius(t *testing.T) {
+	in := AgentIntent{Location: "Bandung", RadiusKm: 25, CountryCode: "id"}
+	out := normalizeIntent(in, "在 Bandung 找咖啡馆，半径2公里", "zh")
+	if out.RadiusKm != 2 {
+		t.Fatalf("RadiusKm=%d want 2 (explicit user radius must beat AI default)", out.RadiusKm)
+	}
+}
+
+func TestTightenPlanCollapsesSameCityKeywordFanout(t *testing.T) {
+	plan := AgentPlan{
+		Intent: AgentIntent{Location: "Bandung", RadiusKm: 25}, // intent wrongly wide
+		Tasks: []AgentTask{
+			{Location: "Bandung", Keywords: []string{"cafe"}, RadiusKm: 2},
+			{Location: "Bandung", Keywords: []string{"kedai kopi"}, RadiusKm: 2},
+			{Location: "Bandung", Keywords: []string{"coffee shop"}, RadiusKm: 2},
+		},
+	}
+	out := tightenPlan(plan)
+	if len(out.Tasks) != 1 {
+		t.Fatalf("want 1 task for same-city ≤5km fanout, got %d %+v", len(out.Tasks), out.Tasks)
+	}
+}
+
 func TestTightenPlanKeepsSmallRadiusAsOneCircle(t *testing.T) {
 	plan := AgentPlan{
 		Intent: AgentIntent{Location: "雅加达市中心", RadiusKm: 1},

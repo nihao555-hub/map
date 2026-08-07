@@ -195,9 +195,14 @@ func normalizeIntent(in AgentIntent, goal, uiLang string) AgentIntent {
 	in.RawGoal = goal
 	in.UILang = uiLang
 	explicitRadius := radiusExplicitlyStated(goal)
-	if in.RadiusKm <= 0 {
+	if explicitRadius {
+		// User-typed km always wins over AI defaults ("12–25 for city anchors").
+		if n := parseRadiusKmFromGoal(goal); n > 0 {
+			in.RadiusKm = n
+		}
+	} else if in.RadiusKm <= 0 {
 		in.RadiusKm = preferCoverageRadiusKm(in.Location, goal, 0, false)
-	} else if !explicitRadius {
+	} else {
 		// AI/rules may undershoot; bump known cities toward full coverage.
 		in.RadiusKm = preferCoverageRadiusKm(in.Location, goal, in.RadiusKm, false)
 	}
@@ -222,6 +227,20 @@ func normalizeIntent(in AgentIntent, goal, uiLang string) AgentIntent {
 
 func radiusExplicitlyStated(goal string) bool {
 	return reRadiusKm.MatchString(goal) || reRadiusM.MatchString(goal)
+}
+
+func parseRadiusKmFromGoal(goal string) int {
+	if m := reRadiusKm.FindStringSubmatch(goal); len(m) == 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
+			return n
+		}
+	}
+	if m := reRadiusM.FindStringSubmatch(goal); len(m) == 2 {
+		if n, err := strconv.Atoi(m[1]); err == nil && n >= 1000 {
+			return n / 1000
+		}
+	}
+	return 0
 }
 
 var reCityWide = regexp.MustCompile(`整个|全市|全城|都会区|metropolitan|whole\s+city|city[- ]?wide|all\s+of\s+|覆盖`)
@@ -857,7 +876,14 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 		}
 		r := t.RadiusKm
 		if r <= 0 {
+			r = intent.RadiusKm
+		}
+		if r <= 0 {
 			r = 10
+		}
+		// Keep AI from widening past an explicit user radius.
+		if intent.RadiusKm > 0 && radiusExplicitlyStated(intent.RawGoal) && r > intent.RadiusKm {
+			r = intent.RadiusKm
 		}
 		if r > MaxRadiusKm() {
 			r = MaxRadiusKm()
@@ -1036,12 +1062,35 @@ func tightenPlan(plan AgentPlan) AgentPlan {
 	// An explicit small radius describes one local search circle, not several
 	// independent districts. Respecting it avoids overlapping 3× work, duplicate
 	// rows, and results far outside the user's requested center.
-	if plan.Intent.RadiusKm > 0 && plan.Intent.RadiusKm <= 5 && len(plan.Tasks) > 1 {
+	smallRadius := plan.Intent.RadiusKm > 0 && plan.Intent.RadiusKm <= 5
+	if !smallRadius && len(plan.Tasks) > 1 {
+		maxR := 0
+		sameLoc := true
+		baseLoc := strings.ToLower(strings.TrimSpace(plan.Tasks[0].Location))
+		for _, t := range plan.Tasks {
+			if t.RadiusKm > maxR {
+				maxR = t.RadiusKm
+			}
+			if strings.ToLower(strings.TrimSpace(t.Location)) != baseLoc {
+				sameLoc = false
+			}
+		}
+		if sameLoc && maxR > 0 && maxR <= 5 {
+			smallRadius = true
+			if plan.Intent.RadiusKm <= 0 {
+				plan.Intent.RadiusKm = maxR
+			}
+		}
+	}
+	if smallRadius && len(plan.Tasks) > 1 {
 		task := plan.Tasks[0]
 		if loc := strings.TrimSpace(plan.Intent.Location); loc != "" {
 			task.Location = loc
 		}
 		task.RadiusKm = plan.Intent.RadiusKm
+		if task.RadiusKm <= 0 {
+			task.RadiusKm = 5
+		}
 		task.Name = task.Location + " · " + firstNonEmptyString(task.Keywords)
 		plan.Tasks = []AgentTask{task}
 		return plan
