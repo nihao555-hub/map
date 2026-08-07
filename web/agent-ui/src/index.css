@@ -76,6 +76,7 @@
 
 html, body, #root {
   height: 100%;
+  height: 100dvh;
   margin: 0;
 }
 
@@ -84,10 +85,22 @@ body {
   background: var(--background);
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 #root { position: relative; }
 
 @layer base {
   * { @apply border-border outline-ring/50; }
+}
+
+/* Soften oversized tables/drawers on small touch devices */
+@media (max-width: 767px) {
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
 }

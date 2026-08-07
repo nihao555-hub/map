@@ -3,9 +3,11 @@ import {
   ArrowRight,
   Clock3,
   FileText,
+  Menu,
   Plus,
   RefreshCw,
   Trash2,
+  X,
 } from 'lucide-react'
 import {
   Conversation,
@@ -97,6 +99,7 @@ export default function App() {
   const [aiMeta, setAiMeta] = useState<{ enabled: boolean; model: string } | null>(null)
   const [suggestions, setSuggestions] = useState(SUGGESTIONS)
   const [showHistory, setShowHistory] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const active = useMemo(
     () => sessions.find((s) => s.id === activeId) || sessions[0],
@@ -113,6 +116,26 @@ export default function App() {
       .catch(() => setAiMeta({ enabled: false, model: 'gemini-3.1-flash-lite' }))
   }, [])
 
+  // Desktop keeps the sidebar; phones/tablets use a drawer.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const apply = () => {
+      if (mq.matches) setSidebarOpen(false)
+    }
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sidebarOpen])
+
   const patchActive = useCallback(
     (fn: (s: AgentSession) => AgentSession) => {
       setSessions((prev) =>
@@ -127,6 +150,7 @@ export default function App() {
     setSessions((prev) => [s, ...prev])
     setActiveId(s.id)
     setShowHistory(true)
+    setSidebarOpen(false)
   }
 
   const clearHistory = () => {
@@ -134,6 +158,7 @@ export default function App() {
     const s = newSession()
     setSessions([s])
     setActiveId(s.id)
+    setSidebarOpen(false)
   }
 
   /**
@@ -275,123 +300,180 @@ export default function App() {
 
   const empty = !active?.messages.length
 
+  const sidebar = (
+    <aside
+      className={cn(
+        'flex h-full w-[min(100vw,280px)] shrink-0 flex-col bg-white shadow-[1px_0_0_#E8EEF6]',
+        'lg:w-[248px]',
+      )}
+    >
+      <div className="flex items-center gap-3 px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-5">
+        <img
+          src="/agent/decor/logo-m.webp"
+          alt=""
+          width={40}
+          height={40}
+          className="size-10 shrink-0 rounded-full object-cover shadow-[0_2px_8px_rgba(47,107,255,0.25)]"
+        />
+        <div className="min-w-0 flex-1 text-[16px] font-bold tracking-tight text-[#111827]">
+          地图获客助手
+        </div>
+        <button
+          type="button"
+          className="inline-flex size-9 items-center justify-center rounded-full text-[#6B7280] hover:bg-[#F3F4F6] lg:hidden"
+          aria-label="关闭菜单"
+          onClick={() => setSidebarOpen(false)}
+        >
+          <X className="size-5" />
+        </button>
+      </div>
+
+      <div className="space-y-2.5 px-4">
+        <button
+          type="button"
+          onClick={createTask}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] text-[14px] font-medium text-white shadow-[0_4px_14px_rgba(47,107,255,0.35)] transition hover:bg-[#2563EB] active:scale-[0.99]"
+        >
+          <Plus className="size-4 stroke-[2.5]" />
+          新建任务
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowHistory((v) => !v)}
+          className={cn(
+            'flex h-11 w-full items-center justify-center gap-2 rounded-full text-[14px] font-medium transition',
+            showHistory
+              ? 'bg-[#EAF1FF] text-[#2563EB]'
+              : 'bg-[#F3F5F9] text-[#4B5563] hover:bg-[#E8ECF3]',
+          )}
+        >
+          <Clock3 className="size-4" />
+          历史任务
+        </button>
+      </div>
+
+      <div className="mt-5 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3">
+        {showHistory && (
+          <>
+            <p className="px-2 pb-2 text-[12px] font-medium text-[#9CA3AF]">历史任务</p>
+            <div className="space-y-0.5">
+              {sessions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveId(s.id)
+                    setSidebarOpen(false)
+                  }}
+                  className={cn(
+                    'flex w-full items-start gap-2.5 rounded-[12px] px-2.5 py-2.5 text-left transition',
+                    s.id === activeId ? 'bg-[#F0F5FF]' : 'hover:bg-[#F7F9FC]',
+                  )}
+                >
+                  <FileText className="mt-0.5 size-[18px] shrink-0 text-[#2F6BFF]" strokeWidth={1.75} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium text-[#1F2937]">
+                      {s.title}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-none text-[#9CA3AF]">
+                      {new Date(s.updatedAt).toLocaleString('zh-CN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                      })}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <button
+          type="button"
+          onClick={clearHistory}
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-full text-[13px] text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#EF4444]"
+        >
+          <Trash2 className="size-3.5" />
+          清空历史记录
+        </button>
+      </div>
+    </aside>
+  )
+
   return (
     <TooltipProvider>
       <div className="flex h-full min-h-0 bg-[#EEF2F8]">
-        {/* ===== Sidebar — 1:1 mockup ===== */}
-        <aside className="flex w-[248px] shrink-0 flex-col bg-white shadow-[1px_0_0_#E8EEF6]">
-          <div className="flex items-center gap-3 px-5 pt-6 pb-5">
-            <img
-              src="/agent/decor/logo-m.webp"
-              alt=""
-              width={40}
-              height={40}
-              className="size-10 shrink-0 rounded-full object-cover shadow-[0_2px_8px_rgba(47,107,255,0.25)]"
+        {/* Desktop sidebar */}
+        <div className="hidden h-full shrink-0 lg:flex">{sidebar}</div>
+
+        {/* Mobile / iPad drawer */}
+        {sidebarOpen ? (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <button
+              type="button"
+              aria-label="关闭侧栏"
+              className="absolute inset-0 bg-black/35 backdrop-blur-[1px]"
+              onClick={() => setSidebarOpen(false)}
             />
-            <div className="text-[16px] font-bold tracking-tight text-[#111827]">地图获客助手</div>
+            <div className="absolute inset-y-0 left-0 animate-in slide-in-from-left duration-200">
+              {sidebar}
+            </div>
           </div>
-
-          <div className="space-y-2.5 px-4">
-            <button
-              type="button"
-              onClick={createTask}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#2F6BFF] text-[14px] font-medium text-white shadow-[0_4px_14px_rgba(47,107,255,0.35)] transition hover:bg-[#2563EB] active:scale-[0.99]"
-            >
-              <Plus className="size-4 stroke-[2.5]" />
-              新建任务
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowHistory((v) => !v)}
-              className={cn(
-                'flex h-11 w-full items-center justify-center gap-2 rounded-full text-[14px] font-medium transition',
-                showHistory
-                  ? 'bg-[#EAF1FF] text-[#2563EB]'
-                  : 'bg-[#F3F5F9] text-[#4B5563] hover:bg-[#E8ECF3]',
-              )}
-            >
-              <Clock3 className="size-4" />
-              历史任务
-            </button>
-          </div>
-
-          <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-3">
-            {showHistory && (
-              <>
-                <p className="px-2 pb-2 text-[12px] font-medium text-[#9CA3AF]">历史任务</p>
-                <div className="space-y-0.5">
-                  {sessions.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveId(s.id)
-                      }}
-                      className={cn(
-                        'flex w-full items-start gap-2.5 rounded-[12px] px-2.5 py-2.5 text-left transition',
-                        s.id === activeId ? 'bg-[#F0F5FF]' : 'hover:bg-[#F7F9FC]',
-                      )}
-                    >
-                      <FileText className="mt-0.5 size-[18px] shrink-0 text-[#2F6BFF]" strokeWidth={1.75} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-medium text-[#1F2937]">
-                          {s.title}
-                        </span>
-                        <span className="mt-0.5 block text-[11px] leading-none text-[#9CA3AF]">
-                          {new Date(s.updatedAt).toLocaleString('zh-CN', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            hour12: false,
-                          })}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="p-4">
-            <button
-              type="button"
-              onClick={clearHistory}
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-full text-[13px] text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#EF4444]"
-            >
-              <Trash2 className="size-3.5" />
-              清空历史记录
-            </button>
-          </div>
-        </aside>
+        ) : null}
 
         {/* ===== Main ===== */}
         <main className="flex min-w-0 flex-1 flex-col">
+          <header className="flex shrink-0 items-center gap-3 border-b border-[#E8EEF6] bg-white/90 px-3 py-2.5 backdrop-blur lg:hidden">
+            <button
+              type="button"
+              className="inline-flex size-10 items-center justify-center rounded-full text-[#1F2937] hover:bg-[#F3F4F6]"
+              aria-label="打开菜单"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu className="size-5" />
+            </button>
+            <div className="min-w-0 flex-1 truncate text-[15px] font-semibold text-[#111827]">
+              {active?.title || '地图获客助手'}
+            </div>
+            <button
+              type="button"
+              onClick={createTask}
+              className="inline-flex size-10 items-center justify-center rounded-full bg-[#EEF2FF] text-[#2F6BFF]"
+              aria-label="新建任务"
+            >
+              <Plus className="size-5" />
+            </button>
+          </header>
+
           <Conversation className="min-h-0">
-            <ConversationContent className="mx-auto w-full max-w-[1280px] gap-8 px-4 py-7 md:px-8">
+            <ConversationContent className="mx-auto w-full max-w-[1280px] gap-6 px-3 py-4 sm:gap-8 sm:px-4 sm:py-7 md:px-8">
               {empty ? (
                 <>
                   {/* Hero — brand + copy left, decor right */}
                   <section className="grid items-center gap-4 md:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] md:gap-2">
                     <div className="animate-in fade-in slide-in-from-left-2 duration-500">
-                      <h1 className="text-[30px] leading-[1.25] font-bold tracking-tight text-[#1E3A8A] md:text-[34px]">
+                      <h1 className="text-[24px] leading-[1.25] font-bold tracking-tight text-[#1E3A8A] sm:text-[30px] md:text-[34px]">
                         你好，我是地图获客助手
                       </h1>
-                      <p className="mt-3 max-w-[420px] text-[14px] leading-relaxed text-[#6B7280] md:text-[15px]">
+                      <p className="mt-3 max-w-[420px] text-[13px] leading-relaxed text-[#6B7280] sm:text-[14px] md:text-[15px]">
                         我可以帮你在地图上发现潜在客户，获取精准线索，让获客更简单高效！
                       </p>
-                      <div className="mt-7 flex flex-wrap gap-x-6 gap-y-4">
+                      <div className="mt-5 flex flex-wrap gap-x-5 gap-y-3 sm:mt-7 sm:gap-x-6 sm:gap-y-4">
                         {FEATURES.map((f) => (
-                          <div key={f.title} className="flex min-w-[150px] items-center gap-2.5">
+                          <div key={f.title} className="flex min-w-[140px] flex-1 items-center gap-2.5 sm:min-w-[150px] sm:flex-none">
                             <img
                               src={f.icon}
                               alt=""
                               width={40}
                               height={40}
                               loading="lazy"
-                              className="size-10 object-contain"
+                              className="size-9 object-contain sm:size-10"
                             />
                             <div>
                               <div className="text-[13px] font-semibold text-[#1F2937]">{f.title}</div>
@@ -401,7 +483,7 @@ export default function App() {
                         ))}
                       </div>
                     </div>
-                    <div className="animate-in fade-in slide-in-from-right-3 duration-700 mx-auto w-full max-w-[460px]">
+                    <div className="animate-in fade-in slide-in-from-right-3 duration-700 mx-auto hidden w-full max-w-[460px] sm:block">
                       <img
                         src="/agent/decor/hero-map.webp"
                         alt=""
@@ -421,7 +503,7 @@ export default function App() {
                         <button
                           key={card.title}
                           type="button"
-                          className="group relative rounded-[18px] border border-[#E8EEF6] bg-white p-5 text-left shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(47,107,255,0.1)]"
+                          className="group relative rounded-[18px] border border-[#E8EEF6] bg-white p-4 text-left shadow-[0_1px_3px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(47,107,255,0.1)] sm:p-5"
                           onClick={() => {
                             if (card.href) window.location.href = card.href
                             else if (card.prompt) runGoal(card.prompt)
@@ -433,10 +515,10 @@ export default function App() {
                             width={48}
                             height={48}
                             loading="lazy"
-                            className="mb-3.5 size-12 object-contain"
+                            className="mb-3.5 size-11 object-contain sm:size-12"
                           />
                           <div className="text-[14px] font-semibold text-[#111827]">{card.title}</div>
-                          <p className="mt-1.5 max-w-[85%] text-[12px] leading-relaxed text-[#6B7280]">
+                          <p className="mt-1.5 max-w-[85%] pr-8 text-[12px] leading-relaxed text-[#6B7280]">
                             {card.desc}
                           </p>
                           <span
@@ -452,11 +534,11 @@ export default function App() {
 
                   {/* Suggestions — 2-col grid like mockup */}
                   <section className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-150">
-                    <div className="mb-3.5 flex items-center justify-between">
+                    <div className="mb-3.5 flex items-center justify-between gap-2">
                       <h2 className="text-[16px] font-semibold text-[#1F2937]">你可以这样问</h2>
                       <button
                         type="button"
-                        className="inline-flex items-center gap-1 text-[12px] font-medium text-[#2F6BFF] hover:text-[#2563EB]"
+                        className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-[#2F6BFF] hover:text-[#2563EB]"
                         onClick={() =>
                           setSuggestions((prev) => {
                             const next = [...prev]
@@ -555,7 +637,7 @@ export default function App() {
           </Conversation>
 
           {/* Input — no mock R1 / web-search / attachment */}
-          <div className="bg-transparent px-6 pt-1 pb-4 md:px-12">
+          <div className="bg-transparent px-3 pt-1 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 md:px-12">
             <div className="mx-auto w-full max-w-[760px]">
               <PromptInput
                 className="rounded-[22px] border-[1.5px] border-[#93C5FD] bg-white shadow-[0_8px_28px_rgba(47,107,255,0.08)]"
@@ -567,7 +649,7 @@ export default function App() {
                 <PromptInputBody>
                   <PromptInputTextarea
                     placeholder='输入你的需求，例如："帮我找北京市朝阳区的火锅店"'
-                    className="min-h-[64px] text-[14px]"
+                    className="min-h-[56px] text-[14px] sm:min-h-[64px]"
                     disabled={busy}
                   />
                 </PromptInputBody>

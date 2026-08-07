@@ -16,6 +16,21 @@ func TestStaleWorkingAgeDefault(t *testing.T) {
 	}
 }
 
+func TestProgressStallAge(t *testing.T) {
+	t.Setenv("GMS_PROGRESS_STALL", "")
+	if got := ProgressStallAge(); got != DefaultProgressStall {
+		t.Fatalf("got %s want %s", got, DefaultProgressStall)
+	}
+	t.Setenv("GMS_PROGRESS_STALL", "0")
+	if got := ProgressStallAge(); got != 0 {
+		t.Fatalf("disable: got %s", got)
+	}
+	t.Setenv("GMS_PROGRESS_STALL", "20m")
+	if got := ProgressStallAge(); got != 20*time.Minute {
+		t.Fatalf("got %s", got)
+	}
+}
+
 func TestJobWallClock(t *testing.T) {
 	t.Setenv("GMS_JOB_WALL", "")
 	if got := JobWallClock(120 * time.Minute); got != 150*time.Minute {

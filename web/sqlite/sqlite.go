@@ -207,23 +207,54 @@ func (s *Store) RequeueStaleWorking(ctx context.Context, maxAge time.Duration) (
 // FailStaleWorking marks heartbeat-dead working jobs as failed so they stop
 // looking "in progress" and cannot confuse the queue after a crash/hang.
 func (s *Store) FailStaleWorking(ctx context.Context, maxAge time.Duration) (int, error) {
+	ids, err := s.FailStaleWorkingIDs(ctx, maxAge)
+	return len(ids), err
+}
+
+// FailStaleWorkingIDs is like FailStaleWorking but returns the affected job IDs
+// so the runner can cancel in-process scrapes and free admit slots.
+func (s *Store) FailStaleWorkingIDs(ctx context.Context, maxAge time.Duration) ([]string, error) {
 	if maxAge < time.Minute {
 		maxAge = time.Minute
 	}
 	cutoff := time.Now().UTC().Add(-maxAge).Unix()
 	now := time.Now().UTC().Unix()
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id FROM jobs WHERE status = ? AND updated_at < ?`,
+		web.StatusWorking, cutoff,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE jobs SET status = ?, updated_at = ? WHERE status = ? AND updated_at < ?`,
 		web.StatusFailed, now, web.StatusWorking, cutoff,
 	)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return 0, err
+	if _, err := res.RowsAffected(); err != nil {
+		return nil, err
 	}
-	return int(n), nil
+	return ids, nil
 }
 
 // TouchJob refreshes updated_at for a running job (heartbeat against zombie detection).

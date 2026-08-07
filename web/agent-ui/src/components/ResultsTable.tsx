@@ -661,8 +661,104 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
           })}
         </div>
 
-        <div className="max-h-[520px] w-full overflow-auto">
-          <table className="w-max text-left text-sm" style={{ minWidth: tableMinWidth }}>
+        <div className="max-h-[min(70vh,520px)] w-full overflow-auto">
+          {/* Mobile / iPad portrait: card list */}
+          <div className="space-y-2 p-3 md:hidden">
+            {visible.length === 0 && (
+              <div className="px-1 py-10 text-center text-sm text-[#9CA3AF]">
+                {loading
+                  ? '正在拉取结果…'
+                  : loadError
+                    ? `加载较慢或失败：${loadError}`
+                    : (() => {
+                        const focus =
+                          activeJob === 'all'
+                            ? jobs.map((j) => queue[j.id]).find((q) => q?.status === 'pending') ||
+                              jobs.map((j) => queue[j.id]).find((q) => q?.status === 'failed')
+                            : queue[activeJob]
+                        if (focus?.status === 'pending') return focus.message || '排队中，等待执行'
+                        if (focus?.phase === 'intel') return focus.message || '采集已完成，背调进行中'
+                        if (focus?.status === 'failed') return focus.message || '抓取失败（未留下可用结果）'
+                        if (focus?.status === 'canceled') return '任务已终止'
+                        if (focus?.status === 'ok') {
+                          return focus.message?.includes('中断')
+                            ? '已完成（中途中断，但本次没有可展示行）'
+                            : '已完成，暂无结果'
+                        }
+                        return '子任务采集中，结果会持续增加'
+                      })()}
+              </div>
+            )}
+            {visible.map((row) => {
+              const key = `${row.job_id}:${row.place_id}`
+              const selected = selectedKey === key
+              const st = intel[key]
+              const intelLabel =
+                !st || st === 'loading'
+                  ? st === 'loading'
+                    ? '加载中'
+                    : autoIntelStarted.current.has(key)
+                      ? '背调中'
+                      : '查看'
+                  : st.status === 'running' || st.status === 'pending' || st.note === '背调中'
+                    ? '背调中'
+                    : st.status === 'skipped'
+                      ? '已跳过'
+                      : st.summary || st.status === 'ready'
+                        ? '已完成'
+                        : st.error || st.status === 'failed'
+                          ? '失败'
+                          : '背调中'
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => selectRow(row)}
+                  className={cn(
+                    'w-full rounded-xl border border-[#E5E7EB] bg-white p-3 text-left shadow-sm transition',
+                    selected ? 'border-[#2F6BFF] bg-[#F5F8FF]' : 'active:bg-[#F9FAFB]',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-[#111827]">{row.title}</div>
+                      {row.category ? (
+                        <div className="mt-0.5 truncate text-xs text-[#6B7280]">{row.category}</div>
+                      ) : null}
+                    </div>
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-full px-2 py-0.5 text-[11px]',
+                        intelLabel === '已完成'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : intelLabel === '失败'
+                            ? 'bg-red-50 text-red-600'
+                            : 'bg-blue-50 text-[#2F6BFF]',
+                      )}
+                    >
+                      {intelLabel}
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-1 text-xs text-[#4B5563]">
+                    {row.phone ? <div>电话：{row.phone}</div> : null}
+                    {row.emails ? <div className="truncate">邮箱：{row.emails}</div> : null}
+                    {row.whatsapp ? <div>WhatsApp：{row.whatsapp}</div> : null}
+                    {row.address || row.complete_address ? (
+                      <div className="line-clamp-2 text-[#6B7280]">
+                        {row.address || row.complete_address}
+                      </div>
+                    ) : null}
+                    {row.website ? (
+                      <div className="truncate text-[#2F6BFF]">{row.website.replace(/^https?:\/\//, '')}</div>
+                    ) : null}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Desktop / iPad landscape: wide table */}
+          <table className="hidden w-max text-left text-sm md:table" style={{ minWidth: tableMinWidth }}>
             <thead className="sticky top-0 z-10 bg-[#F9FAFB] text-xs text-[#6B7280]">
               <tr>
                 {COLS.map((c) => (

@@ -289,10 +289,16 @@ export function IntelPanel({ place, intel, onClose, onRefresh, refreshing }: Pro
 
   return (
     <aside
-      className="fixed inset-y-0 right-0 z-50 flex w-[min(420px,100vw)] flex-col border-l border-[#E5E7EB] bg-white shadow-[-8px_0_28px_rgba(15,23,42,0.08)]"
+      className={cn(
+        'fixed z-50 flex flex-col bg-white',
+        // Phone: bottom sheet. Tablet/desktop: right drawer.
+        'inset-x-0 bottom-0 max-h-[min(92vh,920px)] rounded-t-2xl border-t border-[#E5E7EB] shadow-[0_-8px_28px_rgba(15,23,42,0.12)]',
+        'md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-[min(420px,100vw)] md:rounded-none md:border-l md:border-t-0 md:shadow-[-8px_0_28px_rgba(15,23,42,0.08)]',
+      )}
       role="dialog"
       aria-label="背调详情"
     >
+      <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-[#E5E7EB] md:hidden" />
       <header className="flex shrink-0 items-start justify-between gap-2 border-b border-[#E5E7EB] px-4 py-3">
         <div className="min-w-0">
           <div className="text-[11px] font-medium tracking-wide text-[#9CA3AF]">商户背调</div>

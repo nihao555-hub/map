@@ -219,20 +219,43 @@ func (s *Service) RequeueStaleWorking(ctx context.Context, maxAge time.Duration)
 }
 
 // FailStaleWorking marks heartbeat-dead working jobs as failed (zombie cleanup).
+// When the same process still holds those jobs, it also cancels their contexts
+// so Playwright exits and BeginDeepJob/EndDeepJob admit slots are freed.
 func (s *Service) FailStaleWorking(ctx context.Context, maxAge time.Duration) (int, error) {
+	type failerIDs interface {
+		FailStaleWorkingIDs(context.Context, time.Duration) ([]string, error)
+	}
 	type failer interface {
 		FailStaleWorking(context.Context, time.Duration) (int, error)
 	}
-	if f, ok := s.repo.(failer); ok {
-		n, err := f.FailStaleWorking(ctx, maxAge)
-		if n > 0 {
-			if sn, serr := s.SalvageFailedJobsWithResults(ctx); serr == nil && sn > 0 {
-				log.Printf("salvage: restored %d failed job(s) that already had CSV rows", sn)
-			}
-		}
-		return n, err
+
+	var (
+		ids []string
+		n   int
+		err error
+	)
+	if f, ok := s.repo.(failerIDs); ok {
+		ids, err = f.FailStaleWorkingIDs(ctx, maxAge)
+		n = len(ids)
+	} else if f, ok := s.repo.(failer); ok {
+		n, err = f.FailStaleWorking(ctx, maxAge)
+	} else {
+		return 0, nil
 	}
-	return 0, nil
+	if err != nil {
+		return 0, err
+	}
+	for _, id := range ids {
+		if s.signalCancel(id) {
+			log.Printf("zombie: signaled cancel for stale working job %s", id)
+		}
+	}
+	if n > 0 {
+		if sn, serr := s.SalvageFailedJobsWithResults(ctx); serr == nil && sn > 0 {
+			log.Printf("salvage: restored %d failed job(s) that already had CSV rows", sn)
+		}
+	}
+	return n, nil
 }
 
 // CountCSVDataRows returns how many data rows a job CSV currently has (0 if missing).

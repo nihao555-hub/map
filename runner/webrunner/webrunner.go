@@ -567,6 +567,12 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		// confused users into thinking the job was stuck.
 		go w.watchScrapePhaseComplete(mateCtx, job.ID, exitMonitor)
 
+		// Progress stall: a hung Chromium can keep heartbeats alive while writing
+		// zero new rows — free the admit slot so pending users are not blocked.
+		if stall := web.ProgressStallAge(); stall > 0 {
+			go w.watchProgressStall(mateCtx, mateCancel, job.ID, stall)
+		}
+
 		// 抓取阶段不做背调：先尽快把结果落盘给用户看。
 		// 背调在 StatusOK（下方或 watchScrapePhaseComplete）后统一启动。
 		err = mate.Start(mateCtx, seedJobs...)
@@ -582,15 +588,26 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		mateCancel()
 	}
 
-	// User cancel wins over success/timeout.
+	// If we were canceled due to progress stall / wall / user, salvage any rows
+	// already on disk instead of leaving a forever-"working" ghost.
 	if jobCtx.Err() != nil {
-		if latest, gerr := w.svc.Get(ctx, job.ID); gerr == nil && latest.Status == web.StatusCanceled {
-			log.Printf("job %s canceled by user", job.ID)
-			return nil
+		if latest, gerr := w.svc.Get(context.Background(), job.ID); gerr == nil {
+			if latest.Status == web.StatusCanceled {
+				log.Printf("job %s canceled by user", job.ID)
+				return nil
+			}
+			if latest.Status == web.StatusOK {
+				log.Printf("job %s canceled after results already ready", job.ID)
+				return nil
+			}
+			reason := "interrupted"
+			if errors.Is(jobCtx.Err(), context.DeadlineExceeded) {
+				reason = "time budget exceeded"
+			} else if jobCtx.Err() != nil {
+				reason = jobCtx.Err().Error()
+			}
+			_ = w.svc.FinishJobWithOutcome(context.Background(), job, reason)
 		}
-		job.Status = web.StatusCanceled
-		_ = w.svc.Update(ctx, job)
-		log.Printf("job %s marked canceled", job.ID)
 		return nil
 	}
 
@@ -612,6 +629,50 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 	}
 
 	return nil
+}
+
+// watchProgressStall cancels a scrape when CSV row count has not grown for stall.
+// This recovers admit slots when Chromium hangs but heartbeats still succeed.
+func (w *webrunner) watchProgressStall(ctx context.Context, cancel context.CancelFunc, jobID string, stall time.Duration) {
+	if cancel == nil || stall <= 0 {
+		return
+	}
+	ticker := time.NewTicker(2 * time.Minute)
+	defer ticker.Stop()
+
+	lastN := w.svc.CountCSVDataRows(jobID)
+	lastChange := time.Now()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n := w.svc.CountCSVDataRows(jobID)
+			if n > lastN {
+				lastN = n
+				lastChange = time.Now()
+				_ = w.svc.TouchJob(context.Background(), jobID)
+				continue
+			}
+			// No rows yet: rely on seed exit / wall clock. Stall recovery is for
+			// hung browsers that already wrote some results then froze.
+			if lastN == 0 {
+				continue
+			}
+			if time.Since(lastChange) < stall {
+				continue
+			}
+			log.Printf("job %s progress stall: no new CSV rows for %s (rows=%d) — cancel scrape to free admit slot",
+				jobID, stall, lastN)
+			job, err := w.svc.Get(context.Background(), jobID)
+			if err == nil && (job.Status == web.StatusWorking || job.Status == web.StatusPending) {
+				_ = w.svc.FinishJobWithOutcome(context.Background(), &job,
+					fmt.Sprintf("progress stall: no new rows for %s", stall))
+			}
+			cancel()
+			return
+		}
+	}
 }
 
 // watchScrapePhaseComplete marks the job ok (+ starts intel) when all Maps seeds
