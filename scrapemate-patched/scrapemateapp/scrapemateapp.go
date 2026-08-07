@@ -87,7 +87,9 @@ func (app *ScrapemateApp) Start(ctx context.Context, seedJobs ...scrapemate.IJob
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(12 * time.Second):
+		// Keep a browser worker free through typical first-feed load (often
+		// 8–35s via proxy) so streamed PlaceJobs can paint before more seeds.
+		case <-time.After(40 * time.Second):
 		}
 		for i := range rest {
 			if err := app.provider.Push(ctx, rest[i]); err != nil {
