@@ -67,7 +67,8 @@ func TestFeedHitShouldSkipOutOfRadius(t *testing.T) {
 		t.Fatal("expected skip for far coords")
 	}
 	near := "https://www.google.com/maps/place/Bar/@-6.1950,106.8300,17z/data=!3d-6.1950!4d106.8300"
-	if feedHitShouldSkip("Kopi Kenangan", near, []string{"kedai kopi"}, -6.1944, 106.8294, 3000) {
-		t.Fatal("nearby cafe title should not skip")
+	// Brand titles without "kopi/cafe" must still pass feed gate (category comes later).
+	if feedHitShouldSkip("Starbucks Reserve", near, []string{"kedai kopi"}, -6.1944, 106.8294, 3000) {
+		t.Fatal("nearby brand title should not skip at feed level")
 	}
 }

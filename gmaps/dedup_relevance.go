@@ -106,23 +106,19 @@ func placeEntryShouldDrop(e *Entry, keywords []string, lat, lon, radiusM float64
 	return false
 }
 
-// feedHitShouldSkip is a cheap pre-PlaceJob gate using feed title + URL coords.
-// When signals are missing it returns false (keep) so we do not over-drop.
+// feedHitShouldSkip is a cheap pre-PlaceJob gate using URL coords only.
+// Keyword relevance is NOT applied here: feed aria-labels often omit category
+// words (e.g. "Starbucks Reserve"), which would over-drop before PlaceJob
+// parses the real category. Keywords are enforced in placeEntryShouldDrop.
 func feedHitShouldSkip(title, href string, keywords []string, lat, lon, radiusM float64) bool {
+	_ = title
+	_ = keywords
 	plat, plon, ok := coordsFromMapsURL(href)
 	if ok && radiusM > 0 && (lat != 0 || lon != 0) {
 		tmp := &Entry{Latitude: plat, Longtitude: plon}
 		if !tmp.isWithinRadius(lat, lon, radiusM) {
 			return true
 		}
-	}
-	title = strings.TrimSpace(title)
-	if title == "" || len(keywords) == 0 {
-		return false
-	}
-	// Feed aria-label is often "Name · Category · stars" — use as title only.
-	if !placeref.Relevant(placeref.Place{Title: title}, keywords) {
-		return true
 	}
 	return false
 }
