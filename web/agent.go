@@ -775,11 +775,11 @@ func PlanTasks(intent AgentIntent) AgentPlan {
 func PlanTasksAI(ctx context.Context, intent AgentIntent) AgentPlan {
 	base := PlanTasks(intent)
 	if !AITranslateEnabled() || len(base.Tasks) == 0 {
-		return base
+		return tightenPlan(base)
 	}
 	key := grsaiAPIKey()
 	if key == "" {
-		return base
+		return tightenPlan(base)
 	}
 
 	system := `You are PlannerAgent for a Maps lead scraper.
@@ -831,17 +831,17 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("PlannerAgent AI failed, use heuristic plan: %v", err)
-		return base
+		return tightenPlan(base)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Printf("PlannerAgent AI status %d: %s", resp.StatusCode, truncate(string(raw), 160))
-		return base
+		return tightenPlan(base)
 	}
 	var parsed aiChatResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Choices) == 0 {
-		return base
+		return tightenPlan(base)
 	}
 	content := strings.TrimSpace(parsed.Choices[0].Message.Content)
 	content = strings.TrimPrefix(content, "```json")
@@ -850,7 +850,7 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 	content = strings.TrimSpace(content)
 	var pj agentPlanJSON
 	if err := json.Unmarshal([]byte(content), &pj); err != nil || len(pj.Tasks) == 0 {
-		return base
+		return tightenPlan(base)
 	}
 
 	out := AgentPlan{Intent: intent, Roles: base.Roles}
@@ -897,12 +897,14 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 		})
 	}
 	if len(out.Tasks) == 0 {
-		return base
+		return tightenPlan(base)
 	}
 	out = expandMetroPlanTasks(out)
 	out = dedupePlanTasks(out)
 	out = tightenPlan(out)
+	base = tightenPlan(base)
 	// Prefer richer AI splits, but never shrink a good heuristic metro plan to a single task.
+	// Always compare against the tightened base so small-radius keyword fanouts stay collapsed.
 	if len(out.Tasks) < len(base.Tasks) && len(base.Tasks) >= 3 && len(out.Tasks) == 1 {
 		base.Intent.Thinking = out.Intent.Thinking
 		return base

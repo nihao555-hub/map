@@ -90,6 +90,33 @@ func TestTightenPlanCollapsesSameCityKeywordFanout(t *testing.T) {
 	}
 }
 
+// PlanTasksAI used to restore an untightened heuristic base when AI collapsed to
+// one task. That undid small-radius keyword collapse and filled both admit slots.
+func TestPreferAIDoesNotUndoSmallRadiusTighten(t *testing.T) {
+	base := AgentPlan{
+		Intent: AgentIntent{Location: "Menteng, Jakarta", RadiusKm: 3},
+		Tasks: []AgentTask{
+			{Location: "Menteng, Jakarta", Keywords: []string{"kedai kopi"}, RadiusKm: 3},
+			{Location: "Menteng, Jakarta", Keywords: []string{"cafe"}, RadiusKm: 3},
+			{Location: "Menteng, Jakarta", Keywords: []string{"coffee shop"}, RadiusKm: 3},
+		},
+	}
+	ai := AgentPlan{
+		Intent: base.Intent,
+		Tasks: []AgentTask{
+			{Location: "Menteng, Jakarta", Keywords: []string{"kedai kopi"}, RadiusKm: 3},
+		},
+	}
+	out := tightenPlan(ai)
+	base = tightenPlan(base)
+	if len(out.Tasks) < len(base.Tasks) && len(base.Tasks) >= 3 && len(out.Tasks) == 1 {
+		t.Fatalf("tightened Menteng 3km base should be 1 task, got base=%d ai=%d", len(base.Tasks), len(out.Tasks))
+	}
+	if len(base.Tasks) != 1 || len(out.Tasks) != 1 {
+		t.Fatalf("want both tightened to 1, base=%d ai=%d", len(base.Tasks), len(out.Tasks))
+	}
+}
+
 func TestTightenPlanKeepsSmallRadiusAsOneCircle(t *testing.T) {
 	plan := AgentPlan{
 		Intent: AgentIntent{Location: "雅加达市中心", RadiusKm: 1},
