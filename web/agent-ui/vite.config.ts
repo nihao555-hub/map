@@ -13,7 +13,9 @@ export default defineConfig({
   },
   build: {
     outDir: path.resolve(__dirname, '../static/agent'),
-    emptyOutDir: true,
+    // Keep previously copied static assets (decor/) when rebuilding; public/
+    // is still emitted on each build.
+    emptyOutDir: false,
   },
   server: {
     port: 5173,
