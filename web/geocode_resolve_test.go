@@ -27,3 +27,18 @@ func TestLookupKnownCityFuzzy(t *testing.T) {
 	}
 	_ = p
 }
+
+func TestLookupKnownCityCompoundPrefersDistrict(t *testing.T) {
+	p, ok := lookupKnownCity("Menteng, Jakarta")
+	if !ok {
+		t.Fatal("compound district should resolve offline")
+	}
+	if p.DisplayName != "Menteng, Jakarta" {
+		t.Fatalf("got parent/wrong anchor: %+v", p)
+	}
+
+	p, ok = lookupKnownCity("Jakarta Selatan, Indonesia")
+	if !ok || p.DisplayName != "Jakarta Selatan" {
+		t.Fatalf("jakarta district should resolve offline: %+v ok=%v", p, ok)
+	}
+}

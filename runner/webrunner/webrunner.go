@@ -360,8 +360,9 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 					}
 				}
 				if bbox.MinLat == 0 && bbox.MaxLat == 0 {
-					log.Printf("grid mode aborted: no bbox; falling back to single search (~20 results)")
-					job.Data.GridMode = false
+					failErr := fmt.Errorf("grid mode requires a valid location anchor: %w", err)
+					_ = w.svc.FinishJobWithOutcome(context.Background(), job, failErr.Error())
+					return failErr
 				}
 			} else {
 				// 用户给了目标半径：以解析中心为圆心覆盖半径（全量按半径，不按 Nominatim 城市框）
@@ -382,6 +383,19 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		}
 
 		if job.Data.GridMode {
+			// Persist the resolved center so API/intel can enforce the exact
+			// user radius instead of exposing Maps spillover from edge pins.
+			if bbox.MinLat != 0 || bbox.MaxLat != 0 || bbox.MinLon != 0 || bbox.MaxLon != 0 {
+				clat := (bbox.MinLat + bbox.MaxLat) / 2
+				clon := (bbox.MinLon + bbox.MaxLon) / 2
+				if alat, aerr := strconv.ParseFloat(job.Data.Lat, 64); aerr != nil || alat == 0 {
+					job.Data.Lat = strconv.FormatFloat(clat, 'f', 6, 64)
+				}
+				if alon, aerr := strconv.ParseFloat(job.Data.Lon, 64); aerr != nil || alon == 0 {
+					job.Data.Lon = strconv.FormatFloat(clon, 'f', 6, 64)
+				}
+				_ = w.svc.Update(context.Background(), job)
+			}
 			cellKm := job.Data.GridCellKm
 			if cellKm <= 0 {
 				cellKm = 1.5 // 默认 1.5km 一格
@@ -445,8 +459,9 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 				)
 			}
 			if err != nil {
-				log.Printf("failed to create grid seed jobs: %v, falling back to single search", err)
-				job.Data.GridMode = false
+				failErr := fmt.Errorf("create grid seed jobs: %w", err)
+				_ = w.svc.FinishJobWithOutcome(context.Background(), job, failErr.Error())
+				return failErr
 			}
 		}
 	}

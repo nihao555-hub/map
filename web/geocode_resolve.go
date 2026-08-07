@@ -12,6 +12,14 @@ import (
 // 坐标为市中心近似值，实际覆盖范围由任务 Radius（米）决定。
 var knownCityCenters = map[string]GeoPoint{
 	"jakarta":          {Lat: -6.2088, Lon: 106.8456, CountryCode: "id", DisplayName: "Jakarta"},
+	"jakarta pusat":    {Lat: -6.1865, Lon: 106.8341, CountryCode: "id", DisplayName: "Jakarta Pusat"},
+	"jakarta selatan":  {Lat: -6.2615, Lon: 106.8106, CountryCode: "id", DisplayName: "Jakarta Selatan"},
+	"jakarta barat":    {Lat: -6.1683, Lon: 106.7588, CountryCode: "id", DisplayName: "Jakarta Barat"},
+	"jakarta utara":    {Lat: -6.1384, Lon: 106.8637, CountryCode: "id", DisplayName: "Jakarta Utara"},
+	"jakarta timur":    {Lat: -6.2250, Lon: 106.9004, CountryCode: "id", DisplayName: "Jakarta Timur"},
+	"menteng":          {Lat: -6.1944, Lon: 106.8294, CountryCode: "id", DisplayName: "Menteng, Jakarta"},
+	"tanah abang":      {Lat: -6.2053, Lon: 106.8108, CountryCode: "id", DisplayName: "Tanah Abang, Jakarta"},
+	"gambir":           {Lat: -6.1754, Lon: 106.8272, CountryCode: "id", DisplayName: "Gambir, Jakarta"},
 	"surabaya":         {Lat: -7.2575, Lon: 112.7521, CountryCode: "id", DisplayName: "Surabaya"},
 	"bandung":          {Lat: -6.9175, Lon: 107.6191, CountryCode: "id", DisplayName: "Bandung"},
 	"medan":            {Lat: 3.5952, Lon: 98.6722, CountryCode: "id", DisplayName: "Medan"},
@@ -110,6 +118,27 @@ func lookupKnownCity(primary string, alts ...string) (GeoPoint, bool) {
 			if p, ok2 := knownCityCenters[strings.ToLower(en)]; ok2 {
 				return p, true
 			}
+		}
+		for _, part := range strings.Split(key, ",") {
+			part = strings.TrimSpace(part)
+			if p, ok := knownCityCenters[part]; ok {
+				return p, true
+			}
+		}
+		// Compound locations such as "Menteng, Jakarta" and "central New York"
+		// should still use a safe offline anchor when the external geocoder is
+		// slow. Prefer the longest matching key so districts beat parent cities.
+		bestKey := ""
+		for known := range knownCityCenters {
+			if len(known) <= len(bestKey) {
+				continue
+			}
+			if strings.Contains(key, known) {
+				bestKey = known
+			}
+		}
+		if bestKey != "" {
+			return knownCityCenters[bestKey], true
 		}
 	}
 	return GeoPoint{}, false

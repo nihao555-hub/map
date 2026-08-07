@@ -21,8 +21,8 @@ import (
 
 const (
 	emailJobTimeout       = 18 * time.Second
-	emailFollowBudget     = 20 * time.Second
-	emailMaxFollowPages   = 10
+	emailFollowBudget     = 12 * time.Second
+	emailMaxFollowPages   = 4
 	emailMaxResponseBytes = 512 << 10
 	emailBrowserUA        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
@@ -149,11 +149,16 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 		baseURL = resp.URL
 	}
 
-	// 为联系方式覆盖率：缺邮箱 / WhatsApp / 任一社媒时都跟进联系页（不再因已有邮箱短路）
+	// Follow high-intent pages when the required email is still missing, or
+	// when the merchant has no callable channel at all. Chasing every absent
+	// social network caused up to 10 extra requests for otherwise complete
+	// leads and dominated end-to-end runtime without improving email coverage.
+	mapsPhone := ""
+	if j.Entry != nil {
+		mapsPhone = strings.TrimSpace(j.Entry.Phone)
+	}
 	needFollow := len(emails) == 0 ||
-		whatsapp == "" ||
-		(j.Entry != nil && j.Entry.Phone == "" && sitePhone == "") ||
-		socialEmpty(social) ||
+		(mapsPhone == "" && sitePhone == "" && whatsapp == "") ||
 		(resp != nil && resp.Error != nil)
 	if needFollow {
 		followURLs := alternateEmailURLs(baseURL)

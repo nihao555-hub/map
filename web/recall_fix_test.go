@@ -66,3 +66,22 @@ func TestTightenPlanCapsJakartaDistrictFanout(t *testing.T) {
 		t.Fatalf("want <=3 tasks, got %d %+v", len(out.Tasks), out.Tasks)
 	}
 }
+
+func TestTightenPlanKeepsSmallRadiusAsOneCircle(t *testing.T) {
+	plan := AgentPlan{
+		Intent: AgentIntent{Location: "雅加达市中心", RadiusKm: 1},
+		Tasks: []AgentTask{
+			{Location: "Menteng, Jakarta", Keywords: []string{"kedai kopi"}, RadiusKm: 1},
+			{Location: "Tanah Abang, Jakarta", Keywords: []string{"kedai kopi"}, RadiusKm: 1},
+			{Location: "Gambir, Jakarta", Keywords: []string{"kedai kopi"}, RadiusKm: 1},
+		},
+	}
+
+	out := tightenPlan(plan)
+	if len(out.Tasks) != 1 {
+		t.Fatalf("small radius should stay one search circle, got %+v", out.Tasks)
+	}
+	if out.Tasks[0].Location != "雅加达市中心" || out.Tasks[0].RadiusKm != 1 {
+		t.Fatalf("intent center/radius not preserved: %+v", out.Tasks[0])
+	}
+}

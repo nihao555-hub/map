@@ -444,7 +444,7 @@ func (s *Service) runJobIntel(ctx context.Context, jobID string) {
 	var keywords []string
 	if job, gerr := s.Get(ctx, jobID); gerr == nil {
 		keywords = job.Data.Keywords
-		places = FilterRelevantPlaces(places, keywords)
+		places = FilterPlacesForJob(places, job.Data)
 	}
 	sem := make(chan struct{}, 3) // 并发上限，避免打爆 OSINT 源
 	var wg sync.WaitGroup

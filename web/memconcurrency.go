@@ -30,8 +30,9 @@ const (
 	minFreeMemoryMB        = 400
 	// High-RAM threshold: pack more parallel jobs with thinner workers.
 	highRAMPackMB = 6000
-	// Each deep job is assumed to want ~2 logical CPUs when memory is tight.
-	deepCPUPerJob = 2
+	// Playwright pages are mostly network/remote-render wait. Two active pages
+	// per logical CPU keeps the CPU fed without 10-way browser oversubscription.
+	deepPageWorkersPerCPU = 2
 )
 
 var (
@@ -111,9 +112,12 @@ func AdaptiveJobConcurrency() int {
 			byCPU = 8
 		}
 	} else {
-		// Conservative: 2-CPU + 2-worker memory budget per job.
-		byMem = int((avail - minFreeMemoryMB) / (deepReserveMBPerWorker * uint64(deepCPUPerJob)))
-		byCPU = cpus / deepCPUPerJob
+		// Pack thin jobs under one global page-worker budget. On a 2-CPU VPS,
+		// two jobs × two pages gives fair 10-user latency with the same four
+		// active pages that one old four-worker job used.
+		workers := ReservedPerJobConcurrency(16, false)
+		byMem = int((avail - minFreeMemoryMB) / (deepReserveMBPerWorker * uint64(workers)))
+		byCPU = (cpus * deepPageWorkersPerCPU) / workers
 	}
 	if byMem < 1 {
 		byMem = 1
@@ -189,13 +193,18 @@ func ReservedPerJobConcurrency(configured int, fastMode bool) int {
 			return w
 		}
 	}
-	// Deep floor 2 workers; -c may raise up to 4 (half-CPU default alone used to cap at 1–2).
+	// Deep floor 2 workers. Small hosts stay thin so admission can run two
+	// users fairly; high-RAM hosts may raise one job to four workers.
 	n := configured
 	if n < 2 {
 		n = 2
 	}
-	if n > 4 {
-		n = 4
+	maxWorkers := 4
+	if AvailableMemoryMB() < highRAMPackMB {
+		maxWorkers = 2
+	}
+	if n > maxWorkers {
+		n = maxWorkers
 	}
 	return n
 }

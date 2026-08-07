@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 	"time"
 )
@@ -16,6 +17,11 @@ type placesCacheEntry struct {
 }
 
 var placesCache sync.Map // jobID -> placesCacheEntry
+
+const (
+	maxPlacesCacheEntries = 8
+	maxPlacesCacheBytes   = int64(16 << 20)
+)
 
 // PlaceLite is a compact place payload for map/table first paint.
 type PlaceLite struct {
@@ -96,6 +102,7 @@ func (s *Service) GetPlacesCached(ctx context.Context, id string) ([]Place, erro
 		lite[i] = toPlaceLite(places[i])
 	}
 	placesCache.Store(id, placesCacheEntry{modTime: mod, size: size, places: places, lite: lite})
+	trimPlacesCache()
 	_ = path
 	return places, nil
 }
@@ -136,4 +143,41 @@ func (s *Service) CountPlacesCached(ctx context.Context, id string) (int, error)
 		return 0, err
 	}
 	return len(places), nil
+}
+
+// trimPlacesCache bounds parsed CSV retention. []Place expands far beyond the
+// file size; an unbounded history cache eventually consumed the RAM saved by
+// fair browser admission when many users opened completed jobs.
+func trimPlacesCache() {
+	type item struct {
+		id  string
+		ent placesCacheEntry
+	}
+	items := make([]item, 0, maxPlacesCacheEntries+1)
+	var total int64
+	placesCache.Range(func(key, value any) bool {
+		id, okID := key.(string)
+		ent, okEnt := value.(placesCacheEntry)
+		if okID && okEnt {
+			items = append(items, item{id: id, ent: ent})
+			total += ent.size
+		}
+		return true
+	})
+	if len(items) <= maxPlacesCacheEntries && total <= maxPlacesCacheBytes {
+		return
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ent.modTime.Before(items[j].ent.modTime)
+	})
+	remaining := len(items)
+	for _, candidate := range items {
+		if remaining <= maxPlacesCacheEntries && total <= maxPlacesCacheBytes {
+			break
+		}
+		if _, loaded := placesCache.LoadAndDelete(candidate.id); loaded {
+			total -= candidate.ent.size
+			remaining--
+		}
+	}
 }

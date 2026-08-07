@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func writeCSV(t *testing.T, dir, id, content string) {
@@ -13,6 +14,38 @@ func writeCSV(t *testing.T, dir, id, content string) {
 
 	if err := os.WriteFile(filepath.Join(dir, id+".csv"), []byte(content), 0o600); err != nil {
 		t.Fatalf("write csv: %v", err)
+	}
+}
+
+func TestTrimPlacesCacheBoundsEntries(t *testing.T) {
+	placesCache.Range(func(key, _ any) bool {
+		placesCache.Delete(key)
+		return true
+	})
+	t.Cleanup(func() {
+		placesCache.Range(func(key, _ any) bool {
+			placesCache.Delete(key)
+			return true
+		})
+	})
+
+	for i := 0; i < maxPlacesCacheEntries+4; i++ {
+		id := string(rune('a' + i))
+		placesCache.Store(id, placesCacheEntry{
+			modTime: time.Unix(int64(i), 0),
+			size:    1,
+			places:  []Place{{Title: id}},
+		})
+	}
+	trimPlacesCache()
+
+	count := 0
+	placesCache.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	if count != maxPlacesCacheEntries {
+		t.Fatalf("cache entries=%d want %d", count, maxPlacesCacheEntries)
 	}
 }
 

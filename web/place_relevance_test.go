@@ -75,3 +75,32 @@ func TestNonElectricalPassthrough(t *testing.T) {
 		t.Fatal("non-electrical jobs should not filter")
 	}
 }
+
+func TestFilterPlacesForJobEnforcesRadius(t *testing.T) {
+	data := JobData{
+		Keywords: []string{"kedai kopi"},
+		GridMode: true,
+		Lat:      "-6.1944",
+		Lon:      "106.8294",
+		Radius:   1000,
+	}
+	in := []Place{
+		{Title: "Nearby Cafe", Latitude: -6.1950, Longitude: 106.8300},
+		{Title: "Hong Kong Cafe", Latitude: 22.3209, Longitude: 114.1612},
+		{Title: "Missing Coordinates"},
+	}
+	out := FilterPlacesForJob(in, data)
+	if len(out) != 1 || out[0].Title != "Nearby Cafe" {
+		t.Fatalf("got %+v", out)
+	}
+}
+
+func TestGridJobWithoutAnchorReturnsNoPlaces(t *testing.T) {
+	out := FilterPlacesForJob(
+		[]Place{{Title: "Global Noise", Latitude: 22.3, Longitude: 114.1}},
+		JobData{GridMode: true, Radius: 1000},
+	)
+	if len(out) != 0 {
+		t.Fatalf("unanchored grid results must be hidden: %+v", out)
+	}
+}

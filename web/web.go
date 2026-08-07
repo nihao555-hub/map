@@ -1171,8 +1171,6 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	keywords := job.Data.Keywords
-
 	lite := r.URL.Query().Get("full") != "1"
 	if lite {
 		places, err := s.svc.GetPlacesLiteCached(r.Context(), id.String())
@@ -1187,7 +1185,7 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 			}
 			places = []PlaceLite{}
 		}
-		places = FilterRelevantPlacesLite(places, keywords)
+		places = FilterPlacesLiteForJob(places, job.Data)
 		for i := range places {
 			if places[i].Thumbnail != "" {
 				tmp := Place{Thumbnail: places[i].Thumbnail, StreetViewURL: ""}
@@ -1219,7 +1217,7 @@ func (s *Server) apiGetPlaces(w http.ResponseWriter, r *http.Request) {
 		places = []Place{}
 	}
 
-	places = FilterRelevantPlaces(places, keywords)
+	places = FilterPlacesForJob(places, job.Data)
 	for i := range places {
 		rewritePlaceMedia(&places[i])
 	}
@@ -1238,30 +1236,16 @@ func (s *Server) apiGetPlacesCount(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusNotFound, apiError{Code: http.StatusNotFound, Message: "Not found"})
 		return
 	}
-	if isElectricalKeywordJob(job.Data.Keywords) {
-		places, perr := s.svc.GetPlacesCached(r.Context(), id.String())
-		if perr != nil {
-			if errors.Is(perr, ErrPlacesNotFound) {
-				renderJSON(w, http.StatusOK, map[string]int{"count": 0})
-				return
-			}
-			renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: "internal error"})
-			return
-		}
-		n := len(FilterRelevantPlaces(places, job.Data.Keywords))
-		w.Header().Set("Cache-Control", "private, max-age=2")
-		renderJSON(w, http.StatusOK, map[string]int{"count": n})
-		return
-	}
-	n, err := s.svc.CountPlacesCached(r.Context(), id.String())
-	if err != nil {
-		if errors.Is(err, ErrPlacesNotFound) {
+	places, perr := s.svc.GetPlacesCached(r.Context(), id.String())
+	if perr != nil {
+		if errors.Is(perr, ErrPlacesNotFound) {
 			renderJSON(w, http.StatusOK, map[string]int{"count": 0})
 			return
 		}
 		renderJSON(w, http.StatusInternalServerError, apiError{Code: http.StatusInternalServerError, Message: "internal error"})
 		return
 	}
+	n := len(FilterPlacesForJob(places, job.Data))
 	w.Header().Set("Cache-Control", "private, max-age=2")
 	renderJSON(w, http.StatusOK, map[string]int{"count": n})
 }

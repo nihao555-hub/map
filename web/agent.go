@@ -1033,12 +1033,34 @@ func preferHighRecallKeywords(keywords []string) []string {
 func tightenPlan(plan AgentPlan) AgentPlan {
 	const maxTasks = 4
 	const maxLocs = 3
+	// An explicit small radius describes one local search circle, not several
+	// independent districts. Respecting it avoids overlapping 3× work, duplicate
+	// rows, and results far outside the user's requested center.
+	if plan.Intent.RadiusKm > 0 && plan.Intent.RadiusKm <= 5 && len(plan.Tasks) > 1 {
+		task := plan.Tasks[0]
+		if loc := strings.TrimSpace(plan.Intent.Location); loc != "" {
+			task.Location = loc
+		}
+		task.RadiusKm = plan.Intent.RadiusKm
+		task.Name = task.Location + " · " + firstNonEmptyString(task.Keywords)
+		plan.Tasks = []AgentTask{task}
+		return plan
+	}
 	// Always cap location fan-out even when under maxTasks (AI often emits all 5
 	// Jakarta districts at once — that starves workers with overlapping grids).
 	if len(plan.Tasks) > maxTasks || countUniqueLocations(plan.Tasks) > maxLocs {
 		return rebuildTightPlan(plan, maxLocs)
 	}
 	return plan
+}
+
+func firstNonEmptyString(values []string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return "搜索"
 }
 
 func countUniqueLocations(tasks []AgentTask) int {

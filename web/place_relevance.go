@@ -1,7 +1,9 @@
 package web
 
 import (
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -239,4 +241,78 @@ func FilterRelevantPlacesLite(places []PlaceLite, keywords []string) []PlaceLite
 		}
 	}
 	return out
+}
+
+// FilterPlacesForJob applies both semantic relevance and the user's geographic
+// circle. Google Maps results can spill far beyond a grid pin; returning those
+// rows makes a fast scrape useless even when the category itself is correct.
+func FilterPlacesForJob(places []Place, data JobData) []Place {
+	places = FilterRelevantPlaces(places, data.Keywords)
+	lat, lon, radiusKm, ok := jobRadiusAnchor(data)
+	if !ok {
+		if data.GridMode {
+			return []Place{}
+		}
+		return places
+	}
+	if len(places) == 0 {
+		return places
+	}
+	out := make([]Place, 0, len(places))
+	for _, p := range places {
+		if validPlaceCoord(p.Latitude, p.Longitude) &&
+			haversineKm(lat, lon, p.Latitude, p.Longitude) <= radiusKm+0.25 {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func FilterPlacesLiteForJob(places []PlaceLite, data JobData) []PlaceLite {
+	places = FilterRelevantPlacesLite(places, data.Keywords)
+	lat, lon, radiusKm, ok := jobRadiusAnchor(data)
+	if !ok {
+		if data.GridMode {
+			return []PlaceLite{}
+		}
+		return places
+	}
+	if len(places) == 0 {
+		return places
+	}
+	out := make([]PlaceLite, 0, len(places))
+	for _, p := range places {
+		if validPlaceCoord(p.Latitude, p.Longitude) &&
+			haversineKm(lat, lon, p.Latitude, p.Longitude) <= radiusKm+0.25 {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func jobRadiusAnchor(data JobData) (lat, lon, radiusKm float64, ok bool) {
+	if data.Radius <= 0 {
+		return 0, 0, 0, false
+	}
+	lat, errLat := strconv.ParseFloat(strings.TrimSpace(data.Lat), 64)
+	lon, errLon := strconv.ParseFloat(strings.TrimSpace(data.Lon), 64)
+	if errLat != nil || errLon != nil || !validPlaceCoord(lat, lon) || (lat == 0 && lon == 0) {
+		return 0, 0, 0, false
+	}
+	return lat, lon, float64(data.Radius) / 1000, true
+}
+
+func validPlaceCoord(lat, lon float64) bool {
+	return !math.IsNaN(lat) && !math.IsNaN(lon) && !math.IsInf(lat, 0) && !math.IsInf(lon, 0) &&
+		lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180
+}
+
+func haversineKm(lat1, lon1, lat2, lon2 float64) float64 {
+	const earthRadiusKm = 6371.0088
+	toRad := math.Pi / 180
+	dLat := (lat2 - lat1) * toRad
+	dLon := (lon2 - lon1) * toRad
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*toRad)*math.Cos(lat2*toRad)*math.Sin(dLon/2)*math.Sin(dLon/2)
+	return 2 * earthRadiusKm * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }

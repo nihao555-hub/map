@@ -139,7 +139,7 @@ func (s *Service) EnrichJobPhase(ctx context.Context, job *Job) {
 		if job.Data.EnableIntel {
 			n := 0
 			if places, err := s.GetPlacesLiteCached(ctx, job.ID); err == nil {
-				n = len(FilterRelevantPlacesLite(places, job.Data.Keywords))
+				n = len(FilterPlacesLiteForJob(places, job.Data))
 			}
 			st := s.GetJobIntelStatus(job.ID, n)
 			if !st.Done {

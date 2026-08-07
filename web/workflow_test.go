@@ -255,8 +255,8 @@ func TestConcurrencyCeilingReport(t *testing.T) {
 		if perDeep != 2 {
 			t.Fatalf("low-RAM per-job deep must stay 2, got %d", perDeep)
 		}
-		if adaptive > cpus/deepCPUPerJob && cpus >= 2 {
-			t.Fatalf("admit slots %d should respect CPU budget", adaptive)
+		if adaptive*perDeep > cpus*deepPageWorkersPerCPU && cpus >= 2 {
+			t.Fatalf("admit slots %d × workers %d should respect global page budget", adaptive, perDeep)
 		}
 	}
 }
