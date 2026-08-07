@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -1173,8 +1174,58 @@ func (s *Server) DispatchPlan(ctx context.Context, owner string, plan AgentPlan)
 		return out, fmt.Errorf("PlannerAgent: no tasks (need keywords + location/country)")
 	}
 
+	// Location resolution and keyword localization are network-bound. Preparing
+	// them serially can exceed the reverse proxy's stream idle timeout even
+	// though jobs are eventually created. Run independent preparation in
+	// parallel, then persist jobs in deterministic plan order below.
+	localizedByTask := make([][]string, len(plan.Tasks))
+	anchorByTask := make([]GeoPoint, len(plan.Tasks))
+	anchorOK := make([]bool, len(plan.Tasks))
+	sem := make(chan struct{}, 6)
+	var prep sync.WaitGroup
+	for i, task := range plan.Tasks {
+		if len(task.Keywords) > 0 {
+			prep.Add(1)
+			go func(i int, task AgentTask) {
+				defer prep.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				lang := langForCountryCode(task.CountryCode)
+				if lang == "" {
+					lang = "en"
+				}
+				locCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+				defer cancel()
+				localized, _, _ := localizeSearchQuery(locCtx, task.Keywords, task.Location, lang, localizeOpts{
+					CountryName:   task.CountryName,
+					UseAI:         AITranslateEnabled(),
+					SkipPlaceHint: true,
+				})
+				localizedByTask[i] = localized
+			}(i, task)
+		}
+		if strings.TrimSpace(task.Location) != "" {
+			prep.Add(1)
+			go func(i int, task AgentTask) {
+				defer prep.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				geoCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+				defer cancel()
+				point, err := ResolveLocationAnchor(geoCtx, task.Location, task.CountryCode)
+				if err != nil {
+					log.Printf("DispatcherAgent geocode %q: %v", task.Location, err)
+					return
+				}
+				anchorByTask[i] = point
+				anchorOK[i] = true
+			}(i, task)
+		}
+	}
+	prep.Wait()
+
 	createdLocKW := map[string]struct{}{}
-	for _, task := range plan.Tasks {
+	for taskIndex, task := range plan.Tasks {
 		if len(task.Keywords) == 0 {
 			continue
 		}
@@ -1208,14 +1259,7 @@ func (s *Server) DispatchPlan(ctx context.Context, owner string, plan AgentPlan)
 		// LocalizerAgent: translate keywords for Maps.
 		// Skip " in {city}" — agent jobs always geocode + grid, and the place
 		// suffix collapses recall on large metros (Maps ignores outer pins).
-		searchLoc := task.Location
-		locCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
-		localized, _, _ := localizeSearchQuery(locCtx, task.Keywords, searchLoc, job.Data.Lang, localizeOpts{
-			CountryName:   task.CountryName,
-			UseAI:         AITranslateEnabled(),
-			SkipPlaceHint: true,
-		})
-		cancel()
+		localized := localizedByTask[taskIndex]
 		if len(localized) == 0 {
 			localized = append([]string(nil), task.Keywords...)
 		}
@@ -1240,21 +1284,15 @@ func (s *Server) DispatchPlan(ctx context.Context, owner string, plan AgentPlan)
 		}
 
 		// Geocode first so Chinese/English aliases can share one pin key.
-		if task.Location != "" {
-			geoCtx, gcancel := context.WithTimeout(ctx, 12*time.Second)
-			point, geoErr := ResolveLocationAnchor(geoCtx, task.Location, task.CountryCode)
-			gcancel()
-			if geoErr == nil {
-				job.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
-				job.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
-				if job.Data.CountryCode == "" && point.CountryCode != "" {
-					job.Data.CountryCode = strings.ToLower(point.CountryCode)
-					if hl := langForCountryCode(job.Data.CountryCode); hl != "" {
-						job.Data.Lang = hl
-					}
+		if anchorOK[taskIndex] {
+			point := anchorByTask[taskIndex]
+			job.Data.Lat = strconv.FormatFloat(point.Lat, 'f', 6, 64)
+			job.Data.Lon = strconv.FormatFloat(point.Lon, 'f', 6, 64)
+			if job.Data.CountryCode == "" && point.CountryCode != "" {
+				job.Data.CountryCode = strings.ToLower(point.CountryCode)
+				if hl := langForCountryCode(job.Data.CountryCode); hl != "" {
+					job.Data.Lang = hl
 				}
-			} else {
-				log.Printf("DispatcherAgent geocode %q: %v", task.Location, geoErr)
 			}
 		}
 
