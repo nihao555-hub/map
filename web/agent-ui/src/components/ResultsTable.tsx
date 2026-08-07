@@ -238,6 +238,14 @@ function intelFinished(data: PlaceIntel): boolean {
   )
 }
 
+/** Cross-session cache so clicking 历史任务 paints instantly. */
+const placesCache = new Map<string, PlaceRow[]>()
+const queueCache = new Map<string, QueueInfo>()
+
+function isTerminalQueue(q?: QueueInfo): boolean {
+  return !!q && (q.status === 'ok' || q.status === 'failed' || q.status === 'canceled')
+}
+
 function CellContent({ row, colKey }: { row: PlaceRow; colKey: string }) {
   const raw = cellValue(row, colKey)
   if (colKey === 'link' && raw) {
@@ -284,19 +292,41 @@ function CellContent({ row, colKey }: { row: PlaceRow; colKey: string }) {
 }
 
 export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
-  const [rows, setRows] = useState<PlaceRow[]>([])
-  const [counts, setCounts] = useState<Record<string, number>>({})
-  const [queue, setQueue] = useState<Record<string, QueueInfo>>({})
+  const jobKey = jobs.map((j) => j.id).join(',')
+  const [rows, setRows] = useState<PlaceRow[]>(() => {
+    const cached: PlaceRow[] = []
+    for (const j of jobs) {
+      const hit = placesCache.get(j.id)
+      if (hit) cached.push(...hit)
+    }
+    return cached
+  })
+  const [counts, setCounts] = useState<Record<string, number>>(() => {
+    const c: Record<string, number> = {}
+    for (const j of jobs) c[j.id] = placesCache.get(j.id)?.length || 0
+    return c
+  })
+  const [queue, setQueue] = useState<Record<string, QueueInfo>>(() => {
+    const q: Record<string, QueueInfo> = {}
+    for (const j of jobs) {
+      const hit = queueCache.get(j.id)
+      if (hit) q[j.id] = hit
+    }
+    return q
+  })
   const [activeJob, setActiveJob] = useState<string>('all')
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [intel, setIntel] = useState<Record<string, PlaceIntel | 'loading'>>({})
   const [refreshingIntel, setRefreshingIntel] = useState(false)
   const autoIntelStarted = useRef<Set<string>>(new Set())
   const intelDone = useRef<Set<string>>(new Set())
+  const queueRef = useRef(queue)
+  queueRef.current = queue
 
   const loadQueue = async () => {
-    if (!jobs.length) return
+    if (!jobs.length) return {} as Record<string, QueueInfo>
     try {
       const data = await fetchJSON<{ jobs?: QueueInfo[] }>('/api/v1/agent/jobs/queue', {
         method: 'POST',
@@ -305,54 +335,84 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
       })
       const next: Record<string, QueueInfo> = {}
       for (const q of data.jobs || []) {
-        if (q.id) next[q.id] = q
+        if (q.id) {
+          next[q.id] = q
+          queueCache.set(q.id, q)
+        }
       }
       setQueue(next)
+      return next
     } catch {
-      /* ignore */
+      return queueRef.current
     }
   }
 
-  const load = async () => {
+  const load = async (opts?: { soft?: boolean; autoIntel?: boolean }) => {
     if (!jobs.length) return
-    setLoading(true)
+    const soft = !!opts?.soft || rows.length > 0
+    if (!soft) setLoading(true)
+    setLoadError('')
     try {
-      await loadQueue()
+      const qmap = await loadQueue()
+      const settled = await Promise.all(
+        jobs.map(async (j) => {
+          try {
+            const data = await fetchJSON<Record<string, unknown>[] | { places?: Record<string, unknown>[] }>(
+              `/api/v1/jobs/${j.id}/places?full=1`,
+            )
+            const list = Array.isArray(data) ? data : data.places || []
+            const parsed: PlaceRow[] = []
+            for (const p of list) {
+              const row = normalizePlace(p, j.id)
+              if (row.place_id) parsed.push(row)
+            }
+            placesCache.set(j.id, parsed)
+            return { id: j.id, rows: parsed, err: '' }
+          } catch (e) {
+            const cached = placesCache.get(j.id)
+            if (cached) return { id: j.id, rows: cached, err: '' }
+            return {
+              id: j.id,
+              rows: [] as PlaceRow[],
+              err: e instanceof Error ? e.message : '加载失败',
+            }
+          }
+        }),
+      )
+
       const all: PlaceRow[] = []
       const nextCounts: Record<string, number> = {}
-      for (const j of jobs) {
-        try {
-          const countRes = await fetchJSON<{ count: number }>(`/api/v1/jobs/${j.id}/places/count`)
-          nextCounts[j.id] = countRes.count || 0
-        } catch {
-          nextCounts[j.id] = 0
-        }
-        try {
-          const data = await fetchJSON<Record<string, unknown>[] | { places?: Record<string, unknown>[] }>(
-            `/api/v1/jobs/${j.id}/places?full=1`,
-          )
-          const list = Array.isArray(data) ? data : data.places || []
-          for (const p of list) {
-            const row = normalizePlace(p, j.id)
-            if (row.place_id) all.push(row)
-          }
-        } catch {
-          /* pending */
-        }
+      const errs: string[] = []
+      for (const item of settled) {
+        nextCounts[item.id] = item.rows.length
+        all.push(...item.rows)
+        if (item.err) errs.push(item.err)
       }
       setCounts(nextCounts)
       setRows(all)
+      if (errs.length && all.length === 0) setLoadError(errs[0])
 
-      for (const row of all) {
-        const key = `${row.job_id}:${row.place_id}`
-        if (intelDone.current.has(key)) continue
-        autoIntelStarted.current.add(key)
-        fetchJSON<PlaceIntel>(`/api/v1/jobs/${row.job_id}/places/${encodeURIComponent(row.place_id)}/intel`)
-          .then((data) => {
-            if (intelFinished(data)) intelDone.current.add(key)
-            setIntel((m) => ({ ...m, [key]: data }))
-          })
-          .catch(() => {})
+      // Only auto-pull intel while scrape/intel is still running — never storm
+      // completed history sessions (that made 历史任务 feel stuck).
+      const stillLive = jobs.some((j) => {
+        const q = qmap[j.id]
+        return q && (q.status === 'working' || q.phase === 'intel')
+      })
+      if (opts?.autoIntel !== false && stillLive) {
+        let started = 0
+        for (const row of all) {
+          if (started >= 12) break
+          const key = `${row.job_id}:${row.place_id}`
+          if (intelDone.current.has(key) || autoIntelStarted.current.has(key)) continue
+          autoIntelStarted.current.add(key)
+          started++
+          fetchJSON<PlaceIntel>(`/api/v1/jobs/${row.job_id}/places/${encodeURIComponent(row.place_id)}/intel`)
+            .then((data) => {
+              if (intelFinished(data)) intelDone.current.add(key)
+              setIntel((m) => ({ ...m, [key]: data }))
+            })
+            .catch(() => {})
+        }
       }
     } finally {
       setLoading(false)
@@ -360,11 +420,53 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
   }
 
   useEffect(() => {
-    load()
-    const t = setInterval(load, 5000)
-    return () => clearInterval(t)
+    // Instant paint from cache when switching 历史任务.
+    const cached: PlaceRow[] = []
+    const c: Record<string, number> = {}
+    const q: Record<string, QueueInfo> = {}
+    for (const j of jobs) {
+      const hit = placesCache.get(j.id)
+      c[j.id] = hit?.length || 0
+      if (hit) cached.push(...hit)
+      const qh = queueCache.get(j.id)
+      if (qh) q[j.id] = qh
+    }
+    setRows(cached)
+    setCounts(c)
+    setQueue(q)
+    setActiveJob('all')
+    setSelectedKey(null)
+    setLoadError('')
+
+    let cancelled = false
+    const tick = async (soft: boolean) => {
+      if (cancelled) return
+      await load({ soft, autoIntel: true })
+    }
+    void tick(cached.length > 0)
+
+    const id = window.setInterval(() => {
+      const qmap = queueRef.current
+      const allKnown = jobs.every((j) => !!qmap[j.id])
+      const allDone = allKnown && jobs.every((j) => isTerminalQueue(qmap[j.id]) && qmap[j.id]?.phase !== 'intel')
+      // Live jobs: 5s. Finished history: rare soft refresh only.
+      if (allDone) return
+      void tick(true)
+    }, 5000)
+
+    const slow = window.setInterval(() => {
+      const qmap = queueRef.current
+      const allDone = jobs.every((j) => isTerminalQueue(qmap[j.id]) && qmap[j.id]?.phase !== 'intel')
+      if (allDone) void tick(true)
+    }, 60000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+      window.clearInterval(slow)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobs.map((j) => j.id).join(',')])
+  }, [jobKey])
 
   useEffect(() => {
     if (!selectedKey) return
@@ -520,7 +622,13 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
               <Download className="size-3.5" />
               下载 CSV
             </Button>
-            <Button size="sm" variant="outline" onClick={load} disabled={loading} className="rounded-full">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void load({ soft: rows.length > 0, autoIntel: false })}
+              disabled={loading}
+              className="rounded-full"
+            >
               {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
               刷新
             </Button>
@@ -555,7 +663,9 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
                     : q?.status === 'canceled'
                       ? `${j.name} · 已终止`
                       : q?.status === 'ok'
-                        ? `${j.name} · 已完成 (${counts[j.id] || 0})`
+                        ? q.message?.includes('中断')
+                          ? `${j.name} · 已完成·中断保留 (${counts[j.id] || 0})`
+                          : `${j.name} · 已完成 (${counts[j.id] || 0})`
                         : `${j.name} (${counts[j.id] || 0})`
             return (
               <button
@@ -595,10 +705,13 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
                   <td colSpan={COLS.length} className="px-3 py-12 text-center text-[#9CA3AF]">
                     {loading
                       ? '正在拉取结果…'
-                      : (() => {
+                      : loadError
+                        ? `加载较慢或失败：${loadError}`
+                        : (() => {
                           const focus =
                             activeJob === 'all'
-                              ? jobs.map((j) => queue[j.id]).find((q) => q?.status === 'pending')
+                              ? jobs.map((j) => queue[j.id]).find((q) => q?.status === 'pending') ||
+                                jobs.map((j) => queue[j.id]).find((q) => q?.status === 'failed')
                               : queue[activeJob]
                           if (focus?.status === 'pending') {
                             return focus.message || '排队中，等待执行'
@@ -607,13 +720,15 @@ export function ResultsTable({ jobs }: { jobs: JobMeta[] }) {
                             return focus.message || '采集已完成，背调进行中'
                           }
                           if (focus?.status === 'failed') {
-                            return '任务失败'
+                            return focus.message || '抓取失败（未留下可用结果）'
                           }
                           if (focus?.status === 'canceled') {
                             return '任务已终止'
                           }
                           if (focus?.status === 'ok') {
-                            return '已完成，暂无结果'
+                            return focus.message?.includes('中断')
+                              ? '已完成（中途中断，但本次没有可展示行）'
+                              : '已完成，暂无结果'
                           }
                           return '子任务采集中，结果会持续增加'
                         })()}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,9 +220,90 @@ func (s *Service) FailStaleWorking(ctx context.Context, maxAge time.Duration) (i
 		FailStaleWorking(context.Context, time.Duration) (int, error)
 	}
 	if f, ok := s.repo.(failer); ok {
-		return f.FailStaleWorking(ctx, maxAge)
+		n, err := f.FailStaleWorking(ctx, maxAge)
+		if n > 0 {
+			if sn, serr := s.SalvageFailedJobsWithResults(ctx); serr == nil && sn > 0 {
+				log.Printf("salvage: restored %d failed job(s) that already had CSV rows", sn)
+			}
+		}
+		return n, err
 	}
 	return 0, nil
+}
+
+// CountCSVDataRows returns how many data rows a job CSV currently has (0 if missing).
+func (s *Service) CountCSVDataRows(id string) int {
+	datapath, err := s.csvPath(id)
+	if err != nil {
+		return 0
+	}
+	b, err := os.ReadFile(datapath)
+	if err != nil || len(b) == 0 {
+		return 0
+	}
+	lines := 0
+	for _, c := range b {
+		if c == '\n' {
+			lines++
+		}
+	}
+	if len(b) > 0 && b[len(b)-1] != '\n' {
+		lines++
+	}
+	if lines <= 1 {
+		return 0
+	}
+	return lines - 1
+}
+
+// FinishJobWithOutcome marks a job failed, or ok when CSV already has rows
+// (partial success after crash/timeout/browser error). Stores reason in LastError.
+func (s *Service) FinishJobWithOutcome(ctx context.Context, job *Job, reason string) error {
+	if job == nil {
+		return fmt.Errorf("nil job")
+	}
+	reason = strings.TrimSpace(reason)
+	if reason != "" {
+		job.Data.LastError = reason
+	}
+	n := s.CountCSVDataRows(job.ID)
+	if n > 0 {
+		job.Status = StatusOK
+		if reason != "" {
+			job.Data.LastError = fmt.Sprintf("interrupted: %s (kept %d rows)", reason, n)
+		}
+		return s.Update(ctx, job)
+	}
+	job.Status = StatusFailed
+	return s.Update(ctx, job)
+}
+
+// SalvageFailedJobsWithResults flips failed→ok for jobs that already wrote CSV rows.
+func (s *Service) SalvageFailedJobsWithResults(ctx context.Context) (int, error) {
+	if s.repo == nil {
+		return 0, nil
+	}
+	jobs, err := s.repo.Select(ctx, SelectParams{Status: StatusFailed})
+	if err != nil {
+		return 0, err
+	}
+	restored := 0
+	for i := range jobs {
+		j := jobs[i]
+		n := s.CountCSVDataRows(j.ID)
+		if n <= 0 {
+			continue
+		}
+		if strings.TrimSpace(j.Data.LastError) == "" {
+			j.Data.LastError = fmt.Sprintf("recovered from failed status (%d rows on disk)", n)
+		}
+		j.Status = StatusOK
+		if err := s.Update(ctx, &j); err != nil {
+			continue
+		}
+		restored++
+	}
+	return restored, nil
 }
 
 // TouchJob refreshes the working heartbeat timestamp.

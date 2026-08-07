@@ -137,6 +137,9 @@ type JobData struct {
 	CountryCode string   `json:"country_code,omitempty"`
 	CountryName string   `json:"country_name,omitempty"`
 	RawKeywords []string `json:"raw_keywords,omitempty"`
+	// LastError records why a scrape was interrupted. When non-empty but Status
+	// is still "ok", rows were salvaged after a mid-run crash/timeout.
+	LastError string `json:"last_error,omitempty"`
 }
 
 // GeoAnchor 返回用于展示的锚定坐标（如 "13.756331, 100.501765"），

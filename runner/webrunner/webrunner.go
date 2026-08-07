@@ -105,10 +105,16 @@ func (w *webrunner) work(ctx context.Context) error {
 
 	staleAge := web.StaleWorkingAge()
 	// Crash / hung-browser recovery: no heartbeat → fail so UI/queue stay honest.
+	// Jobs that already wrote CSV rows are salvaged back to ok (partial success).
 	if n, err := w.svc.FailStaleWorking(ctx, staleAge); err != nil {
 		log.Printf("fail stale working: %v", err)
 	} else if n > 0 {
 		log.Printf("watchdog: failed %d zombie working job(s) with no heartbeat for %s", n, staleAge)
+	}
+	if sn, err := w.svc.SalvageFailedJobsWithResults(ctx); err != nil {
+		log.Printf("salvage failed jobs: %v", err)
+	} else if sn > 0 {
+		log.Printf("startup salvage: restored %d failed job(s) with on-disk results", sn)
 	}
 
 	maxJobs := web.AdaptiveJobConcurrency()
@@ -180,9 +186,8 @@ func (w *webrunner) work(ctx context.Context) error {
 						select {
 						case err = <-done:
 						case <-time.After(90 * time.Second):
-							log.Printf("job %s zombie: wall clock %s exceeded — force fail, free admit slot", j.ID, wall)
-							j.Status = web.StatusFailed
-							_ = w.svc.Update(context.Background(), &j)
+							log.Printf("job %s zombie: wall clock %s exceeded — force finish, free admit slot", j.ID, wall)
+							_ = w.svc.FinishJobWithOutcome(context.Background(), &j, fmt.Sprintf("wall clock exceeded (%s)", wall))
 							err = fmt.Errorf("job %s wall clock exceeded (%s)", j.ID, wall)
 						}
 					}
@@ -244,9 +249,7 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 	}()
 
 	if len(job.Data.Keywords) == 0 {
-		job.Status = web.StatusFailed
-
-		return w.svc.Update(jobCtx, job)
+		return w.svc.FinishJobWithOutcome(jobCtx, job, "missing keywords")
 	}
 
 	outpath := filepath.Join(w.cfg.DataFolder, job.ID+".csv")
@@ -270,10 +273,7 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 	mate, err := setupMate(setupCtx, outfile, job)
 	setupCancel()
 	if err != nil {
-		job.Status = web.StatusFailed
-
-		err2 := w.svc.Update(jobCtx, job)
-		if err2 != nil {
+		if err2 := w.svc.FinishJobWithOutcome(jobCtx, job, fmt.Sprintf("browser setup: %v", err)); err2 != nil {
 			log.Printf("failed to update job status: %v", err2)
 		}
 
@@ -555,9 +555,7 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		err = mate.Start(mateCtx, seedJobs...)
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 			mateCancel()
-			job.Status = web.StatusFailed
-			err2 := w.svc.Update(ctx, job)
-			if err2 != nil {
+			if err2 := w.svc.FinishJobWithOutcome(ctx, job, fmt.Sprintf("scrape engine: %v", err)); err2 != nil {
 				log.Printf("failed to update job status: %v", err2)
 			}
 

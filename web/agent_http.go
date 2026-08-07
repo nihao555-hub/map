@@ -297,10 +297,16 @@ func (s *Server) apiAgentJobsQueue(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		s.svc.EnrichJobPhase(r.Context(), &job)
+		msg := queueMessage(job.Phase, status, ahead)
+		if status == StatusFailed && strings.TrimSpace(job.Data.LastError) != "" {
+			msg = "抓取失败：" + truncateRunes(job.Data.LastError, 80)
+		} else if status == StatusOK && strings.HasPrefix(strings.TrimSpace(job.Data.LastError), "interrupted:") {
+			msg = "已完成（中途中断，已保留已抓结果）"
+		}
 		out = append(out, jobQueueResponse{
 			ID: id, Status: status, Phase: job.Phase, Ahead: ahead, PendingTotal: pendingTotal,
 			ActiveJobs: snap.ActiveJobs, AdmitSlots: snap.AdmitSlots,
-			Message: queueMessage(job.Phase, status, ahead),
+			Message: msg,
 		})
 	}
 	renderJSON(w, http.StatusOK, map[string]any{"jobs": out, "active_jobs": snap.ActiveJobs, "admit_slots": snap.AdmitSlots})
@@ -321,7 +327,7 @@ func queueMessage(phase, status string, ahead int) string {
 	case StatusOK:
 		return "已完成"
 	case StatusFailed:
-		return "失败"
+		return "抓取失败（未留下可用结果）"
 	case StatusCanceled:
 		return "已终止"
 	default:
