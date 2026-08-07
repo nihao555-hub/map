@@ -714,12 +714,21 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 			)
 		}
 
-		// 提速：多页面复用 + 更大的浏览器池（如果配置了）
-		opts = runner.AppendBrowserCapacityOptions(opts, cfg)
+		// Low-RAM web workers share concurrent pages in one browser/context.
+		// The old deploy default (pool=4, pages=4) launched four Chromium
+		// instances for only 2–4 active page workers and wasted most RAM.
+		browserCfg := *cfg
+		if web.AvailableMemoryMB() < 6000 && browserCfg.BrowserPoolSize > 1 {
+			browserCfg.BrowserPoolSize = 1
+		}
+		if browserCfg.MaxPagesPerBrowser < jobConc {
+			browserCfg.MaxPagesPerBrowser = jobConc
+		}
+		opts = runner.AppendBrowserCapacityOptions(opts, &browserCfg)
 
 		// 提速：如果没配置浏览器容量，给一个默认的优化值
 		// 一个浏览器开 4 个页面，省内存换并发
-		if cfg.MaxPagesPerBrowser <= 1 && cfg.BrowserPoolSize <= 0 {
+		if browserCfg.MaxPagesPerBrowser <= 1 && browserCfg.BrowserPoolSize <= 0 {
 			opts = append(opts,
 				scrapemateapp.WithMaxPagesPerBrowser(4),
 			)
