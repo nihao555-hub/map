@@ -347,6 +347,10 @@ func (s *ScrapeMate) Failed() <-chan IJob {
 // DoJob scrapes a job and returns it's result
 func (s *ScrapeMate) DoJob(ctx context.Context, job IJob) (result any, next []IJob, err error) {
 	ctx = ContextWithLogger(ctx, s.log.With("jobid", job.GetID()))
+	// Allow BrowserActions to stream follow-up jobs (Place detail) before Process.
+	ctx = ContextWithJobPusher(ctx, func(pushCtx context.Context, nextJob IJob) error {
+		return s.pushJobs(pushCtx, []IJob{nextJob})
+	})
 	startTime := time.Now().UTC()
 
 	s.log.Debug("starting job", "job", job)

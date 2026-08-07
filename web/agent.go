@@ -505,7 +505,9 @@ Reply ONLY valid JSON: thinking, country_code, country_name, location, keywords,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
 
-	client := &http.Client{Timeout: 45 * time.Second}
+	// Keep Intent AI snappy: slow models should fall back to rules quickly so
+	// dispatch TTFB is not dominated by a 45s hang.
+	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return AgentIntent{}, err
@@ -827,7 +829,9 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
-	client := &http.Client{Timeout: 45 * time.Second}
+	// Heuristic PlanTasks is already good for small-radius goals; don't burn
+	// ~45s waiting on Planner AI before the first Maps seed can start.
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("PlannerAgent AI failed, use heuristic plan: %v", err)
@@ -1208,7 +1212,9 @@ func ApplyFullVolumeDefaults(d *JobData, radiusMeters int) {
 		d.Radius = MaxRadiusMeters()
 	}
 	km := float64(d.Radius) / 1000
-	// Small urban radii finish feed scroll early; Depth=50 mostly burns seed time.
+	// Small urban radii: keep Depth for recall, but GmapJob streams PlaceJobs
+	// from the first feed screen + after ~5 scrolls so TTFP does not wait for
+	// full MaxDepth. Depth=50 mostly burns seed time on tiny circles.
 	if km > 0 && km <= 5 {
 		if d.Depth < 15 {
 			d.Depth = 20
