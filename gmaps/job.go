@@ -170,7 +170,9 @@ func (j *GmapJob) Process(ctx context.Context, resp *scrapemate.Response) (any, 
 
 				nextJob := NewPlaceJob(j.ID, j.LangCode, href, j.ExtractEmail, j.ExtractExtraReviews, jopts...)
 
-				if j.Deduper == nil || j.Deduper.AddIfNotExists(ctx, href) {
+				// Normalize !1s0x…:0x… / place_id so encoding variants collapse.
+				key := MapsURLDedupKey(href)
+				if j.Deduper == nil || j.Deduper.AddIfNotExists(ctx, key) {
 					next = append(next, nextJob)
 				}
 			}

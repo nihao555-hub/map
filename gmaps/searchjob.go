@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gosom/google-maps-scraper/deduper"
@@ -157,18 +158,20 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 		j.params.Location.Radius,
 	)
 
-	// 去重：网格单元重叠 / 数量上限共用 deduper（达到上限时 AddIfNotExists 返回 false）
+	// 零噪声：按搜索词域过滤，避免无关地点进入邮箱任务 / CSV。
+	if q := strings.TrimSpace(j.params.Query); q != "" {
+		entries = FilterEntriesByKeywords(entries, []string{q})
+	}
+
+	// 去重：place_id/cid/data_id 优先；网格重叠与数量上限共用 deduper。
 	if j.Deduper != nil {
 		ctx := context.Background()
 		uniq := make([]*Entry, 0, len(entries))
 
 		for _, e := range entries {
-			key := e.Link
+			key := EntryDedupKey(e)
 			if key == "" {
-				key = e.ID
-			}
-			if key == "" {
-				key = fmt.Sprintf("%s|%.6f,%.6f", e.Title, e.Latitude, e.Longtitude)
+				continue
 			}
 			if j.Deduper.AddIfNotExists(ctx, key) {
 				uniq = append(uniq, e)

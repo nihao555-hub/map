@@ -2,9 +2,7 @@ package web
 
 import (
 	"context"
-	"crypto/sha1"
 	"encoding/csv"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +11,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/gosom/google-maps-scraper/placeref"
 )
 
 // ErrPlacesNotFound is returned by GetPlaces when the job's CSV output does not
@@ -229,20 +229,33 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 }
 
 // StablePlaceKey 返回背调/前端可用的稳定商户键。
-// Google 偶发不回 place_id/cid 时，用 title+坐标哈希，避免整批背调被跳过。
+// 优先 place_id / cid / data_id，再从 Maps URL 抽取，最后 title+坐标哈希。
 func StablePlaceKey(p Place) string {
-	if id := strings.TrimSpace(p.PlaceID); id != "" {
-		return id
+	key := placeref.StableKey(placeref.Identifiers{
+		PlaceID:   p.PlaceID,
+		Cid:       p.Cid,
+		DataID:    p.DataID,
+		Link:      p.Link,
+		Title:     p.Title,
+		Latitude:  p.Latitude,
+		Longitude: p.Longitude,
+	})
+	if key == "" {
+		return ""
 	}
-	if id := strings.TrimSpace(p.Cid); id != "" {
-		return id
+	// API/intel historically used bare place_id or geo_ hash without pid: prefix.
+	switch {
+	case strings.HasPrefix(key, "pid:"):
+		return strings.TrimPrefix(key, "pid:")
+	case strings.HasPrefix(key, "cid:"):
+		return strings.TrimPrefix(key, "cid:")
+	case strings.HasPrefix(key, "did:"):
+		return strings.TrimPrefix(key, "did:")
+	case strings.HasPrefix(key, "geo:"):
+		return "geo_" + strings.TrimPrefix(key, "geo:")
+	default:
+		return key
 	}
-	if id := strings.TrimSpace(p.DataID); id != "" {
-		return id
-	}
-	raw := fmt.Sprintf("%s|%.6f|%.6f", strings.TrimSpace(p.Title), p.Latitude, p.Longitude)
-	sum := sha1.Sum([]byte(raw))
-	return "geo_" + hex.EncodeToString(sum[:10])
 }
 
 func ensurePlaceKey(p *Place) {

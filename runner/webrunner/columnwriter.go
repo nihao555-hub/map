@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/gosom/google-maps-scraper/placeref"
 	"github.com/gosom/scrapemate"
 )
 
@@ -130,14 +131,8 @@ func rowKey(headers, row []string) string {
 		return ""
 	}
 
-	if id := get("place_id"); id != "" {
-		return "pid:" + id
-	}
-	if id := get("cid"); id != "" {
-		return "cid:" + id
-	}
-	if id := get("data_id"); id != "" {
-		return "did:" + id
+	if key := placeref.RowKey(get); key != "" {
+		return key
 	}
 
 	return fmt.Sprintf("geo:%s|%s|%s", get("title"), get("latitude"), get("longitude"))

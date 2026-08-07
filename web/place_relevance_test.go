@@ -1,6 +1,9 @@
 package web
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestPlaceRelevantElectricalDropsNoise(t *testing.T) {
 	kw := []string{"panel listrik"}
@@ -16,13 +19,11 @@ func TestPlaceRelevantElectricalDropsNoise(t *testing.T) {
 		{Title: "PT DUTA LIANA JAYA", Category: "Pabrik Kertas"},
 		{Title: "Green Soris Elektronik", Category: "Reparasi Oven Microwave"},
 		{Title: "Lapak scrup,panel,mmc,hp jadul", Category: "Gudang"},
-		// Junk dealers advertise the materials they buy (kabel/panel/aluminium).
 		{
 			Title:    "Jual Beli Barang Bekas Besi Tembaga Kabel Kertas Aluminium UD Lapak Berkah Mandiri",
 			Category: "Toko Barang Bekas",
 		},
 		{Title: "Pengepul Rongsok Jaya", Category: "Jasa Daur Ulang"},
-		// Maps miscategorizes HVAC/CCTV under electrical install categories.
 		{Title: "Instalasi AC central, ducting", Category: "Jasa Instalasi Listrik"},
 		{Title: "Instalasi CCTV", Category: "Jasa Instalasi Listrik"},
 	}
@@ -44,7 +45,6 @@ func TestPlaceRelevantElectricalKeepsLeads(t *testing.T) {
 		{Title: "Panelenginer box panel", Category: "Kantor Perusahaan"},
 		{Title: "Pratama Listrik", Category: "Toko Alat Listrik"},
 		{Title: "PT. Sahabat Harapan Nusantara", Category: "Insinyur Elektro"},
-		// Mixed electricians who also mention AC still keep via listrik in title.
 		{Title: "TUKANG LISTRIK BSD | service AC Cisauk", Category: "Tukang Listrik"},
 		{Title: "ACK Tech (Jasa Pemasangan dan Perbaikan Instalasi Listrik, AC, CCTV)", Category: "Jasa Instalasi Listrik"},
 	}
@@ -68,11 +68,25 @@ func TestFilterRelevantPlacesReducesNoise(t *testing.T) {
 	}
 }
 
-func TestNonElectricalPassthrough(t *testing.T) {
-	kw := []string{"火锅店"}
-	p := Place{Title: "Random Cafe", Category: "Cafe"}
-	if !PlaceRelevantToKeywords(p, kw) {
-		t.Fatal("non-electrical jobs should not filter")
+func TestFoodZeroNoise(t *testing.T) {
+	kw := []string{"kedai kopi"}
+	noise := []Place{
+		{Title: "Polsek Menteng", Category: "Kantor Polisi"},
+		{Title: "RS Cipto Mangunkusumo", Category: "Rumah Sakit"},
+		{Title: "Indomaret Menteng", Category: "Minimarket"},
+		{Title: "Hotel Indonesia Kempinski", Category: "Hotel"},
+		{Title: "SD Negeri Menteng 01", Category: "Sekolah Dasar"},
+	}
+	for _, p := range noise {
+		if PlaceRelevantToKeywords(p, kw) {
+			t.Fatalf("expected food noise drop: %s (%s)", p.Title, p.Category)
+		}
+	}
+	if !PlaceRelevantToKeywords(Place{Title: "Kopi Kenangan", Category: "Kedai Kopi"}, kw) {
+		t.Fatal("expected keep kopi")
+	}
+	if !PlaceRelevantToKeywords(Place{Title: "Random Cafe", Category: "Cafe"}, kw) {
+		t.Fatal("expected keep cafe category")
 	}
 }
 
@@ -85,9 +99,9 @@ func TestFilterPlacesForJobEnforcesRadius(t *testing.T) {
 		Radius:   1000,
 	}
 	in := []Place{
-		{Title: "Nearby Cafe", Latitude: -6.1950, Longitude: 106.8300},
-		{Title: "Hong Kong Cafe", Latitude: 22.3209, Longitude: 114.1612},
-		{Title: "Missing Coordinates"},
+		{Title: "Nearby Cafe", Category: "Cafe", Latitude: -6.1950, Longitude: 106.8300},
+		{Title: "Hong Kong Cafe", Category: "Cafe", Latitude: 22.3209, Longitude: 114.1612},
+		{Title: "Missing Coordinates", Category: "Cafe"},
 	}
 	out := FilterPlacesForJob(in, data)
 	if len(out) != 1 || out[0].Title != "Nearby Cafe" {
@@ -97,10 +111,33 @@ func TestFilterPlacesForJobEnforcesRadius(t *testing.T) {
 
 func TestGridJobWithoutAnchorReturnsNoPlaces(t *testing.T) {
 	out := FilterPlacesForJob(
-		[]Place{{Title: "Global Noise", Latitude: 22.3, Longitude: 114.1}},
-		JobData{GridMode: true, Radius: 1000},
+		[]Place{{Title: "Global Noise", Category: "Cafe", Latitude: 22.3, Longitude: 114.1}},
+		JobData{Keywords: []string{"cafe"}, GridMode: true, Radius: 2000},
 	)
 	if len(out) != 0 {
-		t.Fatalf("unanchored grid results must be hidden: %+v", out)
+		t.Fatalf("want empty, got %+v", out)
+	}
+}
+
+func TestDedupPlacesKeepsBestContact(t *testing.T) {
+	const pid = "ChIJ9UFwzvbzaS4R91dtdzt6_U8"
+	in := []Place{
+		{Title: "Kopi A", PlaceID: pid, Phone: "1", Latitude: -6.1, Longitude: 106.8},
+		{Title: "Kopi A", PlaceID: pid, WhatsApp: "6281", Emails: "a@b.c", Latitude: -6.1, Longitude: 106.8},
+		{Title: "Kopi B", Cid: "999", Latitude: -6.2, Longitude: 106.9},
+		{Title: "Kopi B Dup", Link: "https://maps.google.com/?cid=999", Latitude: -6.2, Longitude: 106.9},
+	}
+	out := DedupPlaces(in)
+	if len(out) != 2 {
+		t.Fatalf("want 2, got %d %+v", len(out), out)
+	}
+	var kopiA Place
+	for _, p := range out {
+		if p.PlaceID == pid || strings.Contains(StablePlaceKey(p), pid) {
+			kopiA = p
+		}
+	}
+	if kopiA.WhatsApp == "" || kopiA.Emails == "" {
+		t.Fatalf("expected richer contact kept: %+v", kopiA)
 	}
 }
