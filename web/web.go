@@ -761,41 +761,33 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	st, err := file.Stat()
-	if err != nil {
-		http.Error(w, "Failed to stat file", http.StatusInternalServerError)
-		return
-	}
-
 	fileName := csvDownloadFilename(jobName, id.String())
 	w.Header().Set("Content-Disposition", contentDispositionAttachment(fileName))
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 
+	raw, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Failed to read file", http.StatusInternalServerError)
+		return
+	}
+
+	filtered, err := filterCSVBytesForJob(raw, job.Data)
+	if err != nil {
+		http.Error(w, "Failed to filter results", http.StatusInternalServerError)
+		return
+	}
+
+	// UTF-8 BOM for Excel + filtered body.
+	payload := append([]byte{0xEF, 0xBB, 0xBF}, filtered...)
+	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+
 	if r.Method == http.MethodHead {
-		// Approximate size (+ optional BOM). Exact size not critical for HEAD.
-		w.Header().Set("Content-Length", strconv.FormatInt(st.Size()+3, 10))
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	// Excel on Windows often misreads UTF-8 CSV without BOM.
-	bom := make([]byte, 3)
-	n, _ := file.Read(bom)
-	hasBOM := n >= 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		http.Error(w, "Failed to read file", http.StatusInternalServerError)
-		return
-	}
-	if !hasBOM {
-		if _, err := w.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
-			return
-		}
-	}
-
-	_, err = io.Copy(w, file)
-	if err != nil {
-		http.Error(w, "Failed to send file", http.StatusInternalServerError)
+	if _, err := w.Write(payload); err != nil {
 		return
 	}
 }
