@@ -158,6 +158,9 @@ func (w *ScrapeWorker) Work(ctx context.Context, job *river.Job[ScrapeJobArgs]) 
 	}()
 
 	args := job.Args
+	// Enforce at the worker boundary as jobs may be inserted outside the HTTP API.
+	args.Email = true
+	args.FastMode = false
 	jobID := strconv.FormatInt(job.ID, 10)
 
 	timeout := effectiveScrapeTimeout(args.TimeoutSecs)
@@ -720,6 +723,8 @@ func (c *Client) getResultCounts(ctx context.Context, jobIDs []int64) (map[int64
 }
 
 func (c *Client) InsertJob(ctx context.Context, args ScrapeJobArgs) (string, error) { //nolint:gocritic // hugeParam: ScrapeJobArgs is 96 bytes but is a River job argument and must be passed by value
+	args.Email = true
+	args.FastMode = false
 	if args.TimeoutSecs == 0 {
 		args.TimeoutSecs = defaultScrapeTimeoutSecs
 	}

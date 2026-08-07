@@ -34,7 +34,7 @@ type GmapJob struct {
 func NewGmapJob(
 	id, langCode, query string,
 	maxDepth int,
-	extractEmail bool,
+	_ bool,
 	geoCoordinates string,
 	zoom int,
 	opts ...GmapJobOptions,
@@ -71,9 +71,10 @@ func NewGmapJob(
 			MaxRetries: maxRetries,
 			Priority:   prio,
 		},
-		MaxDepth:     maxDepth,
-		LangCode:     langCode,
-		ExtractEmail: extractEmail,
+		MaxDepth: maxDepth,
+		LangCode: langCode,
+		// Product policy: contact enrichment is mandatory in every run mode.
+		ExtractEmail: true,
 	}
 
 	for _, opt := range opts {
@@ -169,7 +170,9 @@ func (j *GmapJob) Process(ctx context.Context, resp *scrapemate.Response) (any, 
 
 				nextJob := NewPlaceJob(j.ID, j.LangCode, href, j.ExtractEmail, j.ExtractExtraReviews, jopts...)
 
-				if j.Deduper == nil || j.Deduper.AddIfNotExists(ctx, href) {
+				// Normalize !1s0x…:0x… / place_id so encoding variants collapse.
+				key := MapsURLDedupKey(href)
+				if j.Deduper == nil || j.Deduper.AddIfNotExists(ctx, key) {
 					next = append(next, nextJob)
 				}
 			}
@@ -323,8 +326,8 @@ func scroll(ctx context.Context,
 	cnt := 0
 
 	const (
-		timeout  = 500
-		maxWait2 = 2000
+		timeout  = 400
+		maxWait2 = 1200 // 滚动等待上限：不影响列表质量，缩短空等
 	)
 
 	for i := 0; i < maxDepth; i++ {

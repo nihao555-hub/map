@@ -15,9 +15,9 @@ func TestHasGeoAnchor(t *testing.T) {
 		want     bool
 	}{
 		{"", "", false},
-		{"0", "0", false},       // 表单默认值（几内亚湾）视为未锚定
+		{"0", "0", false}, // 表单默认值（几内亚湾）视为未锚定
 		{"0.0", "0.0", false},
-		{"abc", "100", false},   // 非法值
+		{"abc", "100", false}, // 非法值
 		{"13.7563", "", false},
 		{"13.7563", "100.5018", true},
 		{" 13.7563 ", "100.5018", true}, // 首尾空格
@@ -34,6 +34,26 @@ func TestHasGeoAnchor(t *testing.T) {
 	}
 }
 
+func TestBuildJobName(t *testing.T) {
+	tests := []struct {
+		keywords  []string
+		locations string
+		want      string
+	}{
+		{[]string{"咖啡店 in 纽约"}, "纽约", "纽约 · 咖啡店"},
+		{[]string{"咖啡"}, "伦敦", "伦敦 · 咖啡"},
+		{[]string{"牙医"}, "", "牙医"},
+		{nil, "悉尼", "悉尼"},
+		{nil, "", ""},
+	}
+
+	for _, tt := range tests {
+		if got := buildJobName(tt.keywords, tt.locations); got != tt.want {
+			t.Fatalf("buildJobName(%v, %q) = %q, want %q", tt.keywords, tt.locations, got, tt.want)
+		}
+	}
+}
+
 func TestLangForCountryCode(t *testing.T) {
 	tests := []struct {
 		cc   string
@@ -44,6 +64,10 @@ func TestLangForCountryCode(t *testing.T) {
 		{"cn", "zh"},
 		{"jp", "ja"},
 		{"us", "en"},
+		{"kh", "km"},
+		{"la", "lo"},
+		{"mm", "my"},
+		{"bn", "ms"},
 		{"xx", ""}, // 未覆盖的国家保留用户语言
 		{"", ""},
 	}

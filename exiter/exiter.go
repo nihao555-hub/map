@@ -5,12 +5,26 @@ import (
 	"sync"
 )
 
+// Progress is a point-in-time snapshot of scrape/email completion counters.
+type Progress struct {
+	SeedCount       int
+	SeedCompleted   int
+	PlacesFound     int
+	PlacesCompleted int
+}
+
+// Exiter cancels the scrape context once all seeds and place/email work finish.
 type Exiter interface {
 	SetSeedCount(int)
 	SetCancelFunc(context.CancelFunc)
 	IncrSeedCompleted(int)
 	IncrPlacesFound(int)
 	IncrPlacesCompleted(int)
+	// Snapshot returns current counters (for UI phase / early StatusOK).
+	Snapshot() Progress
+	// SeedsFinished reports whether every Maps search seed has completed
+	// (place rows may already be on disk while website email jobs still run).
+	SeedsFinished() bool
 	Run(context.Context)
 }
 
@@ -25,6 +39,7 @@ type exiter struct {
 	doneCh     chan struct{}
 }
 
+// New returns an Exiter that signals cancel when seeds and place work are done.
 func New() Exiter {
 	return &exiter{
 		mu:     &sync.Mutex{},
@@ -79,6 +94,25 @@ func (e *exiter) IncrPlacesCompleted(val int) {
 		default:
 		}
 	}
+}
+
+func (e *exiter) Snapshot() Progress {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return Progress{
+		SeedCount:       e.seedCount,
+		SeedCompleted:   e.seedCompleted,
+		PlacesFound:     e.placesFound,
+		PlacesCompleted: e.placesCompleted,
+	}
+}
+
+func (e *exiter) SeedsFinished() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return e.seedCount > 0 && e.seedCompleted >= e.seedCount
 }
 
 func (e *exiter) Run(ctx context.Context) {

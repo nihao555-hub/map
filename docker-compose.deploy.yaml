@@ -1,0 +1,66 @@
+services:
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+      args:
+        GOPROXY: "${GOPROXY:-https://proxy.golang.org,direct}"
+        PLAYWRIGHT_DOWNLOAD_HOST: "${PLAYWRIGHT_DOWNLOAD_HOST:-}"
+        APT_MIRROR: "${APT_MIRROR:-}"
+    command:
+      - "-web"
+      - "-addr"
+      - ":8080"
+      - "-data-folder"
+      - "/data"
+      - "-c"
+      - "${GMS_WEB_CONCURRENCY:-16}"
+      - "-browser-pool-size"
+      - "${GMS_WEB_BROWSER_POOL_SIZE:-4}"
+      - "-pages-per-browser"
+      - "${GMS_WEB_PAGES_PER_BROWSER:-4}"
+      - "-proxies"
+      - "${GMS_PROXIES:-}"
+    environment:
+      GMS_WEB_CONCURRENCY: "${GMS_WEB_CONCURRENCY:-16}"
+      GMS_WEB_BROWSER_POOL_SIZE: "${GMS_WEB_BROWSER_POOL_SIZE:-4}"
+      GMS_WEB_PAGES_PER_BROWSER: "${GMS_WEB_PAGES_PER_BROWSER:-4}"
+      DISABLE_TELEMETRY: "${DISABLE_TELEMETRY:-1}"
+      GRSAI_API_KEY: "${GRSAI_API_KEY:-}"
+      GRSAI_API_HOST: "${GRSAI_API_HOST:-https://grsaiapi.com}"
+      GRSAI_MODEL: "${GRSAI_MODEL:-gemini-3.1-flash-lite}"
+      AHU_PROXY: "${AHU_PROXY:-}"
+      SEARCH_PROXY: "${SEARCH_PROXY:-}"
+      MEDIA_PROXY: "${MEDIA_PROXY:-}"
+      CROSSLINKED_PROXY: "${CROSSLINKED_PROXY:-}"
+      CLASH_API: "${CLASH_API:-}"
+      CLASH_DEFAULT_NODE: "${CLASH_DEFAULT_NODE:-新加坡SG-HY2}"
+      CLASH_SEARCH_NODE: "${CLASH_SEARCH_NODE:-日本JP-HY2,美国LA-优化-GPT,德国-优化}"
+      GMAPS_REPO_ROOT: "/app"
+      INVITE_REQUIRED: "${INVITE_REQUIRED:-1}"
+      INVITE_SEED_COUNT: "${INVITE_SEED_COUNT:-100}"
+      GMS_WEB_JOB_CONCURRENCY: "${GMS_WEB_JOB_CONCURRENCY:-4}"
+      GMS_BLOOM_DEDUP: "${GMS_BLOOM_DEDUP:-}"
+      GMS_BLOOM_EXPECTED_KEYS: "${GMS_BLOOM_EXPECTED_KEYS:-500000}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - scraper-data:/data
+      - ./tools:/app/tools:ro
+    expose:
+      - "8080"
+    mem_limit: 2.5g
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - scraper
+    ports:
+      - "8080:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+
+volumes:
+  scraper-data:

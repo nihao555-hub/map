@@ -27,7 +27,7 @@ type PlaceJob struct {
 	WriterManagedCompletion bool
 }
 
-func NewPlaceJob(parentID, langCode, u string, extractEmail, extraExtraReviews bool, opts ...PlaceJobOptions) *PlaceJob {
+func NewPlaceJob(parentID, langCode, u string, _ bool, extraExtraReviews bool, opts ...PlaceJobOptions) *PlaceJob {
 	const (
 		defaultPrio       = scrapemate.PriorityMedium
 		defaultMaxRetries = 3
@@ -46,7 +46,8 @@ func NewPlaceJob(parentID, langCode, u string, extractEmail, extraExtraReviews b
 	}
 
 	job.UsageInResults = true
-	job.ExtractEmail = extractEmail
+	// Product policy: every place run must enrich contacts from its website.
+	job.ExtractEmail = true
 	job.ExtractExtraReviews = extraExtraReviews
 
 	for _, opt := range opts {
@@ -139,21 +140,29 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 	}
 
 	if j.ExtractEmail && entry.IsWebsiteValidForEmail() {
+		// 先补 Maps 侧联系方式再落盘，避免官网任务被取消后 WA/社媒全空
+		entry.EnrichContactsFromMapsFields()
+
 		opts := []EmailExtractJobOptions{}
-		if j.ExitMonitor != nil {
+		// SaaS：完成计数由 writer 负责。
+		// Web：地点先落盘，但 ExitMonitor 绑到邮箱任务——等联系方式补完再收尾，
+		// 否则 job 一结束就会 context cancel 掉邮箱队列，邮箱/社媒覆盖率接近 0。
+		if j.WriterManagedCompletion {
+			opts = append(opts, WithEmailJobWriterManagedCompletion())
+		} else if j.ExitMonitor != nil {
 			opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
 		}
 
-		if j.WriterManagedCompletion {
-			opts = append(opts, WithEmailJobWriterManagedCompletion())
-		}
+		// 克隆 Entry：避免与地点结果并发写同一指针，导致 upsert 丢 WhatsApp/邮箱
+		entryCopy := entry
+		emailJob := NewEmailJob(j.ID, &entryCopy, opts...)
 
-		emailJob := NewEmailJob(j.ID, &entry, opts...)
+		// 先写出地点详情（已含电话→WA），邮箱任务稍后 upsert 补邮箱/社媒。
+		return &entry, []scrapemate.IJob{emailJob}, nil
+	}
 
-		j.UsageInResults = false
-
-		return nil, []scrapemate.IJob{emailJob}, nil
-	} else if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+	entry.EnrichContactsFromMapsFields()
+	if j.ExitMonitor != nil && !j.WriterManagedCompletion {
 		j.ExitMonitor.IncrPlacesCompleted(1)
 	}
 

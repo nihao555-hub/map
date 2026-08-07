@@ -1,0 +1,15 @@
+# Fast deploy layer: reuse the existing Playwright/runtime image and swap the binary.
+# Build the binary first, then:
+#   docker compose -f docker-compose.deploy.yaml build
+FROM gmaps-scraper:latest
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl python3 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY google-maps-scraper /usr/bin/google-maps-scraper
+RUN chmod +x /usr/bin/google-maps-scraper
+
+ENTRYPOINT ["google-maps-scraper"]
