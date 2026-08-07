@@ -795,8 +795,8 @@ Rules:
   * Do NOT put " in City" inside keywords; location is a separate field.
 - name: human label in UI language, e.g. "泗水 · 配电柜(panel listrik)"
 - location: geocodable place name (prefer English/local Latin script for SEA cities: Jakarta, Surabaya, Bandung, Medan, Semarang, Makassar, Batam, Bekasi)
-- radius_km: 12–25 for city anchors; 8–12 for district hubs
-Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keywords":["..."],"radius_km":15}]}`
+- radius_km: default 50 (project max) for city anchors; 8–12 only for tiny district hubs; honor explicit user km
+Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keywords":["..."],"radius_km":50}]}`
 
 	payload, _ := json.Marshal(map[string]any{
 		"goal":         intent.RawGoal,
