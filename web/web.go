@@ -400,6 +400,8 @@ func (s *Server) serveAgentApp(w http.ResponseWriter, r *http.Request) {
 		ctype = "image/svg+xml"
 	case strings.HasSuffix(rel, ".png"):
 		ctype = "image/png"
+	case strings.HasSuffix(rel, ".webp"):
+		ctype = "image/webp"
 	case strings.HasSuffix(rel, ".woff2"):
 		ctype = "font/woff2"
 	case strings.HasSuffix(rel, ".json"):

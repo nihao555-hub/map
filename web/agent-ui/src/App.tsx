@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowRight,
   Clock3,
@@ -27,9 +27,7 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
 } from '@/components/ai-elements/prompt-input'
-import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { ResultsTable } from '@/components/ResultsTable'
 import {
   loadSessions,
   newSession,
@@ -39,7 +37,11 @@ import {
   type ChatMessage,
   type JobMeta,
 } from '@/lib/sessions'
-import { cn } from '@/lib/utils'
+import { cn, createId } from '@/lib/utils'
+
+const ResultsTable = lazy(() =>
+  import('@/components/ResultsTable').then((module) => ({ default: module.ResultsTable })),
+)
 
 /** Only real capabilities — no mock persona/marketing cards. */
 const SUGGESTIONS = [
@@ -150,7 +152,7 @@ export default function App() {
     setStreamThinking('')
 
     const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
+      id: createId(),
       role: 'user',
       text: goal.trim(),
       createdAt: Date.now(),
@@ -213,7 +215,7 @@ export default function App() {
             name: ev.plan?.tasks?.[i]?.name || `任务 ${i + 1}`,
           }))
           const assistant: ChatMessage = {
-            id: crypto.randomUUID(),
+            id: createId(),
             role: 'assistant',
             text:
               ev.message ||
@@ -266,7 +268,7 @@ export default function App() {
         messages: [
           ...s.messages,
           {
-            id: crypto.randomUUID(),
+            id: createId(),
             role: 'assistant',
             text: '处理失败',
             error: e instanceof Error ? e.message : String(e),
@@ -288,8 +290,10 @@ export default function App() {
         <aside className="flex w-[248px] shrink-0 flex-col bg-white shadow-[1px_0_0_#E8EEF6]">
           <div className="flex items-center gap-3 px-5 pt-6 pb-5">
             <img
-              src="/agent/decor/logo-m.png"
+              src="/agent/decor/logo-m.webp"
               alt=""
+              width={40}
+              height={40}
               className="size-10 shrink-0 rounded-full object-cover shadow-[0_2px_8px_rgba(47,107,255,0.25)]"
             />
             <div className="text-[16px] font-bold tracking-tight text-[#111827]">地图获客助手</div>
@@ -390,7 +394,14 @@ export default function App() {
                       <div className="mt-7 flex flex-wrap gap-x-6 gap-y-4">
                         {FEATURES.map((f) => (
                           <div key={f.title} className="flex min-w-[150px] items-center gap-2.5">
-                            <img src={f.icon} alt="" className="size-10 object-contain" />
+                            <img
+                              src={f.icon}
+                              alt=""
+                              width={40}
+                              height={40}
+                              loading="lazy"
+                              className="size-10 object-contain"
+                            />
                             <div>
                               <div className="text-[13px] font-semibold text-[#1F2937]">{f.title}</div>
                               <div className="text-[11px] text-[#9CA3AF]">{f.desc}</div>
@@ -401,8 +412,11 @@ export default function App() {
                     </div>
                     <div className="animate-in fade-in slide-in-from-right-3 duration-700 mx-auto w-full max-w-[460px]">
                       <img
-                        src="/agent/decor/hero-map.png"
+                        src="/agent/decor/hero-map.webp"
                         alt=""
+                        width={900}
+                        height={600}
+                        fetchPriority="high"
                         className="w-full object-contain drop-shadow-[0_12px_40px_rgba(47,107,255,0.12)]"
                       />
                     </div>
@@ -425,6 +439,9 @@ export default function App() {
                           <img
                             src={card.icon}
                             alt=""
+                            width={48}
+                            height={48}
+                            loading="lazy"
                             className="mb-3.5 size-12 object-contain"
                           />
                           <div className="text-[14px] font-semibold text-[#111827]">{card.title}</div>
@@ -524,7 +541,17 @@ export default function App() {
                             </Task>
                           )}
 
-                          {!!m.jobs?.length && <ResultsTable jobs={m.jobs} />}
+                          {!!m.jobs?.length && (
+                            <Suspense
+                              fallback={
+                                <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-8 text-center text-sm text-[#9CA3AF]">
+                                  正在加载结果表…
+                                </div>
+                              }
+                            >
+                              <ResultsTable jobs={m.jobs} />
+                            </Suspense>
+                          )}
                         </>
                       )}
                     </MessageContent>

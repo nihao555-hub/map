@@ -21,6 +21,24 @@ func newTestServer(t *testing.T, dir string) *Server {
 	return srv
 }
 
+func TestServeAgentWebPContentType(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/agent/decor/logo-m.webp", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	srv.serveAgentApp(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "image/webp" {
+		t.Fatalf("expected image/webp, got %q", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "immutable") {
+		t.Fatalf("expected immutable cache, got %q", got)
+	}
+}
+
 func TestViewJobRendersPlaces(t *testing.T) {
 	dir := t.TempDir()
 	id := "11111111-1111-1111-1111-111111111111"

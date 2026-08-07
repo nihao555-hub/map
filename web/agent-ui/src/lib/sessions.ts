@@ -1,3 +1,5 @@
+import { createId } from '@/lib/utils'
+
 export type AgentTask = {
   name: string
   country_code: string
@@ -94,7 +96,7 @@ export function saveSessions(sessions: AgentSession[]) {
 export function newSession(): AgentSession {
   const now = Date.now()
   return {
-    id: crypto.randomUUID(),
+    id: createId(),
     title: '新任务',
     createdAt: now,
     updatedAt: now,
