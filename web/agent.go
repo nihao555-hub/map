@@ -246,32 +246,25 @@ func parseRadiusKmFromGoal(goal string) int {
 var reCityWide = regexp.MustCompile(`整个|全市|全城|都会区|metropolitan|whole\s+city|city[- ]?wide|all\s+of\s+|覆盖`)
 
 // preferCoverageRadiusKm chooses a radius that aims to finish the named place.
-// Product: maximize recall inside the user's target location.
-// Only auto-bumps when radius was missing/tiny (typical AI default ≤10) or city-wide wording;
-// honors larger intentional radii and any km the user typed.
+// Product: when the user did not type a radius, default to MaxRadiusKm (project
+// ceiling). Explicit user km is never overwritten. Tiny AI defaults (≤10) on
+// non-micro locations are also bumped to the ceiling for full-volume recall.
 func preferCoverageRadiusKm(location, goal string, current int, explicit bool) int {
 	if explicit && current > 0 {
 		return current
 	}
+	max := MaxRadiusKm()
+	if current <= 0 {
+		return max
+	}
 	loc := strings.TrimSpace(location)
-	lowGoal := strings.ToLower(goal)
 	cityWide := reCityWide.MatchString(goal)
 	metro := isKnownMetro(loc) || isKnownMetroFromGoal(goal)
-	if metro || cityWide {
-		if cityWide || current <= 0 || current <= 10 {
-			return 40
-		}
-		return current
+	if (metro || cityWide || (loc != "" && !looksLikeSmallArea(loc, goal))) && current <= 10 {
+		return max
 	}
-	// Unspecified radius + some place name → still prefer city-scale over 3–10km samples.
-	if current <= 0 {
-		if loc != "" || strings.Contains(lowGoal, "在") || strings.Contains(lowGoal, " in ") {
-			return 25
-		}
-		return 10
-	}
-	if current > 0 && current <= 10 && loc != "" && !looksLikeSmallArea(loc, goal) {
-		return 25
+	if current > max {
+		return max
 	}
 	return current
 }
@@ -481,11 +474,11 @@ Rules:
   * China: Chinese is OK
   * Avoid near-duplicates (配电柜 vs 配电盘制造 vs 开关柜制造 as three separate keywords is too redundant — merge to 1–2 strong phrases)
 - radius_km: integer 1–50. Prefer FULL coverage of the named place:
-  * whole country → 25–40 with multi-city split later
-  * city / metro → 40
-  * large urban district → 15–25
+  * whole country → 50 with multi-city split later
+  * city / metro → 50 (project max) unless user typed a smaller km
+  * large urban district → 25–40
   * neighborhood / mall / street → 5–10
-  * honor explicit km from user
+  * honor explicit km from user; if omitted default to 50
 - enable_intel: true for 获客 / lead-gen / 背调 goals
 - sub_locations: 3–8 city/district anchors when the user asks for a whole country or large metro; empty for a small street
 Reply ONLY valid JSON: thinking, country_code, country_name, location, keywords, radius_km, enable_intel, notes, sub_locations`
@@ -1207,7 +1200,7 @@ func ApplyFullVolumeDefaults(d *JobData, radiusMeters int) {
 		d.Radius = radiusMeters
 	}
 	if d.Radius <= 0 {
-		d.Radius = 10_000
+		d.Radius = MaxRadiusMeters() // 未指定时默认项目上限（当前 50km）
 	}
 	if d.Radius > MaxRadiusMeters() {
 		d.Radius = MaxRadiusMeters()

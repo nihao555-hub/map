@@ -153,15 +153,16 @@
               <label class="field-label" for="radius_km" data-i18n="radius_label">目标半径（公里） <span class="req-star">*</span></label>
               <div class="radius-presets" id="radius-presets">
                 <button type="button" class="radius-chip" data-km="5">5km</button>
-                <button type="button" class="radius-chip active" data-km="10">10km</button>
+                <button type="button" class="radius-chip" data-km="10">10km</button>
                 <button type="button" class="radius-chip" data-km="25">25km</button>
-                <button type="button" class="radius-chip" data-km="40" data-i18n-title="radius_metro">都会区 40km</button>
+                <button type="button" class="radius-chip" data-km="40">40km</button>
+                <button type="button" class="radius-chip active" data-km="50" data-i18n-title="radius_metro">最大 50km</button>
               </div>
               <div class="input-field">
                 <i data-lucide="radar" class="w-4 h-4 input-icon"></i>
-                <input type="number" id="radius_km" name="radius_km" min="1" max="50" step="1" value="10" required/>
+                <input type="number" id="radius_km" name="radius_km" min="1" max="50" step="1" value="50" required/>
               </div>
-              <p class="columns-note" id="radius-volume-hint">以选点为圆心；<strong>3km≈街区，10km≈城区一片，40km≈雅加达都会区</strong>。上次测速 3km 出 87 家，不是全市。</p>
+              <p class="columns-note" id="radius-volume-hint">以选点为圆心；默认 <strong>50km（项目上限）</strong>，半径内深度全量抓取。可改小到街区/城区。</p>
             </div>
 
             <!-- 开始搜索 -->
@@ -195,7 +196,7 @@
               <input type="hidden" id="fastmode" name="fastmode" value="">
               <input type="hidden" id="gridmode" name="gridmode" value="on">
               <input type="hidden" id="gridbbox" name="gridbbox" value="">
-              <input type="hidden" id="radius" name="radius" value="10000">
+              <input type="hidden" id="radius" name="radius" value="50000">
               <input type="hidden" id="columns" name="columns" value="">
               <div id="columns-section" class="hidden"></div>
               <div id="grid-density-section" class="hidden"></div>
@@ -590,16 +591,16 @@
       }
 
       function syncRadiusChips() {
-        var km = parseFloat((document.getElementById('radius_km') || {}).value) || 10;
+        var km = parseFloat((document.getElementById('radius_km') || {}).value) || 50;
         document.querySelectorAll('.radius-chip').forEach(function (c) {
           c.classList.toggle('active', parseFloat(c.dataset.km) === km);
         });
         var hint = document.getElementById('radius-volume-hint');
         if (hint) {
-          if (km <= 5) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 街区/商圈</strong>。全市请选 25–40km（雅加达都会区）。';
-          else if (km <= 15) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 城区一片</strong>。不是全市；都会区建议 40km。';
+          if (km <= 5) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 街区/商圈</strong>。全市/都会区请选 40–50km（项目上限 50km）。';
+          else if (km <= 15) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 城区一片</strong>。不是全市；默认/最大为 50km。';
           else if (km <= 30) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 大半个城市</strong>，结果会明显增多，耗时也更长。';
-          else hint.innerHTML = '当前 <strong>' + km + 'km ≈ 都会区覆盖</strong>，深度全量网格格数多，请耐心等待。';
+          else hint.innerHTML = '当前 <strong>' + km + 'km</strong>（上限 50km），深度全量网格格数多，请耐心等待。';
         }
       }
 

@@ -171,6 +171,12 @@ func TestApplyFullVolumeDefaults(t *testing.T) {
 	if !d.Email {
 		t.Fatal("email required")
 	}
+
+	var zero JobData
+	ApplyFullVolumeDefaults(&zero, 0)
+	if zero.Radius != MaxRadiusMeters() {
+		t.Fatalf("zero radius default=%d want %d", zero.Radius, MaxRadiusMeters())
+	}
 }
 
 func TestUnderstandIntentEmpty(t *testing.T) {

@@ -355,7 +355,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		Language: "en",
 		Zoom:     15,
 		FastMode: false,
-		Radius:   10000,
+		Radius:   MaxRadiusMeters(),
 		Lat:      "0",
 		Lon:      "0",
 		Depth:    10,
@@ -1606,7 +1606,7 @@ func formatDate(t time.Time) string {
 }
 
 // parseTargetRadiusMeters 解析目标半径：优先 radius_km（公里），否则 radius（米）。
-// 结果钳制到 (0, MaxRadiusMeters]，默认 10km。
+// 结果钳制到 (0, MaxRadiusMeters]；未填写时默认项目上限（MaxRadiusMeters）。
 func parseTargetRadiusMeters(r *http.Request) (int, error) {
 	if kmStr := strings.TrimSpace(r.Form.Get("radius_km")); kmStr != "" {
 		km, err := strconv.ParseFloat(kmStr, 64)
@@ -1625,7 +1625,7 @@ func parseTargetRadiusMeters(r *http.Request) (int, error) {
 
 	raw := strings.TrimSpace(r.Form.Get("radius"))
 	if raw == "" {
-		return 10000, nil // 默认 10km
+		return MaxRadiusMeters(), nil // 默认 = 项目最大支持半径
 	}
 	meters, err := strconv.Atoi(raw)
 	if err != nil || meters <= 0 {

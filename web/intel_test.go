@@ -39,8 +39,8 @@ func TestParseTargetRadiusMeters(t *testing.T) {
 	}
 
 	meters, err = parseTargetRadiusMeters(mk(url.Values{}))
-	if err != nil || meters != 10000 {
-		t.Fatalf("default -> %d, %v", meters, err)
+	if err != nil || meters != MaxRadiusMeters() {
+		t.Fatalf("default -> %d, %v want %d", meters, err, MaxRadiusMeters())
 	}
 }
 
