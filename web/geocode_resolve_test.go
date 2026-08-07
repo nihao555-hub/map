@@ -41,4 +41,9 @@ func TestLookupKnownCityCompoundPrefersDistrict(t *testing.T) {
 	if !ok || p.DisplayName != "Jakarta Selatan" {
 		t.Fatalf("jakarta district should resolve offline: %+v ok=%v", p, ok)
 	}
+
+	p, ok = lookupKnownCity("Tangerang")
+	if !ok || p.CountryCode != "id" {
+		t.Fatalf("major Indonesian city should resolve offline: %+v ok=%v", p, ok)
+	}
 }
