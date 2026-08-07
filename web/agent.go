@@ -777,11 +777,11 @@ func PlanTasks(intent AgentIntent) AgentPlan {
 func PlanTasksAI(ctx context.Context, intent AgentIntent) AgentPlan {
 	base := PlanTasks(intent)
 	if !AITranslateEnabled() || len(base.Tasks) == 0 {
-		return tightenPlan(base)
+		return honorExplicitCoverage(tightenPlan(base))
 	}
 	key := grsaiAPIKey()
 	if key == "" {
-		return tightenPlan(base)
+		return honorExplicitCoverage(tightenPlan(base))
 	}
 
 	system := `You are PlannerAgent for a Maps lead scraper.
@@ -835,17 +835,17 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("PlannerAgent AI failed, use heuristic plan: %v", err)
-		return tightenPlan(base)
+		return honorExplicitCoverage(tightenPlan(base))
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Printf("PlannerAgent AI status %d: %s", resp.StatusCode, truncate(string(raw), 160))
-		return tightenPlan(base)
+		return honorExplicitCoverage(tightenPlan(base))
 	}
 	var parsed aiChatResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Choices) == 0 {
-		return tightenPlan(base)
+		return honorExplicitCoverage(tightenPlan(base))
 	}
 	content := strings.TrimSpace(parsed.Choices[0].Message.Content)
 	content = strings.TrimPrefix(content, "```json")
@@ -854,7 +854,7 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 	content = strings.TrimSpace(content)
 	var pj agentPlanJSON
 	if err := json.Unmarshal([]byte(content), &pj); err != nil || len(pj.Tasks) == 0 {
-		return tightenPlan(base)
+		return honorExplicitCoverage(tightenPlan(base))
 	}
 
 	out := AgentPlan{Intent: intent, Roles: base.Roles}
@@ -878,8 +878,8 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 		if r <= 0 {
 			r = 10
 		}
-		// Keep AI from widening past an explicit user radius.
-		if intent.RadiusKm > 0 && radiusExplicitlyStated(intent.RawGoal) && r > intent.RadiusKm {
+		// Honor explicit user km: neither widen nor shrink past what they typed.
+		if intent.RadiusKm > 0 && radiusExplicitlyStated(intent.RawGoal) {
 			r = intent.RadiusKm
 		}
 		if r > MaxRadiusKm() {
@@ -901,12 +901,14 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 		})
 	}
 	if len(out.Tasks) == 0 {
-		return tightenPlan(base)
+		return honorExplicitCoverage(tightenPlan(base))
 	}
 	out = expandMetroPlanTasks(out)
 	out = dedupePlanTasks(out)
 	out = tightenPlan(out)
+	out = honorExplicitCoverage(out)
 	base = tightenPlan(base)
+	base = honorExplicitCoverage(base)
 	// Prefer richer AI splits, but never shrink a good heuristic metro plan to a single task.
 	// Always compare against the tightened base so small-radius keyword fanouts stay collapsed.
 	if len(out.Tasks) < len(base.Tasks) && len(base.Tasks) >= 3 && len(out.Tasks) == 1 {
@@ -914,6 +916,37 @@ Reply ONLY JSON: {"thinking":"","tasks":[{"name":"...","location":"...","keyword
 		return base
 	}
 	return out
+}
+
+var reForceSingleTask = regexp.MustCompile(`只创建|不要拆分|单个任务|单一任务|one\s+task|single\s+task`)
+
+// honorExplicitCoverage locks planner output to the user's typed radius and, for
+// near-max / "single task" goals, collapses district fan-out so one admit slot
+// runs the product-max deep+grid job instead of flooding the queue.
+func honorExplicitCoverage(plan AgentPlan) AgentPlan {
+	goal := plan.Intent.RawGoal
+	if plan.Intent.RadiusKm <= 0 || !radiusExplicitlyStated(goal) {
+		return plan
+	}
+	r := plan.Intent.RadiusKm
+	if r > MaxRadiusKm() {
+		r = MaxRadiusKm()
+	}
+	for i := range plan.Tasks {
+		plan.Tasks[i].RadiusKm = r
+	}
+	forceOne := reForceSingleTask.MatchString(goal) || r >= MaxRadiusKm()-5
+	if !forceOne || len(plan.Tasks) <= 1 {
+		return plan
+	}
+	task := plan.Tasks[0]
+	if loc := strings.TrimSpace(plan.Intent.Location); loc != "" {
+		task.Location = loc
+	}
+	task.RadiusKm = r
+	task.Name = task.Location + " · " + firstNonEmptyString(task.Keywords)
+	plan.Tasks = []AgentTask{task}
+	return plan
 }
 
 // expandMetroPlanTasks turns a single large-metro pin into district anchors so

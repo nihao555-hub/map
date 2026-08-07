@@ -75,6 +75,30 @@ func TestNormalizeIntentHonorsExplicitSmallRadius(t *testing.T) {
 	}
 }
 
+func TestHonorExplicitCoverageLocksMaxRadiusAndSingleJob(t *testing.T) {
+	plan := AgentPlan{
+		Intent: AgentIntent{
+			RawGoal:  "在 Surabaya 全市全量找咖啡馆，半径50公里，只创建一个任务不要拆分",
+			Location: "Surabaya",
+			RadiusKm: 50,
+		},
+		Tasks: []AgentTask{
+			{Location: "Surabaya Pusat", Keywords: []string{"cafe"}, RadiusKm: 12},
+			{Location: "Surabaya Timur", Keywords: []string{"cafe"}, RadiusKm: 12},
+		},
+	}
+	out := honorExplicitCoverage(plan)
+	if len(out.Tasks) != 1 {
+		t.Fatalf("want 1 task, got %d %+v", len(out.Tasks), out.Tasks)
+	}
+	if out.Tasks[0].RadiusKm != 50 {
+		t.Fatalf("RadiusKm=%d want 50", out.Tasks[0].RadiusKm)
+	}
+	if out.Tasks[0].Location != "Surabaya" {
+		t.Fatalf("Location=%q want Surabaya", out.Tasks[0].Location)
+	}
+}
+
 func TestTightenPlanCollapsesSameCityKeywordFanout(t *testing.T) {
 	plan := AgentPlan{
 		Intent: AgentIntent{Location: "Bandung", RadiusKm: 25}, // intent wrongly wide

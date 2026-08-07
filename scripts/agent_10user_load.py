@@ -26,24 +26,44 @@ from typing import Any
 BASE = os.environ.get("GMS_BASE", "http://124.222.208.237:8080").rstrip("/")
 TIMEOUT = int(os.environ.get("GMS_TIMEOUT", "120"))
 POLL_S = float(os.environ.get("GMS_POLL_S", "10"))
-MAX_WAIT_S = int(os.environ.get("GMS_MAX_WAIT_S", "2100"))
-RADIUS_KM = int(os.environ.get("GMS_RADIUS_KM", "2"))
+# full=1 → city-scale 50km deep+grid (product max); small radius otherwise.
+FULL = os.environ.get("GMS_FULL", "").strip() in ("1", "true", "yes", "full")
+RADIUS_KM = int(os.environ.get("GMS_RADIUS_KM", "50" if FULL else "2"))
+MAX_WAIT_S = int(os.environ.get("GMS_MAX_WAIT_S", "14400" if FULL else "2100"))
 ARTIFACT = os.environ.get(
-    "GMS_ARTIFACT", "/opt/cursor/artifacts/agent-10user-load.json"
+    "GMS_ARTIFACT",
+    "/opt/cursor/artifacts/agent-10user-full-load.json"
+    if FULL
+    else "/opt/cursor/artifacts/agent-10user-load.json",
 )
 
-DEFAULT_GOALS = [
-    f"在 Menteng, Jakarta 找咖啡馆，半径{RADIUS_KM}公里",
-    f"在 Surabaya 找咖啡馆，半径{RADIUS_KM}公里",
-    f"在 Bandung 找咖啡馆，半径{RADIUS_KM}公里",
-    f"在 Medan 找咖啡馆，半径{RADIUS_KM}公里",
-    f"在 Bekasi 找咖啡馆，半径{RADIUS_KM}公里",
-    f"在 Tangerang 找咖啡馆，半径{RADIUS_KM}公里",
-    f"在 Yogyakarta 找咖啡馆，半径{RADIUS_KM}公里",
-    f"在 Semarang 找咖啡馆，半径{RADIUS_KM}公里",
-    f"在 Depok 找咖啡馆，半径{RADIUS_KM}公里",
-    f"在 Bogor 找咖啡馆，半径{RADIUS_KM}公里",
+_CITIES = [
+    ("menteng", "Menteng, Jakarta"),
+    ("surabaya", "Surabaya"),
+    ("bandung", "Bandung"),
+    ("medan", "Medan"),
+    ("bekasi", "Bekasi"),
+    ("tangerang", "Tangerang"),
+    ("yogyakarta", "Yogyakarta"),
+    ("semarang", "Semarang"),
+    ("depok", "Depok"),
+    ("bogor", "Bogor"),
 ]
+
+
+def _default_goals() -> list[str]:
+    if FULL:
+        # Product "最全": project-max radius, one deep+grid+unlimited job per user.
+        return [
+            f"在{label}找咖啡馆，半径{RADIUS_KM}公里，只创建一个任务不要拆分，深挖不限数量，尽量拿全电话和邮箱"
+            for _, label in _CITIES
+        ]
+    return [
+        f"在 {label} 找咖啡馆，半径{RADIUS_KM}公里" for _, label in _CITIES
+    ]
+
+
+DEFAULT_GOALS = _default_goals()
 
 CITY_CENTERS = {
     "menteng": (-6.1944, 106.8294),
@@ -371,7 +391,11 @@ def main():
     goals = DEFAULT_GOALS
     n = min(10, len(invites), len(goals))
     invites, goals = invites[:n], goals[:n]
-    print(f"BASE={BASE} users={n} radius={RADIUS_KM}km max_wait={MAX_WAIT_S}s", flush=True)
+    print(
+        f"BASE={BASE} users={n} full={FULL} radius={RADIUS_KM}km "
+        f"max_wait={MAX_WAIT_S}s",
+        flush=True,
+    )
 
     t0 = time.time()
     results: list[UserResult] = []
@@ -389,6 +413,7 @@ def main():
         "base": BASE,
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "users": n,
+        "full": FULL,
         "radius_km": RADIUS_KM,
         "wall_s": elapsed,
         "ok": ok_n,
