@@ -730,6 +730,16 @@ func (w *webrunner) watchScrapePhaseComplete(ctx context.Context, jobID string, 
 				return
 			}
 			if mon.SeedsFinished() {
+				// Avoid flashing status=ok with an empty table while streamed
+				// PlaceJobs are still draining on browser workers.
+				prog := mon.Snapshot()
+				n := 0
+				if cnt, err := w.svc.CountPlacesCached(context.Background(), jobID); err == nil {
+					n = cnt
+				}
+				if n == 0 && prog.PlacesFound > 0 && prog.PlacesCompleted < prog.PlacesFound {
+					continue
+				}
 				tryMark("maps seeds finished")
 				return
 			}

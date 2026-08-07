@@ -344,6 +344,9 @@ func (j *GmapJob) streamFeedPlaces(ctx context.Context, page scrapemate.BrowserP
 			continue
 		}
 		placeJob := NewPlaceJob(j.ID, j.LangCode, hit.Href, j.ExtractEmail, j.ExtractExtraReviews, opts...)
+		// Beat remaining Low-priority grid seeds so free browser workers paint
+		// the first rows instead of starting another Maps list scroll.
+		placeJob.Priority = scrapemate.PriorityHigh
 		if err := push(ctx, placeJob); err != nil {
 			// Release claim so Process can retry this URL later.
 			j.releasePlaceURL(hit.Href)
