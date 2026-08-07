@@ -1205,7 +1205,15 @@ func ApplyFullVolumeDefaults(d *JobData, radiusMeters int) {
 	if d.Radius > MaxRadiusMeters() {
 		d.Radius = MaxRadiusMeters()
 	}
-	if d.Depth < 20 {
+	km := float64(d.Radius) / 1000
+	// Small urban radii finish feed scroll early; Depth=50 mostly burns seed time.
+	if km > 0 && km <= 5 {
+		if d.Depth < 15 {
+			d.Depth = 20
+		} else if d.Depth > 25 {
+			d.Depth = 25
+		}
+	} else if d.Depth < 20 {
 		d.Depth = 50
 	}
 	if d.MaxTime < 60*time.Minute {
@@ -1214,13 +1222,15 @@ func ApplyFullVolumeDefaults(d *JobData, radiusMeters int) {
 	if d.GridCellKm <= 0 {
 		// Slightly coarser cells: fewer Playwright searches, similar recall with
 		// relevance filter; 10km@2.5km ≈ 64 cells vs 2.0km ≈ 100+.
-		km := float64(d.Radius) / 1000
 		switch {
 		case km >= 30:
 			d.GridCellKm = 3.5
 		case km >= 15:
 			d.GridCellKm = 3.0
 		case km >= 10:
+			d.GridCellKm = 2.5
+		case km > 0 && km <= 5:
+			// 3km@2.5 ≈ ~6–9 cells vs 2.0km ≈ 16 — big seed cut, same recall with filter.
 			d.GridCellKm = 2.5
 		default:
 			d.GridCellKm = 2.0

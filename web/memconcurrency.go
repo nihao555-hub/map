@@ -209,6 +209,32 @@ func ReservedPerJobConcurrency(configured int, fastMode bool) int {
 	return n
 }
 
+// ReservedHTTPConcurrency is the dedicated merchant-site (email) worker count.
+// These workers do not use Playwright, so they can exceed deep browser workers
+// without proportionally increasing Chromium RAM.
+// Override with GMS_HTTP_WORKERS (0–12). 0 disables the dedicated pool.
+func ReservedHTTPConcurrency(fastMode bool) int {
+	if v := strings.TrimSpace(os.Getenv("GMS_HTTP_WORKERS")); v != "" {
+		if w, err := strconv.Atoi(v); err == nil && w >= 0 && w <= 12 {
+			return w
+		}
+	}
+	if fastMode {
+		// Fast mode already uses stealth HTTP for Maps search; keep a modest
+		// email pool so contact enrichment does not serialize on search workers.
+		return 4
+	}
+	avail := AvailableMemoryMB()
+	switch {
+	case avail >= 6000:
+		return 8
+	case avail >= 2500:
+		return 6
+	default:
+		return 4
+	}
+}
+
 // AdaptivePerJobConcurrency kept for compatibility; deep path uses reserved budget.
 func AdaptivePerJobConcurrency(configured int, fastMode bool) int {
 	return ReservedPerJobConcurrency(configured, fastMode)
@@ -239,6 +265,7 @@ type ConcurrencySnapshot struct {
 	EnvCap        int    `json:"env_cap"`
 	AvailMemMB    uint64 `json:"avail_mem_mb"`
 	PerJobDeep    int    `json:"per_job_deep_workers"`
+	PerJobHTTP    int    `json:"per_job_http_workers"`
 	Bloom         bool   `json:"bloom_dedup"`
 	GOMAXPROCS    int    `json:"gomaxprocs"`
 	FairAdmission bool   `json:"fair_admission"`
@@ -254,6 +281,7 @@ func GetConcurrencySnapshot() ConcurrencySnapshot {
 		EnvCap:        JobConcurrency(),
 		AvailMemMB:    AvailableMemoryMB(),
 		PerJobDeep:    ReservedPerJobConcurrency(16, false),
+		PerJobHTTP:    ReservedHTTPConcurrency(false),
 		Bloom:         UseBloomDeduper(),
 		GOMAXPROCS:    runtime.GOMAXPROCS(0),
 		FairAdmission: true,

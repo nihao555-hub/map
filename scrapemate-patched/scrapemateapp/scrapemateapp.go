@@ -116,6 +116,7 @@ func (app *ScrapemateApp) getMate(ctx context.Context) (*scrapemate.ScrapeMate, 
 		scrapemate.WithHTTPFetcher(fetcherInstance),
 		scrapemate.WithHTMLParser(parser.New()),
 		scrapemate.WithConcurrency(app.cfg.Concurrency),
+		scrapemate.WithHTTPConcurrency(app.cfg.HTTPConcurrency),
 		scrapemate.WithExitBecauseOfInactivity(app.cfg.ExitOnInactivityDuration),
 	}
 

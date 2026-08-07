@@ -101,6 +101,16 @@ func CreateSeedJobs(
 			if extraReviews {
 				opts = append(opts, gmaps.WithExtraReviews())
 			}
+			if radius > 0 && geoCoordinates != "" {
+				parts := strings.Split(geoCoordinates, ",")
+				if len(parts) == 2 {
+					if alat, e1 := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64); e1 == nil {
+						if alon, e2 := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64); e2 == nil {
+							opts = append(opts, gmaps.WithGmapJobFilter([]string{query}, alat, alon, radius))
+						}
+					}
+				}
+			}
 
 			job = gmaps.NewGmapJob(id, langCode, query, maxDepth, email, geoCoordinates, zoom, opts...)
 		} else {
@@ -157,6 +167,7 @@ func CreateGridSeedJobs(
 	dedup deduper.Deduper,
 	exitMonitor exiter.Exiter,
 	extraReviews bool,
+	filterOpts ...gmaps.GmapJobOptions,
 ) ([]scrapemate.IJob, error) {
 	if zoom < 1 || zoom > 21 {
 		return nil, fmt.Errorf("invalid zoom level: %d", zoom)
@@ -202,6 +213,7 @@ func CreateGridSeedJobs(
 			if extraReviews {
 				opts = append(opts, gmaps.WithExtraReviews())
 			}
+			opts = append(opts, filterOpts...)
 
 			job := gmaps.NewGmapJob(
 				cellID,

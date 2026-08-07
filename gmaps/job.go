@@ -29,6 +29,13 @@ type GmapJob struct {
 	ExitMonitor             exiter.Exiter
 	ExtractExtraReviews     bool
 	WriterManagedCompletion bool
+
+	// Keywords + job-level geo filter are plumbed into PlaceJobs so deep mode
+	// can drop off-brief / out-of-radius hits before email spawn.
+	Keywords      []string
+	FilterLat     float64
+	FilterLon     float64
+	FilterRadiusM float64
 }
 
 func NewGmapJob(
@@ -102,6 +109,16 @@ func WithExtraReviews() GmapJobOptions {
 	}
 }
 
+// WithGmapJobFilter attaches keyword + circle filters for spawned PlaceJobs.
+func WithGmapJobFilter(keywords []string, lat, lon, radiusM float64) GmapJobOptions {
+	return func(j *GmapJob) {
+		j.Keywords = append([]string(nil), keywords...)
+		j.FilterLat = lat
+		j.FilterLon = lon
+		j.FilterRadiusM = radiusM
+	}
+}
+
 func WithWriterManagedCompletion() GmapJobOptions {
 	return func(j *GmapJob) {
 		j.WriterManagedCompletion = true
@@ -143,32 +160,33 @@ func (j *GmapJob) Process(ctx context.Context, resp *scrapemate.Response) (any, 
 
 	var next []scrapemate.IJob
 
-	if strings.Contains(resp.URL, "/maps/place/") {
+	placeOpts := func() []PlaceJobOptions {
 		jopts := []PlaceJobOptions{}
 		if j.ExitMonitor != nil {
 			jopts = append(jopts, WithPlaceJobExitMonitor(j.ExitMonitor))
 		}
-
 		if j.WriterManagedCompletion {
 			jopts = append(jopts, WithPlaceJobWriterManagedCompletion())
 		}
+		if len(j.Keywords) > 0 || j.FilterRadiusM > 0 {
+			jopts = append(jopts, WithPlaceJobFilter(j.Keywords, j.FilterLat, j.FilterLon, j.FilterRadiusM))
+		}
+		return jopts
+	}
 
-		placeJob := NewPlaceJob(j.ID, j.LangCode, resp.URL, j.ExtractEmail, j.ExtractExtraReviews, jopts...)
-
+	if strings.Contains(resp.URL, "/maps/place/") {
+		placeJob := NewPlaceJob(j.ID, j.LangCode, resp.URL, j.ExtractEmail, j.ExtractExtraReviews, placeOpts()...)
 		next = append(next, placeJob)
 	} else {
 		doc.Find(`div[role=feed] div[jsaction]>a`).Each(func(_ int, s *goquery.Selection) {
 			if href := s.AttrOr("href", ""); href != "" {
-				jopts := []PlaceJobOptions{}
-				if j.ExitMonitor != nil {
-					jopts = append(jopts, WithPlaceJobExitMonitor(j.ExitMonitor))
+				// Cheap feed-level skip: title from aria-label + coords in href.
+				title := strings.TrimSpace(s.AttrOr("aria-label", ""))
+				if feedHitShouldSkip(title, href, j.Keywords, j.FilterLat, j.FilterLon, j.FilterRadiusM) {
+					return
 				}
 
-				if j.WriterManagedCompletion {
-					jopts = append(jopts, WithPlaceJobWriterManagedCompletion())
-				}
-
-				nextJob := NewPlaceJob(j.ID, j.LangCode, href, j.ExtractEmail, j.ExtractExtraReviews, jopts...)
+				nextJob := NewPlaceJob(j.ID, j.LangCode, href, j.ExtractEmail, j.ExtractExtraReviews, placeOpts()...)
 
 				// Normalize !1s0x…:0x… / place_id so encoding variants collapse.
 				key := MapsURLDedupKey(href)

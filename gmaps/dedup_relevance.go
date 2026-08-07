@@ -1,10 +1,16 @@
 package gmaps
 
 import (
+	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/gosom/google-maps-scraper/placeref"
 )
+
+var mapsURLCoordRe = regexp.MustCompile(`@(-?\d+\.?\d*),(-?\d+\.?\d*)`)
+var mapsURL3d4dRe = regexp.MustCompile(`!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)`)
 
 // EntryDedupKey returns the scrape-time dedup key for an Entry.
 // Prefer PlaceID / CID / data_id / Maps-URL feature id over raw href so
@@ -79,4 +85,69 @@ func FilterEntriesByKeywords(entries []*Entry, keywords []string) []*Entry {
 		}
 	}
 	return out
+}
+
+// placeEntryShouldDrop reports whether a fully parsed place is off-brief or
+// outside the job radius (meters). Empty filters disable that check.
+func placeEntryShouldDrop(e *Entry, keywords []string, lat, lon, radiusM float64) bool {
+	if e == nil {
+		return true
+	}
+	if radiusM > 0 && (lat != 0 || lon != 0) {
+		if e.Latitude != 0 || e.Longtitude != 0 {
+			if !e.isWithinRadius(lat, lon, radiusM) {
+				return true
+			}
+		}
+	}
+	if len(keywords) > 0 && !EntryRelevant(e, keywords) {
+		return true
+	}
+	return false
+}
+
+// feedHitShouldSkip is a cheap pre-PlaceJob gate using feed title + URL coords.
+// When signals are missing it returns false (keep) so we do not over-drop.
+func feedHitShouldSkip(title, href string, keywords []string, lat, lon, radiusM float64) bool {
+	plat, plon, ok := coordsFromMapsURL(href)
+	if ok && radiusM > 0 && (lat != 0 || lon != 0) {
+		tmp := &Entry{Latitude: plat, Longtitude: plon}
+		if !tmp.isWithinRadius(lat, lon, radiusM) {
+			return true
+		}
+	}
+	title = strings.TrimSpace(title)
+	if title == "" || len(keywords) == 0 {
+		return false
+	}
+	// Feed aria-label is often "Name · Category · stars" — use as title only.
+	if !placeref.Relevant(placeref.Place{Title: title}, keywords) {
+		return true
+	}
+	return false
+}
+
+func coordsFromMapsURL(raw string) (lat, lon float64, ok bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, 0, false
+	}
+	if dec, err := url.QueryUnescape(raw); err == nil && dec != "" {
+		raw = dec
+	}
+	if m := mapsURL3d4dRe.FindStringSubmatch(raw); len(m) == 3 {
+		lat, err1 := strconv.ParseFloat(m[1], 64)
+		lon, err2 := strconv.ParseFloat(m[2], 64)
+		if err1 == nil && err2 == nil {
+			return lat, lon, true
+		}
+	}
+	if m := mapsURLCoordRe.FindStringSubmatch(raw); len(m) == 3 {
+		lat, err1 := strconv.ParseFloat(m[1], 64)
+		lon, err2 := strconv.ParseFloat(m[2], 64)
+		if err1 == nil && err2 == nil {
+			return lat, lon, true
+		}
+	}
+	return 0, 0, false
 }

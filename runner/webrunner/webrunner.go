@@ -16,6 +16,7 @@ import (
 
 	"github.com/gosom/google-maps-scraper/deduper"
 	"github.com/gosom/google-maps-scraper/exiter"
+	"github.com/gosom/google-maps-scraper/gmaps"
 	"github.com/gosom/google-maps-scraper/grid"
 	"github.com/gosom/google-maps-scraper/runner"
 	"github.com/gosom/google-maps-scraper/tlmt"
@@ -445,6 +446,14 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 					exitMonitor,
 				)
 			} else {
+				var filterOpts []gmaps.GmapJobOptions
+				if alat, aerr := strconv.ParseFloat(job.Data.Lat, 64); aerr == nil {
+					if alon, aerr2 := strconv.ParseFloat(job.Data.Lon, 64); aerr2 == nil && job.Data.Radius > 0 {
+						filterOpts = append(filterOpts, gmaps.WithGmapJobFilter(
+							job.Data.Keywords, alat, alon, float64(job.Data.Radius),
+						))
+					}
+				}
 				seedJobs, err = runner.CreateGridSeedJobs(
 					job.Data.Lang,
 					strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
@@ -456,6 +465,7 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 					dedup,
 					exitMonitor,
 					w.cfg.ExtraReviews || job.Data.ExtraReviews,
+					filterOpts...,
 				)
 			}
 			if err != nil {
@@ -752,10 +762,12 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 	return func(_ context.Context, writer io.Writer, job *web.Job) (mateRunner, error) {
 		// Fair admission: each job keeps a FIXED deep worker budget (does not dilute under load).
 		jobConc := web.ReservedPerJobConcurrency(cfg.Concurrency, job.Data.FastMode)
-		log.Printf("job %s scrapemate concurrency=%d (reserved, fair-admission active=%d/%d availMemMB=%d)",
-			job.ID, jobConc, web.ActiveDeepJobs(), web.AdaptiveJobConcurrency(), web.AvailableMemoryMB())
+		httpConc := web.ReservedHTTPConcurrency(job.Data.FastMode)
+		log.Printf("job %s scrapemate concurrency=%d httpWorkers=%d (reserved, fair-admission active=%d/%d availMemMB=%d)",
+			job.ID, jobConc, httpConc, web.ActiveDeepJobs(), web.AdaptiveJobConcurrency(), web.AvailableMemoryMB())
 		opts := []func(*scrapemateapp.Config) error{
 			scrapemateapp.WithConcurrency(jobConc),
+			scrapemateapp.WithHTTPConcurrency(httpConc),
 		}
 		// 快速：HTTP 搜索，空闲可短收尾；深度：浏览器冷启动+滚动常 >45s，过短会误杀整单。
 		if job.Data.FastMode {

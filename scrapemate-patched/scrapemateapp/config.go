@@ -16,6 +16,7 @@ type jsOptions struct {
 
 type Config struct {
 	Concurrency        int `validate:"required,gte=1"`
+	HTTPConcurrency    int `validate:"omitempty,gte=0"`
 	BrowserPoolSize    int `validate:"omitempty,gte=0"`
 	MaxPagesPerBrowser int `validate:"required,gte=1"`
 
@@ -99,6 +100,17 @@ func WithConcurrency(concurrency int) func(*Config) error {
 		o.Concurrency = concurrency
 
 		return o.validate()
+	}
+}
+
+// WithHTTPConcurrency sets dedicated workers for non-Maps (email) jobs.
+func WithHTTPConcurrency(n int) func(*Config) error {
+	return func(o *Config) error {
+		if n < 0 {
+			return errors.New("http concurrency must be >= 0")
+		}
+		o.HTTPConcurrency = n
+		return nil
 	}
 }
 

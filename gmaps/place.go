@@ -25,6 +25,11 @@ type PlaceJob struct {
 	ExitMonitor             exiter.Exiter
 	ExtractExtraReviews     bool
 	WriterManagedCompletion bool
+
+	Keywords      []string
+	FilterLat     float64
+	FilterLon     float64
+	FilterRadiusM float64
 }
 
 func NewPlaceJob(parentID, langCode, u string, _ bool, extraExtraReviews bool, opts ...PlaceJobOptions) *PlaceJob {
@@ -66,6 +71,16 @@ func WithPlaceJobExitMonitor(exitMonitor exiter.Exiter) PlaceJobOptions {
 func WithPlaceJobWriterManagedCompletion() PlaceJobOptions {
 	return func(j *PlaceJob) {
 		j.WriterManagedCompletion = true
+	}
+}
+
+// WithPlaceJobFilter drops off-brief / out-of-radius places before email spawn.
+func WithPlaceJobFilter(keywords []string, lat, lon, radiusM float64) PlaceJobOptions {
+	return func(j *PlaceJob) {
+		j.Keywords = append([]string(nil), keywords...)
+		j.FilterLat = lat
+		j.FilterLon = lon
+		j.FilterRadiusM = radiusM
 	}
 }
 
@@ -139,10 +154,21 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 		entry.UserReviewsExtended = append(entry.UserReviewsExtended, deduped...)
 	}
 
-	if j.ExtractEmail && entry.IsWebsiteValidForEmail() {
-		// 先补 Maps 侧联系方式再落盘，避免官网任务被取消后 WA/社媒全空
-		entry.EnrichContactsFromMapsFields()
+	entry.EnrichContactsFromMapsFields()
 
+	// Deep pre-filter: same relevance + radius rules as fast SearchJob / API.
+	// Drop before email so noise never burns HTTP workers or CSV rows.
+	if placeEntryShouldDrop(&entry, j.Keywords, j.FilterLat, j.FilterLon, j.FilterRadiusM) {
+		if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+			j.ExitMonitor.IncrPlacesCompleted(1)
+		}
+		// Still emit nothing usable — skip UseInResults path by returning nil data
+		// while counting completion. Writer ignores nil.
+		j.UsageInResults = false
+		return nil, nil, nil
+	}
+
+	if j.ExtractEmail && entry.IsWebsiteValidForEmail() {
 		opts := []EmailExtractJobOptions{}
 		// SaaS：完成计数由 writer 负责。
 		// Web：地点先落盘，但 ExitMonitor 绑到邮箱任务——等联系方式补完再收尾，
@@ -161,7 +187,6 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 		return &entry, []scrapemate.IJob{emailJob}, nil
 	}
 
-	entry.EnrichContactsFromMapsFields()
 	if j.ExitMonitor != nil && !j.WriterManagedCompletion {
 		j.ExitMonitor.IncrPlacesCompleted(1)
 	}
