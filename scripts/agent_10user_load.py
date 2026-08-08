@@ -29,7 +29,7 @@ POLL_S = float(os.environ.get("GMS_POLL_S", "10"))
 # full=1 → city-scale 50km deep+grid (product max); small radius otherwise.
 FULL = os.environ.get("GMS_FULL", "").strip() in ("1", "true", "yes", "full")
 RADIUS_KM = int(os.environ.get("GMS_RADIUS_KM", "50" if FULL else "2"))
-MAX_WAIT_S = int(os.environ.get("GMS_MAX_WAIT_S", "14400" if FULL else "2100"))
+MAX_WAIT_S = int(os.environ.get("GMS_MAX_WAIT_S", "43200" if FULL else "2100"))
 ARTIFACT = os.environ.get(
     "GMS_ARTIFACT",
     "/opt/cursor/artifacts/agent-10user-full-load.json"
