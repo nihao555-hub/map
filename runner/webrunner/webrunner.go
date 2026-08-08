@@ -709,20 +709,68 @@ func (w *webrunner) watchProgressStall(ctx context.Context, cancel context.Cance
 
 // watchAdmitRelease frees the deep-job admit slot once Maps PlaceJobs finish
 // (seeds done + every discovered place processed). Email enrichment may continue.
+// Fallback: StatusOK + CSV plateau also releases, so a stuck place counter cannot
+// pin the admit slot until the whole email phase ends.
 func (w *webrunner) watchAdmitRelease(ctx context.Context, jobID string, mon exiter.Exiter, release func(string)) {
-	if release == nil || mon == nil {
+	if release == nil {
 		return
 	}
-	if mon.MapsPlacesFinished() {
+	if mon != nil && mon.MapsPlacesFinished() {
 		release("maps places finished")
 		return
 	}
-	if exiter.WaitMapsPlacesFinished(ctx, mon) {
-		release("maps places finished")
-		return
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if mon != nil {
+			_ = exiter.WaitMapsPlacesFinished(ctx, mon)
+		} else {
+			<-ctx.Done()
+		}
+	}()
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	lastN := -1
+	lastChange := time.Now()
+	okSince := time.Time{}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+			if mon != nil && mon.MapsPlacesFinished() {
+				release("maps places finished")
+			}
+			return
+		case <-ticker.C:
+			if mon != nil && mon.MapsPlacesFinished() {
+				release("maps places finished")
+				return
+			}
+			job, err := w.svc.Get(context.Background(), jobID)
+			if err != nil {
+				continue
+			}
+			n := w.svc.CountCSVDataRows(jobID)
+			if n != lastN {
+				lastN = n
+				lastChange = time.Now()
+			}
+			if job.Status == web.StatusOK {
+				if okSince.IsZero() {
+					okSince = time.Now()
+				}
+				// Results already exposed + no new rows for 2m → free slot for queue.
+				if n > 0 && time.Since(lastChange) >= 2*time.Minute && time.Since(okSince) >= 2*time.Minute {
+					release("status=ok csv plateau")
+					return
+				}
+			}
+		}
 	}
-	// Context ended (emails done / wall / cancel): slot release is deferred in work().
-	_ = jobID
 }
 
 // watchScrapePhaseComplete marks the job ok (+ starts intel) when all Maps seeds

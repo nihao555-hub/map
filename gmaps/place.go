@@ -97,7 +97,8 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 	}()
 
 	if resp.Error != nil {
-		if j.ExitMonitor != nil {
+		if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+			j.ExitMonitor.IncrMapsPlacesDone(1)
 			j.ExitMonitor.IncrPlacesCompleted(1)
 		}
 
@@ -106,17 +107,21 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 
 	raw, ok := resp.Meta["json"].([]byte)
 	if !ok {
-		// 纯 HTTP 抓取路径：没有浏览器注入的 Meta，直接从 HTML 里的
-		// window.APP_INITIALIZATION_STATE 字面量提取同样的地点 JSON
-		var err error
+		// Cache hit path stores entry under Meta["place_cache"] (no json bytes).
+		if _, hasCache := resp.Meta["place_cache"]; !hasCache {
+			// 纯 HTTP 抓取路径：没有浏览器注入的 Meta，直接从 HTML 里的
+			// window.APP_INITIALIZATION_STATE 字面量提取同样的地点 JSON
+			var err error
 
-		raw, err = extractJSONFromBody(resp.Body)
-		if err != nil {
-			if j.ExitMonitor != nil {
-				j.ExitMonitor.IncrPlacesCompleted(1)
+			raw, err = extractJSONFromBody(resp.Body)
+			if err != nil {
+				if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+					j.ExitMonitor.IncrMapsPlacesDone(1)
+					j.ExitMonitor.IncrPlacesCompleted(1)
+				}
+
+				return nil, nil, fmt.Errorf("could not convert to []byte: %w", err)
 			}
-
-			return nil, nil, fmt.Errorf("could not convert to []byte: %w", err)
 		}
 	}
 
