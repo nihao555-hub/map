@@ -189,6 +189,7 @@ func (j *EmailExtractJob) Process(ctx context.Context, resp *scrapemate.Response
 	j.Entry.PromoteSocialFromMapsFields()
 	j.Entry.mergeSocial(social)
 	j.Entry.FillWhatsAppFromPhone()
+	storeEntryInPlaceCache(j.Entry)
 
 	if j.Entry.WhatsApp != "" || len(j.Entry.Emails) > 0 {
 		log.Info("email job contacts",

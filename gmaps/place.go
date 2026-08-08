@@ -13,6 +13,7 @@ import (
 	"github.com/gosom/scrapemate"
 
 	"github.com/gosom/google-maps-scraper/exiter"
+	"github.com/gosom/google-maps-scraper/placecache"
 )
 
 type PlaceJobOptions func(*PlaceJob)
@@ -119,9 +120,49 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 		}
 	}
 
+	// Cross-job place cache hit: reuse contacts, skip Playwright parse path.
+	if cached, ok := resp.Meta["place_cache"].(*placecache.CachedPlace); ok && cached != nil {
+		entry := cachedToEntry(cached)
+		if entry != nil {
+			entry.ID = j.ParentID
+			if entry.Link == "" {
+				entry.Link = j.GetURL()
+			}
+			entry.EnrichContactsFromMapsFields()
+			if placeEntryShouldDrop(entry, j.Keywords, j.FilterLat, j.FilterLon, j.FilterRadiusM) {
+				if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+					j.ExitMonitor.IncrMapsPlacesDone(1)
+					j.ExitMonitor.IncrPlacesCompleted(1)
+				}
+				j.UsageInResults = false
+				return nil, nil, nil
+			}
+			if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+				j.ExitMonitor.IncrMapsPlacesDone(1)
+			}
+			// Still enrich email when website exists but cache has no emails.
+			if j.ExtractEmail && entry.IsWebsiteValidForEmail() && len(entry.Emails) == 0 {
+				opts := []EmailExtractJobOptions{}
+				if j.WriterManagedCompletion {
+					opts = append(opts, WithEmailJobWriterManagedCompletion())
+				} else if j.ExitMonitor != nil {
+					opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
+				}
+				entryCopy := *entry
+				emailJob := NewEmailJob(j.ID, &entryCopy, opts...)
+				return entry, []scrapemate.IJob{emailJob}, nil
+			}
+			if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+				j.ExitMonitor.IncrPlacesCompleted(1)
+			}
+			return entry, nil, nil
+		}
+	}
+
 	entry, err := EntryFromJSON(raw)
 	if err != nil {
 		if j.ExitMonitor != nil {
+			j.ExitMonitor.IncrMapsPlacesDone(1)
 			j.ExitMonitor.IncrPlacesCompleted(1)
 		}
 
@@ -160,6 +201,7 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 	// Drop before email so noise never burns HTTP workers or CSV rows.
 	if placeEntryShouldDrop(&entry, j.Keywords, j.FilterLat, j.FilterLon, j.FilterRadiusM) {
 		if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+			j.ExitMonitor.IncrMapsPlacesDone(1)
 			j.ExitMonitor.IncrPlacesCompleted(1)
 		}
 		// Still emit nothing usable — skip UseInResults path by returning nil data
@@ -167,6 +209,12 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 		j.UsageInResults = false
 		return nil, nil, nil
 	}
+
+	// Maps PlaceJob finished → free admit slot soon; emails may still run.
+	if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+		j.ExitMonitor.IncrMapsPlacesDone(1)
+	}
+	storeEntryInPlaceCache(&entry)
 
 	if j.ExtractEmail && entry.IsWebsiteValidForEmail() {
 		opts := []EmailExtractJobOptions{}
@@ -196,6 +244,14 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 
 func (j *PlaceJob) BrowserActions(ctx context.Context, page scrapemate.BrowserPage) scrapemate.Response {
 	var resp scrapemate.Response
+
+	// Cross-job cache: skip Playwright navigation when we already scraped this place.
+	if cached := placecache.LookupURL(j.GetURL()); cached != nil && cached.Title != "" {
+		resp.StatusCode = 200
+		resp.URL = j.GetURL()
+		resp.Meta = map[string]any{"place_cache": cached}
+		return resp
+	}
 
 	pageResponse, err := page.Goto(j.GetURL(), scrapemate.WaitUntilDOMContentLoaded)
 	if err != nil {

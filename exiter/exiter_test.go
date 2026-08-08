@@ -19,3 +19,24 @@ func TestSeedsFinishedBeforeEmailsComplete(t *testing.T) {
 		t.Fatalf("unexpected progress: %+v", p)
 	}
 }
+
+func TestMapsPlacesFinishedBeforeEmails(t *testing.T) {
+	e := New()
+	e.SetSeedCount(1)
+	e.IncrPlacesFound(2)
+	e.IncrSeedCompleted(1)
+	if e.MapsPlacesFinished() {
+		t.Fatal("maps places not done yet")
+	}
+	e.IncrMapsPlacesDone(1)
+	if e.MapsPlacesFinished() {
+		t.Fatal("only 1/2 maps places done")
+	}
+	e.IncrMapsPlacesDone(1)
+	if !e.MapsPlacesFinished() {
+		t.Fatal("expected maps places finished")
+	}
+	if e.Snapshot().PlacesCompleted != 0 {
+		t.Fatal("emails must still be pending (PlacesCompleted)")
+	}
+}

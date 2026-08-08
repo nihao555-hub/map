@@ -210,7 +210,7 @@ func (j *GmapJob) Process(ctx context.Context, resp *scrapemate.Response) (any, 
 
 	if strings.Contains(resp.URL, "/maps/place/") {
 		if j.claimPlaceURL(ctx, resp.URL) {
-			next = append(next, NewPlaceJob(j.ID, j.LangCode, resp.URL, j.ExtractEmail, j.ExtractExtraReviews, opts...))
+			next = append(next, placeJobForURL(j.ID, j.LangCode, resp.URL, j.ExtractEmail, j.ExtractExtraReviews, opts))
 		}
 	} else {
 		doc.Find(`div[role=feed] div[jsaction]>a`).Each(func(_ int, s *goquery.Selection) {
@@ -223,7 +223,7 @@ func (j *GmapJob) Process(ctx context.Context, resp *scrapemate.Response) (any, 
 				if !j.claimPlaceURL(ctx, href) {
 					return
 				}
-				next = append(next, NewPlaceJob(j.ID, j.LangCode, href, j.ExtractEmail, j.ExtractExtraReviews, opts...))
+				next = append(next, placeJobForURL(j.ID, j.LangCode, href, j.ExtractEmail, j.ExtractExtraReviews, opts))
 			}
 		})
 	}
@@ -343,10 +343,15 @@ func (j *GmapJob) streamFeedPlaces(ctx context.Context, page scrapemate.BrowserP
 		if !j.claimPlaceURL(ctx, hit.Href) {
 			continue
 		}
-		placeJob := NewPlaceJob(j.ID, j.LangCode, hit.Href, j.ExtractEmail, j.ExtractExtraReviews, opts...)
+		placeJob := placeJobForURL(j.ID, j.LangCode, hit.Href, j.ExtractEmail, j.ExtractExtraReviews, opts)
 		// Beat remaining Low-priority grid seeds so free browser workers paint
 		// the first rows instead of starting another Maps list scroll.
-		placeJob.Priority = scrapemate.PriorityHigh
+		if pj, ok := placeJob.(*PlaceJob); ok {
+			pj.Priority = scrapemate.PriorityHigh
+		}
+		if cj, ok := placeJob.(*CachedPlaceJob); ok {
+			cj.Priority = scrapemate.PriorityHigh
+		}
 		if err := push(ctx, placeJob); err != nil {
 			// Release claim so Process can retry this URL later.
 			j.releasePlaceURL(hit.Href)
