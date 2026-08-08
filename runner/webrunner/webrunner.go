@@ -12,11 +12,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gosom/google-maps-scraper/deduper"
 	"github.com/gosom/google-maps-scraper/exiter"
+	"github.com/gosom/google-maps-scraper/gmaps"
 	"github.com/gosom/google-maps-scraper/grid"
+	"github.com/gosom/google-maps-scraper/placecache"
 	"github.com/gosom/google-maps-scraper/runner"
 	"github.com/gosom/google-maps-scraper/tlmt"
 	"github.com/gosom/google-maps-scraper/web"
@@ -45,6 +48,9 @@ func New(cfg *runner.Config) (runner.Runner, error) {
 
 	if err := os.MkdirAll(cfg.DataFolder, os.ModePerm); err != nil {
 		return nil, err
+	}
+	if err := placecache.Init(cfg.DataFolder); err != nil {
+		log.Printf("placecache init: %v (continuing without cross-job cache)", err)
 	}
 
 	const dbfname = "jobs.db"
@@ -166,7 +172,17 @@ func (w *webrunner) work(ctx context.Context) error {
 				log.Printf("claimed job %s name=%q (active=%d/%d fair-admission wall=%s)",
 					j.ID, j.Name, web.ActiveDeepJobs(), slots, wall)
 				eg.Go(func() error {
-					defer web.EndDeepJob()
+					// Release admit as soon as Maps PlaceJobs finish (emails may
+					// still run). Once prevents double-free with the defer.
+					var admitOnce sync.Once
+					releaseAdmit := func(reason string) {
+						admitOnce.Do(func() {
+							web.EndDeepJob()
+							log.Printf("job %s: released admit slot early (%s); active=%d/%d",
+								j.ID, reason, web.ActiveDeepJobs(), web.AdaptiveJobConcurrency())
+						})
+					}
+					defer releaseAdmit("scrape goroutine exit")
 
 					t0 := time.Now().UTC()
 					jobCtx, cancel := context.WithTimeout(ctx, wall)
@@ -176,7 +192,7 @@ func (w *webrunner) work(ctx context.Context) error {
 
 					done := make(chan error, 1)
 					go func() {
-						done <- w.scrapeJob(jobCtx, &j)
+						done <- w.scrapeJob(jobCtx, &j, releaseAdmit)
 					}()
 
 					var err error
@@ -211,9 +227,12 @@ func (w *webrunner) work(ctx context.Context) error {
 	}
 }
 
-func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
+func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job, releaseAdmit func(string)) error {
 	// ctx already carries the wall-clock timeout + cancel registered by work().
 	jobCtx := ctx
+	if releaseAdmit == nil {
+		releaseAdmit = func(string) {}
+	}
 	// Also covers old queued jobs created before email enrichment became mandatory.
 	job.Data.Email = true
 
@@ -445,6 +464,14 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 					exitMonitor,
 				)
 			} else {
+				var filterOpts []gmaps.GmapJobOptions
+				if alat, aerr := strconv.ParseFloat(job.Data.Lat, 64); aerr == nil {
+					if alon, aerr2 := strconv.ParseFloat(job.Data.Lon, 64); aerr2 == nil && job.Data.Radius > 0 {
+						filterOpts = append(filterOpts, gmaps.WithGmapJobFilter(
+							job.Data.Keywords, alat, alon, float64(job.Data.Radius),
+						))
+					}
+				}
 				seedJobs, err = runner.CreateGridSeedJobs(
 					job.Data.Lang,
 					strings.NewReader(strings.Join(job.Data.Keywords, "\n")),
@@ -456,6 +483,7 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 					dedup,
 					exitMonitor,
 					w.cfg.ExtraReviews || job.Data.ExtraReviews,
+					filterOpts...,
 				)
 			}
 			if err != nil {
@@ -565,7 +593,11 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		// Promote StatusOK (+ start intel) as soon as Maps seeds finish, even while
 		// website-email enrichment still runs. Flat place counts with status=working
 		// confused users into thinking the job was stuck.
-		go w.watchScrapePhaseComplete(mateCtx, job.ID, exitMonitor)
+		go w.watchScrapePhaseComplete(mateCtx, job.ID, exitMonitor, releaseAdmit)
+
+		// Free fair-admission as soon as Playwright PlaceJobs finish — emails keep
+		// running on the HTTP pool without blocking the next deep job.
+		go w.watchAdmitRelease(mateCtx, job.ID, exitMonitor, releaseAdmit)
 
 		// Progress stall: a hung Chromium can keep heartbeats alive while writing
 		// zero new rows — free the admit slot so pending users are not blocked.
@@ -675,10 +707,76 @@ func (w *webrunner) watchProgressStall(ctx context.Context, cancel context.Cance
 	}
 }
 
+// watchAdmitRelease frees the deep-job admit slot once Maps PlaceJobs finish
+// (seeds done + every discovered place processed). Email enrichment may continue.
+// Fallback: StatusOK + CSV plateau also releases, so a stuck place counter cannot
+// pin the admit slot until the whole email phase ends.
+func (w *webrunner) watchAdmitRelease(ctx context.Context, jobID string, mon exiter.Exiter, release func(string)) {
+	if release == nil {
+		return
+	}
+	if mon != nil && mon.MapsPlacesFinished() {
+		release("maps places finished")
+		return
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if mon != nil {
+			_ = exiter.WaitMapsPlacesFinished(ctx, mon)
+		} else {
+			<-ctx.Done()
+		}
+	}()
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	lastN := -1
+	lastChange := time.Now()
+	okSince := time.Time{}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+			if mon != nil && mon.MapsPlacesFinished() {
+				release("maps places finished")
+			}
+			return
+		case <-ticker.C:
+			if mon != nil && mon.MapsPlacesFinished() {
+				release("maps places finished")
+				return
+			}
+			job, err := w.svc.Get(context.Background(), jobID)
+			if err != nil {
+				continue
+			}
+			n := w.svc.CountCSVDataRows(jobID)
+			if n != lastN {
+				lastN = n
+				lastChange = time.Now()
+			}
+			if job.Status == web.StatusOK {
+				if okSince.IsZero() {
+					okSince = time.Now()
+				}
+				// Results already exposed + no new rows for 2m → free slot for queue.
+				if n > 0 && time.Since(lastChange) >= 2*time.Minute && time.Since(okSince) >= 2*time.Minute {
+					release("status=ok csv plateau")
+					return
+				}
+			}
+		}
+	}
+}
+
 // watchScrapePhaseComplete marks the job ok (+ starts intel) when all Maps seeds
 // finish, or when the visible place count plateaus while seeds are nearly done.
 // Email website fetches may still be in flight; StatusOK means "results ready".
-func (w *webrunner) watchScrapePhaseComplete(ctx context.Context, jobID string, mon exiter.Exiter) {
+func (w *webrunner) watchScrapePhaseComplete(ctx context.Context, jobID string, mon exiter.Exiter, releaseAdmit func(string)) {
 	ticker := time.NewTicker(8 * time.Second)
 	defer ticker.Stop()
 
@@ -693,7 +791,7 @@ func (w *webrunner) watchScrapePhaseComplete(ctx context.Context, jobID string, 
 	lastChange := time.Now()
 	marked := false
 
-	tryMark := func(reason string) {
+	tryMark := func(reason string, plateau bool) {
 		if marked {
 			return
 		}
@@ -705,6 +803,11 @@ func (w *webrunner) watchScrapePhaseComplete(ctx context.Context, jobID string, 
 		if ok {
 			marked = true
 			log.Printf("job %s: %s → status=ok (intel if enabled); email enrichment may continue", jobID, reason)
+			// Plateau: results are good enough — free admit without waiting for
+			// empty outer grid cells. Full seed completion still uses MapsPlacesFinished.
+			if plateau && releaseAdmit != nil {
+				releaseAdmit("place count plateau")
+			}
 		} else {
 			// Already ok/canceled/failed
 			marked = true
@@ -720,7 +823,17 @@ func (w *webrunner) watchScrapePhaseComplete(ctx context.Context, jobID string, 
 				return
 			}
 			if mon.SeedsFinished() {
-				tryMark("maps seeds finished")
+				// Avoid flashing status=ok with an empty table while streamed
+				// PlaceJobs are still draining on browser workers.
+				prog := mon.Snapshot()
+				n := 0
+				if cnt, err := w.svc.CountPlacesCached(context.Background(), jobID); err == nil {
+					n = cnt
+				}
+				if n == 0 && prog.PlacesFound > 0 && prog.PlacesCompleted < prog.PlacesFound {
+					continue
+				}
+				tryMark("maps seeds finished", false)
 				return
 			}
 
@@ -741,7 +854,7 @@ func (w *webrunner) watchScrapePhaseComplete(ctx context.Context, jobID string, 
 				time.Since(lastChange) >= plateauIdle
 
 			if seedsNearDone && plateau {
-				tryMark(fmt.Sprintf("place count plateau at %d with seeds %d/%d", n, prog.SeedCompleted, prog.SeedCount))
+				tryMark(fmt.Sprintf("place count plateau at %d with seeds %d/%d", n, prog.SeedCompleted, prog.SeedCount), true)
 				return
 			}
 		}
@@ -752,10 +865,12 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 	return func(_ context.Context, writer io.Writer, job *web.Job) (mateRunner, error) {
 		// Fair admission: each job keeps a FIXED deep worker budget (does not dilute under load).
 		jobConc := web.ReservedPerJobConcurrency(cfg.Concurrency, job.Data.FastMode)
-		log.Printf("job %s scrapemate concurrency=%d (reserved, fair-admission active=%d/%d availMemMB=%d)",
-			job.ID, jobConc, web.ActiveDeepJobs(), web.AdaptiveJobConcurrency(), web.AvailableMemoryMB())
+		httpConc := web.ReservedHTTPConcurrency(job.Data.FastMode)
+		log.Printf("job %s scrapemate concurrency=%d httpWorkers=%d (reserved, fair-admission active=%d/%d availMemMB=%d)",
+			job.ID, jobConc, httpConc, web.ActiveDeepJobs(), web.AdaptiveJobConcurrency(), web.AvailableMemoryMB())
 		opts := []func(*scrapemateapp.Config) error{
 			scrapemateapp.WithConcurrency(jobConc),
+			scrapemateapp.WithHTTPConcurrency(httpConc),
 		}
 		// 快速：HTTP 搜索，空闲可短收尾；深度：浏览器冷启动+滚动常 >45s，过短会误杀整单。
 		if job.Data.FastMode {

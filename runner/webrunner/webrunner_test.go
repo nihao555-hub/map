@@ -57,7 +57,7 @@ func TestScrapeJobMarksOKBeforeClosingMate(t *testing.T) {
 		},
 	}
 
-	if err := w.scrapeJob(context.Background(), &job); err != nil {
+	if err := w.scrapeJob(context.Background(), &job, nil); err != nil {
 		t.Fatalf("scrape job: %v", err)
 	}
 }

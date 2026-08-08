@@ -71,12 +71,31 @@ func (app *ScrapemateApp) Start(ctx context.Context, seedJobs ...scrapemate.IJob
 	})
 
 	g.Go(func() error {
-		for i := range seedJobs {
-			if err := app.provider.Push(ctx, seedJobs[i]); err != nil {
+		if len(seedJobs) == 0 {
+			return nil
+		}
+		// TTFP: start a single Maps seed first so one browser worker stays free
+		// to run PlaceJobs streamed from the first feed screen. Remaining grid
+		// seeds join shortly after (or immediately when only one seed exists).
+		if err := app.provider.Push(ctx, seedJobs[0]); err != nil {
+			return err
+		}
+		rest := seedJobs[1:]
+		if len(rest) == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		// Keep a browser worker free through typical first-feed load (often
+		// 8–35s via proxy) so streamed PlaceJobs can paint before more seeds.
+		case <-time.After(40 * time.Second):
+		}
+		for i := range rest {
+			if err := app.provider.Push(ctx, rest[i]); err != nil {
 				return err
 			}
 		}
-
 		return nil
 	})
 
@@ -116,6 +135,7 @@ func (app *ScrapemateApp) getMate(ctx context.Context) (*scrapemate.ScrapeMate, 
 		scrapemate.WithHTTPFetcher(fetcherInstance),
 		scrapemate.WithHTMLParser(parser.New()),
 		scrapemate.WithConcurrency(app.cfg.Concurrency),
+		scrapemate.WithHTTPConcurrency(app.cfg.HTTPConcurrency),
 		scrapemate.WithExitBecauseOfInactivity(app.cfg.ExitOnInactivityDuration),
 	}
 
