@@ -44,12 +44,19 @@ var jobTitleKeywords = append(append([]string{},
 	}, managementTitles...)...,
 )
 
-// namePattern matches 2-4 capitalized words, allowing internal apostrophes and
-// hyphens, which covers most Latin-script personal names.
-const namePattern = `[A-Z][\p{L}'’\-]{1,20}(?:\s+(?:van|von|de|del|della|da|di|dos|der|den|ter|bin|binte|al|el|la|le)\.?)?(?:\s+[A-Z][\p{L}'’\-\.]{1,20}){1,3}`
+// namePattern matches 2-4 capitalized words, allowing internal apostrophes,
+// hyphens, nobiliary particles and middle initials, which covers most
+// Latin-script personal names. A period is only allowed as part of an initial
+// ("John A. Smith"), never at the end of a word, so a name cannot swallow the
+// start of the next sentence.
+const namePattern = `[A-Z][\p{L}'’\-]{1,20}` +
+	`(?:\s+(?:van|von|de|del|della|da|di|dos|der|den|ter|bin|binte|al|el|la|le)\.?)?` +
+	`(?:\s+(?:[A-Z]\.|[A-Z][\p{L}'’\-]{1,20})){1,3}`
 
-// titlePattern matches a job title: words, spaces and a few connectors.
-const titlePattern = `[\p{L}][\p{L}\s&/\-'’,\.]{2,60}`
+// titlePattern matches a job title: words, spaces and a few connectors. A
+// period is deliberately excluded so a match cannot run across a sentence
+// boundary and glue two people's titles together.
+const titlePattern = `[\p{L}][\p{L}\s&/\-'’,]{2,60}`
 
 // peoplePatterns extract "name then title" and "title then name" layouts. Team
 // pages, email signatures and Impressum blocks all reduce to one of these.

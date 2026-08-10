@@ -8,20 +8,26 @@ import (
 )
 
 // roleLocalParts are department mailboxes worth contacting directly. Ordered
-// by how close the department sits to a purchasing decision.
+// by how close the department sits to a purchasing decision. Includes common
+// non-English department names (vertrieb, einkauf, ventes, …) because the
+// target companies are typically not English-first.
 var roleLocalParts = []string{
 	"purchasing", "purchase", "procurement", "buyer", "buying", "sourcing",
 	"sales", "export", "import", "trade", "commercial", "business",
 	"bd", "partner", "partnership", "wholesale", "oem", "odm",
 	"ceo", "owner", "director", "manager", "gm",
 	"marketing", "pr", "press", "media",
+	"vertrieb", "verkauf", "einkauf", "beschaffung",
+	"ventes", "achat", "achats", "commercio", "vendite",
+	"ventas", "compras", "vendas",
 }
 
-// genericLocalParts reach a human but not a specific one.
+// genericLocalParts reach a human but not a specific one. "post@" is the
+// Nordic/German equivalent of "mail@" and must not be treated as a person.
 var genericLocalParts = []string{
 	"info", "contact", "hello", "hi", "enquiry", "enquiries", "inquiry",
 	"inquiries", "office", "mail", "email", "general", "reception", "admin",
-	"kontakt", "contacto", "contatto", "correo", "iletisim",
+	"post", "kontakt", "contacto", "contatto", "correo", "iletisim",
 }
 
 // supportLocalParts are unlikely to reach a buyer and should rank last.
@@ -33,16 +39,15 @@ var supportLocalParts = []string{
 	"accounting", "jobs", "career", "careers", "hr", "recruitment",
 }
 
-// junkEmailDomains belong to tooling, placeholders and site builders rather
-// than to the company being researched.
+// junkEmailDomains belong to tooling, documentation placeholders and site
+// builders rather than to the company being researched. Only domains that are
+// reserved (RFC 2606) or that no company would publish as a contact address
+// belong here — a real business could plausibly own anything else.
 var junkEmailDomains = []string{
-	"example.com", "example.org", "example.net", "domain.com", "email.com",
-	"yourdomain.com", "yoursite.com", "sentry.io", "sentry-cdn.com",
-	"wixpress.com", "wix.com", "squarespace.com", "godaddy.com",
-	"shopify.com", "myshopify.com", "cloudflare.com", "w3.org",
-	"schema.org", "googlemail.local", "test.com", "acme.com",
-	"company.com", "mysite.com", "site.com", "website.com",
-	"sentry.wixpress.com",
+	"example.com", "example.org", "example.net", "example.edu",
+	"domain.com", "yourdomain.com", "yoursite.com", "mydomain.com",
+	"mysite.com", "sentry.io", "sentry-cdn.com", "sentry.wixpress.com",
+	"wixpress.com", "myshopify.com", "w3.org", "schema.org",
 }
 
 // junkLocalParts show up in tracking pixels, CSS sprites and code samples.

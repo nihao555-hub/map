@@ -154,6 +154,7 @@ func (d *dbrunner) produceSeedJobs(ctx context.Context) error {
 		nil,
 		nil,
 		d.cfg.ExtraReviews,
+		d.seedOpts()...,
 	)
 	if err != nil {
 		return err
@@ -170,6 +171,14 @@ func (d *dbrunner) produceSeedJobs(ctx context.Context) error {
 	}))
 
 	return nil
+}
+
+func (d *dbrunner) seedOpts() []runner.SeedOption {
+	if !d.cfg.CompanyResearch {
+		return nil
+	}
+
+	return []runner.SeedOption{runner.WithSeedCompanyResearch(d.cfg.CompanyResearchPages)}
 }
 
 func openPsqlConn(dsn string) (conn *sql.DB, err error) {

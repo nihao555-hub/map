@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/net/html"
 )
 
 // Page is one already-fetched company web page.
@@ -77,13 +78,47 @@ func AnalyzePage(page Page, companyDomain string) *CompanyProfile {
 	return profile
 }
 
-// VisibleText returns the human-readable text of a document with scripts,
-// styles and template noise removed, collapsed to single spaces.
-func VisibleText(doc *goquery.Document) string {
-	clone := goquery.NewDocumentFromNode(doc.Get(0))
-	clone.Find("script,style,noscript,template,svg,iframe").Remove()
+// nonTextElements hold markup rather than prose. Their contents would
+// otherwise pollute every text-based signal with CSS and JavaScript.
+var nonTextElements = map[string]bool{
+	"script": true, "style": true, "noscript": true, "template": true,
+	"svg": true, "iframe": true, "head": true,
+}
 
-	return strings.Join(strings.Fields(clone.Text()), " ")
+// VisibleText returns the human-readable text of a document with scripts,
+// styles and template noise skipped, collapsed to single spaces.
+//
+// The document is walked rather than filtered in place: goquery selections
+// share nodes with their source document, so removing elements here would
+// also strip them from the document the caller still needs (the JSON-LD
+// blocks, for instance, live in <script> tags).
+func VisibleText(doc *goquery.Document) string {
+	var builder strings.Builder
+
+	for _, node := range doc.Nodes {
+		writeVisibleText(&builder, node)
+	}
+
+	return strings.Join(strings.Fields(builder.String()), " ")
+}
+
+func writeVisibleText(builder *strings.Builder, node *html.Node) {
+	if node.Type == html.ElementNode && nonTextElements[node.Data] {
+		return
+	}
+
+	if node.Type == html.TextNode {
+		builder.WriteString(node.Data)
+		// Separate adjacent inline elements so "Klaus</b><span>CEO" does not
+		// come out as one word.
+		builder.WriteByte(' ')
+
+		return
+	}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		writeVisibleText(builder, child)
+	}
 }
 
 // DetectLanguages lists the locales a site publishes in, using hreflang

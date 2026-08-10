@@ -94,7 +94,13 @@ type ScrapeJobArgs struct {
 	Radius         float64 `json:"radius"`
 	FastMode       bool    `json:"fast_mode"`
 	ExtraReviews   bool    `json:"extra_reviews"`
-	TimeoutSecs    int     `json:"timeout"` // timeout in seconds
+	// CompanyResearch enables the background-research crawl of each business
+	// website (role emails, decision makers, socials, registration IDs).
+	CompanyResearch bool `json:"company_research"`
+	// CompanyResearchPages caps how many pages of each company site are
+	// fetched, homepage included. Zero uses the job default.
+	CompanyResearchPages int `json:"company_research_pages"`
+	TimeoutSecs          int `json:"timeout"` // timeout in seconds
 }
 
 func (ScrapeJobArgs) Kind() string {
@@ -190,10 +196,19 @@ func (w *ScrapeWorker) Work(ctx context.Context, job *river.Job[ScrapeJobArgs]) 
 			}
 		}
 
-		searchJob := gmaps.NewSearchJob(params,
+		searchOpts := []gmaps.SearchJobOptions{
 			gmaps.WithSearchJobExitMonitor(exitMon),
 			gmaps.WithSearchJobWriterManagedCompletion(),
-		)
+		}
+
+		switch {
+		case args.CompanyResearch:
+			searchOpts = append(searchOpts, gmaps.WithSearchJobCompanyResearch(args.CompanyResearchPages))
+		case args.Email:
+			searchOpts = append(searchOpts, gmaps.WithSearchJobEmail())
+		}
+
+		searchJob := gmaps.NewSearchJob(params, searchOpts...)
 		searchJob.ID = jobID
 
 		scrapeJob = searchJob
@@ -212,12 +227,16 @@ func (w *ScrapeWorker) Work(ctx context.Context, job *river.Job[ScrapeJobArgs]) 
 			opts = append(opts, gmaps.WithExtraReviews())
 		}
 
+		if args.CompanyResearch {
+			opts = append(opts, gmaps.WithCompanyResearch(args.CompanyResearchPages))
+		}
+
 		scrapeJob = gmaps.NewGmapJob(
 			jobID,
 			args.Lang,
 			args.Keyword,
 			maxDepth,
-			args.Email,
+			args.Email || args.CompanyResearch,
 			args.GeoCoordinates,
 			args.Zoom,
 			opts...,

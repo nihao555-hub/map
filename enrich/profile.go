@@ -168,6 +168,8 @@ func (p *CompanyProfile) Merge(other *CompanyProfile) {
 // Finalize sorts the ranked lists, trims them to sane sizes and computes the
 // completeness score. Call it once after the last Merge.
 func (p *CompanyProfile) Finalize() {
+	p.reconcileDomain()
+
 	sortEmails(p.Emails)
 	sortPeople(p.People)
 	sort.Slice(p.Socials, func(i, j int) bool {
@@ -189,6 +191,85 @@ func (p *CompanyProfile) Finalize() {
 	}
 
 	p.Completeness = p.score()
+}
+
+// reconcileDomain makes sure OnDomain is meaningful even when the crawl landed
+// on an IP, a CDN host or a locale subdomain that does not match the addresses
+// published on the page. Prefer the already-known Domain when it matches any
+// address; otherwise adopt the most common email domain on the site.
+func (p *CompanyProfile) reconcileDomain() {
+	if len(p.Emails) == 0 {
+		return
+	}
+
+	if p.Domain != "" && p.anyEmailOnDomain(p.Domain) {
+		p.reflagOnDomain(p.Domain)
+
+		return
+	}
+
+	if inferred := mostCommonEmailDomain(p.Emails); inferred != "" {
+		p.Domain = inferred
+		p.reflagOnDomain(inferred)
+	}
+}
+
+func (p *CompanyProfile) anyEmailOnDomain(domain string) bool {
+	for i := range p.Emails {
+		_, host, ok := strings.Cut(p.Emails[i].Address, "@")
+		if ok && sameRegistrableDomain(host, domain) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (p *CompanyProfile) reflagOnDomain(domain string) {
+	for i := range p.Emails {
+		_, host, ok := strings.Cut(p.Emails[i].Address, "@")
+		p.Emails[i].OnDomain = ok && sameRegistrableDomain(host, domain)
+	}
+}
+
+// freeEmailDomains are consumer mailbox providers. An address there is never
+// evidence of the company's own domain.
+var freeEmailDomains = map[string]bool{
+	"gmail.com": true, "googlemail.com": true, "yahoo.com": true,
+	"yahoo.co.uk": true, "hotmail.com": true, "outlook.com": true,
+	"live.com": true, "msn.com": true, "icloud.com": true, "me.com": true,
+	"aol.com": true, "proton.me": true, "protonmail.com": true,
+	"gmx.com": true, "gmx.de": true, "web.de": true, "mail.com": true,
+	"qq.com": true, "163.com": true, "126.com": true, "sina.com": true,
+	"yandex.com": true, "yandex.ru": true,
+}
+
+func mostCommonEmailDomain(emails []Email) string {
+	counts := make(map[string]int, len(emails))
+
+	for i := range emails {
+		_, host, ok := strings.Cut(emails[i].Address, "@")
+		if !ok {
+			continue
+		}
+
+		domain := RegistrableDomain(host)
+		if domain == "" || freeEmailDomains[domain] {
+			continue
+		}
+
+		counts[domain]++
+	}
+
+	best, bestCount := "", 0
+
+	for domain, count := range counts {
+		if count > bestCount || (count == bestCount && domain < best) {
+			best, bestCount = domain, count
+		}
+	}
+
+	return best
 }
 
 // Limits keep a single profile from ballooning a CSV cell while still holding
