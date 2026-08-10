@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gosom/google-maps-scraper/csvout"
 	"github.com/gosom/google-maps-scraper/deduper"
 	"github.com/gosom/google-maps-scraper/exiter"
+	"github.com/gosom/google-maps-scraper/gmaps"
 	"github.com/gosom/google-maps-scraper/grid"
 	"github.com/gosom/google-maps-scraper/leadsdb"
 	"github.com/gosom/google-maps-scraper/runner"
@@ -77,6 +79,16 @@ func (r *fileRunner) Run(ctx context.Context) (err error) {
 	dedup := deduper.New()
 	exitMonitor := exiter.New()
 
+	var seedOpts []runner.SeedOption
+
+	if r.cfg.CompanyResearch {
+		seedOpts = append(seedOpts, runner.WithSeedCompanyResearch(r.cfg.CompanyResearchPages))
+	}
+
+	if enricher := runner.NewResearchEnricher(r.cfg); enricher != nil {
+		seedOpts = append(seedOpts, runner.WithSeedEnricher(enricher))
+	}
+
 	if r.cfg.GridBBox != "" {
 		if r.cfg.FastMode {
 			return fmt.Errorf("-fast-mode cannot be used together with -grid-bbox")
@@ -101,6 +113,7 @@ func (r *fileRunner) Run(ctx context.Context) (err error) {
 			dedup,
 			exitMonitor,
 			r.cfg.ExtraReviews,
+			seedOpts...,
 		)
 	} else {
 		seedJobs, err = runner.CreateSeedJobs(
@@ -115,6 +128,7 @@ func (r *fileRunner) Run(ctx context.Context) (err error) {
 			dedup,
 			exitMonitor,
 			r.cfg.ExtraReviews,
+			seedOpts...,
 		)
 	}
 
@@ -205,12 +219,18 @@ func (r *fileRunner) setWriters() error {
 			resultsWriter = r.outfile
 		}
 
-		csvWriter := csvwriter.NewCsvWriter(csv.NewWriter(resultsWriter))
-
-		if r.cfg.JSON {
+		switch {
+		case r.cfg.JSON:
 			r.writers = append(r.writers, jsonwriter.NewJSONWriter(resultsWriter))
-		} else {
-			r.writers = append(r.writers, csvWriter)
+		case r.cfg.CompanyResearch:
+			// Background research adds columns, so the research-aware writer
+			// replaces the plain one only when research is actually enabled.
+			r.writers = append(r.writers, csvout.New(
+				csv.NewWriter(resultsWriter),
+				csvout.WithResearchColumns(gmaps.ResearchCsvHeaders()),
+			))
+		default:
+			r.writers = append(r.writers, csvwriter.NewCsvWriter(csv.NewWriter(resultsWriter)))
 		}
 	}
 

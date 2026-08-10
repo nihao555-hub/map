@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gosom/google-maps-scraper/enrich/intel"
 	"github.com/gosom/google-maps-scraper/exiter"
 	"github.com/gosom/google-maps-scraper/gmaps"
 	"github.com/gosom/google-maps-scraper/scraper"
@@ -94,7 +95,13 @@ type ScrapeJobArgs struct {
 	Radius         float64 `json:"radius"`
 	FastMode       bool    `json:"fast_mode"`
 	ExtraReviews   bool    `json:"extra_reviews"`
-	TimeoutSecs    int     `json:"timeout"` // timeout in seconds
+	// CompanyResearch enables the background-research crawl of each business
+	// website (role emails, decision makers, socials, registration IDs).
+	CompanyResearch bool `json:"company_research"`
+	// CompanyResearchPages caps how many pages of each company site are
+	// fetched, homepage included. Zero uses the job default.
+	CompanyResearchPages int `json:"company_research_pages"`
+	TimeoutSecs          int `json:"timeout"` // timeout in seconds
 }
 
 func (ScrapeJobArgs) Kind() string {
@@ -190,10 +197,23 @@ func (w *ScrapeWorker) Work(ctx context.Context, job *river.Job[ScrapeJobArgs]) 
 			}
 		}
 
-		searchJob := gmaps.NewSearchJob(params,
+		searchOpts := []gmaps.SearchJobOptions{
 			gmaps.WithSearchJobExitMonitor(exitMon),
 			gmaps.WithSearchJobWriterManagedCompletion(),
-		)
+		}
+
+		switch {
+		case args.CompanyResearch:
+			searchOpts = append(searchOpts, gmaps.WithSearchJobCompanyResearch(args.CompanyResearchPages))
+		case args.Email:
+			searchOpts = append(searchOpts, gmaps.WithSearchJobEmail())
+		}
+
+		if enricher := researchEnricherFromArgs(args); enricher != nil {
+			searchOpts = append(searchOpts, gmaps.WithSearchJobEnricher(enricher))
+		}
+
+		searchJob := gmaps.NewSearchJob(params, searchOpts...)
 		searchJob.ID = jobID
 
 		scrapeJob = searchJob
@@ -212,12 +232,20 @@ func (w *ScrapeWorker) Work(ctx context.Context, job *river.Job[ScrapeJobArgs]) 
 			opts = append(opts, gmaps.WithExtraReviews())
 		}
 
+		if args.CompanyResearch {
+			opts = append(opts, gmaps.WithCompanyResearch(args.CompanyResearchPages))
+		}
+
+		if enricher := researchEnricherFromArgs(args); enricher != nil {
+			opts = append(opts, gmaps.WithCompanyResearchEnricher(enricher))
+		}
+
 		scrapeJob = gmaps.NewGmapJob(
 			jobID,
 			args.Lang,
 			args.Keyword,
 			maxDepth,
-			args.Email,
+			args.Email || args.CompanyResearch,
 			args.GeoCoordinates,
 			args.Zoom,
 			opts...,
@@ -377,6 +405,23 @@ func effectiveScrapeTimeout(timeoutSecs int) time.Duration {
 }
 
 // parseGeoCoordinates parses a "lat,lon" string into separate float64 values.
+func researchEnricherFromArgs(args ScrapeJobArgs) *intel.Enricher {
+	if !args.CompanyResearch {
+		return nil
+	}
+
+	opts := intel.DefaultOptions()
+	opts.Crawl4AIURL = os.Getenv("CRAWL4AI_URL")
+	opts.ResearcherURL = os.Getenv("RESEARCHER_URL")
+	opts.SpiderFootURL = os.Getenv("SPIDERFOOT_URL")
+	opts.EnableSMTP = os.Getenv("EMAIL_SMTP_VERIFY") == "1"
+	if region := os.Getenv("PHONE_REGION"); region != "" {
+		opts.DefaultRegion = region
+	}
+
+	return intel.New(opts)
+}
+
 func parseGeoCoordinates(coords string) (lat, lon float64) {
 	parts := strings.Split(coords, ",")
 	if len(parts) != 2 {

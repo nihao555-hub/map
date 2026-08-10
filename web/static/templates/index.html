@@ -190,6 +190,22 @@
                     <div class="toggle-switch on" id="email-toggle" onclick="toggleSwitch(this, 'email')"></div>
                   </div>
 
+                  <!-- 官网背调（邮箱验证 / 技术栈 / WHOIS / GLEIF 等） -->
+                  <div class="switch-row">
+                    <span class="switch-label"><i data-lucide="building-2" class="w-4 h-4"></i>官网背调</span>
+                    <input type="checkbox" id="company_research" name="company_research" class="hidden">
+                    <div class="toggle-switch" id="company-research-toggle" onclick="toggleCompanyResearch(this)"></div>
+                  </div>
+                  <div id="company-research-pages-row" class="hidden">
+                    <label class="field-label-sm" for="company_research_pages">背调页数上限</label>
+                    <select id="company_research_pages" name="company_research_pages" class="select-field">
+                      <option value="2">2 页（快）</option>
+                      <option value="4" selected>4 页（推荐）</option>
+                      <option value="6">6 页（更全）</option>
+                      <option value="8">8 页（最慢）</option>
+                    </select>
+                  </div>
+
                   <!-- 语言 -->
                   <div>
                     <label class="field-label-sm" for="lang">语言</label>
@@ -334,7 +350,12 @@
         ['timezone', '时区', true], ['complete_address', '完整地址', false],
         ['credit_cards_accepted', '信用卡支付', false], ['reservations', '预约方式', false],
         ['order_online', '在线下单', false], ['street_view_url', '街景', false],
-        ['data_id', '数据ID', false]
+        ['data_id', '数据ID', false],
+        ['best_email', '最佳邮箱', false], ['role_emails', '角色邮箱', false],
+        ['contact_people', '联系人', false], ['linkedin', 'LinkedIn', false],
+        ['tech_stack', '技术栈', false], ['mail_provider', '企业邮', false],
+        ['domain_age_days', '域名年龄', false], ['lei', 'LEI', false],
+        ['legal_entity', '法人实体', false], ['ultimate_parent', '最终母公司', false]
       ];
       var ESSENTIAL_COLUMN_KEYS = ['address', 'phone', 'emails', 'website', 'review_rating', 'review_count', 'category'];
 
@@ -422,6 +443,21 @@
         el.classList.toggle('on');
         const input = document.getElementById(inputId);
         if (input) input.checked = el.classList.contains('on');
+      }
+
+      function toggleCompanyResearch(el) {
+        toggleSwitch(el, 'company_research');
+        var on = el.classList.contains('on');
+        document.getElementById('company-research-pages-row').classList.toggle('hidden', !on);
+        if (on) {
+          // 背调隐含抓邮箱
+          var emailToggle = document.getElementById('email-toggle');
+          var emailInput = document.getElementById('email');
+          if (emailToggle && !emailToggle.classList.contains('on')) {
+            emailToggle.classList.add('on');
+            if (emailInput) emailInput.checked = true;
+          }
+        }
       }
 
       // 提交前组装任务名称 + 自动推断语言

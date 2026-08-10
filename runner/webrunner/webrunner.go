@@ -192,6 +192,24 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 	var seedJobs []scrapemate.IJob
 
+	var seedOpts []runner.SeedOption
+
+	if companyResearchEnabled(w.cfg, job) {
+		seedOpts = append(seedOpts, runner.WithSeedCompanyResearch(companyResearchPages(w.cfg, job)))
+	}
+
+	if enricher := runner.NewResearchEnricher(w.cfg); enricher != nil {
+		seedOpts = append(seedOpts, runner.WithSeedEnricher(enricher))
+	} else if companyResearchEnabled(w.cfg, job) {
+		// Job opted in even when the process-wide flag is off: still run the
+		// default in-process intel providers.
+		cfgCopy := *w.cfg
+		cfgCopy.CompanyResearch = true
+		if enricher := runner.NewResearchEnricher(&cfgCopy); enricher != nil {
+			seedOpts = append(seedOpts, runner.WithSeedEnricher(enricher))
+		}
+	}
+
 	// 网格全量模式
 	if job.Data.GridMode {
 		var bbox grid.BoundingBox
@@ -257,6 +275,7 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 					job.Data.Zoom,
 					dedup,
 					exitMonitor,
+					seedOpts...,
 				)
 			} else {
 				seedJobs, err = runner.CreateGridSeedJobs(
@@ -270,6 +289,7 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 					dedup,
 					exitMonitor,
 					w.cfg.ExtraReviews || job.Data.ExtraReviews,
+					seedOpts...,
 				)
 			}
 			if err != nil {
@@ -305,6 +325,7 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 			dedup,
 			exitMonitor,
 			w.cfg.ExtraReviews || job.Data.ExtraReviews,
+			seedOpts...,
 		)
 		if err != nil {
 			err2 := w.svc.Update(ctx, job)
@@ -368,6 +389,22 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 	return w.svc.Update(ctx, job)
 }
 
+// companyResearchEnabled reports whether background research should run: the
+// server may enable it globally, and a job may opt in per run.
+func companyResearchEnabled(cfg *runner.Config, job *web.Job) bool {
+	return cfg.CompanyResearch || job.Data.CompanyResearch
+}
+
+// companyResearchPages resolves the per-site page budget, preferring the job's
+// value and falling back to the server default.
+func companyResearchPages(cfg *runner.Config, job *web.Job) int {
+	if job.Data.CompanyResearchPages > 0 {
+		return job.Data.CompanyResearchPages
+	}
+
+	return cfg.CompanyResearchPages
+}
+
 func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.Job) (mateRunner, error) {
 	return func(_ context.Context, writer io.Writer, job *web.Job) (mateRunner, error) {
 		// 提速：并发 = 配置的并发数；页面复用从 2 提到 20，浏览器复用从 200 提到 1000
@@ -421,7 +458,12 @@ func defaultSetupMate(cfg *runner.Config) func(context.Context, io.Writer, *web.
 		log.Printf("job %s has proxy: %v", job.ID, hasProxy)
 
 		// 按任务配置过滤输出列：快速=必要列，深度=用户自选列（内部列强制保留）
-		csvWriter := newColumnWriter(csv.NewWriter(writer), job.Data.FastMode, job.Data.Columns)
+		csvWriter := newColumnWriter(
+			csv.NewWriter(writer),
+			job.Data.FastMode,
+			job.Data.Columns,
+			companyResearchEnabled(cfg, job),
+		)
 
 		writers := []scrapemate.ResultWriter{csvWriter}
 

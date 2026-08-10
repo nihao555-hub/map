@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gosom/google-maps-scraper/deduper"
+	"github.com/gosom/google-maps-scraper/enrich/intel"
 	"github.com/gosom/google-maps-scraper/exiter"
 	"github.com/gosom/scrapemate"
 )
@@ -39,6 +40,7 @@ type SearchJob struct {
 	WriterManagedCompletion bool
 	Deduper                 deduper.Deduper
 	ExtractEmail            bool
+	Research                ResearchOptions
 }
 
 func NewSearchJob(params *MapSearchParams, opts ...SearchJobOptions) *SearchJob {
@@ -89,6 +91,26 @@ func WithSearchJobDeduper(d deduper.Deduper) SearchJobOptions {
 func WithSearchJobEmail() SearchJobOptions {
 	return func(j *SearchJob) {
 		j.ExtractEmail = true
+	}
+}
+
+// WithSearchJobCompanyResearch replaces email-only extraction with a full
+// background-research crawl of each business website.
+func WithSearchJobCompanyResearch(maxPages int) SearchJobOptions {
+	return func(j *SearchJob) {
+		j.Research = ResearchOptions{Enabled: true, MaxPages: maxPages}
+		j.ExtractEmail = true
+	}
+}
+
+// WithSearchJobEnricher attaches the shared external-intel enricher.
+func WithSearchJobEnricher(enricher *intel.Enricher) SearchJobOptions {
+	return func(j *SearchJob) {
+		j.Research.Enricher = enricher
+		if enricher != nil {
+			j.Research.Enabled = true
+			j.ExtractEmail = true
+		}
 	}
 }
 
@@ -151,6 +173,7 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 		next.WriterManagedCompletion = j.WriterManagedCompletion
 		next.Deduper = j.Deduper
 		next.ExtractEmail = j.ExtractEmail
+		next.Research = j.Research
 
 		nextJobs = append(nextJobs, next)
 	}
@@ -189,33 +212,29 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 		}
 	}
 
-	// 邮箱提取：有官网的商户派生轻量 HTTP 邮箱任务（不走浏览器）
+	// 官网挖掘：有官网的商户派生轻量 HTTP 任务（不走浏览器）——
+	// 开启背调时是多页背调任务，否则只抓邮箱
 	if j.ExtractEmail {
 		direct := make([]*Entry, 0, len(entries))
 
-		var emailJobs []scrapemate.IJob
+		var websiteJobs []scrapemate.IJob
 
 		for _, e := range entries {
-			if e.IsWebsiteValidForEmail() {
-				opts := []EmailExtractJobOptions{}
-				if j.ExitMonitor != nil {
-					opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
-				}
-				if j.WriterManagedCompletion {
-					opts = append(opts, WithEmailJobWriterManagedCompletion())
-				}
-
-				emailJobs = append(emailJobs, NewEmailJob(j.ID, e, opts...))
-			} else {
+			websiteJob := newWebsiteJob(j.ID, e, j.Research, j.ExitMonitor, j.WriterManagedCompletion)
+			if websiteJob == nil {
 				direct = append(direct, e)
+
+				continue
 			}
+
+			websiteJobs = append(websiteJobs, websiteJob)
 		}
 
 		if j.ExitMonitor != nil && !j.WriterManagedCompletion {
 			j.ExitMonitor.IncrPlacesCompleted(len(direct))
 		}
 
-		return direct, append(nextJobs, emailJobs...), nil
+		return direct, append(nextJobs, websiteJobs...), nil
 	}
 
 	if j.ExitMonitor != nil && !j.WriterManagedCompletion {

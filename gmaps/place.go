@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gosom/scrapemate"
 
+	"github.com/gosom/google-maps-scraper/enrich/intel"
 	"github.com/gosom/google-maps-scraper/exiter"
 )
 
@@ -25,6 +26,7 @@ type PlaceJob struct {
 	ExitMonitor             exiter.Exiter
 	ExtractExtraReviews     bool
 	WriterManagedCompletion bool
+	Research                ResearchOptions
 }
 
 func NewPlaceJob(parentID, langCode, u string, extractEmail, extraExtraReviews bool, opts ...PlaceJobOptions) *PlaceJob {
@@ -65,6 +67,26 @@ func WithPlaceJobExitMonitor(exitMonitor exiter.Exiter) PlaceJobOptions {
 func WithPlaceJobWriterManagedCompletion() PlaceJobOptions {
 	return func(j *PlaceJob) {
 		j.WriterManagedCompletion = true
+	}
+}
+
+// WithPlaceJobCompanyResearch replaces email-only extraction with a full
+// background-research crawl of the business website.
+func WithPlaceJobCompanyResearch(maxPages int) PlaceJobOptions {
+	return func(j *PlaceJob) {
+		j.Research = ResearchOptions{Enabled: true, MaxPages: maxPages}
+		j.ExtractEmail = true
+	}
+}
+
+// WithPlaceJobEnricher attaches the shared external-intel enricher.
+func WithPlaceJobEnricher(enricher *intel.Enricher) PlaceJobOptions {
+	return func(j *PlaceJob) {
+		j.Research.Enricher = enricher
+		if enricher != nil {
+			j.Research.Enabled = true
+			j.ExtractEmail = true
+		}
 	}
 }
 
@@ -138,22 +160,15 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 		entry.UserReviewsExtended = append(entry.UserReviewsExtended, deduped...)
 	}
 
-	if j.ExtractEmail && entry.IsWebsiteValidForEmail() {
-		opts := []EmailExtractJobOptions{}
-		if j.ExitMonitor != nil {
-			opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
+	if j.ExtractEmail {
+		if websiteJob := newWebsiteJob(j.ID, &entry, j.Research, j.ExitMonitor, j.WriterManagedCompletion); websiteJob != nil {
+			j.UsageInResults = false
+
+			return nil, []scrapemate.IJob{websiteJob}, nil
 		}
+	}
 
-		if j.WriterManagedCompletion {
-			opts = append(opts, WithEmailJobWriterManagedCompletion())
-		}
-
-		emailJob := NewEmailJob(j.ID, &entry, opts...)
-
-		j.UsageInResults = false
-
-		return nil, []scrapemate.IJob{emailJob}, nil
-	} else if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+	if j.ExitMonitor != nil && !j.WriterManagedCompletion {
 		j.ExitMonitor.IncrPlacesCompleted(1)
 	}
 
