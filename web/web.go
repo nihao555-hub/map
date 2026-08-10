@@ -366,6 +366,18 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 
 	newJob.Data.Email = r.Form.Get("email") == "on"
 
+	// 官网背调（外贸通级字段）：开启后隐含抓邮箱，并跑进程内情报栈
+	if r.Form.Get("company_research") == "on" {
+		newJob.Data.CompanyResearch = true
+		newJob.Data.Email = true
+
+		if pagesStr := strings.TrimSpace(r.Form.Get("company_research_pages")); pagesStr != "" {
+			if pages, err := strconv.Atoi(pagesStr); err == nil && pages > 0 {
+				newJob.Data.CompanyResearchPages = pages
+			}
+		}
+	}
+
 	// 网格全量模式
 	if r.Form.Get("gridmode") == "on" {
 		newJob.Data.GridMode = true

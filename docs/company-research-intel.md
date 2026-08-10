@@ -4,10 +4,10 @@
 
 | 能力 | 来源 | 默认 |
 |---|---|---|
-| 邮箱验证 / 一次性邮箱 / 角色邮箱 / MX | [AfterShip/email-verifier](https://github.com/AfterShip/email-verifier)（内置 disposable 列表，可用 `INTEL_UPDATE_DISPOSABLE=1` 拉 [disposable-email-domains](https://github.com/disposable-email-domains/disposable-email-domains)） | 开 |
+| 邮箱验证 / 一次性邮箱 / 角色邮箱 / MX | [AfterShip/email-verifier](https://github.com/AfterShip/email-verifier) + 嵌入的 [disposable-email-domains](https://github.com/disposable-email-domains/disposable-email-domains) CC0 黑名单（`enrich/intel/disposable_email_blocklist.conf`） | 开 |
 | 电话 E.164 | [nyaruka/phonenumbers](https://github.com/nyaruka/phonenumbers) | 开 |
 | 技术栈指纹 | [rverton/webanalyze](https://github.com/rverton/webanalyze) + enthec 规则 | 开 |
-| 域名 WHOIS + MX→企业邮 | [likexian/whois](https://github.com/likexian/whois) + `net.LookupMX` | 开 |
+| 域名 WHOIS + MX→企业邮 | [likexian/whois](https://github.com/likexian/whois) + `net.LookupMX`（等价 dnsx MX 能力，避免拉入整套 ProjectDiscovery） | 开 |
 | 法人 / 股权穿透 | [GLEIF API](https://www.gleif.org/en/lei-data/gleif-api/)（CC0，免 key） | 开 |
 | 难抓官网 LLM 抽取 | [crawl4ai](https://github.com/unclecode/crawl4ai) sidecar | 需 URL |
 | AI 尽调报告 | [gpt-researcher](https://github.com/assafelovic/gpt-researcher) sidecar | 需 URL |

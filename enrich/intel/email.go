@@ -2,6 +2,7 @@ package intel
 
 import (
 	"context"
+	_ "embed"
 	"os"
 	"strings"
 	"sync"
@@ -10,6 +11,9 @@ import (
 
 	"github.com/gosom/google-maps-scraper/enrich"
 )
+
+//go:embed disposable_email_blocklist.conf
+var disposableBlocklistRaw string
 
 type emailVerifier struct {
 	v *emailverifier.Verifier
@@ -25,13 +29,13 @@ func (e *Enricher) emailClient() *emailVerifier {
 			v = v.DisableSMTPCheck()
 		}
 
-		// Prefer the built-in disposable list for offline/batch runs. Callers
-		// that want the live CC0 feed can set INTEL_UPDATE_DISPOSABLE=1.
+		// Prefer the embedded CC0 blocklist for offline/batch runs. Callers
+		// that want the live feed can set INTEL_UPDATE_DISPOSABLE=1.
 		if os.Getenv("INTEL_UPDATE_DISPOSABLE") == "1" {
 			v = v.EnableAutoUpdateDisposable()
 		}
 
-		v.AddDisposableDomains(extraDisposableDomains)
+		v.AddDisposableDomains(embeddedDisposableDomains())
 
 		e.emails = &emailVerifier{v: v}
 	})
@@ -172,10 +176,20 @@ func mergeVerified(a, b []enrich.VerifiedEmail) []enrich.VerifiedEmail {
 	return out
 }
 
-// extraDisposableDomains supplements AfterShip's built-in list with domains
-// that appear frequently on low-quality lead sites. The bulk CC0 list from
-// disposable-email-domains is pulled at runtime via EnableAutoUpdateDisposable.
-var extraDisposableDomains = []string{
-	"mailinator.com", "guerrillamail.com", "10minutemail.com",
-	"tempmail.com", "throwaway.email", "yopmail.com", "trashmail.com",
+// embeddedDisposableDomains returns the CC0 disposable-email-domains
+// blocklist that ships inside the binary (see disposable_email_blocklist.conf).
+func embeddedDisposableDomains() []string {
+	lines := strings.Split(disposableBlocklistRaw, "\n")
+	out := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		line = strings.TrimSpace(strings.ToLower(line))
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		out = append(out, line)
+	}
+
+	return out
 }

@@ -176,7 +176,13 @@
     var parts = ['<strong>' + escapeHtml(p.title || '未命名商家') + '</strong>'];
     if (p.address) parts.push(escapeHtml(p.address));
     if (p.phone) parts.push('电话：' + escapeHtml(p.phone));
-    if (p.emails) parts.push('邮箱：' + escapeHtml(p.emails));
+    var mail = p.best_email || p.emails;
+    if (mail) parts.push('邮箱：' + escapeHtml(mail));
+    if (p.contact_people) parts.push('联系人：' + escapeHtml(p.contact_people));
+    if (p.legal_entity) parts.push('法人：' + escapeHtml(p.legal_entity));
+    if (p.mail_provider) parts.push('企业邮：' + escapeHtml(p.mail_provider));
+    if (p.domain_age_days) parts.push('域名年龄：' + escapeHtml(p.domain_age_days) + ' 天');
+    if (p.tech_stack) parts.push('技术栈：' + escapeHtml(p.tech_stack));
     if (p.review_rating) parts.push('评分：★ ' + escapeHtml(String(p.review_rating)));
     return parts.join('<br>');
   }

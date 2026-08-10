@@ -28,6 +28,14 @@ type Place struct {
 	ReviewRating float64 `json:"review_rating"`
 	ReviewCount  int     `json:"review_count"`
 	Emails       string  `json:"emails"`
+	// Optional company-research columns (empty when research is off).
+	BestEmail      string `json:"best_email,omitempty"`
+	TechStack      string `json:"tech_stack,omitempty"`
+	MailProvider   string `json:"mail_provider,omitempty"`
+	DomainAgeDays  string `json:"domain_age_days,omitempty"`
+	LegalEntity    string `json:"legal_entity,omitempty"`
+	ContactPeople  string `json:"contact_people,omitempty"`
+	LinkedIn       string `json:"linkedin,omitempty"`
 }
 
 // GetPlaces locates the job's CSV output and parses it into mappable places.
@@ -124,17 +132,24 @@ func parsePlaces(r io.Reader) ([]Place, error) {
 		reviewCount, _ := strconv.Atoi(get(row, "review_count"))
 
 		places = append(places, Place{
-			Title:        get(row, "title"),
-			Address:      get(row, "address"),
-			Latitude:     lat,
-			Longitude:    lon,
-			Link:         get(row, "link"),
-			Category:     get(row, "category"),
-			Phone:        get(row, "phone"),
-			Website:      get(row, "website"),
-			ReviewRating: rating,
-			ReviewCount:  reviewCount,
-			Emails:       get(row, "emails"),
+			Title:         get(row, "title"),
+			Address:       get(row, "address"),
+			Latitude:      lat,
+			Longitude:     lon,
+			Link:          get(row, "link"),
+			Category:      get(row, "category"),
+			Phone:         get(row, "phone"),
+			Website:       get(row, "website"),
+			ReviewRating:  rating,
+			ReviewCount:   reviewCount,
+			Emails:        get(row, "emails"),
+			BestEmail:     get(row, "best_email"),
+			TechStack:     get(row, "tech_stack"),
+			MailProvider:  get(row, "mail_provider"),
+			DomainAgeDays: get(row, "domain_age_days"),
+			LegalEntity:   get(row, "legal_entity"),
+			ContactPeople: get(row, "contact_people"),
+			LinkedIn:      get(row, "linkedin"),
 		})
 	}
 

@@ -192,6 +192,12 @@ components:
           type: integer
         email:
           type: boolean
+        company_research:
+          type: boolean
+          description: Enable multi-page website background research (implies email)
+        company_research_pages:
+          type: integer
+          description: Max pages to fetch per company site during research
         max_time:
           type: integer
         proxies:
@@ -243,6 +249,10 @@ components:
           type: integer
         email:
           type: boolean
+        company_research:
+          type: boolean
+        company_research_pages:
+          type: integer
         max_time:
           type: integer
         proxies:

@@ -74,8 +74,24 @@
             if (place.phone) {
                 parts.push('电话：' + escapeHtml(place.phone));
             }
-            if (place.emails) {
-                parts.push('邮箱：' + escapeHtml(place.emails));
+            var mail = place.best_email || place.emails;
+            if (mail) {
+                parts.push('邮箱：' + escapeHtml(mail));
+            }
+            if (place.contact_people) {
+                parts.push('联系人：' + escapeHtml(place.contact_people));
+            }
+            if (place.legal_entity) {
+                parts.push('法人：' + escapeHtml(place.legal_entity));
+            }
+            if (place.mail_provider) {
+                parts.push('企业邮：' + escapeHtml(place.mail_provider));
+            }
+            if (place.domain_age_days) {
+                parts.push('域名年龄：' + escapeHtml(place.domain_age_days) + ' 天');
+            }
+            if (place.tech_stack) {
+                parts.push('技术栈：' + escapeHtml(place.tech_stack));
             }
             if (place.review_rating) {
                 parts.push('评分：★ ' + escapeHtml(String(place.review_rating)));
@@ -109,10 +125,13 @@
         var streamActive = (JOB_STATUS === 'working' || JOB_STATUS === 'pending');
 
         function rowHtml(place) {
+            var mail = place.best_email || place.emails;
             return '<td class="col-name">' + textCell(place.title) + '</td>' +
                 '<td class="col-addr">' + textCell(place.address) + '</td>' +
                 '<td class="col-phone">' + textCell(place.phone) + '</td>' +
-                '<td class="col-mail">' + textCell(place.emails) + '</td>' +
+                '<td class="col-mail">' + textCell(mail) + '</td>' +
+                '<td class="col-people">' + textCell(place.contact_people) + '</td>' +
+                '<td class="col-legal">' + textCell(place.legal_entity) + '</td>' +
                 '<td class="col-rating">' + (place.review_rating ? '★ ' + escapeHtml(String(place.review_rating)) : '<span class="cell-empty">—</span>') + '</td>' +
                 '<td class="col-reviews">' + (place.review_count ? escapeHtml(String(place.review_count)) : '<span class="cell-empty">—</span>') + '</td>' +
                 '<td class="col-site">' + websiteCell(place) + '</td>';
@@ -157,6 +176,8 @@
                 '<th class="col-addr">地址</th>' +
                 '<th class="col-phone">电话</th>' +
                 '<th class="col-mail">邮箱</th>' +
+                '<th class="col-people">联系人</th>' +
+                '<th class="col-legal">法人</th>' +
                 '<th class="col-rating">评分</th>' +
                 '<th class="col-reviews">评论数</th>' +
                 '<th class="col-site">网站</th>' +
