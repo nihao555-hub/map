@@ -1,0 +1,35 @@
+# Optional Python sidecars that unlock the last mile of company research.
+# The Go scraper talks to them over HTTP when the matching *-url flag / env
+# var is set. Leave them stopped and in-process providers (email-verifier,
+# phonenumbers, WHOIS/MX, webanalyze, GLEIF) still run.
+#
+#   docker compose -f docker-compose.research.yaml up -d
+#   export CRAWL4AI_URL=http://localhost:11235
+#   export RESEARCHER_URL=http://localhost:8000
+#   export SPIDERFOOT_URL=http://localhost:5001
+#   ./google_maps_scraper -company-research -input queries.txt -results out.csv
+
+services:
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    ports:
+      - "11235:11235"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai/gpt-4o-mini}
+    restart: unless-stopped
+
+  gpt-researcher:
+    image: assafelovic/gpt-researcher:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+    restart: unless-stopped
+
+  spiderfoot:
+    image: spiderfoot/spiderfoot:latest
+    ports:
+      - "5001:5001"
+    restart: unless-stopped

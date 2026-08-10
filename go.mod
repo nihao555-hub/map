@@ -3,6 +3,7 @@ module github.com/gosom/google-maps-scraper
 go 1.26.5
 
 require (
+	github.com/AfterShip/email-verifier v1.4.1
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/aws/aws-lambda-go v1.48.0
 	github.com/aws/aws-sdk-go-v2 v1.41.5
@@ -20,15 +21,19 @@ require (
 	github.com/gosom/scrapemate v1.3.0
 	github.com/hetznercloud/hcloud-go/v2 v2.36.0
 	github.com/jackc/pgx/v5 v5.9.2
+	github.com/likexian/whois v1.15.7
+	github.com/likexian/whois-parser v1.24.21
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/mcnijman/go-emailaddress v1.1.1
 	github.com/mxschmitt/playwright-go v0.6100.0
+	github.com/nyaruka/phonenumbers v1.8.1
 	github.com/posthog/posthog-go v1.5.2
 	github.com/pquerna/otp v1.5.0
 	github.com/riverqueue/river v0.30.1
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.30.1
 	github.com/riverqueue/river/rivertype v0.30.1
 	github.com/rubenv/sql-migrate v1.8.1
+	github.com/rverton/webanalyze v0.4.3
 	github.com/shirou/gopsutil/v4 v4.25.4
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/speps/go-hashids/v2 v2.0.1
@@ -92,6 +97,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bkielbasa/cyclop v1.2.3 // indirect
 	github.com/blizzy78/varnamelen v0.8.0 // indirect
+	github.com/bobesa/go-domain-util v0.0.0-20250410211237-17ab3b2f4a95 // indirect
 	github.com/bombsimon/wsl/v4 v4.5.0 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/breml/bidichk v0.3.2 // indirect
@@ -168,6 +174,7 @@ require (
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
+	github.com/hbollon/go-edlib v1.6.0 // indirect
 	github.com/hexops/gotextdiff v1.0.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6 // indirect
@@ -193,6 +200,7 @@ require (
 	github.com/ldez/usetesting v0.4.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/leonklingele/grouper v1.1.2 // indirect
+	github.com/likexian/gokit v0.25.16 // indirect
 	github.com/lufia/plan9stats v0.0.0-20250317134145-8bc96cf8fc35 // indirect
 	github.com/macabu/inamedparam v0.1.3 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
@@ -300,7 +308,7 @@ require (
 	golang.org/x/time v0.10.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
 	golang.org/x/vuln v1.1.4 // indirect
-	google.golang.org/protobuf v1.36.8 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

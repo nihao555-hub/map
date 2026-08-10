@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gosom/google-maps-scraper/enrich/intel"
 	"github.com/gosom/google-maps-scraper/exiter"
 	"github.com/gosom/google-maps-scraper/gmaps"
 	"github.com/gosom/google-maps-scraper/scraper"
@@ -208,6 +209,10 @@ func (w *ScrapeWorker) Work(ctx context.Context, job *river.Job[ScrapeJobArgs]) 
 			searchOpts = append(searchOpts, gmaps.WithSearchJobEmail())
 		}
 
+		if enricher := researchEnricherFromArgs(args); enricher != nil {
+			searchOpts = append(searchOpts, gmaps.WithSearchJobEnricher(enricher))
+		}
+
 		searchJob := gmaps.NewSearchJob(params, searchOpts...)
 		searchJob.ID = jobID
 
@@ -229,6 +234,10 @@ func (w *ScrapeWorker) Work(ctx context.Context, job *river.Job[ScrapeJobArgs]) 
 
 		if args.CompanyResearch {
 			opts = append(opts, gmaps.WithCompanyResearch(args.CompanyResearchPages))
+		}
+
+		if enricher := researchEnricherFromArgs(args); enricher != nil {
+			opts = append(opts, gmaps.WithCompanyResearchEnricher(enricher))
 		}
 
 		scrapeJob = gmaps.NewGmapJob(
@@ -396,6 +405,23 @@ func effectiveScrapeTimeout(timeoutSecs int) time.Duration {
 }
 
 // parseGeoCoordinates parses a "lat,lon" string into separate float64 values.
+func researchEnricherFromArgs(args ScrapeJobArgs) *intel.Enricher {
+	if !args.CompanyResearch {
+		return nil
+	}
+
+	opts := intel.DefaultOptions()
+	opts.Crawl4AIURL = os.Getenv("CRAWL4AI_URL")
+	opts.ResearcherURL = os.Getenv("RESEARCHER_URL")
+	opts.SpiderFootURL = os.Getenv("SPIDERFOOT_URL")
+	opts.EnableSMTP = os.Getenv("EMAIL_SMTP_VERIFY") == "1"
+	if region := os.Getenv("PHONE_REGION"); region != "" {
+		opts.DefaultRegion = region
+	}
+
+	return intel.New(opts)
+}
+
 func parseGeoCoordinates(coords string) (lat, lon float64) {
 	parts := strings.Split(coords, ",")
 	if len(parts) != 2 {

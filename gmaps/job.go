@@ -13,6 +13,7 @@ import (
 	"github.com/gosom/scrapemate"
 
 	"github.com/gosom/google-maps-scraper/deduper"
+	"github.com/gosom/google-maps-scraper/enrich/intel"
 	"github.com/gosom/google-maps-scraper/exiter"
 )
 
@@ -118,6 +119,18 @@ func WithCompanyResearch(maxPages int) GmapJobOptions {
 	}
 }
 
+// WithCompanyResearchEnricher attaches the shared external-intel enricher to
+// every place job spawned by this search.
+func WithCompanyResearchEnricher(enricher *intel.Enricher) GmapJobOptions {
+	return func(j *GmapJob) {
+		j.Research.Enricher = enricher
+		if enricher != nil {
+			j.Research.Enabled = true
+			j.ExtractEmail = true
+		}
+	}
+}
+
 func (j *GmapJob) UseInResults() bool {
 	return false
 }
@@ -194,6 +207,10 @@ func (j *GmapJob) placeJobOptions() []PlaceJobOptions {
 
 	if j.Research.Enabled {
 		opts = append(opts, WithPlaceJobCompanyResearch(j.Research.MaxPages))
+	}
+
+	if j.Research.Enricher != nil {
+		opts = append(opts, WithPlaceJobEnricher(j.Research.Enricher))
 	}
 
 	return opts

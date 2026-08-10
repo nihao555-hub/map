@@ -31,6 +31,7 @@ var essentialResearchColumns = []string{
 	"research_completeness", "best_email", "role_emails",
 	"contact_people", "linkedin", "whatsapp",
 	"trade_roles", "certifications",
+	"lei", "mail_provider", "tech_stack", "domain_age_days",
 }
 
 // newColumnWriter 按任务配置过滤 CSV 输出列：

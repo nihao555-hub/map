@@ -116,6 +116,44 @@ type CompanyProfile struct {
 	Platform     string `json:"platform,omitempty"`
 	HasEcommerce bool   `json:"has_ecommerce,omitempty"`
 
+	// ---- External intel (optional providers; filled after page crawl) ----
+
+	// TechStack is the full fingerprint from webanalyze / Wappalyzer rules
+	// (CMS, analytics, CDN, frameworks), richer than the single Platform field.
+	TechStack []string `json:"tech_stack,omitempty"`
+	// MailProvider is the corporate email host inferred from MX records
+	// (google-workspace, microsoft-365, …).
+	MailProvider string `json:"mail_provider,omitempty"`
+	// MXHosts are the raw MX exchange hostnames.
+	MXHosts []string `json:"mx_hosts,omitempty"`
+	// DomainCreatedAt is the WHOIS creation date (RFC3339 date when known).
+	DomainCreatedAt string `json:"domain_created_at,omitempty"`
+	// DomainAgeDays is days since DomainCreatedAt; a brand-new domain is a
+	// common shell-company signal.
+	DomainAgeDays int `json:"domain_age_days,omitempty"`
+	// DomainRegistrar is the registrar name from WHOIS.
+	DomainRegistrar string `json:"domain_registrar,omitempty"`
+
+	// LEI is the Legal Entity Identifier when GLEIF matched the company.
+	LEI string `json:"lei,omitempty"`
+	// LegalEntity is the GLEIF Level-1 record (legal name, jurisdiction, status).
+	LegalEntity *LegalEntity `json:"legal_entity,omitempty"`
+	// DirectParent / UltimateParent are GLEIF Level-2 ownership links.
+	DirectParent   *LegalEntity `json:"direct_parent,omitempty"`
+	UltimateParent *LegalEntity `json:"ultimate_parent,omitempty"`
+
+	// VerifiedEmails carries per-address MX/SMTP/disposable/role results from
+	// AfterShip/email-verifier.
+	VerifiedEmails []VerifiedEmail `json:"verified_emails,omitempty"`
+
+	// LLMExtract is structured company facts returned by a crawl4ai sidecar
+	// when plain HTML parsing is not enough (JS-heavy sites).
+	LLMExtract *LLMExtract `json:"llm_extract,omitempty"`
+	// AIReport is a markdown due-diligence write-up from gpt-researcher.
+	AIReport string `json:"ai_report,omitempty"`
+	// OSINTFindings are selected SpiderFoot module results (when configured).
+	OSINTFindings []OSINTFinding `json:"osint_findings,omitempty"`
+
 	// PagesCrawled lists the URLs the profile was built from, so a human can
 	// audit any conclusion.
 	PagesCrawled []string `json:"pages_crawled,omitempty"`
@@ -124,6 +162,53 @@ type CompanyProfile struct {
 	Completeness int `json:"completeness"`
 	// ResearchedAt records when the profile was assembled.
 	ResearchedAt time.Time `json:"researched_at,omitempty"`
+}
+
+// VerifiedEmail is one address after MX / disposable / role / optional SMTP checks.
+type VerifiedEmail struct {
+	Address     string `json:"address"`
+	Reachable   string `json:"reachable,omitempty"` // yes / no / unknown
+	HasMX       bool   `json:"has_mx"`
+	Disposable  bool   `json:"disposable"`
+	RoleAccount bool   `json:"role_account"`
+	Free        bool   `json:"free"`
+	SMTPValid   bool   `json:"smtp_valid,omitempty"`
+}
+
+// LegalEntity is a GLEIF LEI record (or a thin parent reference).
+type LegalEntity struct {
+	LEI          string `json:"lei"`
+	LegalName    string `json:"legal_name,omitempty"`
+	Status       string `json:"status,omitempty"`
+	Jurisdiction string `json:"jurisdiction,omitempty"`
+	Country      string `json:"country,omitempty"`
+	City         string `json:"city,omitempty"`
+	Category     string `json:"category,omitempty"`
+	CreationDate string `json:"creation_date,omitempty"`
+}
+
+// LLMExtract is the schema crawl4ai (or a compatible sidecar) is asked to fill.
+type LLMExtract struct {
+	LegalName       string   `json:"legal_name,omitempty"`
+	Description     string   `json:"description,omitempty"`
+	FoundedYear     int      `json:"founded_year,omitempty"`
+	EmployeeRange   string   `json:"employee_range,omitempty"`
+	People          []Person `json:"people,omitempty"`
+	Emails          []string `json:"emails,omitempty"`
+	Phones          []string `json:"phones,omitempty"`
+	Products        []string `json:"products,omitempty"`
+	Markets         []string `json:"markets,omitempty"`
+	Certifications  []string `json:"certifications,omitempty"`
+	TradeRoles      []string `json:"trade_roles,omitempty"`
+	RegistrationIDs []string `json:"registration_ids,omitempty"`
+}
+
+// OSINTFinding is one SpiderFoot (or compatible) intelligence hit.
+type OSINTFinding struct {
+	Type   string `json:"type,omitempty"`
+	Data   string `json:"data,omitempty"`
+	Module string `json:"module,omitempty"`
+	Source string `json:"source,omitempty"`
 }
 
 // Merge folds other into p, keeping the strongest value for scalar fields and
@@ -141,13 +226,38 @@ func (p *CompanyProfile) Merge(other *CompanyProfile) {
 	preferFirst(&p.HomepageURL, other.HomepageURL)
 	preferFirst(&p.Platform, other.Platform)
 	preferFirst(&p.EmployeeRange, other.EmployeeRange)
+	preferFirst(&p.MailProvider, other.MailProvider)
+	preferFirst(&p.DomainCreatedAt, other.DomainCreatedAt)
+	preferFirst(&p.DomainRegistrar, other.DomainRegistrar)
+	preferFirst(&p.LEI, other.LEI)
+	preferFirst(&p.AIReport, other.AIReport)
 
 	if p.FoundedYear == 0 {
 		p.FoundedYear = other.FoundedYear
 	}
 
+	if p.DomainAgeDays == 0 {
+		p.DomainAgeDays = other.DomainAgeDays
+	}
+
 	if other.HasEcommerce {
 		p.HasEcommerce = true
+	}
+
+	if p.LegalEntity == nil {
+		p.LegalEntity = other.LegalEntity
+	}
+
+	if p.DirectParent == nil {
+		p.DirectParent = other.DirectParent
+	}
+
+	if p.UltimateParent == nil {
+		p.UltimateParent = other.UltimateParent
+	}
+
+	if p.LLMExtract == nil {
+		p.LLMExtract = other.LLMExtract
 	}
 
 	p.Emails = mergeEmails(p.Emails, other.Emails)
@@ -163,6 +273,10 @@ func (p *CompanyProfile) Merge(other *CompanyProfile) {
 	p.Markets = mergeStrings(p.Markets, other.Markets)
 	p.Languages = mergeStrings(p.Languages, other.Languages)
 	p.PagesCrawled = mergeStrings(p.PagesCrawled, other.PagesCrawled)
+	p.TechStack = mergeStrings(p.TechStack, other.TechStack)
+	p.MXHosts = mergeStrings(p.MXHosts, other.MXHosts)
+	p.VerifiedEmails = mergeVerifiedEmails(p.VerifiedEmails, other.VerifiedEmails)
+	p.OSINTFindings = append(p.OSINTFindings, other.OSINTFindings...)
 }
 
 // Finalize sorts the ranked lists, trims them to sane sizes and computes the
@@ -301,6 +415,9 @@ var scoreWeights = []struct {
 	{5, func(p *CompanyProfile) bool { return len(p.TradeRoles) > 0 }},
 	{5, func(p *CompanyProfile) bool { return len(p.Certifications) > 0 }},
 	{5, func(p *CompanyProfile) bool { return len(p.ProductKeywords) > 0 }},
+	// The weights above already sum to 100. Extra intel dimensions bump the
+	// score only when earlier dimensions left headroom — Completeness is
+	// capped at 100 in Finalize via min(score(), 100) implicitly by weights.
 }
 
 func (p *CompanyProfile) score() int {

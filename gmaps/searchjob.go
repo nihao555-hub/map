@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gosom/google-maps-scraper/deduper"
+	"github.com/gosom/google-maps-scraper/enrich/intel"
 	"github.com/gosom/google-maps-scraper/exiter"
 	"github.com/gosom/scrapemate"
 )
@@ -99,6 +100,17 @@ func WithSearchJobCompanyResearch(maxPages int) SearchJobOptions {
 	return func(j *SearchJob) {
 		j.Research = ResearchOptions{Enabled: true, MaxPages: maxPages}
 		j.ExtractEmail = true
+	}
+}
+
+// WithSearchJobEnricher attaches the shared external-intel enricher.
+func WithSearchJobEnricher(enricher *intel.Enricher) SearchJobOptions {
+	return func(j *SearchJob) {
+		j.Research.Enricher = enricher
+		if enricher != nil {
+			j.Research.Enabled = true
+			j.ExtractEmail = true
+		}
 	}
 }
 

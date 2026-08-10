@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/gosom/google-maps-scraper/enrich"
+	"github.com/gosom/google-maps-scraper/enrich/intel"
 	"github.com/gosom/google-maps-scraper/exiter"
 )
 
@@ -65,6 +66,10 @@ type CompanyResearchJob struct {
 	MaxPages int
 	// PageTimeout bounds each follow-up request.
 	PageTimeout time.Duration
+
+	// Enricher runs AfterShip email-verifier, phonenumbers, WHOIS/MX,
+	// webanalyze, GLEIF and optional Python sidecars against the profile.
+	Enricher *intel.Enricher
 
 	// client is injected by tests; production uses a lazily built default.
 	client *http.Client
@@ -120,6 +125,14 @@ func WithResearchJobMaxPages(pages int) CompanyResearchJobOptions {
 		if pages > 0 {
 			j.MaxPages = pages
 		}
+	}
+}
+
+// WithResearchJobEnricher attaches the external-intel enricher (email-verifier,
+// phonenumbers, WHOIS/MX, webanalyze, GLEIF, optional sidecars).
+func WithResearchJobEnricher(enricher *intel.Enricher) CompanyResearchJobOptions {
+	return func(j *CompanyResearchJob) {
+		j.Enricher = enricher
 	}
 }
 
@@ -181,6 +194,12 @@ func (j *CompanyResearchJob) Process(ctx context.Context, resp *scrapemate.Respo
 
 	if profile.LegalName == "" {
 		profile.LegalName = j.Entry.Title
+	}
+
+	// External intel: email-verifier, phonenumbers, WHOIS/MX, webanalyze,
+	// GLEIF, and optional crawl4ai / gpt-researcher / SpiderFoot sidecars.
+	if j.Enricher != nil {
+		j.Enricher.Enrich(ctx, profile, resp.Body)
 	}
 
 	profile.Finalize()

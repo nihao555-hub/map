@@ -298,7 +298,14 @@ func ResearchCsvHeaders() []string {
 		"markets",
 		"site_languages",
 		"web_platform",
+		"tech_stack",
+		"mail_provider",
+		"domain_age_days",
+		"lei",
+		"legal_entity",
+		"ultimate_parent",
 		"company_description",
+		"ai_report",
 		"company_profile",
 	}
 }
@@ -327,7 +334,14 @@ func (e *Entry) ResearchCsvRow() []string {
 		strings.Join(profile.Markets, ", "),
 		strings.Join(profile.Languages, ", "),
 		profile.Platform,
+		strings.Join(profile.TechStack, ", "),
+		profile.MailProvider,
+		formatYear(profile.DomainAgeDays),
+		profile.LEI,
+		formatLegalEntity(profile.LegalEntity),
+		formatLegalEntity(profile.UltimateParent),
 		profile.Description,
+		profile.AIReport,
 		stringify(profile),
 	}
 }
@@ -465,6 +479,31 @@ func formatYear(year int) string {
 	}
 
 	return strconv.Itoa(year)
+}
+
+func formatLegalEntity(entity *enrich.LegalEntity) string {
+	if entity == nil {
+		return ""
+	}
+
+	parts := make([]string, 0, 4)
+	if entity.LegalName != "" {
+		parts = append(parts, entity.LegalName)
+	}
+
+	if entity.LEI != "" {
+		parts = append(parts, "LEI "+entity.LEI)
+	}
+
+	if entity.Jurisdiction != "" {
+		parts = append(parts, entity.Jurisdiction)
+	}
+
+	if entity.Status != "" {
+		parts = append(parts, entity.Status)
+	}
+
+	return strings.Join(parts, " | ")
 }
 
 func (e *Entry) CsvRow() []string {

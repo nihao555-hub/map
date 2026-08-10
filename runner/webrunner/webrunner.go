@@ -198,6 +198,18 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		seedOpts = append(seedOpts, runner.WithSeedCompanyResearch(companyResearchPages(w.cfg, job)))
 	}
 
+	if enricher := runner.NewResearchEnricher(w.cfg); enricher != nil {
+		seedOpts = append(seedOpts, runner.WithSeedEnricher(enricher))
+	} else if companyResearchEnabled(w.cfg, job) {
+		// Job opted in even when the process-wide flag is off: still run the
+		// default in-process intel providers.
+		cfgCopy := *w.cfg
+		cfgCopy.CompanyResearch = true
+		if enricher := runner.NewResearchEnricher(&cfgCopy); enricher != nil {
+			seedOpts = append(seedOpts, runner.WithSeedEnricher(enricher))
+		}
+	}
+
 	// 网格全量模式
 	if job.Data.GridMode {
 		var bbox grid.BoundingBox

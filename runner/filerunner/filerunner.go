@@ -85,6 +85,10 @@ func (r *fileRunner) Run(ctx context.Context) (err error) {
 		seedOpts = append(seedOpts, runner.WithSeedCompanyResearch(r.cfg.CompanyResearchPages))
 	}
 
+	if enricher := runner.NewResearchEnricher(r.cfg); enricher != nil {
+		seedOpts = append(seedOpts, runner.WithSeedEnricher(enricher))
+	}
+
 	if r.cfg.GridBBox != "" {
 		if r.cfg.FastMode {
 			return fmt.Errorf("-fast-mode cannot be used together with -grid-bbox")

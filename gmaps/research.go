@@ -3,6 +3,7 @@ package gmaps
 import (
 	"github.com/gosom/scrapemate"
 
+	"github.com/gosom/google-maps-scraper/enrich/intel"
 	"github.com/gosom/google-maps-scraper/exiter"
 )
 
@@ -15,6 +16,9 @@ type ResearchOptions struct {
 	// MaxPages caps how many pages of the company site are fetched, homepage
 	// included. Zero means the job's default budget.
 	MaxPages int
+	// Enricher runs AfterShip email-verifier, phonenumbers, WHOIS/MX,
+	// webanalyze, GLEIF and optional Python sidecars. Nil skips external intel.
+	Enricher *intel.Enricher
 }
 
 // newWebsiteJob returns the follow-up job that mines a business website:
@@ -53,6 +57,10 @@ func newWebsiteJob(
 
 	if writerManagedCompletion {
 		opts = append(opts, WithResearchJobWriterManagedCompletion())
+	}
+
+	if research.Enricher != nil {
+		opts = append(opts, WithResearchJobEnricher(research.Enricher))
 	}
 
 	return NewCompanyResearchJob(parentID, entry, opts...)

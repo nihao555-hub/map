@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gosom/google-maps-scraper/deduper"
+	"github.com/gosom/google-maps-scraper/enrich/intel"
 	"github.com/gosom/google-maps-scraper/exiter"
 	"github.com/gosom/google-maps-scraper/gmaps"
 	"github.com/gosom/google-maps-scraper/grid"
@@ -25,6 +26,7 @@ type SeedOption func(*seedSettings)
 type seedSettings struct {
 	companyResearch      bool
 	companyResearchPages int
+	enricher             *intel.Enricher
 }
 
 // WithSeedCompanyResearch makes every place run a background-research crawl of
@@ -33,6 +35,17 @@ func WithSeedCompanyResearch(maxPages int) SeedOption {
 	return func(s *seedSettings) {
 		s.companyResearch = true
 		s.companyResearchPages = maxPages
+	}
+}
+
+// WithSeedEnricher attaches the shared external-intel enricher (email-verifier,
+// phonenumbers, WHOIS/MX, webanalyze, GLEIF, optional sidecars).
+func WithSeedEnricher(enricher *intel.Enricher) SeedOption {
+	return func(s *seedSettings) {
+		s.enricher = enricher
+		if enricher != nil {
+			s.companyResearch = true
+		}
 	}
 }
 
@@ -136,6 +149,10 @@ func CreateSeedJobs(
 				opts = append(opts, gmaps.WithCompanyResearch(settings.companyResearchPages))
 			}
 
+			if settings.enricher != nil {
+				opts = append(opts, gmaps.WithCompanyResearchEnricher(settings.enricher))
+			}
+
 			job = gmaps.NewGmapJob(id, langCode, query, maxDepth, email, geoCoordinates, zoom, opts...)
 		} else {
 			jparams := gmaps.MapSearchParams{
@@ -165,6 +182,10 @@ func CreateSeedJobs(
 				opts = append(opts, gmaps.WithSearchJobCompanyResearch(settings.companyResearchPages))
 			} else if email {
 				opts = append(opts, gmaps.WithSearchJobEmail())
+			}
+
+			if settings.enricher != nil {
+				opts = append(opts, gmaps.WithSearchJobEnricher(settings.enricher))
 			}
 
 			job = gmaps.NewSearchJob(&jparams, opts...)
@@ -244,6 +265,10 @@ func CreateGridSeedJobs(
 
 			if settings.companyResearch {
 				opts = append(opts, gmaps.WithCompanyResearch(settings.companyResearchPages))
+			}
+
+			if settings.enricher != nil {
+				opts = append(opts, gmaps.WithCompanyResearchEnricher(settings.enricher))
 			}
 
 			job := gmaps.NewGmapJob(
@@ -333,6 +358,10 @@ func CreateGridSearchSeedJobs(
 				opts = append(opts, gmaps.WithSearchJobCompanyResearch(settings.companyResearchPages))
 			} else if email {
 				opts = append(opts, gmaps.WithSearchJobEmail())
+			}
+
+			if settings.enricher != nil {
+				opts = append(opts, gmaps.WithSearchJobEnricher(settings.enricher))
 			}
 
 			jobs = append(jobs, gmaps.NewSearchJob(&jparams, opts...))

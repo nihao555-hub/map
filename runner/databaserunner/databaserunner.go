@@ -174,11 +174,17 @@ func (d *dbrunner) produceSeedJobs(ctx context.Context) error {
 }
 
 func (d *dbrunner) seedOpts() []runner.SeedOption {
-	if !d.cfg.CompanyResearch {
-		return nil
+	var opts []runner.SeedOption
+
+	if d.cfg.CompanyResearch {
+		opts = append(opts, runner.WithSeedCompanyResearch(d.cfg.CompanyResearchPages))
 	}
 
-	return []runner.SeedOption{runner.WithSeedCompanyResearch(d.cfg.CompanyResearchPages)}
+	if enricher := runner.NewResearchEnricher(d.cfg); enricher != nil {
+		opts = append(opts, runner.WithSeedEnricher(enricher))
+	}
+
+	return opts
 }
 
 func openPsqlConn(dsn string) (conn *sql.DB, err error) {

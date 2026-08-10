@@ -94,6 +94,29 @@ type Config struct {
 	// fetched, homepage included.
 	CompanyResearchPages int
 
+	// EmailSMTPVerify enables live SMTP mailbox probes via
+	// AfterShip/email-verifier. Off by default (slow / often blocked).
+	EmailSMTPVerify bool
+	// PhoneRegion is the default ISO region for national phone numbers.
+	PhoneRegion string
+
+	// Crawl4AIURL is an optional crawl4ai Docker base URL
+	// (e.g. http://localhost:11235).
+	Crawl4AIURL string
+	// ResearcherURL is an optional gpt-researcher server base URL.
+	ResearcherURL string
+	// SpiderFootURL is an optional SpiderFoot instance base URL.
+	SpiderFootURL string
+
+	// DisableGLEIF turns off GLEIF LEI lookups.
+	DisableGLEIF bool
+	// DisableTechFingerprint turns off webanalyze.
+	DisableTechFingerprint bool
+	// DisableDomainIntel turns off WHOIS + MX provider detection.
+	DisableDomainIntel bool
+	// DisableEmailVerify turns off AfterShip/email-verifier.
+	DisableEmailVerify bool
+
 	// Grid scraping — divide a bounding box into cells to bypass the ~120
 	// results-per-search limit imposed by Google Maps.
 	GridBBox   string  // "minLat,minLon,maxLat,maxLon"
@@ -150,6 +173,15 @@ func ParseConfig() *Config {
 	flag.BoolVar(&cfg.ExtraReviews, "extra-reviews", false, "enable extra reviews collection")
 	flag.BoolVar(&cfg.CompanyResearch, "company-research", false, "run background research on each business website (contacts by role, decision makers, socials, registration IDs, certifications); implies -email")
 	flag.IntVar(&cfg.CompanyResearchPages, "company-research-pages", 4, "maximum pages to fetch per company site during background research [default: 4]")
+	flag.BoolVar(&cfg.EmailSMTPVerify, "email-smtp-verify", false, "enable live SMTP mailbox probes during company research (slow; often blocked)")
+	flag.StringVar(&cfg.PhoneRegion, "phone-region", "US", "default ISO region for national phone numbers during company research")
+	flag.StringVar(&cfg.Crawl4AIURL, "crawl4ai-url", os.Getenv("CRAWL4AI_URL"), "crawl4ai sidecar base URL (e.g. http://localhost:11235)")
+	flag.StringVar(&cfg.ResearcherURL, "researcher-url", os.Getenv("RESEARCHER_URL"), "gpt-researcher sidecar base URL")
+	flag.StringVar(&cfg.SpiderFootURL, "spiderfoot-url", os.Getenv("SPIDERFOOT_URL"), "SpiderFoot sidecar base URL")
+	flag.BoolVar(&cfg.DisableGLEIF, "disable-gleif", false, "disable GLEIF LEI / ownership lookup during company research")
+	flag.BoolVar(&cfg.DisableTechFingerprint, "disable-tech-fingerprint", false, "disable webanalyze tech fingerprinting during company research")
+	flag.BoolVar(&cfg.DisableDomainIntel, "disable-domain-intel", false, "disable WHOIS + MX provider detection during company research")
+	flag.BoolVar(&cfg.DisableEmailVerify, "disable-email-verify", false, "disable AfterShip email-verifier during company research")
 	flag.StringVar(&cfg.LeadsDBAPIKey, "leadsdb-api-key", "", "LeadsDB API key for exporting results to LeadsDB")
 	flag.StringVar(&cfg.GridBBox, "grid-bbox", "", "bounding box for grid scraping: 'minLat,minLon,maxLat,maxLon' (e.g. '40.30,-3.80,40.50,-3.60')")
 	flag.Float64Var(&cfg.GridCellKm, "grid-cell", 1.0, "grid cell size in km [default: 1.0]. Use with -grid-bbox")

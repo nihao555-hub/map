@@ -7,6 +7,12 @@ import (
 
 // mergeStrings appends the values of b that a does not already hold, comparing
 // case-insensitively but preserving the casing of the first occurrence.
+// MergeStringLists is the exported form of the package-private list merge,
+// used by the intel layer when folding sidecar results into a profile.
+func MergeStringLists(a, b []string) []string {
+	return mergeStrings(a, b)
+}
+
 func mergeStrings(a, b []string) []string {
 	if len(b) == 0 {
 		return a
@@ -166,6 +172,45 @@ func mergePeople(a, b []Person) []Person {
 
 			index[key] = len(out)
 			out = append(out, p)
+		}
+	}
+
+	return out
+}
+
+func mergeVerifiedEmails(a, b []VerifiedEmail) []VerifiedEmail {
+	if len(b) == 0 {
+		return a
+	}
+
+	index := make(map[string]int, len(a)+len(b))
+	out := make([]VerifiedEmail, 0, len(a)+len(b))
+
+	for _, list := range [][]VerifiedEmail{a, b} {
+		for _, e := range list {
+			key := strings.ToLower(e.Address)
+			if key == "" {
+				continue
+			}
+
+			if at, ok := index[key]; ok {
+				if e.HasMX {
+					out[at].HasMX = true
+				}
+
+				if e.SMTPValid {
+					out[at].SMTPValid = true
+				}
+
+				if e.Reachable != "" && (out[at].Reachable == "" || out[at].Reachable == "unknown") {
+					out[at].Reachable = e.Reachable
+				}
+
+				continue
+			}
+
+			index[key] = len(out)
+			out = append(out, e)
 		}
 	}
 
