@@ -45,7 +45,7 @@ func TestIsLikelyPersonName(t *testing.T) {
 func TestLookupWikidataPeopleMayora(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
-	makers, org, err := lookupWikidataPeople(ctx, "Mayora Indah")
+	makers, org, _, err := lookupWikidataPeople(ctx, "Mayora Indah")
 	if err != nil {
 		t.Fatalf("wikidata: %v", err)
 	}

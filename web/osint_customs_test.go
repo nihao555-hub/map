@@ -66,6 +66,7 @@ func TestMapImportYetiData(t *testing.T) {
 		"date_range":      map[string]any{"start_date": "2015-01-01", "end_date": "2026-01-01"},
 		"suppliers_table": []any{
 			map[string]any{"supplier_name": "Acme Factory", "country": "China", "shipments_12m": float64(12), "key": "/supplier/acme-factory"},
+			map[string]any{"supplier_name": "N/A", "shipments_12m": float64(50)},
 			map[string]any{"supplier_name": "Missing in source document", "shipments_12m": float64(99)},
 		},
 		"hs_codes": []any{
@@ -102,13 +103,84 @@ func TestMapImportYetiData(t *testing.T) {
 	}
 }
 
-func TestImportYetiSlugCandidates(t *testing.T) {
-	cands := importYetiSlugCandidates("PT Deugro Indonesia", "deugro.com", "Deugro")
-	if len(cands) == 0 {
-		t.Fatal("no candidates")
+func TestExternalRecordMatchesBusinessRejectsPrefixFalsePositives(t *testing.T) {
+	if ExternalRecordMatchesBusiness("Paper", "Paper Son Coffee") {
+		t.Fatal("Paper must not match Paper Son Coffee")
 	}
-	joined := strings.Join(cands, ",")
-	if !strings.Contains(joined, "deugro") {
-		t.Fatalf("cands=%v", cands)
+	if ExternalRecordMatchesBusiness("Raja", "Raja Kurma Indonesia Office") {
+		t.Fatal("Raja must not match Raja Kurma…")
+	}
+	if !ExternalRecordMatchesBusiness("Allbirds", "Allbirds") {
+		t.Fatal("Allbirds should match")
+	}
+	if !ExternalRecordMatchesBusiness("STARBUCKS", "Starbucks Coffee Company") {
+		t.Fatal("Starbucks brand should match Starbucks Coffee Company")
+	}
+	if !ExternalRecordMatchesBusiness("ALLBIRDS INC", "Allbirds") {
+		t.Fatal("ALLBIRDS INC should match Allbirds")
+	}
+}
+
+func TestMapKirchnerLatestShipmentsAndSkipNA(t *testing.T) {
+	parsed := map[string]any{
+		"name":             "ALLBIRDS",
+		"address":          "ATTN MARIA TEL +1 650 273-0151 FEIN 47",
+		"country":          "VN, VIET NAM",
+		"from_year":        float64(2022),
+		"to_year":          float64(2025),
+		"total_shipments":  float64(100),
+		"unique_suppliers": float64(10),
+		"unique_products":  float64(5),
+		"last_year_total":  float64(20),
+		"newest_record_month": "2025-12",
+		"profile_url":      "/importer-profile?name=ALLBIRDS&from_year=2022&to_year=2025",
+		"top_suppliers": []any{
+			map[string]any{"name": "N/A", "count": float64(50)},
+			map[string]any{"name": "ATHENA VIET NAM", "count": float64(40)},
+		},
+		"top_products": []any{
+			map[string]any{"hs_code": "640411", "count": float64(30)},
+		},
+		"top_carriers": []any{
+			map[string]any{"name": "FLXT", "count": float64(90)},
+		},
+		"top_origin_countries": []any{
+			map[string]any{"country": "VN, VIET NAM", "count": float64(80)},
+		},
+		"monthly_shipments": []any{
+			map[string]any{"month": "2025-11", "count": float64(3)},
+			map[string]any{"month": "2025-12", "count": float64(4)},
+		},
+		"latest_shipments": []any{
+			map[string]any{
+				"bill_of_lading":      "FLXT1",
+				"product_desc":        "SHOES<br/>HS",
+				"consignee_name":      "ALLBIRDS INC",
+				"shipper_name":        "N/A",
+				"vessel_name":         "NESTOS",
+				"actual_arrival_date": "20251224",
+				"carrier_sasc_code":   "FLXT",
+			},
+		},
+	}
+	// Reuse fetchKirchnerProfile mapping via a tiny helper path: call map functions through POST stub.
+	// Directly exercise helpers used by fetchKirchnerProfile.
+	suppliers := mapKirchnerPartners(parsed["top_suppliers"], 8)
+	if len(suppliers) != 1 || suppliers[0].Name != "ATHENA VIET NAM" {
+		t.Fatalf("suppliers=%+v", suppliers)
+	}
+	bols := mapKirchnerLatestShipments(parsed["latest_shipments"], 5)
+	if len(bols) != 1 || bols[0].BillOfLading != "FLXT1" || bols[0].Date != "2025-12-24" {
+		t.Fatalf("bols=%+v", bols)
+	}
+	if bols[0].Shipper != "" {
+		t.Fatalf("N/A shipper should clear, got %q", bols[0].Shipper)
+	}
+	phone := extractPhoneFromCustomsText(asString(parsed["address"]))
+	if phone == "" || !strings.Contains(phone, "650") {
+		t.Fatalf("phone=%q", phone)
+	}
+	if absoluteKirchnerURL(asString(parsed["profile_url"])) != "https://www.kirchnerdata.com/importer-profile?name=ALLBIRDS&from_year=2022&to_year=2025" {
+		t.Fatalf("profile url bad")
 	}
 }

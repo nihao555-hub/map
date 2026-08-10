@@ -161,12 +161,12 @@ func runEnrichmentSources(ctx context.Context, intel *PlaceIntel, place Place, s
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			makers, org, err := lookupWikidataPeople(budget, title)
+			makers, org, employees, err := lookupWikidataPeople(budget, title)
 			if err != nil {
 				return
 			}
 			mu.Lock()
-			applyWikidata(intel, makers, org)
+			applyWikidata(intel, makers, org, employees)
 			mu.Unlock()
 		}()
 	}
@@ -677,10 +677,10 @@ func lookupGLEIF(ctx context.Context, name, domain string) (*CompanyHit, error) 
 	}, nil
 }
 
-func lookupWikidataPeople(ctx context.Context, title string) ([]DecisionMaker, *OrgUnit, error) {
+func lookupWikidataPeople(ctx context.Context, title string) ([]DecisionMaker, *OrgUnit, int, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
-		return nil, nil, fmt.Errorf("empty title")
+		return nil, nil, 0, fmt.Errorf("empty title")
 	}
 	// 去掉常见后缀提高命中
 	q := title
@@ -694,32 +694,44 @@ func lookupWikidataPeople(ctx context.Context, title string) ([]DecisionMaker, *
 		url.QueryEscape(q) + "&language=en&uselang=en&format=json&limit=3"
 	raw, err := httpGetJSON(ctx, searchURL, 8*time.Second)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	var search struct {
 		Search []struct {
-			ID    string `json:"id"`
-			Label string `json:"label"`
+			ID          string `json:"id"`
+			Label       string `json:"label"`
+			Description string `json:"description"`
 		} `json:"search"`
 	}
 	if json.Unmarshal(raw, &search) != nil || len(search.Search) == 0 {
-		return nil, nil, nil
+		return nil, nil, 0, nil
 	}
 	qid := search.Search[0].ID
 	label := search.Search[0].Label
+	// 优先选描述像公司的条目，避免落到商标/人名页
+	for _, hit := range search.Search {
+		desc := strings.ToLower(hit.Description)
+		if strings.Contains(desc, "company") || strings.Contains(desc, "brand") ||
+			strings.Contains(desc, "corporation") || strings.Contains(desc, "business") ||
+			strings.Contains(desc, "perusahaan") {
+			qid = hit.ID
+			label = hit.Label
+			break
+		}
+	}
 	entURL := "https://www.wikidata.org/wiki/Special:EntityData/" + qid + ".json"
 	entRaw, err := httpGetJSON(ctx, entURL, 10*time.Second)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	var entDoc map[string]any
 	if json.Unmarshal(entRaw, &entDoc) != nil {
-		return nil, nil, fmt.Errorf("wikidata entity json")
+		return nil, nil, 0, fmt.Errorf("wikidata entity json")
 	}
 	entities, _ := entDoc["entities"].(map[string]any)
 	ent, _ := entities[qid].(map[string]any)
 	if ent == nil {
-		return nil, nil, nil
+		return nil, nil, 0, nil
 	}
 	claims, _ := ent["claims"].(map[string]any)
 	roleProps := []struct {
@@ -764,8 +776,28 @@ func lookupWikidataPeople(ctx context.Context, title string) ([]DecisionMaker, *
 			})
 		}
 	}
+	employees, _ := extractWikidataEmployees(claims)
 	org := &OrgUnit{Name: label, Role: "wikidata entity", Evidence: "https://www.wikidata.org/wiki/" + qid}
-	return dedupeDecisionMakers(makers), org, nil
+	return dedupeDecisionMakers(makers), org, employees, nil
+}
+
+// extractWikidataEmployees reads P1128 (employees) when present.
+func extractWikidataEmployees(claims map[string]any) (int, string) {
+	arr, _ := claims["P1128"].([]any)
+	if len(arr) == 0 {
+		return 0, ""
+	}
+	cm, _ := arr[0].(map[string]any)
+	mainsnak, _ := cm["mainsnak"].(map[string]any)
+	dv, _ := mainsnak["datavalue"].(map[string]any)
+	val, _ := dv["value"].(map[string]any)
+	amount := asString(val["amount"])
+	amount = strings.TrimPrefix(amount, "+")
+	n := asInt(amount)
+	if n <= 0 {
+		return 0, ""
+	}
+	return n, "wikidata:P1128"
 }
 
 func wikidataLabel(ctx context.Context, qid string) (string, error) {
@@ -790,7 +822,7 @@ func wikidataLabel(ctx context.Context, qid string) (string, error) {
 	return "", nil
 }
 
-func applyWikidata(intel *PlaceIntel, makers []DecisionMaker, org *OrgUnit) {
+func applyWikidata(intel *PlaceIntel, makers []DecisionMaker, org *OrgUnit, employees int) {
 	intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, makers)
 	if org != nil && org.Name != "" {
 		intel.OrgStructure = append(intel.OrgStructure, *org)
@@ -799,6 +831,19 @@ func applyWikidata(intel *PlaceIntel, makers []DecisionMaker, org *OrgUnit) {
 	if len(makers) > 0 {
 		intel.Sources = mergeUnique(intel.Sources, []string{"wikidata"})
 		intel.Provider = strings.Trim(intel.Provider+"+wikidata", "+")
+	}
+	if employees > 0 {
+		applyFirmographics(intel, &Firmographics{
+			Employees:     employees,
+			EmployeesAsOf: "wikidata",
+			Source:        "wikidata",
+			FilingURL: func() string {
+				if org != nil {
+					return org.Evidence
+				}
+				return ""
+			}(),
+		})
 	}
 }
 

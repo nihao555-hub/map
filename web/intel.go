@@ -35,7 +35,8 @@ type PlaceIntel struct {
 	Socials         map[string]string `json:"socials,omitempty"`
 	Technologies    []string          `json:"technologies,omitempty"`
 	CompanyRegistry *CompanyHit       `json:"company_registry,omitempty"`
-	Trade           *TradeIntel       `json:"trade,omitempty"` // 美国海关提单（ImportYeti）
+	Trade           *TradeIntel       `json:"trade,omitempty"` // 美国海关提单（ImportYeti / Kirchner）
+	Firmographics   *Firmographics    `json:"firmographics,omitempty"`
 	MXHosts         []string          `json:"mx_hosts,omitempty"`
 	HasMX           bool              `json:"has_mx,omitempty"`
 	Confidence      string            `json:"confidence,omitempty"` // high|medium|low
@@ -318,11 +319,18 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 	st := ProbeOSINTTools()
 	runOSINTEnrichment(ctx, intel, place, st)
 
-	// OpenCorporates HTTP API
+	// OpenCorporates HTTP API（需 OPENCORPORATES_API_TOKEN 才有稳定额度）
 	if hit := lookupOpenCorporates(ctx, place.Title, place.Address); hit != nil {
 		intel.CompanyRegistry = hit
 		if hit.RegistryURL != "" {
 			intel.Sources = mergeUnique(intel.Sources, []string{hit.RegistryURL})
+		}
+		if hit.Jurisdiction != "" && hit.CompanyNumber != "" {
+			if people := lookupOpenCorporatesOfficers(ctx, hit.Jurisdiction, hit.CompanyNumber, place.Title); len(people) > 0 {
+				intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, people)
+				intel.Sources = mergeUnique(intel.Sources, []string{"opencorporates:officers"})
+				intel.Provider = strings.Trim(intel.Provider+"+opencorporates", "+")
+			}
 		}
 	}
 
@@ -653,6 +661,9 @@ func lookupOpenCorporates(ctx context.Context, name, address string) *CompanyHit
 		q = string([]rune(q)[:80])
 	}
 	u := "https://api.opencorporates.com/v0.4/companies/search?q=" + url.QueryEscape(q) + "&per_page=5"
+	if tok := strings.TrimSpace(os.Getenv("OPENCORPORATES_API_TOKEN")); tok != "" {
+		u += "&api_token=" + url.QueryEscape(tok)
+	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
@@ -699,7 +710,7 @@ func lookupOpenCorporates(ctx context.Context, name, address string) *CompanyHit
 	for _, c := range parsed.Results.Companies {
 		co := c.Company
 		coName := strings.ToLower(co.Name)
-		if strings.Contains(coName, nameLow) || strings.Contains(nameLow, coName) {
+		if ExternalRecordMatchesBusiness(co.Name, name) || strings.Contains(coName, nameLow) || strings.Contains(nameLow, coName) {
 			best = co
 			break
 		}
@@ -710,7 +721,7 @@ func lookupOpenCorporates(ctx context.Context, name, address string) *CompanyHit
 			break
 		}
 	}
-	return &CompanyHit{
+	hit := &CompanyHit{
 		Name:          best.Name,
 		CompanyNumber: best.CompanyNumber,
 		Jurisdiction:  best.JurisdictionCode,
@@ -720,6 +731,72 @@ func lookupOpenCorporates(ctx context.Context, name, address string) *CompanyHit
 		RegistryURL:   best.OpencorporatesURL,
 		Source:        "opencorporates",
 	}
+	return hit
+}
+
+func lookupOpenCorporatesOfficers(ctx context.Context, jurisdiction, number, business string) []DecisionMaker {
+	u := fmt.Sprintf("https://api.opencorporates.com/v0.4/companies/%s/%s/officers",
+		url.PathEscape(jurisdiction), url.PathEscape(number))
+	if tok := strings.TrimSpace(os.Getenv("OPENCORPORATES_API_TOKEN")); tok != "" {
+		u += "?api_token=" + url.QueryEscape(tok)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("User-Agent", "gmaps-intel/1.0")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512<<10))
+	var parsed struct {
+		Results struct {
+			Officers []struct {
+				Officer struct {
+					Name      string `json:"name"`
+					Position  string `json:"position"`
+					StartDate string `json:"start_date"`
+					EndDate   string `json:"end_date"`
+					Occupation string `json:"occupation"`
+				} `json:"officer"`
+			} `json:"officers"`
+		} `json:"results"`
+	}
+	if json.Unmarshal(raw, &parsed) != nil {
+		return nil
+	}
+	var out []DecisionMaker
+	for _, row := range parsed.Results.Officers {
+		o := row.Officer
+		if strings.TrimSpace(o.EndDate) != "" {
+			continue
+		}
+		name := strings.TrimSpace(o.Name)
+		if name == "" || !isLikelyPersonName(name) {
+			continue
+		}
+		title := firstNonEmpty(strings.TrimSpace(o.Position), strings.TrimSpace(o.Occupation), "Officer")
+		out = append(out, DecisionMaker{
+			Name:       name,
+			Title:      title,
+			Source:     "opencorporates",
+			Evidence:   fmt.Sprintf("OpenCorporates officer %s/%s", jurisdiction, number),
+			Confidence: "medium",
+			LinkedIn: "https://www.linkedin.com/search/results/people/?keywords=" +
+				url.QueryEscape(strings.TrimSpace(name+" "+business)),
+		})
+		if len(out) >= 8 {
+			break
+		}
+	}
+	return out
 }
 
 func firstToken(s string) string {
@@ -1822,11 +1899,13 @@ func firstCSV(s string) string {
 	return strings.TrimSpace(parts[0])
 }
 
-func firstNonEmpty(a, b string) string {
-	if strings.TrimSpace(a) != "" {
-		return a
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
 	}
-	return b
+	return ""
 }
 
 // uiLangDisplayName 返回给模型的自然语言语言名。

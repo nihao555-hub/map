@@ -155,6 +155,34 @@ func runPublicEnrichment(ctx context.Context, intel *PlaceIntel, place Place, mu
 			defer wg.Done()
 			runCustomsEnrichment(budget, intel, place, mu)
 		}()
+
+		// SEC EDGAR 免费财报（营收；员工若 XBRL 有则一并）
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			eCtx, cancel := context.WithTimeout(context.WithoutCancel(budget), 20*time.Second)
+			defer cancel()
+			fg, err := lookupEDGARFirmographics(eCtx, title)
+			if err != nil || fg == nil {
+				// SEC 常对云厂商 IP 403；回退 Wikipedia 信息框
+				wfg, makers, werr := lookupWikipediaFirmographics(eCtx, title)
+				if werr != nil || wfg == nil {
+					return
+				}
+				mu.Lock()
+				applyFirmographics(intel, wfg)
+				if len(makers) > 0 {
+					intel.DecisionMakers = mergeDecisionMakers(intel.DecisionMakers, makers)
+					intel.Sources = mergeUnique(intel.Sources, []string{"wikipedia:infobox"})
+					intel.Provider = strings.Trim(intel.Provider+"+wikipedia", "+")
+				}
+				mu.Unlock()
+				return
+			}
+			mu.Lock()
+			applyFirmographics(intel, fg)
+			mu.Unlock()
+		}()
 	}
 
 	wg.Wait()
@@ -843,30 +871,78 @@ func significantNameTokens(name string) []string {
 	return out
 }
 
-// ExternalRecordMatchesBusiness gates third-party records (customs profiles,
-// encyclopedia pages) against the Maps business name. A record qualifies when it
-// echoes a distinctive token, or repeats at least two of the business's words —
-// so a bare generic prefix such as "Indo" is rejected.
-func ExternalRecordMatchesBusiness(recordName, businessName string) bool {
-	if len(distinctiveNameTokens(businessName)) == 0 {
-		return false
+// weakBusinessFillers are common industry/venue words that should not alone
+// identify a company when matching third-party records (customs, encyclopedias).
+var weakBusinessFillers = map[string]bool{
+	"coffee": true, "cafe": true, "café": true, "shop": true, "store": true,
+	"company": true, "restaurant": true, "bar": true, "kitchen": true,
+	"bakery": true, "roasters": true, "roaster": true, "tea": true,
+	"office": true, "group": true, "brand": true, "house": true, "market": true,
+	"foods": true, "food": true, "trading": true, "trade": true, "import": true,
+	"export": true, "international": true, "global": true,
+}
+
+// coreBusinessTokens returns the identifying words of a business name after
+// dropping legal forms, generics, and weak industry fillers.
+func coreBusinessTokens(name string) []string {
+	legal := map[string]bool{"pt": true, "cv": true, "tbk": true, "ltd": true, "inc": true, "llc": true, "corp": true}
+	var out []string
+	seen := map[string]bool{}
+	for _, tok := range keywordTokens(strings.ToLower(name)) {
+		if len(tok) < 3 || legal[tok] || genericBrandWords[tok] || weakBusinessFillers[tok] {
+			continue
+		}
+		if _, err := strconv.Atoi(tok); err == nil {
+			continue
+		}
+		if seen[tok] {
+			continue
+		}
+		seen[tok] = true
+		out = append(out, tok)
 	}
+	return out
+}
+
+// ExternalRecordMatchesBusiness gates third-party records (customs profiles,
+// encyclopedia pages) against the Maps business name.
+//
+// Rules:
+//  1. ≥2 shared significant tokens → accept (e.g. INDO KARYA PANEL ↔ Indo Karya Panel Kenari)
+//  2. single core brand token present in the record → accept (Allbirds / Starbucks)
+//  3. otherwise reject — blocks "Paper" ↔ "Paper Son Coffee" and "Indo" ↔ long Indo… names
+func ExternalRecordMatchesBusiness(recordName, businessName string) bool {
 	record := strings.ToLower(strings.TrimSpace(recordName))
 	if record == "" {
 		return false
 	}
-	for _, tok := range distinctiveNameTokens(businessName) {
-		if strings.Contains(record, tok) {
-			return true
-		}
+	bizSig := significantNameTokens(businessName)
+	if len(bizSig) == 0 {
+		return false
 	}
 	shared := 0
-	for _, tok := range significantNameTokens(businessName) {
+	for _, tok := range bizSig {
 		if strings.Contains(record, tok) {
 			shared++
 		}
 	}
-	return shared >= 2
+	if shared >= 2 {
+		return true
+	}
+	core := coreBusinessTokens(businessName)
+	if len(core) == 0 {
+		core = distinctiveNameTokens(businessName)
+	}
+	if len(core) == 0 {
+		return false
+	}
+	if len(core) == 1 {
+		return strings.Contains(record, core[0])
+	}
+	if strings.Contains(record, strings.Join(core, " ")) {
+		return true
+	}
+	return false
 }
 
 func fetchDDGHTML(ctx context.Context, q string) (string, error) {

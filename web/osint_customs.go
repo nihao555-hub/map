@@ -15,46 +15,73 @@ import (
 	"time"
 )
 
-// TradeIntel 美国海关提单（ImportYeti / 同源开放数据）贸易背调。
+// TradeIntel 美国海关提单（ImportYeti / Kirchner 开放聚合）贸易背调。
 // 外贸公式第一步「海关定公司」：证实是否真实进口、主要供应商、HS、近期提单。
 //
 // GitHub 调研（2026-08）：无高 star、可 vendoring 的 ImportYeti 爬虫；
 // hughie21/Customs-Crawler（~12★）依赖 Cookie + cloudscraper 绕 Cloudflare，不嵌入。
 // 本文件：data.importyeti.com（IMPORTYETI_API_KEY）优先，Kirchner 多年窗口兜底。
+// Kirchner 免费无 key（约 500 次/IP/天），返回聚合画像 + latest_shipments 逐票摘要。
 type TradeIntel struct {
-	Source         string          `json:"source,omitempty"` // importyeti | kirchner
-	Role           string          `json:"role,omitempty"`   // importer | supplier
-	Name           string          `json:"name,omitempty"`
-	ProfileURL     string          `json:"profile_url,omitempty"`
-	Website        string          `json:"website,omitempty"`
-	Phone          string          `json:"phone,omitempty"`
-	Address        string          `json:"address,omitempty"`
-	Country        string          `json:"country,omitempty"`
-	TotalShipments int             `json:"total_shipments,omitempty"`
-	DateStart      string          `json:"date_start,omitempty"`
-	DateEnd        string          `json:"date_end,omitempty"`
-	TopSuppliers   []TradePartner  `json:"top_suppliers,omitempty"`
-	TopHSCodes     []TradeHSCode   `json:"top_hs_codes,omitempty"`
-	RecentBOLs     []TradeShipment `json:"recent_bols,omitempty"`
-	Summary        string          `json:"summary,omitempty"`
+	Source           string             `json:"source,omitempty"` // importyeti | kirchner
+	Role             string             `json:"role,omitempty"`   // importer | supplier
+	Name             string             `json:"name,omitempty"`
+	ProfileURL       string             `json:"profile_url,omitempty"`
+	Website          string             `json:"website,omitempty"`
+	Phone            string             `json:"phone,omitempty"`
+	Address          string             `json:"address,omitempty"`
+	Country          string             `json:"country,omitempty"`
+	TotalShipments   int                `json:"total_shipments,omitempty"`
+	UniqueSuppliers  int                `json:"unique_suppliers,omitempty"`
+	UniqueProducts   int                `json:"unique_products,omitempty"`
+	LastYearTotal    int                `json:"last_year_total,omitempty"`
+	NewestMonth      string             `json:"newest_month,omitempty"`
+	DateStart        string             `json:"date_start,omitempty"`
+	DateEnd          string             `json:"date_end,omitempty"`
+	TopSuppliers     []TradePartner     `json:"top_suppliers,omitempty"`
+	NewestSuppliers  []TradePartner     `json:"newest_suppliers,omitempty"`
+	TopCarriers      []TradePartner     `json:"top_carriers,omitempty"`
+	TopOrigins       []TradePartner     `json:"top_origins,omitempty"`
+	TopHSCodes       []TradeHSCode      `json:"top_hs_codes,omitempty"`
+	ProductTerms     []TradeHSCode      `json:"product_terms,omitempty"`
+	PortRoutes       []TradeRoute       `json:"port_routes,omitempty"`
+	YearlyShipments  []TradeTimeBucket  `json:"yearly_shipments,omitempty"`
+	MonthlyShipments []TradeTimeBucket  `json:"monthly_shipments,omitempty"`
+	RecentBOLs       []TradeShipment    `json:"recent_bols,omitempty"`
+	GrowingSupplier  *TradePartner      `json:"growing_supplier,omitempty"`
+	Summary          string             `json:"summary,omitempty"`
 }
 
-// TradePartner 海关提单里的供应商/贸易伙伴。
+// TradePartner 海关提单里的供应商/贸易伙伴/承运人。
 type TradePartner struct {
 	Name      string `json:"name"`
 	Country   string `json:"country,omitempty"`
 	Shipments int    `json:"shipments,omitempty"`
+	FirstSeen string `json:"first_seen,omitempty"`
 	Profile   string `json:"profile_url,omitempty"`
 }
 
-// TradeHSCode HS 编码汇总。
+// TradeHSCode HS 编码或品名词汇总。
 type TradeHSCode struct {
 	Code        string `json:"code"`
 	Description string `json:"description,omitempty"`
 	Shipments   int    `json:"shipments,omitempty"`
 }
 
-// TradeShipment 近期提单摘要。
+// TradeRoute 起运港 → 目的港频次。
+type TradeRoute struct {
+	Origin      string `json:"origin,omitempty"`
+	Destination string `json:"destination,omitempty"`
+	Shipments   int    `json:"shipments,omitempty"`
+}
+
+// TradeTimeBucket 年/月提单计数。
+type TradeTimeBucket struct {
+	Period    string `json:"period"`
+	Shipments int    `json:"shipments"`
+}
+
+// TradeShipment 近期提单摘要（Kirchner latest_shipments / ImportYeti recent_bols）。
 type TradeShipment struct {
 	Date         string `json:"date,omitempty"`
 	Shipper      string `json:"shipper,omitempty"`
@@ -62,6 +89,8 @@ type TradeShipment struct {
 	Product      string `json:"product,omitempty"`
 	HSCode       string `json:"hs_code,omitempty"`
 	Country      string `json:"country,omitempty"`
+	Vessel       string `json:"vessel,omitempty"`
+	Carrier      string `json:"carrier,omitempty"`
 	BillOfLading string `json:"bill_of_lading,omitempty"`
 }
 
@@ -342,7 +371,7 @@ func mapImportYetiData(data map[string]any, role, slug string) *TradeIntel {
 				continue
 			}
 			name := asString(m["supplier_name"])
-			if name == "" || strings.EqualFold(name, "Missing in source document") {
+			if isMissingCustomsName(name) {
 				continue
 			}
 			key := asString(m["key"])
@@ -511,57 +540,295 @@ func fetchKirchnerProfile(ctx context.Context, name string, yrFrom, yrTo int) (*
 	if asString(parsed["name"]) == "" && asInt(parsed["total_shipments"]) == 0 {
 		return nil, fmt.Errorf("kirchner empty")
 	}
+	fromYear := asInt(parsed["from_year"])
+	toYear := asInt(parsed["to_year"])
+	if fromYear == 0 {
+		fromYear = yrFrom
+	}
+	if toYear == 0 {
+		toYear = yrTo
+	}
+	addr := asString(parsed["address"])
 	t := &TradeIntel{
-		Source:         "kirchner",
-		Role:           "importer",
-		Name:           asString(parsed["name"]),
-		Address:        asString(parsed["address"]),
-		Country:        asString(parsed["country"]),
-		TotalShipments: asInt(parsed["total_shipments"]),
-		DateStart:      fmt.Sprintf("%d", yrFrom),
-		DateEnd:        fmt.Sprintf("%d", yrTo),
-		ProfileURL:     "https://www.kirchnerdata.com/",
+		Source:          "kirchner",
+		Role:            "importer",
+		Name:            asString(parsed["name"]),
+		Address:         addr,
+		Country:         asString(parsed["country"]),
+		Phone:           extractPhoneFromCustomsText(addr),
+		TotalShipments:  asInt(parsed["total_shipments"]),
+		UniqueSuppliers: asInt(parsed["unique_suppliers"]),
+		UniqueProducts:  asInt(parsed["unique_products"]),
+		LastYearTotal:   asInt(parsed["last_year_total"]),
+		NewestMonth:     asString(parsed["newest_record_month"]),
+		DateStart:       fmt.Sprintf("%d", fromYear),
+		DateEnd:         fmt.Sprintf("%d", toYear),
+		ProfileURL:      absoluteKirchnerURL(asString(parsed["profile_url"])),
 	}
-	if arr, ok := parsed["top_products"].([]any); ok {
-		for _, item := range arr {
-			m, _ := item.(map[string]any)
-			if m == nil {
-				continue
-			}
-			t.TopHSCodes = append(t.TopHSCodes, TradeHSCode{
-				Code:      asString(m["hs_code"]),
-				Shipments: asInt(m["count"]),
-			})
-			if len(t.TopHSCodes) >= 8 {
-				break
-			}
-		}
+	if t.ProfileURL == "" {
+		t.ProfileURL = absoluteKirchnerURL(asString(parsed["api_profile_url"]))
 	}
-	if arr, ok := parsed["top_suppliers"].([]any); ok {
-		for _, item := range arr {
-			m, _ := item.(map[string]any)
-			if m == nil {
-				continue
-			}
-			name := firstNonEmpty(asString(m["name"]), asString(m["supplier"]))
-			if name == "" {
-				name = asString(m["supplier_name"])
-			}
-			if name == "" {
-				continue
-			}
-			t.TopSuppliers = append(t.TopSuppliers, TradePartner{
+	t.TopHSCodes = mapKirchnerCountItems(parsed["top_products"], "hs_code", 10)
+	t.ProductTerms = mapKirchnerTermItems(parsed["top_product_terms"], 8)
+	t.TopSuppliers = mapKirchnerPartners(parsed["top_suppliers"], 12)
+	t.NewestSuppliers = mapKirchnerNewestSuppliers(parsed["newest_suppliers"], 8)
+	t.TopCarriers = mapKirchnerPartners(parsed["top_carriers"], 8)
+	t.TopOrigins = mapKirchnerOrigins(parsed["top_origin_countries"], 10)
+	t.PortRoutes = mapKirchnerRoutes(parsed["port_routes"], 8)
+	t.YearlyShipments = mapKirchnerTimeBuckets(parsed["yearly_shipments"], "year", 12)
+	t.MonthlyShipments = mapKirchnerTimeBuckets(parsed["monthly_shipments"], "month", 24)
+	t.RecentBOLs = mapKirchnerLatestShipments(parsed["latest_shipments"], 12)
+	if g, ok := parsed["fastest_growing_supplier"].(map[string]any); ok {
+		if name := asString(g["name"]); !isMissingCustomsName(name) {
+			t.GrowingSupplier = &TradePartner{
 				Name:      name,
-				Country:   firstNonEmpty(asString(m["country"]), asString(m["origin"])),
-				Shipments: asInt(m["count"]),
-			})
-			if len(t.TopSuppliers) >= 8 {
-				break
+				Shipments: asInt(g["growth"]),
+				FirstSeen: firstNonEmpty(asString(g["first_year"]), asString(g["last_year"])),
 			}
 		}
 	}
 	t.Summary = formatTradeSummary(t)
 	return t, nil
+}
+
+func absoluteKirchnerURL(u string) string {
+	u = strings.TrimSpace(u)
+	if u == "" {
+		return ""
+	}
+	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		return u
+	}
+	if strings.HasPrefix(u, "/") {
+		return "https://www.kirchnerdata.com" + u
+	}
+	return "https://www.kirchnerdata.com/" + u
+}
+
+func isMissingCustomsName(name string) bool {
+	n := strings.TrimSpace(strings.ToLower(name))
+	return n == "" || n == "n/a" || n == "na" || n == "null" ||
+		n == "missing in source document" || n == "unknown"
+}
+
+var customsPhoneRe = regexp.MustCompile(`(?i)(?:tel|telephone|phone)[:\s]*(\+?[\d][\d\s().\-]{7,20}\d)`)
+
+func extractPhoneFromCustomsText(s string) string {
+	m := customsPhoneRe.FindStringSubmatch(s)
+	if len(m) < 2 {
+		return ""
+	}
+	return strings.Join(strings.Fields(m[1]), " ")
+}
+
+func mapKirchnerCountItems(raw any, codeKey string, limit int) []TradeHSCode {
+	arr, _ := raw.([]any)
+	var out []TradeHSCode
+	for _, item := range arr {
+		m, _ := item.(map[string]any)
+		if m == nil {
+			continue
+		}
+		code := asString(m[codeKey])
+		if code == "" {
+			code = asString(m["code"])
+		}
+		if code == "" {
+			continue
+		}
+		out = append(out, TradeHSCode{Code: code, Shipments: asInt(m["count"])})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func mapKirchnerTermItems(raw any, limit int) []TradeHSCode {
+	arr, _ := raw.([]any)
+	var out []TradeHSCode
+	for _, item := range arr {
+		m, _ := item.(map[string]any)
+		if m == nil {
+			continue
+		}
+		term := asString(m["term"])
+		if term == "" || isMissingCustomsName(term) {
+			continue
+		}
+		// 脏拼接词（ALLBIRDSSHOESALLBIRDS…）截短
+		if len([]rune(term)) > 48 {
+			term = string([]rune(term)[:48]) + "…"
+		}
+		out = append(out, TradeHSCode{Code: term, Shipments: asInt(m["count"])})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func mapKirchnerPartners(raw any, limit int) []TradePartner {
+	arr, _ := raw.([]any)
+	var out []TradePartner
+	for _, item := range arr {
+		m, _ := item.(map[string]any)
+		if m == nil {
+			continue
+		}
+		name := firstNonEmpty(asString(m["name"]), asString(m["supplier"]), asString(m["supplier_name"]))
+		if isMissingCustomsName(name) {
+			continue
+		}
+		out = append(out, TradePartner{
+			Name:      name,
+			Country:   firstNonEmpty(asString(m["country"]), asString(m["origin"])),
+			Shipments: asInt(m["count"]),
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func mapKirchnerNewestSuppliers(raw any, limit int) []TradePartner {
+	arr, _ := raw.([]any)
+	var out []TradePartner
+	for _, item := range arr {
+		m, _ := item.(map[string]any)
+		if m == nil {
+			continue
+		}
+		name := asString(m["name"])
+		if isMissingCustomsName(name) {
+			continue
+		}
+		out = append(out, TradePartner{
+			Name:      name,
+			Shipments: asInt(m["count"]),
+			FirstSeen: asString(m["first_shipment"]),
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func mapKirchnerOrigins(raw any, limit int) []TradePartner {
+	arr, _ := raw.([]any)
+	var out []TradePartner
+	for _, item := range arr {
+		m, _ := item.(map[string]any)
+		if m == nil {
+			continue
+		}
+		country := firstNonEmpty(asString(m["country"]), asString(m["name"]))
+		if isMissingCustomsName(country) {
+			continue
+		}
+		out = append(out, TradePartner{Name: country, Country: country, Shipments: asInt(m["count"])})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func mapKirchnerRoutes(raw any, limit int) []TradeRoute {
+	arr, _ := raw.([]any)
+	var out []TradeRoute
+	for _, item := range arr {
+		m, _ := item.(map[string]any)
+		if m == nil {
+			continue
+		}
+		origin := asString(m["origin"])
+		dest := asString(m["destination"])
+		if origin == "" && dest == "" {
+			continue
+		}
+		out = append(out, TradeRoute{
+			Origin: origin, Destination: dest, Shipments: asInt(m["count"]),
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func mapKirchnerTimeBuckets(raw any, periodKey string, limit int) []TradeTimeBucket {
+	arr, _ := raw.([]any)
+	var out []TradeTimeBucket
+	for _, item := range arr {
+		m, _ := item.(map[string]any)
+		if m == nil {
+			continue
+		}
+		period := asString(m[periodKey])
+		if period == "" {
+			period = firstNonEmpty(asString(m["month"]), asString(m["year"]), asString(m["period"]))
+		}
+		if period == "" {
+			continue
+		}
+		out = append(out, TradeTimeBucket{Period: period, Shipments: asInt(m["count"])})
+	}
+	if limit > 0 && len(out) > limit {
+		// 保留最近 limit 个桶（API 通常已按时间升序）
+		out = out[len(out)-limit:]
+	}
+	return out
+}
+
+func mapKirchnerLatestShipments(raw any, limit int) []TradeShipment {
+	arr, _ := raw.([]any)
+	var out []TradeShipment
+	for _, item := range arr {
+		m, _ := item.(map[string]any)
+		if m == nil {
+			continue
+		}
+		shipper := asString(m["shipper_name"])
+		if isMissingCustomsName(shipper) {
+			shipper = ""
+		}
+		product := cleanKirchnerProductDesc(asString(m["product_desc"]))
+		out = append(out, TradeShipment{
+			Date:         formatKirchnerArrivalDate(asString(m["actual_arrival_date"])),
+			Shipper:      shipper,
+			Consignee:    asString(m["consignee_name"]),
+			Product:      product,
+			Vessel:       asString(m["vessel_name"]),
+			Carrier:      asString(m["carrier_sasc_code"]),
+			BillOfLading: asString(m["bill_of_lading"]),
+		})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func cleanKirchnerProductDesc(s string) string {
+	s = strings.ReplaceAll(s, "<br/>", " ")
+	s = strings.ReplaceAll(s, "<br>", " ")
+	s = strings.Join(strings.Fields(s), " ")
+	s = strings.Trim(s, " ;")
+	if len([]rune(s)) > 160 {
+		s = string([]rune(s)[:160]) + "…"
+	}
+	return s
+}
+
+func formatKirchnerArrivalDate(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) == 8 {
+		return s[0:4] + "-" + s[4:6] + "-" + s[6:8]
+	}
+	return s
 }
 
 func formatTradeSummary(t *TradeIntel) string {
@@ -576,18 +843,23 @@ func formatTradeSummary(t *TradeIntel) string {
 	if t.TotalShipments > 0 {
 		parts = append(parts, fmt.Sprintf("累计提单 %d", t.TotalShipments))
 	}
+	if t.UniqueSuppliers > 0 {
+		parts = append(parts, fmt.Sprintf("供应商 %d", t.UniqueSuppliers))
+	}
 	if t.DateStart != "" || t.DateEnd != "" {
 		parts = append(parts, fmt.Sprintf("区间 %s–%s", t.DateStart, t.DateEnd))
 	}
 	if len(t.TopSuppliers) > 0 {
 		for _, s := range t.TopSuppliers {
-			name := strings.TrimSpace(s.Name)
-			if name == "" || strings.EqualFold(name, "N/A") || strings.EqualFold(name, "NA") {
+			if isMissingCustomsName(s.Name) {
 				continue
 			}
-			parts = append(parts, "主要伙伴 "+name)
+			parts = append(parts, "主要伙伴 "+strings.TrimSpace(s.Name))
 			break
 		}
+	}
+	if len(t.RecentBOLs) > 0 && t.RecentBOLs[0].Date != "" {
+		parts = append(parts, "最近到港 "+t.RecentBOLs[0].Date)
 	}
 	if len(t.TopHSCodes) > 0 {
 		parts = append(parts, "HS "+t.TopHSCodes[0].Code)
@@ -619,7 +891,7 @@ func applyTradeIntel(intel *PlaceIntel, trade *TradeIntel) {
 	// 贸易伙伴写入架构（真实供应链，不是假部门）；最多 3 家避免刷屏
 	nSup := 0
 	for _, s := range trade.TopSuppliers {
-		if s.Name == "" {
+		if isMissingCustomsName(s.Name) {
 			continue
 		}
 		if nSup >= 3 {

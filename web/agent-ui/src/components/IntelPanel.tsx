@@ -51,18 +51,44 @@ export type PlaceIntel = {
     address?: string
     country?: string
     total_shipments?: number
+    unique_suppliers?: number
+    unique_products?: number
+    last_year_total?: number
+    newest_month?: string
     date_start?: string
     date_end?: string
-    top_suppliers?: Array<{ name?: string; country?: string; shipments?: number; profile_url?: string }>
+    top_suppliers?: Array<{ name?: string; country?: string; shipments?: number; profile_url?: string; first_seen?: string }>
+    newest_suppliers?: Array<{ name?: string; country?: string; shipments?: number; first_seen?: string }>
+    top_carriers?: Array<{ name?: string; shipments?: number }>
+    top_origins?: Array<{ name?: string; country?: string; shipments?: number }>
     top_hs_codes?: Array<{ code?: string; description?: string; shipments?: number }>
+    product_terms?: Array<{ code?: string; shipments?: number }>
+    port_routes?: Array<{ origin?: string; destination?: string; shipments?: number }>
+    yearly_shipments?: Array<{ period?: string; shipments?: number }>
+    monthly_shipments?: Array<{ period?: string; shipments?: number }>
+    growing_supplier?: { name?: string; shipments?: number; first_seen?: string }
     recent_bols?: Array<{
       date?: string
       shipper?: string
       consignee?: string
       product?: string
       hs_code?: string
+      vessel?: string
+      carrier?: string
+      bill_of_lading?: string
     }>
     summary?: string
+  }
+  firmographics?: {
+    legal_name?: string
+    ticker?: string
+    cik?: string
+    revenue_usd?: number
+    revenue_year?: string
+    employees?: number
+    employees_as_of?: string
+    source?: string
+    filing_url?: string
   }
   mx_hosts?: string[]
   has_mx?: boolean
@@ -459,6 +485,7 @@ function IntelTabBody({
   })
   const reg = intel.company_registry
   const trade = intel.trade
+  const firm = intel.firmographics
   const tech = intel.technologies || []
 
   if (tab === 'overview') {
@@ -484,6 +511,27 @@ function IntelTabBody({
           <KV label="企业邮 MX">{intel.mx_hosts?.length ? intel.mx_hosts.join(', ') : '—'}</KV>
           <KV label="触达信心">{confBadge(intel.confidence) || '—'}</KV>
         </dl>
+        {firm && (firm.legal_name || firm.revenue_usd || firm.employees || firm.ticker) ? (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">规模 / 财报（免费公开源）</h4>
+            <dl>
+              <KV label="法定名">{firm.legal_name || '—'}</KV>
+              <KV label="Ticker">{firm.ticker || '—'}</KV>
+              <KV label="营收">
+                {firm.revenue_usd
+                  ? `$${Number(firm.revenue_usd).toLocaleString()}${firm.revenue_year ? `（${firm.revenue_year}）` : ''}`
+                  : '—'}
+              </KV>
+              <KV label="员工">{firm.employees ? String(firm.employees) : '—'}</KV>
+              <KV label="来源">{firm.source || '—'}</KV>
+              {firm.filing_url ? (
+                <KV label="SEC">
+                  <ExtLink href={firm.filing_url}>打开 10-K</ExtLink>
+                </KV>
+              ) : null}
+            </dl>
+          </section>
+        ) : null}
         {tech.length ? (
           <section>
             <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">建站 / 技术栈</h4>
@@ -507,8 +555,8 @@ function IntelTabBody({
           </section>
         ) : null}
         <p className="rounded-lg border border-dashed border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs leading-relaxed text-[#991B1B]">
-          与外贸通差距：全球海关全量库、营收/员工商业库、合规 LinkedIn 批量档案需付费数据；本页为官网 +
-          公开海关片段 + 决策人穿透的可落地替代。
+          免费源已尽量用满：美国海运海关（Kirchner）、SEC 财报、Wikidata/官网决策人。全球海关全量 / 私企营收员工库 /
+          合规 LinkedIn 批量仍需付费。
         </p>
       </div>
     )
@@ -613,23 +661,35 @@ function IntelTabBody({
   }
 
   if (tab === 'trade') {
-    if (!trade || !(trade.total_shipments || trade.top_hs_codes?.length || trade.recent_bols?.length)) {
-      return (
-        <Empty text="暂无公开海关采购记录（外贸通级全球提单全量需商业海关库）" />
+    if (
+      !trade ||
+      !(
+        trade.total_shipments ||
+        trade.top_hs_codes?.length ||
+        trade.recent_bols?.length ||
+        trade.top_suppliers?.length
       )
+    ) {
+      return <Empty text="暂无公开海关采购记录（外贸通级全球提单全量需商业海关库）" />
     }
+    const months = (trade.monthly_shipments || []).slice(-12)
     return (
       <div className="space-y-3">
         <p className="text-sm text-[#4B5563]">
-          {trade.summary || '公开海关海运提单片段（免费源）；用于判断是否真实买家 / 采购品类。'}
+          {trade.summary || '美国海运公开提单（Kirchner / ImportYeti 免费源）；用于判断是否真实买家 / 采购品类。'}
         </p>
         <dl>
           <KV label="角色">{trade.role === 'supplier' ? '对美出口供应商' : '美国进口商'}</KV>
           <KV label="主体">{trade.name || '—'}</KV>
-          <KV label="提单数">{trade.total_shipments ? String(trade.total_shipments) : '—'}</KV>
+          <KV label="累计提单">{trade.total_shipments ? String(trade.total_shipments) : '—'}</KV>
+          <KV label="去重供应商">{trade.unique_suppliers ? String(trade.unique_suppliers) : '—'}</KV>
+          <KV label="去重品类">{trade.unique_products ? String(trade.unique_products) : '—'}</KV>
+          <KV label="去年提单">{trade.last_year_total ? String(trade.last_year_total) : '—'}</KV>
+          <KV label="最新月份">{trade.newest_month || '—'}</KV>
           <KV label="区间">{[trade.date_start, trade.date_end].filter(Boolean).join(' – ') || '—'}</KV>
-          <KV label="国家">{trade.country || '—'}</KV>
+          <KV label="主要原产国">{trade.country || '—'}</KV>
           <KV label="地址">{trade.address || '—'}</KV>
+          {trade.phone ? <KV label="电话">{trade.phone}</KV> : null}
           {trade.profile_url ? (
             <KV label="档案">
               <ExtLink href={trade.profile_url}>打开</ExtLink>
@@ -650,48 +710,164 @@ function IntelTabBody({
             </div>
           </section>
         ) : null}
-        {trade.recent_bols?.length ? (
+        {trade.product_terms?.length ? (
           <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">近期提单</h4>
-            <ul className="space-y-2 text-sm text-[#374151]">
-              {trade.recent_bols.map((b, i) => (
-                <li key={i} className="rounded-lg border border-[#E5E7EB] p-2.5">
-                  <div className="font-medium">
-                    {b.date || ''} · {b.shipper || ''} → {b.consignee || ''}
-                  </div>
-                  {b.hs_code ? <div className="text-xs text-[#6B7280]">HS {b.hs_code}</div> : null}
-                  {b.product ? <div className="text-xs text-[#9CA3AF]">{b.product}</div> : null}
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">品名词频</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {trade.product_terms.map((h, i) => (
+                <Chip key={i}>
+                  {h.code}
+                  {h.shipments ? ` (${h.shipments})` : ''}
+                </Chip>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {trade.top_origins?.length ? (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">原产国</h4>
+            <ul className="space-y-1 text-sm text-[#374151]">
+              {trade.top_origins.map((o, i) => (
+                <li key={i}>
+                  {o.name || o.country}
+                  {o.shipments ? ` · ${o.shipments}票` : ''}
                 </li>
               ))}
             </ul>
           </section>
         ) : null}
+        {trade.top_carriers?.length ? (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">承运人</h4>
+            <ul className="space-y-1 text-sm text-[#374151]">
+              {trade.top_carriers.map((c, i) => (
+                <li key={i}>
+                  {c.name}
+                  {c.shipments ? ` · ${c.shipments}票` : ''}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {trade.yearly_shipments?.length ? (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">年度提单</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {trade.yearly_shipments.map((y, i) => (
+                <Chip key={i}>
+                  {y.period}: {y.shipments || 0}
+                </Chip>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {months.length ? (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">近12个月提单</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {months.map((y, i) => (
+                <Chip key={i}>
+                  {y.period}: {y.shipments || 0}
+                </Chip>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {trade.port_routes?.length ? (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">主要航线</h4>
+            <ul className="space-y-1 text-sm text-[#374151]">
+              {trade.port_routes.map((r, i) => (
+                <li key={i}>
+                  {r.origin} → {r.destination}
+                  {r.shipments ? ` · ${r.shipments}票` : ''}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {trade.recent_bols?.length ? (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">近期提单明细</h4>
+            <ul className="space-y-2 text-sm text-[#374151]">
+              {trade.recent_bols.map((b, i) => (
+                <li key={i} className="rounded-lg border border-[#E5E7EB] p-2.5">
+                  <div className="font-medium">
+                    {b.date || ''}
+                    {b.bill_of_lading ? ` · BOL ${b.bill_of_lading}` : ''}
+                  </div>
+                  <div>
+                    {b.shipper || '（托运人未披露）'} → {b.consignee || ''}
+                  </div>
+                  {b.product ? <div className="text-xs text-[#9CA3AF]">{b.product}</div> : null}
+                  {b.vessel || b.carrier ? (
+                    <div className="text-xs text-[#6B7280]">{[b.vessel, b.carrier].filter(Boolean).join(' · ')}</div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : (
+          <p className="text-xs text-[#9CA3AF]">该免费源未返回逐票提单（仅聚合统计）。</p>
+        )}
       </div>
     )
   }
 
   if (tab === 'supply') {
-    const partners = trade?.top_suppliers || []
-    if (!partners.length) {
+    const partners = (trade?.top_suppliers || []).filter((s) => {
+      const n = (s.name || '').trim().toLowerCase()
+      return n && n !== 'n/a' && n !== 'na'
+    })
+    const newest = trade?.newest_suppliers || []
+    if (!partners.length && !newest.length && !trade?.growing_supplier?.name) {
       return <Empty text="暂无供应链伙伴公开记录（外贸通可做采供双向穿透）" />
     }
     return (
       <div className="space-y-3">
         <p className="text-sm text-[#4B5563]">现有供应商 / 贸易伙伴结构，用于判断切入窗口。</p>
-        <ul className="space-y-2">
-          {partners.map((s, i) => (
-            <li key={i} className="rounded-xl border border-[#E5E7EB] p-3 text-sm text-[#374151]">
-              <strong className="text-[#111827]">{s.name}</strong>
-              {s.country ? <span className="text-[#6B7280]"> · {s.country}</span> : null}
-              {s.shipments ? <span className="text-[#6B7280]"> · {s.shipments} 票</span> : null}
-              {s.profile_url ? (
-                <div className="mt-1">
-                  <ExtLink href={s.profile_url}>查看档案</ExtLink>
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        {partners.length ? (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">主要供应商</h4>
+            <ul className="space-y-2">
+              {partners.map((s, i) => (
+                <li key={i} className="rounded-xl border border-[#E5E7EB] p-3 text-sm text-[#374151]">
+                  <strong className="text-[#111827]">{s.name}</strong>
+                  {s.country ? <span className="text-[#6B7280]"> · {s.country}</span> : null}
+                  {s.shipments ? <span className="text-[#6B7280]"> · {s.shipments} 票</span> : null}
+                  {s.profile_url ? (
+                    <div className="mt-1">
+                      <ExtLink href={s.profile_url}>查看档案</ExtLink>
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {newest.length ? (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">新晋供应商</h4>
+            <ul className="space-y-2">
+              {newest.map((s, i) => (
+                <li key={i} className="rounded-xl border border-[#E5E7EB] p-3 text-sm text-[#374151]">
+                  <strong className="text-[#111827]">{s.name}</strong>
+                  {s.first_seen ? <span className="text-[#6B7280]"> · 首票 {s.first_seen}</span> : null}
+                  {s.shipments ? <span className="text-[#6B7280]"> · {s.shipments} 票</span> : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+        {trade?.growing_supplier?.name ? (
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">增长最快供应商</h4>
+            <p className="text-sm text-[#374151]">
+              <strong>{trade.growing_supplier.name}</strong>
+              {trade.growing_supplier.shipments ? ` · 增长 ${trade.growing_supplier.shipments}票` : ''}
+            </p>
+          </section>
+        ) : null}
       </div>
     )
   }
