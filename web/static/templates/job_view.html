@@ -289,6 +289,35 @@
             }).join('') + '</div>';
         }
 
+        /** 采购交易明细表：headers=[{label,num?}], rows=[[cellHtml|text,...]] */
+        function intelTable(title, headers, rows, opts) {
+            opts = opts || {};
+            if (!rows || !rows.length) return '';
+            var tall = opts.tall ? ' intel-table-tall' : '';
+            var head = headers.map(function (h) {
+                return '<th class="' + (h.num ? 'num' : '') + '">' + escapeHtml(h.label || '') + '</th>';
+            }).join('');
+            var body = rows.map(function (row) {
+                return '<tr>' + row.map(function (cell, i) {
+                    var h = headers[i] || {};
+                    var cls = h.num ? 'num' : '';
+                    // 已转义的 HTML 单元格以 \x00html: 前缀标记
+                    if (typeof cell === 'string' && cell.indexOf('\x00html:') === 0) {
+                        return '<td class="' + cls + '">' + cell.slice(6) + '</td>';
+                    }
+                    return '<td class="' + cls + '">' + escapeHtml(cell == null ? '' : String(cell)) + '</td>';
+                }).join('') + '</tr>';
+            }).join('');
+            return '<div class="intel-table-caption"><h4 class="intel-sub">' + escapeHtml(title) + '</h4>' +
+                '<span class="intel-table-count">' + rows.length + ' 条</span></div>' +
+                '<div class="intel-table-wrap' + tall + '"><table class="intel-table"><thead><tr>' + head +
+                '</tr></thead><tbody>' + body + '</tbody></table></div>';
+        }
+
+        function htmlCell(inner) {
+            return '\x00html:' + inner;
+        }
+
         function linkOrText(v) {
             if (!v) return '—';
             if (/^https?:\/\//i.test(String(v))) {
@@ -504,7 +533,7 @@
                 html: overviewBits.filter(Boolean).join('') || emptyBlock('暂无公司信息')
             });
 
-            // 2.5) 采购交易（外贸通：真实采购需求）
+            // 2.5) 采购交易（外贸通：多表明细记录）
             var trade = intel.trade;
             if (trade && (trade.total_shipments || (trade.top_suppliers || []).length || (trade.top_hs_codes || []).length || (trade.recent_bols || []).length)) {
                 var tradeHtml = '';
@@ -524,105 +553,127 @@
                     kv('电话', escapeHtml(trade.phone || '')),
                     kv('档案', linkOrText(trade.profile_url || ''))
                 ].filter(Boolean).join('');
+
+                var bols = trade.recent_bols || [];
+                if (bols.length) {
+                    tradeHtml += intelTable('近期提单明细', [
+                        { label: '到港日' }, { label: '提单号 BOL' }, { label: '托运人' },
+                        { label: '收货人' }, { label: '品名 / 货描' }, { label: '船名' }, { label: '承运人' }
+                    ], bols.map(function (b) {
+                        return [
+                            b.date || '—',
+                            b.bill_of_lading || '—',
+                            b.shipper || '（未披露）',
+                            b.consignee || '—',
+                            b.product || (b.hs_code ? 'HS ' + b.hs_code : '—'),
+                            b.vessel || '—',
+                            b.carrier || '—'
+                        ];
+                    }), { tall: true });
+                } else {
+                    tradeHtml += '<p class="intel-muted">该免费源未返回逐票提单（仅聚合统计表）。</p>';
+                }
+
                 var hs = trade.top_hs_codes || [];
                 if (hs.length) {
-                    tradeHtml += '<h4 class="intel-sub">核心 HS / 品类</h4><div class="intel-chips">' + hs.map(function (h) {
-                        return '<span class="intel-chip">' + escapeHtml(h.code || '') +
-                            (h.description ? ' ' + escapeHtml(h.description) : '') +
-                            (h.shipments ? ' (' + h.shipments + ')' : '') + '</span>';
-                    }).join('') + '</div>';
+                    tradeHtml += intelTable('核心 HS / 品类', [
+                        { label: 'HS 编码' }, { label: '描述' }, { label: '提单数', num: true }
+                    ], hs.map(function (h) {
+                        return [h.code || '—', h.description || '—', h.shipments != null ? String(h.shipments) : '—'];
+                    }));
                 }
                 var terms = trade.product_terms || [];
                 if (terms.length) {
-                    tradeHtml += '<h4 class="intel-sub">品名词频</h4><div class="intel-chips">' + terms.map(function (h) {
-                        return '<span class="intel-chip">' + escapeHtml(h.code || '') +
-                            (h.shipments ? ' (' + h.shipments + ')' : '') + '</span>';
-                    }).join('') + '</div>';
+                    tradeHtml += intelTable('品名词频', [
+                        { label: '品名关键词' }, { label: '出现次数', num: true }
+                    ], terms.map(function (h) {
+                        return [h.code || '—', h.shipments != null ? String(h.shipments) : '—'];
+                    }));
                 }
                 var origins = trade.top_origins || [];
                 if (origins.length) {
-                    tradeHtml += '<h4 class="intel-sub">原产国</h4><ul class="intel-org-list">' + origins.map(function (o) {
-                        return '<li>' + escapeHtml(o.name || o.country || '') +
-                            (o.shipments ? ' · ' + o.shipments + '票' : '') + '</li>';
-                    }).join('') + '</ul>';
+                    tradeHtml += intelTable('原产国分布', [
+                        { label: '原产国' }, { label: '提单数', num: true }
+                    ], origins.map(function (o) {
+                        return [o.name || o.country || '—', o.shipments != null ? String(o.shipments) : '—'];
+                    }));
                 }
                 var carriers = trade.top_carriers || [];
                 if (carriers.length) {
-                    tradeHtml += '<h4 class="intel-sub">承运人</h4><ul class="intel-org-list">' + carriers.map(function (c) {
-                        return '<li>' + escapeHtml(c.name || '') +
-                            (c.shipments ? ' · ' + c.shipments + '票' : '') + '</li>';
-                    }).join('') + '</ul>';
+                    tradeHtml += intelTable('承运人', [
+                        { label: '承运人' }, { label: '提单数', num: true }
+                    ], carriers.map(function (c) {
+                        return [c.name || '—', c.shipments != null ? String(c.shipments) : '—'];
+                    }));
                 }
                 var yearly = trade.yearly_shipments || [];
                 if (yearly.length) {
-                    tradeHtml += '<h4 class="intel-sub">年度提单</h4><div class="intel-chips">' + yearly.map(function (y) {
-                        return '<span class="intel-chip">' + escapeHtml(y.period || '') + ': ' + (y.shipments || 0) + '</span>';
-                    }).join('') + '</div>';
+                    tradeHtml += intelTable('年度提单', [
+                        { label: '年份' }, { label: '提单数', num: true }
+                    ], yearly.map(function (y) {
+                        return [y.period || '—', y.shipments != null ? String(y.shipments) : '0'];
+                    }));
                 }
                 var monthly = trade.monthly_shipments || [];
                 if (monthly.length) {
-                    var recentMonths = monthly.slice(-12);
-                    tradeHtml += '<h4 class="intel-sub">近12个月提单</h4><div class="intel-chips">' + recentMonths.map(function (y) {
-                        return '<span class="intel-chip">' + escapeHtml(y.period || '') + ': ' + (y.shipments || 0) + '</span>';
-                    }).join('') + '</div>';
+                    var monthRows = monthly.slice().reverse(); // 最近在上
+                    tradeHtml += intelTable('逐月提单记录', [
+                        { label: '月份' }, { label: '提单数', num: true }
+                    ], monthRows.map(function (y) {
+                        return [y.period || '—', y.shipments != null ? String(y.shipments) : '0'];
+                    }), { tall: true });
                 }
                 var routes = trade.port_routes || [];
                 if (routes.length) {
-                    tradeHtml += '<h4 class="intel-sub">主要航线</h4><ul class="intel-org-list">' + routes.map(function (r) {
-                        return '<li>' + escapeHtml(r.origin || '') + ' → ' + escapeHtml(r.destination || '') +
-                            (r.shipments ? ' · ' + r.shipments + '票' : '') + '</li>';
-                    }).join('') + '</ul>';
+                    tradeHtml += intelTable('主要航线', [
+                        { label: '起运港' }, { label: '目的港' }, { label: '提单数', num: true }
+                    ], routes.map(function (r) {
+                        return [r.origin || '—', r.destination || '—', r.shipments != null ? String(r.shipments) : '—'];
+                    }), { tall: true });
                 }
-                var bols = trade.recent_bols || [];
-                if (bols.length) {
-                    tradeHtml += '<h4 class="intel-sub">近期提单明细</h4><ul class="intel-org-list">' + bols.map(function (b) {
-                        return '<li><strong>' + escapeHtml(b.date || '') + '</strong>' +
-                            (b.bill_of_lading ? ' · BOL ' + escapeHtml(b.bill_of_lading) : '') +
-                            '<div>' + escapeHtml(b.shipper || '（托运人未披露）') + ' → ' + escapeHtml(b.consignee || '') + '</div>' +
-                            (b.product ? '<div class="intel-muted">' + escapeHtml(b.product) + '</div>' : '') +
-                            (b.vessel || b.carrier ? '<div class="intel-muted">' +
-                                escapeHtml([b.vessel, b.carrier].filter(Boolean).join(' · ')) + '</div>' : '') +
-                            '</li>';
-                    }).join('') + '</ul>';
-                } else {
-                    tradeHtml += '<p class="intel-muted">该免费源未返回逐票提单（仅聚合统计）。</p>';
-                }
+
                 tabs.push({
                     id: 'customs',
                     label: '采购交易' + (trade.total_shipments ? ' ' + trade.total_shipments : ''),
                     html: tradeHtml
                 });
 
-                // 供应链单独一维（外贸通：供应链穿透）
+                // 供应链单独一维（外贸通：供应链穿透）— 表格记录
                 var sups = (trade.top_suppliers || []).filter(function (s) {
                     var n = String(s.name || '').trim().toLowerCase();
                     return n && n !== 'n/a' && n !== 'na';
                 });
                 var newest = trade.newest_suppliers || [];
-                var supplyHtml = '';
+                var supplyHtml = '<p class="intel-lead">现有供应商 / 贸易伙伴结构，用于判断切入窗口。</p>';
                 if (sups.length) {
-                    supplyHtml += '<h4 class="intel-sub">主要供应商</h4><ul class="intel-org-list">' + sups.map(function (s) {
-                        return '<li><strong>' + escapeHtml(s.name || '') + '</strong>' +
-                            (s.country ? ' · ' + escapeHtml(s.country) : '') +
-                            (s.shipments ? ' · ' + s.shipments + '票' : '') +
-                            (s.profile_url ? '<div class="intel-muted">' + linkOrText(s.profile_url) + '</div>' : '') +
-                            '</li>';
-                    }).join('') + '</ul>';
+                    supplyHtml += intelTable('主要供应商', [
+                        { label: '供应商' }, { label: '国家' }, { label: '提单数', num: true }, { label: '档案' }
+                    ], sups.map(function (s) {
+                        return [
+                            htmlCell('<span class="cell-strong">' + escapeHtml(s.name || '') + '</span>'),
+                            s.country || '—',
+                            s.shipments != null ? String(s.shipments) : '—',
+                            htmlCell(s.profile_url ? linkOrText(s.profile_url) : '—')
+                        ];
+                    }), { tall: true });
                 }
                 if (newest.length) {
-                    supplyHtml += '<h4 class="intel-sub">新晋供应商</h4><ul class="intel-org-list">' + newest.map(function (s) {
-                        return '<li><strong>' + escapeHtml(s.name || '') + '</strong>' +
-                            (s.first_seen ? ' · 首票 ' + escapeHtml(s.first_seen) : '') +
-                            (s.shipments ? ' · ' + s.shipments + '票' : '') + '</li>';
-                    }).join('') + '</ul>';
+                    supplyHtml += intelTable('新晋供应商', [
+                        { label: '供应商' }, { label: '首票日期' }, { label: '提单数', num: true }
+                    ], newest.map(function (s) {
+                        return [s.name || '—', s.first_seen || '—', s.shipments != null ? String(s.shipments) : '—'];
+                    }));
                 }
                 if (trade.growing_supplier && trade.growing_supplier.name) {
-                    supplyHtml += '<h4 class="intel-sub">增长最快供应商</h4><p><strong>' +
-                        escapeHtml(trade.growing_supplier.name) + '</strong>' +
-                        (trade.growing_supplier.shipments ? ' · 增长 ' + trade.growing_supplier.shipments + '票' : '') +
-                        '</p>';
+                    supplyHtml += intelTable('增长最快供应商', [
+                        { label: '供应商' }, { label: '增长票数', num: true }, { label: '区间' }
+                    ], [[
+                        trade.growing_supplier.name,
+                        trade.growing_supplier.shipments != null ? String(trade.growing_supplier.shipments) : '—',
+                        trade.growing_supplier.first_seen || '—'
+                    ]]);
                 }
-                if (!supplyHtml) {
+                if (!sups.length && !newest.length && !(trade.growing_supplier && trade.growing_supplier.name)) {
                     supplyHtml = emptyBlock('暂无供应链伙伴公开记录');
                 }
                 tabs.push({

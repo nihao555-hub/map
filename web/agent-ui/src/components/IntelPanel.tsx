@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Loader2, RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -188,6 +188,74 @@ function Chip({ children }: { children: React.ReactNode }) {
 
 function Empty({ text }: { text: string }) {
   return <p className="py-3 text-sm text-[#9CA3AF]">{text}</p>
+}
+
+type TableCol = { key: string; label: string; num?: boolean; className?: string }
+
+/** 采购交易 / 供应链明细表 */
+function DataTable({
+  title,
+  columns,
+  rows,
+  tall,
+}: {
+  title: string
+  columns: TableCol[]
+  rows: Array<Record<string, ReactNode>>
+  tall?: boolean
+}) {
+  if (!rows.length) return null
+  return (
+    <section>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <h4 className="text-xs font-semibold text-[#6B7280]">{title}</h4>
+        <span className="text-[11px] text-[#9CA3AF]">{rows.length} 条</span>
+      </div>
+      <div
+        className={cn(
+          'overflow-auto border border-[#E5E7EB] bg-white',
+          tall ? 'max-h-[360px]' : 'max-h-[280px]',
+        )}
+      >
+        <table className="w-full min-w-[420px] border-collapse text-left text-xs leading-snug text-[#374151]">
+          <thead className="sticky top-0 z-[1] bg-[#F7F9FC]">
+            <tr>
+              {columns.map((c) => (
+                <th
+                  key={c.key}
+                  className={cn(
+                    'whitespace-nowrap border-b border-[#E5E7EB] px-2.5 py-1.5 font-semibold text-[#6B7280]',
+                    c.num && 'text-right',
+                    c.className,
+                  )}
+                >
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className="hover:bg-[#F8FAFC]">
+                {columns.map((c) => (
+                  <td
+                    key={c.key}
+                    className={cn(
+                      'border-b border-[#EEF1F5] px-2.5 py-1.5 align-top',
+                      c.num && 'text-right tabular-nums whitespace-nowrap',
+                      c.className,
+                    )}
+                  >
+                    {row[c.key] ?? '—'}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
 }
 
 function Metric({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -672,11 +740,11 @@ function IntelTabBody({
     ) {
       return <Empty text="暂无公开海关采购记录（外贸通级全球提单全量需商业海关库）" />
     }
-    const months = (trade.monthly_shipments || []).slice(-12)
+    const months = [...(trade.monthly_shipments || [])].reverse()
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <p className="text-sm text-[#4B5563]">
-          {trade.summary || '美国海运公开提单（Kirchner / ImportYeti 免费源）；用于判断是否真实买家 / 采购品类。'}
+          {trade.summary || '美国海运公开提单（Kirchner / ImportYeti 免费源）；下方为明细记录表。'}
         </p>
         <dl>
           <KV label="角色">{trade.role === 'supplier' ? '对美出口供应商' : '美国进口商'}</KV>
@@ -696,120 +764,117 @@ function IntelTabBody({
             </KV>
           ) : null}
         </dl>
-        {trade.top_hs_codes?.length ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">核心 HS / 品类</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {trade.top_hs_codes.map((h, i) => (
-                <Chip key={i}>
-                  {h.code}
-                  {h.description ? ` ${h.description}` : ''}
-                  {h.shipments ? ` (${h.shipments})` : ''}
-                </Chip>
-              ))}
-            </div>
-          </section>
-        ) : null}
-        {trade.product_terms?.length ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">品名词频</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {trade.product_terms.map((h, i) => (
-                <Chip key={i}>
-                  {h.code}
-                  {h.shipments ? ` (${h.shipments})` : ''}
-                </Chip>
-              ))}
-            </div>
-          </section>
-        ) : null}
-        {trade.top_origins?.length ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">原产国</h4>
-            <ul className="space-y-1 text-sm text-[#374151]">
-              {trade.top_origins.map((o, i) => (
-                <li key={i}>
-                  {o.name || o.country}
-                  {o.shipments ? ` · ${o.shipments}票` : ''}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        {trade.top_carriers?.length ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">承运人</h4>
-            <ul className="space-y-1 text-sm text-[#374151]">
-              {trade.top_carriers.map((c, i) => (
-                <li key={i}>
-                  {c.name}
-                  {c.shipments ? ` · ${c.shipments}票` : ''}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        {trade.yearly_shipments?.length ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">年度提单</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {trade.yearly_shipments.map((y, i) => (
-                <Chip key={i}>
-                  {y.period}: {y.shipments || 0}
-                </Chip>
-              ))}
-            </div>
-          </section>
-        ) : null}
-        {months.length ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">近12个月提单</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {months.map((y, i) => (
-                <Chip key={i}>
-                  {y.period}: {y.shipments || 0}
-                </Chip>
-              ))}
-            </div>
-          </section>
-        ) : null}
-        {trade.port_routes?.length ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">主要航线</h4>
-            <ul className="space-y-1 text-sm text-[#374151]">
-              {trade.port_routes.map((r, i) => (
-                <li key={i}>
-                  {r.origin} → {r.destination}
-                  {r.shipments ? ` · ${r.shipments}票` : ''}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+
         {trade.recent_bols?.length ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">近期提单明细</h4>
-            <ul className="space-y-2 text-sm text-[#374151]">
-              {trade.recent_bols.map((b, i) => (
-                <li key={i} className="rounded-lg border border-[#E5E7EB] p-2.5">
-                  <div className="font-medium">
-                    {b.date || ''}
-                    {b.bill_of_lading ? ` · BOL ${b.bill_of_lading}` : ''}
-                  </div>
-                  <div>
-                    {b.shipper || '（托运人未披露）'} → {b.consignee || ''}
-                  </div>
-                  {b.product ? <div className="text-xs text-[#9CA3AF]">{b.product}</div> : null}
-                  {b.vessel || b.carrier ? (
-                    <div className="text-xs text-[#6B7280]">{[b.vessel, b.carrier].filter(Boolean).join(' · ')}</div>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </section>
+          <DataTable
+            title="近期提单明细"
+            tall
+            columns={[
+              { key: 'date', label: '到港日' },
+              { key: 'bol', label: '提单号 BOL' },
+              { key: 'shipper', label: '托运人' },
+              { key: 'consignee', label: '收货人' },
+              { key: 'product', label: '品名 / 货描' },
+              { key: 'vessel', label: '船名' },
+              { key: 'carrier', label: '承运人' },
+            ]}
+            rows={trade.recent_bols.map((b) => ({
+              date: b.date || '—',
+              bol: <span className="font-semibold text-[#111827]">{b.bill_of_lading || '—'}</span>,
+              shipper: b.shipper || '（未披露）',
+              consignee: b.consignee || '—',
+              product: b.product || (b.hs_code ? `HS ${b.hs_code}` : '—'),
+              vessel: b.vessel || '—',
+              carrier: b.carrier || '—',
+            }))}
+          />
         ) : (
-          <p className="text-xs text-[#9CA3AF]">该免费源未返回逐票提单（仅聚合统计）。</p>
+          <p className="text-xs text-[#9CA3AF]">该免费源未返回逐票提单（仅聚合统计表）。</p>
         )}
+
+        <DataTable
+          title="核心 HS / 品类"
+          columns={[
+            { key: 'code', label: 'HS 编码' },
+            { key: 'desc', label: '描述' },
+            { key: 'n', label: '提单数', num: true },
+          ]}
+          rows={(trade.top_hs_codes || []).map((h) => ({
+            code: <span className="font-semibold text-[#111827]">{h.code || '—'}</span>,
+            desc: h.description || '—',
+            n: h.shipments != null ? String(h.shipments) : '—',
+          }))}
+        />
+        <DataTable
+          title="品名词频"
+          columns={[
+            { key: 'term', label: '品名关键词' },
+            { key: 'n', label: '出现次数', num: true },
+          ]}
+          rows={(trade.product_terms || []).map((h) => ({
+            term: h.code || '—',
+            n: h.shipments != null ? String(h.shipments) : '—',
+          }))}
+        />
+        <DataTable
+          title="原产国分布"
+          columns={[
+            { key: 'c', label: '原产国' },
+            { key: 'n', label: '提单数', num: true },
+          ]}
+          rows={(trade.top_origins || []).map((o) => ({
+            c: o.name || o.country || '—',
+            n: o.shipments != null ? String(o.shipments) : '—',
+          }))}
+        />
+        <DataTable
+          title="承运人"
+          columns={[
+            { key: 'c', label: '承运人' },
+            { key: 'n', label: '提单数', num: true },
+          ]}
+          rows={(trade.top_carriers || []).map((c) => ({
+            c: c.name || '—',
+            n: c.shipments != null ? String(c.shipments) : '—',
+          }))}
+        />
+        <DataTable
+          title="年度提单"
+          columns={[
+            { key: 'p', label: '年份' },
+            { key: 'n', label: '提单数', num: true },
+          ]}
+          rows={(trade.yearly_shipments || []).map((y) => ({
+            p: y.period || '—',
+            n: String(y.shipments ?? 0),
+          }))}
+        />
+        <DataTable
+          title="逐月提单记录"
+          tall
+          columns={[
+            { key: 'p', label: '月份' },
+            { key: 'n', label: '提单数', num: true },
+          ]}
+          rows={months.map((y) => ({
+            p: y.period || '—',
+            n: String(y.shipments ?? 0),
+          }))}
+        />
+        <DataTable
+          title="主要航线"
+          tall
+          columns={[
+            { key: 'o', label: '起运港' },
+            { key: 'd', label: '目的港' },
+            { key: 'n', label: '提单数', num: true },
+          ]}
+          rows={(trade.port_routes || []).map((r) => ({
+            o: r.origin || '—',
+            d: r.destination || '—',
+            n: r.shipments != null ? String(r.shipments) : '—',
+          }))}
+        />
       </div>
     )
   }
@@ -824,49 +889,53 @@ function IntelTabBody({
       return <Empty text="暂无供应链伙伴公开记录（外贸通可做采供双向穿透）" />
     }
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         <p className="text-sm text-[#4B5563]">现有供应商 / 贸易伙伴结构，用于判断切入窗口。</p>
-        {partners.length ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">主要供应商</h4>
-            <ul className="space-y-2">
-              {partners.map((s, i) => (
-                <li key={i} className="rounded-xl border border-[#E5E7EB] p-3 text-sm text-[#374151]">
-                  <strong className="text-[#111827]">{s.name}</strong>
-                  {s.country ? <span className="text-[#6B7280]"> · {s.country}</span> : null}
-                  {s.shipments ? <span className="text-[#6B7280]"> · {s.shipments} 票</span> : null}
-                  {s.profile_url ? (
-                    <div className="mt-1">
-                      <ExtLink href={s.profile_url}>查看档案</ExtLink>
-                    </div>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-        {newest.length ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">新晋供应商</h4>
-            <ul className="space-y-2">
-              {newest.map((s, i) => (
-                <li key={i} className="rounded-xl border border-[#E5E7EB] p-3 text-sm text-[#374151]">
-                  <strong className="text-[#111827]">{s.name}</strong>
-                  {s.first_seen ? <span className="text-[#6B7280]"> · 首票 {s.first_seen}</span> : null}
-                  {s.shipments ? <span className="text-[#6B7280]"> · {s.shipments} 票</span> : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+        <DataTable
+          title="主要供应商"
+          tall
+          columns={[
+            { key: 'name', label: '供应商' },
+            { key: 'country', label: '国家' },
+            { key: 'n', label: '提单数', num: true },
+            { key: 'link', label: '档案' },
+          ]}
+          rows={partners.map((s) => ({
+            name: <span className="font-semibold text-[#111827]">{s.name}</span>,
+            country: s.country || '—',
+            n: s.shipments != null ? String(s.shipments) : '—',
+            link: s.profile_url ? <ExtLink href={s.profile_url}>打开</ExtLink> : '—',
+          }))}
+        />
+        <DataTable
+          title="新晋供应商"
+          columns={[
+            { key: 'name', label: '供应商' },
+            { key: 'first', label: '首票日期' },
+            { key: 'n', label: '提单数', num: true },
+          ]}
+          rows={newest.map((s) => ({
+            name: <span className="font-semibold text-[#111827]">{s.name}</span>,
+            first: s.first_seen || '—',
+            n: s.shipments != null ? String(s.shipments) : '—',
+          }))}
+        />
         {trade?.growing_supplier?.name ? (
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[#6B7280]">增长最快供应商</h4>
-            <p className="text-sm text-[#374151]">
-              <strong>{trade.growing_supplier.name}</strong>
-              {trade.growing_supplier.shipments ? ` · 增长 ${trade.growing_supplier.shipments}票` : ''}
-            </p>
-          </section>
+          <DataTable
+            title="增长最快供应商"
+            columns={[
+              { key: 'name', label: '供应商' },
+              { key: 'n', label: '增长票数', num: true },
+              { key: 'range', label: '区间' },
+            ]}
+            rows={[
+              {
+                name: <span className="font-semibold text-[#111827]">{trade.growing_supplier.name}</span>,
+                n: trade.growing_supplier.shipments != null ? String(trade.growing_supplier.shipments) : '—',
+                range: trade.growing_supplier.first_seen || '—',
+              },
+            ]}
+          />
         ) : null}
       </div>
     )

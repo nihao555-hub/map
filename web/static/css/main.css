@@ -1700,6 +1700,88 @@ svg.lucide { flex-shrink: 0; }
   line-height: 1.55;
 }
 
+/* 采购交易 / 供应链：外贸通式明细表 */
+.intel-table-wrap {
+  margin: 0 0 14px;
+  border: 1px solid var(--border-light);
+  background: #fff;
+  overflow: auto;
+  max-width: 100%;
+  max-height: 280px;
+}
+
+.intel-table-wrap.intel-table-tall {
+  max-height: 360px;
+}
+
+.intel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.45;
+  min-width: 420px;
+}
+
+.intel-table th,
+.intel-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #EEF1F5;
+  text-align: left;
+  vertical-align: top;
+  color: var(--text-secondary);
+}
+
+.intel-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #F7F9FC;
+  color: #6B7280;
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.intel-table tbody tr:hover td {
+  background: #F8FAFC;
+}
+
+.intel-table td.num,
+.intel-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.intel-table .cell-strong {
+  color: #111827;
+  font-weight: 600;
+}
+
+.intel-table .cell-muted {
+  color: #9CA3AF;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.intel-table-caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 0 6px;
+}
+
+.intel-table-caption h4 {
+  margin: 0;
+}
+
+.intel-table-count {
+  font-size: 11px;
+  color: #9CA3AF;
+  white-space: nowrap;
+}
+
 .intel-muted {
   font-size: 12px;
   color: var(--text-aux);
