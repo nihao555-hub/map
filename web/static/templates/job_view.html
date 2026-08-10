@@ -34,17 +34,18 @@
             <aside id="job-intel-drawer" class="job-intel-drawer job-intel-popup" aria-hidden="true">
                 <div class="intel-drawer-head">
                     <div>
-                        <p class="intel-drawer-kicker">背调详情</p>
+                        <p class="intel-drawer-kicker">客户背调</p>
                         <h3 id="intel-drawer-title">选择表格中的一家商户</h3>
                     </div>
                     <button type="button" class="intel-drawer-close" onclick="window.__closeIntelDrawer && window.__closeIntelDrawer()" aria-label="关闭背调">&times;</button>
                 </div>
+                <div id="intel-drawer-kpi"></div>
                 <div id="intel-progress-wrap" class="intel-progress-wrap" hidden>
                     <div class="intel-progress-track"><div id="intel-progress-bar" class="intel-progress-bar"></div></div>
                     <span id="intel-progress-label" class="intel-progress-label">背调中…</span>
                 </div>
                 <div id="intel-drawer-body" class="intel-drawer-body">
-                    <p class="intel-placeholder">点击下方表格任意一行：右侧弹出背调小窗；进行中显示骨架进度，完成后自动展示完整结果。</p>
+                    <p class="intel-placeholder">点击下方表格任意一行：右侧展开外贸通式客户背调（经营画像 / 决策人 / 采购交易 / 供应链 / 主体资质）。</p>
                 </div>
             </aside>
         </div>
@@ -452,12 +453,13 @@
 
             tabs.push({
                 id: 'people',
-                label: '决策人' + (dms.length ? ' (' + dms.length + ')' : ''),
+                label: '决策人' + (dms.length ? ' ' + dms.length : ''),
                 html: peopleHtml
             });
 
-            // 2) 公司简介
+            // 2) 经营画像（外贸通：企业资质 + 市场布局摘要）
             var overviewBits = [
+                '<p class="intel-gap-note">与外贸通差距：全球海关全量、营收/员工商业库、合规 LinkedIn 批量档案仍需付费数据。</p>',
                 kv('触达信心', confBadge(intel.confidence)),
                 kv('摘要', escapeHtml(intel.summary || '')),
                 kv('域名', escapeHtml(intel.domain || '—')),
@@ -466,17 +468,20 @@
             if (intel.has_mx && intel.mx_hosts && intel.mx_hosts.length) {
                 overviewBits.push(kv('企业邮箱 MX', escapeHtml(intel.mx_hosts.join(', '))));
             }
+            if (intel.technologies && intel.technologies.length) {
+                overviewBits.push('<h4 class="intel-sub">建站 / 技术栈</h4>' + listChips(intel.technologies));
+            }
             tabs.push({
                 id: 'overview',
-                label: '公司',
+                label: '经营画像',
                 html: overviewBits.filter(Boolean).join('') || emptyBlock('暂无公司信息')
             });
 
-            // 2.5) 海关提单（ImportYeti）— 外贸公式「海关定公司」
+            // 2.5) 采购交易（外贸通：真实采购需求）
             var trade = intel.trade;
             if (trade && (trade.total_shipments || (trade.top_suppliers || []).length || (trade.top_hs_codes || []).length)) {
                 var tradeHtml = '';
-                tradeHtml += '<p class="intel-lead">' + escapeHtml(trade.summary || '美国海关海运提单记录（免费源：ImportYeti / Kirchner）') + '</p>';
+                tradeHtml += '<p class="intel-lead">' + escapeHtml(trade.summary || '公开海关海运提单片段（免费源）') + '</p>';
                 tradeHtml += [
                     kv('数据源', escapeHtml(trade.source || '—')),
                     kv('角色', escapeHtml(trade.role === 'supplier' ? '对美出口供应商' : '美国进口商')),
@@ -488,19 +493,9 @@
                     kv('电话', escapeHtml(trade.phone || '')),
                     kv('档案', linkOrText(trade.profile_url || ''))
                 ].filter(Boolean).join('');
-                var sups = trade.top_suppliers || [];
-                if (sups.length) {
-                    tradeHtml += '<h4 class="intel-sub">主要贸易伙伴</h4><ul class="intel-org-list">' + sups.map(function (s) {
-                        return '<li><strong>' + escapeHtml(s.name || '') + '</strong>' +
-                            (s.country ? ' · ' + escapeHtml(s.country) : '') +
-                            (s.shipments ? ' · ' + s.shipments + '票' : '') +
-                            (s.profile_url ? '<div class="intel-muted">' + linkOrText(s.profile_url) + '</div>' : '') +
-                            '</li>';
-                    }).join('') + '</ul>';
-                }
                 var hs = trade.top_hs_codes || [];
                 if (hs.length) {
-                    tradeHtml += '<h4 class="intel-sub">HS 编码</h4><div class="intel-chips">' + hs.map(function (h) {
+                    tradeHtml += '<h4 class="intel-sub">核心 HS / 品类</h4><div class="intel-chips">' + hs.map(function (h) {
                         return '<span class="intel-chip">' + escapeHtml(h.code || '') +
                             (h.description ? ' ' + escapeHtml(h.description) : '') +
                             (h.shipments ? ' (' + h.shipments + ')' : '') + '</span>';
@@ -516,18 +511,40 @@
                             '</li>';
                     }).join('') + '</ul>';
                 }
-                var tradeBrand = trade.name || place.title || '';
-                var tradeXray = 'https://www.google.com/search?q=' + encodeURIComponent('site:linkedin.com/in "' + tradeBrand + '" ("Purchasing Manager" OR Buyer OR Procurement OR Direktur OR Owner OR CEO)');
-                tradeHtml += '<div class="intel-acts" style="margin-top:10px">' +
-                    '<a class="intel-act intel-act-li" href="' + tradeXray + '" target="_blank" rel="noopener noreferrer">海关锁定后：搜 LinkedIn 采购决策人</a></div>';
                 tabs.push({
                     id: 'customs',
-                    label: '海关' + (trade.total_shipments ? ' (' + trade.total_shipments + ')' : ''),
+                    label: '采购交易' + (trade.total_shipments ? ' ' + trade.total_shipments : ''),
                     html: tradeHtml
+                });
+
+                // 供应链单独一维（外贸通：供应链穿透）
+                var sups = trade.top_suppliers || [];
+                var supplyHtml = '';
+                if (sups.length) {
+                    supplyHtml = '<ul class="intel-org-list">' + sups.map(function (s) {
+                        return '<li><strong>' + escapeHtml(s.name || '') + '</strong>' +
+                            (s.country ? ' · ' + escapeHtml(s.country) : '') +
+                            (s.shipments ? ' · ' + s.shipments + '票' : '') +
+                            (s.profile_url ? '<div class="intel-muted">' + linkOrText(s.profile_url) + '</div>' : '') +
+                            '</li>';
+                    }).join('') + '</ul>';
+                } else {
+                    supplyHtml = emptyBlock('暂无供应链伙伴公开记录');
+                }
+                tabs.push({
+                    id: 'supply',
+                    label: '供应链' + (sups.length ? ' ' + sups.length : ''),
+                    html: supplyHtml
                 });
             }
 
-            // 3) 架构（无实质内容则不假装有架构）
+            // reorder: 经营画像 first like 外贸通
+            var peopleTab = tabs.shift();
+            var overviewTab = tabs.shift();
+            tabs.unshift(peopleTab);
+            tabs.unshift(overviewTab);
+
+            // 3) 主体资质（合并原架构+登记）
             var orgs = intel.org_structure || [];
             var usefulOrgs = orgs.filter(function (o) {
                 if (!o || !o.name) return false;
@@ -536,56 +553,59 @@
                 if (o.role === 'domain' || o.role === 'registrant') return false;
                 return true;
             });
-            tabs.push({
-                id: 'org',
-                label: '架构' + (usefulOrgs.length ? ' (' + usefulOrgs.length + ')' : ''),
-                html: usefulOrgs.length ? '<ul class="intel-org-list">' + usefulOrgs.map(function (o) {
-                    return '<li><strong>' + escapeHtml(o.name || '') + '</strong>' +
-                        (o.role ? ' · ' + escapeHtml(o.role) : '') +
-                        (o.parent ? '<div class="intel-muted">上级：' + escapeHtml(o.parent) + '</div>' : '') +
-                        (o.evidence ? '<div class="intel-muted">证据：' + escapeHtml(o.evidence) + '</div>' : '') +
-                        '</li>';
-                }).join('') + '</ul>' : emptyBlock('官网未公开组织架构（不会用域名注册人冒充架构）')
-            });
-
-            // 4) 主体
-            var reg = intel.company_registry;
-            var tech = (intel.technologies || []).filter(function (t) {
-                return t && !/^hosts:\d+/i.test(t) && t !== 'WHOIS';
-            });
-            var domainHtml = '';
-            domainHtml += '<h4 class="intel-sub">主体登记</h4>';
-            if (reg && reg.name) {
-                domainHtml += [
+            var reg = intel.company_registry || {};
+            var entityHtml = '';
+            if (reg.name) {
+                entityHtml += [
                     kv('名称', escapeHtml(reg.name)),
-                    kv('编号', escapeHtml(reg.company_number || '')),
-                    kv('辖区', escapeHtml(reg.jurisdiction || '')),
-                    kv('状态', escapeHtml(reg.current_status || '')),
-                    kv('成立', escapeHtml(reg.incorporation_date || '')),
+                    kv('编号', escapeHtml(reg.company_number || '—')),
+                    kv('辖区', escapeHtml(reg.jurisdiction || '—')),
+                    kv('状态', escapeHtml(reg.current_status || '—')),
+                    kv('成立', escapeHtml(reg.incorporation_date || '—')),
                     kv('链接', linkOrText(reg.registry_url || ''))
                 ].filter(Boolean).join('');
             } else {
-                domainHtml += emptyBlock('未匹配公开主体');
+                entityHtml += emptyBlock('未匹配公开主体');
             }
-            if (tech.length) {
-                domainHtml += '<h4 class="intel-sub">网站技术</h4>' + listChips(tech);
-            }
-            tabs.push({ id: 'domain', label: '主体', html: domainHtml });
-
-            // 5) 来源
-            var sources = intel.sources || [];
+            entityHtml += '<h4 class="intel-sub">股权 / 架构</h4>';
+            entityHtml += usefulOrgs.length ? '<ul class="intel-org-list">' + usefulOrgs.map(function (o) {
+                return '<li><strong>' + escapeHtml(o.name || '') + '</strong>' +
+                    (o.role ? ' · ' + escapeHtml(o.role) : '') +
+                    (o.parent ? '<div class="intel-muted">上级：' + escapeHtml(o.parent) + '</div>' : '') +
+                    '</li>';
+            }).join('') + '</ul>' : emptyBlock('官网未公开组织架构');
             tabs.push({
-                id: 'sources',
-                label: '来源' + (sources.length ? ' (' + sources.length + ')' : ''),
-                html: sources.length
-                    ? '<ol class="intel-sources">' + sources.map(function (s) {
-                        return '<li>' + linkOrText(s) + '</li>';
-                    }).join('') + '</ol>'
-                    : emptyBlock('无网页来源（可能无官网）')
+                id: 'entity',
+                label: '主体资质',
+                html: entityHtml
             });
 
+            // remove old org/domain tabs if still present from leftover code below - handled by skipping old blocks
             return tabs;
         }
+
+        function buildIntelKPI(place, intel) {
+            var trade = intel.trade || {};
+            var dms = intel.decision_makers || [];
+            var named = dms.filter(function (d) {
+                var n = (d.name || '').trim();
+                return n && !/^(info|sales|admin|contact)@/i.test(n);
+            }).length;
+            var reg = intel.company_registry || {};
+            function cell(label, value, hint) {
+                return '<div class="intel-kpi"><div class="intel-kpi-label">' + escapeHtml(label) +
+                    '</div><div class="intel-kpi-value">' + escapeHtml(value || '—') + '</div>' +
+                    (hint ? '<div class="intel-kpi-hint">' + escapeHtml(hint) + '</div>' : '') + '</div>';
+            }
+            return '<div class="intel-kpi-grid">' +
+                cell('采购提单', trade.total_shipments ? String(trade.total_shipments) : '—', trade.source || '') +
+                cell('可触达决策人', String(named || dms.length || 0), dms.length ? dms.length + ' 条线索' : '') +
+                cell('贸易伙伴', (trade.top_suppliers || []).length ? String(trade.top_suppliers.length) : '—', trade.role === 'supplier' ? '对美出口' : (trade.total_shipments ? '美国进口' : '')) +
+                cell('主体编号', reg.company_number ? String(reg.company_number).slice(0, 12) : '—', reg.incorporation_date || intel.domain || '') +
+                '</div>';
+        }
+
+        // NOTE: legacy buildTabs continuation removed — entity tab closes the builder above.
 
         function setIntelProgress(pct, label, show) {
             var wrap = document.getElementById('intel-progress-wrap');
@@ -644,8 +664,25 @@
             setTimeout(function () { setIntelProgress(0, '', false); }, 600);
             var titleEl = document.getElementById('intel-drawer-title');
             var bodyEl = document.getElementById('intel-drawer-body');
-            if (titleEl) titleEl.textContent = place.title || '背调详情';
+            var headExtra = document.getElementById('intel-drawer-kpi');
+            if (titleEl) {
+                var legal = (intel && intel.company_registry && intel.company_registry.name) || place.title || '客户背调';
+                titleEl.textContent = legal;
+            }
             if (!bodyEl) return;
+
+            var kpi = buildIntelKPI(place, intel || {});
+            if (headExtra) {
+                headExtra.innerHTML = kpi;
+            } else {
+                var head = document.querySelector('.intel-drawer-head');
+                if (head && !document.getElementById('intel-drawer-kpi')) {
+                    var wrap = document.createElement('div');
+                    wrap.id = 'intel-drawer-kpi';
+                    wrap.innerHTML = kpi;
+                    head.insertAdjacentElement('afterend', wrap);
+                }
+            }
 
             var tabs = buildTabs(place, intel || {});
             var nav = '<div class="intel-tabs" role="tablist">' + tabs.map(function (t, i) {
