@@ -162,6 +162,7 @@ func rewriteIntelMedia(intel *PlaceIntel) {
 	if intel == nil {
 		return
 	}
+	intel.Summary = companyIntroSummary(intel.Summary)
 	for i := range intel.DecisionMakers {
 		intel.DecisionMakers[i].Avatar = ProxiedMediaURL(intel.DecisionMakers[i].Avatar)
 	}

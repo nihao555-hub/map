@@ -166,6 +166,7 @@ func (s *Service) loadIntel(jobID, placeID string) (*PlaceIntel, bool) {
 	if json.Unmarshal(b, &out) != nil {
 		return nil, false
 	}
+	out.Summary = companyIntroSummary(out.Summary)
 	return &out, true
 }
 
@@ -374,6 +375,10 @@ func (s *Service) BuildPlaceIntel(ctx context.Context, jobID string, place Place
 	if len(intel.DecisionMakers) > 12 {
 		intel.DecisionMakers = intel.DecisionMakers[:12]
 	}
+	if intel.Summary == "" {
+		intel.Summary = fmt.Sprintf("%s（%s）", place.Title, strings.TrimSpace(place.Category+" · "+place.Address))
+	}
+	intel.Summary = companyIntroSummary(intel.Summary)
 	if intel.Summary == "" {
 		intel.Summary = fmt.Sprintf("%s（%s）", place.Title, strings.TrimSpace(place.Category+" · "+place.Address))
 	}

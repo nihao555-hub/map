@@ -580,7 +580,14 @@ func formatTradeSummary(t *TradeIntel) string {
 		parts = append(parts, fmt.Sprintf("区间 %s–%s", t.DateStart, t.DateEnd))
 	}
 	if len(t.TopSuppliers) > 0 {
-		parts = append(parts, "主要伙伴 "+t.TopSuppliers[0].Name)
+		for _, s := range t.TopSuppliers {
+			name := strings.TrimSpace(s.Name)
+			if name == "" || strings.EqualFold(name, "N/A") || strings.EqualFold(name, "NA") {
+				continue
+			}
+			parts = append(parts, "主要伙伴 "+name)
+			break
+		}
 	}
 	if len(t.TopHSCodes) > 0 {
 		parts = append(parts, "HS "+t.TopHSCodes[0].Code)
@@ -629,13 +636,34 @@ func applyTradeIntel(intel *PlaceIntel, trade *TradeIntel) {
 	if len(intel.OrgStructure) > 10 {
 		intel.OrgStructure = intel.OrgStructure[:10]
 	}
-	if trade.Summary != "" {
-		if intel.Summary == "" {
-			intel.Summary = trade.Summary
-		} else if !strings.Contains(intel.Summary, "海关") && !strings.Contains(intel.Summary, "提单") {
-			intel.Summary = trade.Summary + " " + intel.Summary
+	// 经营画像摘要只放公司介绍；海关文案留在 trade.Summary（采购交易 Tab）。
+}
+
+// companyIntroSummary keeps PlaceIntel.Summary as a company introduction.
+// Historical builds prepended US-BOL blurbs (formatTradeSummary); strip those so
+// 经营画像 does not read like a customs dump.
+func companyIntroSummary(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	lower := strings.ToLower(s)
+	for _, marker := range []string{"来源 kirchner", "来源 importyeti", "来源 kirchner:us-bol"} {
+		if i := strings.Index(lower, marker); i >= 0 {
+			rest := strings.TrimSpace(s[i+len(marker):])
+			if rest != "" {
+				return rest
+			}
+			head := s[:i]
+			if strings.Contains(head, "海关") || strings.Contains(head, "提单") {
+				return ""
+			}
 		}
 	}
+	if strings.HasPrefix(s, "美国海关进口记录") || strings.HasPrefix(s, "美国海关供应商记录") {
+		return ""
+	}
+	return s
 }
 
 func asString(v any) string {

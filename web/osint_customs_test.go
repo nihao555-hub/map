@@ -17,6 +17,32 @@ func TestKirchnerYearWindow(t *testing.T) {
 	}
 }
 
+func TestCompanyIntroSummaryStripsCustoms(t *testing.T) {
+	mixed := "美国海关进口记录：Allbirds · 累计提单 488 · 区间 2022–2026 · 主要伙伴 N/A · HS 640411 · 来源 kirchner Allbirds is an American footwear brand."
+	got := companyIntroSummary(mixed)
+	if !strings.Contains(got, "American footwear") || strings.Contains(got, "累计提单") {
+		t.Fatalf("got %q", got)
+	}
+	if companyIntroSummary("美国海关进口记录：X · 来源 kirchner") != "" {
+		t.Fatal("customs-only should clear")
+	}
+	if companyIntroSummary("A normal company intro about shoes.") != "A normal company intro about shoes." {
+		t.Fatal("plain intro should pass through")
+	}
+}
+
+func TestApplyTradeIntelDoesNotPolluteCompanySummary(t *testing.T) {
+	intel := &PlaceIntel{Title: "Allbirds", Summary: "Allbirds makes wool shoes."}
+	tr := &TradeIntel{Source: "kirchner", Name: "Allbirds", TotalShipments: 10, Summary: "美国海关进口记录：Allbirds · 累计提单 10 · 来源 kirchner"}
+	applyTradeIntel(intel, tr)
+	if intel.Trade == nil || intel.Trade.TotalShipments != 10 {
+		t.Fatal("trade missing")
+	}
+	if intel.Summary != "Allbirds makes wool shoes." {
+		t.Fatalf("summary polluted: %q", intel.Summary)
+	}
+}
+
 func TestSlugifyImportYeti(t *testing.T) {
 	if got := slugifyImportYeti("PT Deugro Indonesia"); got != "deugro-indonesia" && got != "deugro" {
 		// brand strip may leave deugro-indonesia

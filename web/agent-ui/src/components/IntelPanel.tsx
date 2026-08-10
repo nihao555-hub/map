@@ -115,6 +115,24 @@ function confBadge(c?: string) {
   )
 }
 
+/** 经营画像只展示公司介绍；去掉历史版本拼进来的海关提单文案。 */
+function companyIntroText(intel: PlaceIntel): string {
+  let s = (intel.summary || '').trim()
+  const markers = ['来源 kirchner', '来源 importyeti', '来源 kirchner:us-bol']
+  const lower = s.toLowerCase()
+  for (const m of markers) {
+    const i = lower.indexOf(m)
+    if (i >= 0) {
+      const rest = s.slice(i + m.length).trim()
+      if (rest) return rest
+      s = ''
+      break
+    }
+  }
+  if (/^美国海关(进口|供应商)记录/.test(s)) return ''
+  return s
+}
+
 function ExtLink({ href, children }: { href: string; children: React.ReactNode }) {
   const url = href.startsWith('http') ? href : `https://${href}`
   return (
@@ -447,9 +465,9 @@ function IntelTabBody({
     return (
       <div className="space-y-4">
         <section className="rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] p-3.5">
-          <h4 className="text-xs font-semibold text-[#6B7280]">经营摘要</h4>
+          <h4 className="text-xs font-semibold text-[#6B7280]">公司介绍</h4>
           <p className="mt-1.5 text-sm leading-relaxed text-[#374151]">
-            {intel.summary || intel.note || '暂无摘要；可切换「采购交易 / 决策人」查看已挖到的公开情报。'}
+            {companyIntroText(intel) || '暂无公司介绍；可切换「采购交易 / 决策人」查看海关与联系人情报。'}
           </p>
         </section>
         <dl>

@@ -457,11 +457,26 @@
                 html: peopleHtml
             });
 
-            // 2) 经营画像（外贸通：企业资质 + 市场布局摘要）
+            // 2) 经营画像（公司介绍；海关内容在「采购交易」）
+            var companyIntro = (intel.summary || '');
+            (function () {
+                var markers = ['来源 kirchner', '来源 importyeti', '来源 kirchner:us-bol'];
+                var lower = String(companyIntro).toLowerCase();
+                for (var mi = 0; mi < markers.length; mi++) {
+                    var m = markers[mi];
+                    var ix = lower.indexOf(m);
+                    if (ix >= 0) {
+                        var rest = String(companyIntro).slice(ix + m.length).trim();
+                        companyIntro = rest;
+                        break;
+                    }
+                }
+                if (/^美国海关(进口|供应商)记录/.test(companyIntro)) companyIntro = '';
+            })();
             var overviewBits = [
                 '<p class="intel-gap-note">与外贸通差距：全球海关全量、营收/员工商业库、合规 LinkedIn 批量档案仍需付费数据。</p>',
                 kv('触达信心', confBadge(intel.confidence)),
-                kv('摘要', escapeHtml(intel.summary || '')),
+                kv('公司介绍', escapeHtml(companyIntro || (place.title || '') + (place.category ? '（' + place.category + '）' : ''))),
                 kv('域名', escapeHtml(intel.domain || '—')),
                 kv('网站', linkOrText(intel.website || place.website))
             ];
