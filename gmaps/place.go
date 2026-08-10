@@ -13,6 +13,7 @@ import (
 	"github.com/gosom/scrapemate"
 
 	"github.com/gosom/google-maps-scraper/exiter"
+	"github.com/gosom/google-maps-scraper/placecache"
 )
 
 type PlaceJobOptions func(*PlaceJob)
@@ -25,9 +26,14 @@ type PlaceJob struct {
 	ExitMonitor             exiter.Exiter
 	ExtractExtraReviews     bool
 	WriterManagedCompletion bool
+
+	Keywords      []string
+	FilterLat     float64
+	FilterLon     float64
+	FilterRadiusM float64
 }
 
-func NewPlaceJob(parentID, langCode, u string, extractEmail, extraExtraReviews bool, opts ...PlaceJobOptions) *PlaceJob {
+func NewPlaceJob(parentID, langCode, u string, _ bool, extraExtraReviews bool, opts ...PlaceJobOptions) *PlaceJob {
 	const (
 		defaultPrio       = scrapemate.PriorityMedium
 		defaultMaxRetries = 3
@@ -46,7 +52,8 @@ func NewPlaceJob(parentID, langCode, u string, extractEmail, extraExtraReviews b
 	}
 
 	job.UsageInResults = true
-	job.ExtractEmail = extractEmail
+	// Product policy: every place run must enrich contacts from its website.
+	job.ExtractEmail = true
 	job.ExtractExtraReviews = extraExtraReviews
 
 	for _, opt := range opts {
@@ -68,6 +75,16 @@ func WithPlaceJobWriterManagedCompletion() PlaceJobOptions {
 	}
 }
 
+// WithPlaceJobFilter drops off-brief / out-of-radius places before email spawn.
+func WithPlaceJobFilter(keywords []string, lat, lon, radiusM float64) PlaceJobOptions {
+	return func(j *PlaceJob) {
+		j.Keywords = append([]string(nil), keywords...)
+		j.FilterLat = lat
+		j.FilterLon = lon
+		j.FilterRadiusM = radiusM
+	}
+}
+
 func (j *PlaceJob) ProcessOnFetchError() bool {
 	return true
 }
@@ -80,7 +97,8 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 	}()
 
 	if resp.Error != nil {
-		if j.ExitMonitor != nil {
+		if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+			j.ExitMonitor.IncrMapsPlacesDone(1)
 			j.ExitMonitor.IncrPlacesCompleted(1)
 		}
 
@@ -89,23 +107,67 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 
 	raw, ok := resp.Meta["json"].([]byte)
 	if !ok {
-		// 纯 HTTP 抓取路径：没有浏览器注入的 Meta，直接从 HTML 里的
-		// window.APP_INITIALIZATION_STATE 字面量提取同样的地点 JSON
-		var err error
+		// Cache hit path stores entry under Meta["place_cache"] (no json bytes).
+		if _, hasCache := resp.Meta["place_cache"]; !hasCache {
+			// 纯 HTTP 抓取路径：没有浏览器注入的 Meta，直接从 HTML 里的
+			// window.APP_INITIALIZATION_STATE 字面量提取同样的地点 JSON
+			var err error
 
-		raw, err = extractJSONFromBody(resp.Body)
-		if err != nil {
-			if j.ExitMonitor != nil {
+			raw, err = extractJSONFromBody(resp.Body)
+			if err != nil {
+				if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+					j.ExitMonitor.IncrMapsPlacesDone(1)
+					j.ExitMonitor.IncrPlacesCompleted(1)
+				}
+
+				return nil, nil, fmt.Errorf("could not convert to []byte: %w", err)
+			}
+		}
+	}
+
+	// Cross-job place cache hit: reuse contacts, skip Playwright parse path.
+	if cached, ok := resp.Meta["place_cache"].(*placecache.CachedPlace); ok && cached != nil {
+		entry := cachedToEntry(cached)
+		if entry != nil {
+			entry.ID = j.ParentID
+			if entry.Link == "" {
+				entry.Link = j.GetURL()
+			}
+			entry.EnrichContactsFromMapsFields()
+			if placeEntryShouldDrop(entry, j.Keywords, j.FilterLat, j.FilterLon, j.FilterRadiusM) {
+				if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+					j.ExitMonitor.IncrMapsPlacesDone(1)
+					j.ExitMonitor.IncrPlacesCompleted(1)
+				}
+				j.UsageInResults = false
+				return nil, nil, nil
+			}
+			if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+				j.ExitMonitor.IncrMapsPlacesDone(1)
+			}
+			// Still enrich email when website exists but cache has no emails.
+			if j.ExtractEmail && entry.IsWebsiteValidForEmail() && len(entry.Emails) == 0 {
+				opts := []EmailExtractJobOptions{}
+				if j.WriterManagedCompletion {
+					opts = append(opts, WithEmailJobWriterManagedCompletion())
+				} else if j.ExitMonitor != nil {
+					opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
+				}
+				entryCopy := *entry
+				emailJob := NewEmailJob(j.ID, &entryCopy, opts...)
+				return entry, []scrapemate.IJob{emailJob}, nil
+			}
+			if j.ExitMonitor != nil && !j.WriterManagedCompletion {
 				j.ExitMonitor.IncrPlacesCompleted(1)
 			}
-
-			return nil, nil, fmt.Errorf("could not convert to []byte: %w", err)
+			return entry, nil, nil
 		}
 	}
 
 	entry, err := EntryFromJSON(raw)
 	if err != nil {
 		if j.ExitMonitor != nil {
+			j.ExitMonitor.IncrMapsPlacesDone(1)
 			j.ExitMonitor.IncrPlacesCompleted(1)
 		}
 
@@ -138,22 +200,47 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 		entry.UserReviewsExtended = append(entry.UserReviewsExtended, deduped...)
 	}
 
+	entry.EnrichContactsFromMapsFields()
+
+	// Deep pre-filter: same relevance + radius rules as fast SearchJob / API.
+	// Drop before email so noise never burns HTTP workers or CSV rows.
+	if placeEntryShouldDrop(&entry, j.Keywords, j.FilterLat, j.FilterLon, j.FilterRadiusM) {
+		if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+			j.ExitMonitor.IncrMapsPlacesDone(1)
+			j.ExitMonitor.IncrPlacesCompleted(1)
+		}
+		// Still emit nothing usable — skip UseInResults path by returning nil data
+		// while counting completion. Writer ignores nil.
+		j.UsageInResults = false
+		return nil, nil, nil
+	}
+
+	// Maps PlaceJob finished → free admit slot soon; emails may still run.
+	if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+		j.ExitMonitor.IncrMapsPlacesDone(1)
+	}
+	storeEntryInPlaceCache(&entry)
+
 	if j.ExtractEmail && entry.IsWebsiteValidForEmail() {
 		opts := []EmailExtractJobOptions{}
-		if j.ExitMonitor != nil {
+		// SaaS：完成计数由 writer 负责。
+		// Web：地点先落盘，但 ExitMonitor 绑到邮箱任务——等联系方式补完再收尾，
+		// 否则 job 一结束就会 context cancel 掉邮箱队列，邮箱/社媒覆盖率接近 0。
+		if j.WriterManagedCompletion {
+			opts = append(opts, WithEmailJobWriterManagedCompletion())
+		} else if j.ExitMonitor != nil {
 			opts = append(opts, WithEmailJobExitMonitor(j.ExitMonitor))
 		}
 
-		if j.WriterManagedCompletion {
-			opts = append(opts, WithEmailJobWriterManagedCompletion())
-		}
+		// 克隆 Entry：避免与地点结果并发写同一指针，导致 upsert 丢 WhatsApp/邮箱
+		entryCopy := entry
+		emailJob := NewEmailJob(j.ID, &entryCopy, opts...)
 
-		emailJob := NewEmailJob(j.ID, &entry, opts...)
+		// 先写出地点详情（已含电话→WA），邮箱任务稍后 upsert 补邮箱/社媒。
+		return &entry, []scrapemate.IJob{emailJob}, nil
+	}
 
-		j.UsageInResults = false
-
-		return nil, []scrapemate.IJob{emailJob}, nil
-	} else if j.ExitMonitor != nil && !j.WriterManagedCompletion {
+	if j.ExitMonitor != nil && !j.WriterManagedCompletion {
 		j.ExitMonitor.IncrPlacesCompleted(1)
 	}
 
@@ -162,6 +249,14 @@ func (j *PlaceJob) Process(_ context.Context, resp *scrapemate.Response) (any, [
 
 func (j *PlaceJob) BrowserActions(ctx context.Context, page scrapemate.BrowserPage) scrapemate.Response {
 	var resp scrapemate.Response
+
+	// Cross-job cache: skip Playwright navigation when we already scraped this place.
+	if cached := placecache.LookupURL(j.GetURL()); cached != nil && cached.Title != "" {
+		resp.StatusCode = 200
+		resp.URL = j.GetURL()
+		resp.Meta = map[string]any{"place_cache": cached}
+		return resp
+	}
 
 	pageResponse, err := page.Goto(j.GetURL(), scrapemate.WaitUntilDOMContentLoaded)
 	if err != nil {

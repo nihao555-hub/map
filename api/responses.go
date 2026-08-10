@@ -31,8 +31,8 @@ type ScrapeRequest struct {
 	Lang string `json:"lang,omitempty" example:"en"`
 	// Maximum depth for pagination (default: 1, max: 100)
 	MaxDepth int `json:"max_depth,omitempty" example:"1"`
-	// Whether to extract email addresses from websites
-	Email bool `json:"email,omitempty" example:"false"`
+	// Email extraction is always enabled; this field is retained for compatibility.
+	Email bool `json:"email,omitempty" example:"true"`
 	// Geographic coordinates in "lat,lon" format
 	GeoCoordinates string `json:"geo_coordinates,omitempty" example:"40.7128,-74.0060"`
 	// Zoom level for map search (1-21)
@@ -111,6 +111,9 @@ func (r *ScrapeRequest) Validate() error {
 }
 
 func (r *ScrapeRequest) SetDefaults() {
+	// Product invariant: clients cannot disable website contact enrichment.
+	r.Email = true
+	r.FastMode = false
 	if r.Lang == "" {
 		r.Lang = "en"
 	}

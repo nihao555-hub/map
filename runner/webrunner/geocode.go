@@ -9,10 +9,14 @@ import (
 	"github.com/gosom/google-maps-scraper/web"
 )
 
-// geocode 用 Nominatim (OpenStreetMap) 把地点名转成经纬度范围
-// 免费，不需要 API key。实现复用 web.Geocode，与普通模式的地理锚定共用
+// geocode 用 Nominatim / 词典 / 离线城市表把地点名转成经纬度范围。
+// 实现复用 web.ResolveLocationAnchor，避免中文地名超时后退化成单点 ~20 条。
 func geocode(ctx context.Context, query string) (grid.BoundingBox, error) {
-	point, err := web.Geocode(ctx, query)
+	return geocodeInCountry(ctx, query, "")
+}
+
+func geocodeInCountry(ctx context.Context, query, countryCode string) (grid.BoundingBox, error) {
+	point, err := web.ResolveLocationAnchor(ctx, query, countryCode)
 	if err != nil {
 		return grid.BoundingBox{}, err
 	}

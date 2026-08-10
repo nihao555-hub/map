@@ -9,18 +9,23 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="/static/css/main.css">
+    <script src="/static/js/i18n.js"></script>
 </head>
 <body>
     <!-- 顶部导航栏 -->
     <header id="topbar">
       <a class="brand" href="/">
         <span class="brand-icon"><i data-lucide="map-pin" class="w-5 h-5"></i></span>
-        <span class="brand-name">地图获客</span>
-        <span class="brand-tag">智能版</span>
+        <span class="brand-name" data-i18n="brand_name">地图获客</span>
+        <span class="brand-tag" data-i18n="brand_tag">智能版</span>
       </a>
       <div class="topbar-right">
-        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
-        <button type="button" class="help-btn"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</button>
+        <label class="ui-lang-wrap" title="UI language">
+          <i data-lucide="languages" class="w-4 h-4"></i>
+          <select id="ui-lang-select" class="ui-lang-select" aria-label="UI language"></select>
+        </label>
+        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i><span data-i18n="vip">升级会员</span></button>
+        <button type="button" class="help-btn"><i data-lucide="help-circle" class="w-4 h-4"></i><span data-i18n="help">使用帮助</span></button>
         <div class="user-box">
           <span class="avatar"><i data-lucide="user" class="w-4 h-4"></i></span>
           <span class="user-name">张三</span>
@@ -33,10 +38,11 @@
       <!-- 左侧表单面板 -->
       <aside id="sidebar">
         <div id="sidebar-content">
-          <h1 class="page-title">找到精准客户，从地图开始</h1>
-          <p class="page-subtitle">输入位置和需求，智能为您挖掘潜在客户</p>
+          <h1 class="page-title" data-i18n="page_title">找到精准客户，从地图开始</h1>
+          <p class="page-subtitle" data-i18n="page_subtitle">输入位置和需求，智能为您挖掘潜在客户</p>
 
           <div id="error-container" class="error-message"></div>
+
           <form
             id="search-form"
             hx-post="/scrape"
@@ -46,44 +52,82 @@
             hx-on::before-request="document.getElementById('error-container').innerHTML = ''; document.getElementById('map-area').classList.add('map-loading')"
             hx-on::after-request="document.getElementById('map-area').classList.remove('map-loading'); if(!event.detail.successful) { document.getElementById('error-container').innerHTML = event.detail.xhr.responseText; } else { handleScrapeSuccess(); }"
           >
-            <!-- 隐藏字段：任务名称 = 关键词+地点 -->
             <input type="hidden" id="name" name="name" value="">
+            <input type="hidden" id="country_code" name="country_code" value="">
+            <input type="hidden" id="country_name" name="country_name" value="">
+            <input type="hidden" id="ai_translate" name="ai_translate" value="on">
+            <input type="hidden" id="ui_lang" name="ui_lang" value="zh">
 
-            <!-- 在哪里 -->
+            <!-- 普通模式表单字段 -->
+            <div id="normal-entry">
+            <!-- 目标国家：必填 -->
             <div class="field-group">
-              <label class="field-label" for="locations">在哪里</label>
+              <label class="field-label" for="country-search" data-i18n="country_label">目标国家 <span class="req-star">*</span></label>
+              <div class="country-picker" id="country-picker">
+                <div class="input-field">
+                  <i data-lucide="globe-2" class="w-4 h-4 input-icon icon-blue"></i>
+                  <input
+                    type="text"
+                    id="country-search"
+                    data-i18n-placeholder="country_ph"
+                    placeholder="搜索或选择国家，如：印尼 / Indonesia"
+                    autocomplete="off"
+                    aria-autocomplete="list"
+                    aria-controls="country-dropdown"
+                    required
+                  />
+                  <button type="button" class="clear-btn" id="country-clear" title="清除">&times;</button>
+                </div>
+                <div id="country-dropdown" class="country-dropdown hidden" role="listbox"></div>
+              </div>
+              <label class="ai-toggle-row" id="ai-toggle-row">
+                <input type="checkbox" id="ai-translate-check" checked />
+                <span data-i18n="ai_toggle">AI 译成当地语言搜索词</span>
+                <span class="ai-badge" id="ai-badge">检测中…</span>
+              </label>
+              <p class="field-hint" id="country-hint" data-i18n="country_hint">先选国家；中文会译成该国 Maps 常用当地语（如印尼「配电柜」→ panel listrik），不是界面语言</p>
+            </div>
+
+            <!-- 在哪里：必填 -->
+            <div class="field-group">
+              <label class="field-label" for="locations" data-i18n="where_label">在哪里 <span class="req-star">*</span></label>
               <div class="input-field">
                 <i data-lucide="map-pin" class="w-4 h-4 input-icon icon-blue"></i>
                 <input
                   type="text"
                   id="locations"
                   name="locations"
-                  placeholder="请输入地点，如：深圳市南山区科技园"
+                  data-i18n-placeholder="where_ph"
+                  placeholder="请输入地点，如：雅加达 / 纽约曼哈顿"
                   autocomplete="off"
+                  required
                 />
               </div>
-              <p class="field-hint">支持输入关键词搜索和地图选点两种方式</p>
+              <p class="field-hint" data-i18n="where_hint">支持中文地名；会按目标国家锚定地图</p>
             </div>
 
-            <!-- 找什么 -->
+            <!-- 找什么：必填 -->
             <div class="field-group">
-              <label class="field-label" for="keywords">找什么</label>
+              <label class="field-label" for="keywords" data-i18n="what_label">找什么 <span class="req-star">*</span></label>
               <div class="input-field">
                 <i data-lucide="search" class="w-4 h-4 input-icon"></i>
                 <input
                   type="text"
                   id="keywords"
                   name="keywords"
+                  data-i18n-placeholder="what_ph"
                   placeholder="咖啡馆"
                   autocomplete="off"
+                  required
                 />
                 <button type="button" class="clear-btn" id="keywords-clear" title="清除">&times;</button>
               </div>
+              <p class="field-hint" id="ai-preview-hint" data-i18n="what_hint">可用中文；提交时 AI/词典译成目标国语言</p>
             </div>
 
             <!-- 热门搜索 -->
             <div class="hot-search">
-              <span class="hot-label">热门搜索：</span>
+              <span class="hot-label" data-i18n="hot_label">热门搜索：</span>
               <div class="hot-tags">
                 <button type="button" class="hot-tag" onclick="fillKeyword('咖啡馆')">咖啡馆</button>
                 <button type="button" class="hot-tag" onclick="fillKeyword('奶茶店')">奶茶店</button>
@@ -93,168 +137,81 @@
               </div>
             </div>
 
-            <!-- 模式选择 -->
+            <!-- 固定深度全量 -->
             <div class="field-group">
-              <label class="field-label">模式选择</label>
-              <div class="mode-cards">
-                <div class="mode-card" data-mode="quick" onclick="selectMode('quick')">
-                  <div class="mode-head">
-                    <i data-lucide="zap" class="w-4 h-4 mode-icon"></i>
-                    <span class="mode-label">快速模式</span>
-                    <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
-                  </div>
-                  <p class="mode-desc">极速通道，1分钟约25家<br/>名称/地址/电话/网站/评分</p>
-                </div>
-                <div class="mode-card" data-mode="standard" onclick="selectMode('standard')">
-                  <div class="mode-head">
-                    <i data-lucide="crosshair" class="w-4 h-4 mode-icon"></i>
-                    <span class="mode-label">深度模式</span>
-                    <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
-                  </div>
-                  <p class="mode-desc">深度挖掘详细信息<br/>适合精准分析</p>
+              <div class="mode-fixed-banner">
+                <i data-lucide="crosshair" class="w-4 h-4"></i>
+                <div>
+                  <strong data-i18n="mode_deep_full">深度全量搜索</strong>
+                  <p data-i18n="mode_deep_full_desc">质量最好 · 半径内抓全 · 不设数量上限</p>
                 </div>
               </div>
             </div>
 
-            <!-- 深度模式：结果字段自选（点击深度模式后展开） -->
-            <div class="field-group hidden" id="columns-section">
-              <label class="field-label">结果字段（深度模式可自选）</label>
-              <p class="columns-note">名称 / 链接 / 经纬度 / CID / PlaceID 为系统保留字段，始终包含</p>
-              <div class="columns-grid" id="columns-grid">
-                <!-- 由 JS 生成复选框 -->
-              </div>
-              <div class="columns-actions">
-                <button type="button" class="columns-btn" onclick="setAllColumns(true)">全选</button>
-                <button type="button" class="columns-btn" onclick="setAllColumns(false)">清空</button>
-                <button type="button" class="columns-btn" onclick="resetEssentialColumns()">只留必要字段</button>
-              </div>
-            </div>
-
-            <!-- 目标客户数量上限 -->
+            <!-- 目标半径 -->
             <div class="field-group">
-              <label class="field-label" for="maxresults">目标客户数量上限</label>
+              <label class="field-label" for="radius_km" data-i18n="radius_label">目标半径（公里） <span class="req-star">*</span></label>
+              <div class="radius-presets" id="radius-presets">
+                <button type="button" class="radius-chip" data-km="5">5km</button>
+                <button type="button" class="radius-chip" data-km="10">10km</button>
+                <button type="button" class="radius-chip" data-km="25">25km</button>
+                <button type="button" class="radius-chip" data-km="40">40km</button>
+                <button type="button" class="radius-chip active" data-km="50" data-i18n-title="radius_metro">最大 50km</button>
+              </div>
               <div class="input-field">
-                <i data-lucide="target" class="w-4 h-4 input-icon"></i>
-                <input type="number" id="maxresults" name="maxresults" min="0" step="50" value="0" placeholder="0 或留空 = 不限，抓到全域全量为止"/>
+                <i data-lucide="radar" class="w-4 h-4 input-icon"></i>
+                <input type="number" id="radius_km" name="radius_km" min="1" max="50" step="1" value="50" required/>
               </div>
-              <p class="columns-note">不设限时结果最全，但量大时耗时较长（建议配合 30 分钟以上运行时间）</p>
+              <p class="columns-note" id="radius-volume-hint">以选点为圆心；默认 <strong>50km（项目上限）</strong>，半径内深度全量抓取。可改小到街区/城区。</p>
             </div>
 
             <!-- 开始搜索 -->
             <button type="submit" id="start-btn" class="btn-primary">
               <i data-lucide="search" class="w-5 h-5"></i>
-              <span>开始搜索</span>
+              <span data-i18n="start_search">开始搜索</span>
             </button>
             <div id="spinner" class="spinner htmx-indicator"></div>
 
-            <!-- 高级选项（折叠） -->
-            <div class="advanced-block">
-              <button type="button" id="advanced-toggle" onclick="toggleAdvanced()">
-                <span class="adv-left">
-                  <i data-lucide="settings" class="w-4 h-4"></i>
-                  高级选项
-                </span>
-                <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon open" id="advanced-icon"></i>
-              </button>
-
-              <div id="advanced-options" class="collapse-content open">
-                <div class="adv-inner">
-                  <!-- 全域全量模式 -->
-                  <div>
-                    <label class="field-label-sm">全域全量模式（网格搜索，突破数量上限）</label>
-                    <div class="mode-card mode-card-sm active" data-mode="grid" onclick="selectMode('grid')">
-                      <div class="mode-head">
-                        <i data-lucide="grid-3x3" class="w-4 h-4 mode-icon"></i>
-                        <span class="mode-label">全域全量</span>
-                        <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
-                      </div>
-                      <p class="mode-desc">区域切块搜索<br/>结果更全但更慢</p>
-                    </div>
-                  </div>
-
-                  <!-- 网格密度 -->
-                  <div id="grid-density-section">
-                    <label class="field-label-sm" for="gridcell">网格密度</label>
-                    <select id="gridcell" name="gridcell" class="select-field">
-                      <option value="2.0">稀疏（约 2km 一格，速度快）</option>
-                      <option value="1.5" selected>标准（约 1.5km 一格，推荐）</option>
-                      <option value="1.0">密集（约 1km 一格，更全但慢）</option>
-                      <option value="0.5">极密（约 500m 一格，最慢最全）</option>
-                    </select>
-                  </div>
-
-                  <!-- 抓取邮箱开关 -->
-                  <div class="switch-row">
-                    <span class="switch-label"><i data-lucide="mail" class="w-4 h-4"></i>抓取邮箱</span>
-                    <input type="checkbox" id="email" name="email" checked class="hidden">
-                    <div class="toggle-switch on" id="email-toggle" onclick="toggleSwitch(this, 'email')"></div>
-                  </div>
-
-                  <!-- 语言 -->
-                  <div>
-                    <label class="field-label-sm" for="lang">语言</label>
-                    <div class="input-field">
-                      <i data-lucide="globe" class="w-4 h-4 input-icon"></i>
-                      <input type="text" id="lang" name="lang" value="" placeholder="自动检测"/>
-                    </div>
-                  </div>
-
-                  <!-- 最大运行时间 -->
-                  <div>
-                    <label class="field-label-sm" for="maxtime">最大运行时间</label>
-                    <select id="maxtime" name="maxtime" class="select-field">
-                      <option value="3m">3 分钟</option>
-                      <option value="10m">10 分钟</option>
-                      <option value="30m" selected>30 分钟（推荐，量大时更稳）</option>
-                      <option value="60m">1 小时</option>
-                      <option value="120m">2 小时</option>
-                    </select>
-                  </div>
-
-                  <!-- 滚动深度 -->
-                  <div>
-                    <label class="field-label-sm" for="depth">滚动深度</label>
-                    <select id="depth" name="depth" class="select-field">
-                      <option value="5">浅（5 次，快速）</option>
-                      <option value="10">标准（10 次）</option>
-                      <option value="20" selected>深（20 次）</option>
-                      <option value="50">极深（50 次）</option>
-                    </select>
-                  </div>
-
-                  <!-- 隐藏的后端参数 -->
-                  <input type="hidden" id="zoom" name="zoom" value="15">
-                  <input type="hidden" id="latitude" name="latitude" value="0">
-                  <input type="hidden" id="longitude" name="longitude" value="0">
-                  <input type="hidden" id="fastmode" name="fastmode" value="">
-                  <input type="hidden" id="gridmode" name="gridmode" value="on">
-                  <input type="hidden" id="gridbbox" name="gridbbox" value="">
-                  <input type="hidden" id="radius" name="radius" value="10000">
-                  <input type="hidden" id="columns" name="columns" value="">
-
-                  <!-- 代理设置 -->
-                  <div>
-                    <label class="field-label-sm" for="proxies">代理设置 <span class="label-note">（可选）</span></label>
-                    <textarea
-                      id="proxies"
-                      name="proxies"
-                      class="custom-textarea"
-                      rows="3"
-                      placeholder="每行一个代理，支持 HTTP/HTTPS/SOCKS5&#10;例如：http://user:pass@host:port"
-                    ></textarea>
-                  </div>
-                </div>
+            <div class="field-group intel-simple-row">
+              <div class="switch-row">
+                <span class="switch-label"><i data-lucide="shield-search" class="w-4 h-4"></i>商家背调（结果出齐后再跑）</span>
+                <input type="checkbox" id="enable_intel" name="enable_intel" class="hidden">
+                <div class="toggle-switch" id="intel-toggle" onclick="toggleSwitch(this, 'enable_intel')" title="开启后先出采集结果；抓取结束后后台背调"></div>
               </div>
+            </div>
+            </div><!-- /normal-entry -->
+
+            <!-- 技术字段 -->
+            <div class="tech-fields-hidden" hidden aria-hidden="true">
+              <input type="hidden" id="maxresults" name="maxresults" value="0"/>
+              <input type="hidden" id="email" name="email" value="on" checked>
+              <input type="hidden" id="lang" name="lang" value="">
+              <input type="hidden" id="maxtime" name="maxtime" value="120m">
+              <input type="hidden" id="depth" name="depth" value="50">
+              <input type="hidden" id="gridcell" name="gridcell" value="2.0">
+              <input type="hidden" id="proxies" value="">
+              <input type="hidden" id="zoom" name="zoom" value="15">
+              <input type="hidden" id="latitude" name="latitude" value="0">
+              <input type="hidden" id="longitude" name="longitude" value="0">
+              <input type="hidden" id="fastmode" name="fastmode" value="">
+              <input type="hidden" id="gridmode" name="gridmode" value="on">
+              <input type="hidden" id="gridbbox" name="gridbbox" value="">
+              <input type="hidden" id="radius" name="radius" value="50000">
+              <input type="hidden" id="columns" name="columns" value="">
+              <div id="columns-section" class="hidden"></div>
+              <div id="grid-density-section" class="hidden"></div>
+              <div id="columns-grid" class="hidden"></div>
+              <p id="osint-status-note" class="hidden"></p>
+              <div id="advanced-options" class="hidden"></div>
+              <button type="button" id="advanced-toggle" class="hidden" tabindex="-1"></button>
+              <i id="advanced-icon" class="hidden"></i>
+              <div class="mode-card hidden" data-mode="grid"></div>
             </div>
           </form>
 
-          <!-- 搜索记录 -->
-          <div class="history-block">
-            <div class="history-head">
-              <span class="history-title"><i data-lucide="history" class="w-4 h-4"></i>搜索记录</span>
-              <button type="button" class="history-clear" onclick="clearHistory()">清空记录</button>
-            </div>
-            <div id="job-list" hx-get="/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML">
+          <!-- 搜索记录：左侧隐藏，仅供 HTMX 轮询 → 右侧任务坞同步 -->
+          <div class="history-block history-block-hidden" aria-hidden="true">
+            <div id="job-list" hx-get="/jobs" hx-trigger="load, every 5s" hx-swap="innerHTML">
               <!-- 搜索记录由 HTMX 动态加载 -->
             </div>
             <div id="empty-state" class="hidden">
@@ -272,22 +229,37 @@
         <div id="map-loading-mask">
           <div class="map-loading-box">
             <div class="spinner-inline"></div>
-            <span>正在采集，请稍候…</span>
+            <span data-i18n="map_loading">正在采集，请稍候…</span>
           </div>
         </div>
 
         <!-- 左上：当前区域重新搜索 -->
         <button type="button" id="research-btn" class="map-card map-card-btn">
           <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-          在当前区域重新搜索
+          <span data-i18n="research">在当前区域重新搜索</span>
         </button>
 
         <!-- 右上：热力图开关 -->
         <div id="heatmap-card" class="map-card">
           <i data-lucide="flame" class="w-4 h-4 flame-icon"></i>
-          <span>显示热力图</span>
+          <span data-i18n="heatmap">显示热力图</span>
           <div class="toggle-switch" id="heatmap-toggle" onclick="toggleHeatmap(this)"></div>
         </div>
+
+        <!-- 右侧任务进度面板：排队中 / 采集中 / 背调中 / 已完成 / 失败 / 已终止 -->
+        <aside id="task-dock" aria-label="任务进度">
+          <div class="task-dock-head">
+            <div class="task-dock-title">
+              <i data-lucide="list-checks" class="w-4 h-4"></i>
+              <span data-i18n="task_dock">任务进度</span>
+            </div>
+            <span id="task-dock-hint" class="task-dock-hint" data-i18n="task_hint">实时更新</span>
+          </div>
+          <p class="task-dock-legend" data-i18n="dock_status_legend">排队中 → 采集中 → 背调中 → 已完成</p>
+          <div id="task-dock-list" class="task-dock-list">
+            <p class="task-dock-empty" data-i18n="task_empty">还没有任务。填写左侧表单后点击「开始搜索」。</p>
+          </div>
+        </aside>
 
         <!-- 右下：地图控制器 -->
         <div id="map-ctrl">
@@ -299,10 +271,16 @@
         <!-- 底部结果栏 -->
         <div id="result-bar" class="hidden">
           <div class="result-info">
-            <div class="result-title">找到 <b id="result-count">0</b> 个相关结果<span id="result-mode">（快速模式）</span></div>
-            <div class="result-source">真实商户数据 · 实时采集</div>
+            <div class="result-title"><span data-i18n="result_found">找到</span> <b id="result-count">0</b> <span data-i18n="result_related">个相关结果</span><span id="result-mode">（快速模式）</span></div>
+            <div class="result-source" data-i18n="result_source">真实商户数据 · 结果会随抓取逐渐增加</div>
           </div>
-          <button type="button" id="result-detail-btn" class="result-detail">查看详情 <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
+          <div class="result-actions">
+            <button type="button" id="result-csv-btn" class="csv-export-btn result-csv-btn" title="一键导出 CSV">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span data-i18n="export_csv">导出 CSV</span>
+            </button>
+            <button type="button" id="result-detail-btn" class="result-detail"><span data-i18n="view_detail">查看详情</span> <i data-lucide="arrow-right" class="w-4 h-4"></i></button>
+          </div>
         </div>
 
         <!-- 地图选点提示 -->
@@ -314,6 +292,7 @@
 
     <script src="/static/js/map.js"></script>
     <script>
+      if (window.GMS_I18N) { GMS_I18N.init(); }
       // 初始化 Lucide 图标
       lucide.createIcons();
 
@@ -321,22 +300,210 @@
 
       // 结果字段定义（深度模式可勾选；系统保留字段不在此列，始终包含）
       var ALL_COLUMNS = [
-        ['address', '地址', true], ['phone', '电话', true], ['emails', '邮箱', true],
-        ['website', '网站', true], ['category', '类别', true], ['review_rating', '评分', true],
-        ['review_count', '评论数', true], ['reviews_per_rating', '各星级评论数', false],
-        ['open_hours', '营业时间', true], ['popular_times', '客流高峰', false],
+        ['address', '地址', true], ['whatsapp', 'WhatsApp', true], ['emails', '邮箱', true], ['phone', '电话', true],
+        ['website', '网站', true],
+        ['facebook', 'Facebook', true], ['instagram', 'Instagram', true], ['linkedin', 'LinkedIn', true],
+        ['twitter', 'Twitter/X', true], ['tiktok', 'TikTok', true], ['youtube', 'YouTube', true],
+        ['telegram', 'Telegram', true], ['pinterest', 'Pinterest', true],
+        ['category', '类别', true], ['review_rating', '评分', true],
+        ['review_count', '评论数', true], ['reviews_per_rating', '各星级评论数', true],
+        ['open_hours', '营业时间', true], ['popular_times', '客流高峰', true],
         ['price_range', '价格区间', true], ['status', '营业状态', true],
-        ['descriptions', '商家简介', true], ['about', '特色标签', false],
-        ['menu', '菜单', false], ['owner', '店主信息', false],
-        ['images', '图片', false], ['thumbnail', '缩略图', true],
-        ['reviews_link', '评论链接', false], ['user_reviews', '用户评论', false],
-        ['user_reviews_extended', '扩展评论', false], ['plus_code', 'Plus Code', false],
-        ['timezone', '时区', true], ['complete_address', '完整地址', false],
-        ['credit_cards_accepted', '信用卡支付', false], ['reservations', '预约方式', false],
-        ['order_online', '在线下单', false], ['street_view_url', '街景', false],
-        ['data_id', '数据ID', false]
+        ['descriptions', '商家简介', true], ['about', '特色标签', true],
+        ['menu', '菜单', true], ['owner', '店主信息', true],
+        ['images', '图片', true], ['thumbnail', '缩略图', true],
+        ['reviews_link', '评论链接', true], ['user_reviews', '用户评论', true],
+        ['user_reviews_extended', '扩展评论', true], ['plus_code', 'Plus Code', true],
+        ['timezone', '时区', true], ['complete_address', '完整地址', true],
+        ['credit_cards_accepted', '信用卡支付', true], ['reservations', '预约方式', true],
+        ['order_online', '在线下单', true], ['street_view_url', '街景', true],
+        ['data_id', '数据ID', true]
       ];
-      var ESSENTIAL_COLUMN_KEYS = ['address', 'phone', 'emails', 'website', 'review_rating', 'review_count', 'category'];
+      var ESSENTIAL_COLUMN_KEYS = ['address', 'whatsapp', 'emails', 'phone', 'website', 'facebook', 'instagram', 'linkedin', 'twitter', 'tiktok', 'youtube', 'telegram', 'pinterest', 'review_rating', 'review_count', 'category'];
+
+      // 目标国家（可搜索）。code=ISO2, lang=Google hl, zh=中文名
+      var COUNTRY_LIST = [
+        {code:'id', lang:'id', zh:'印度尼西亚', en:'Indonesia', lat:-2.5, lon:118, zoom:5},
+        {code:'th', lang:'th', zh:'泰国', en:'Thailand', lat:15.8, lon:101, zoom:6},
+        {code:'vn', lang:'vi', zh:'越南', en:'Vietnam', lat:15.9, lon:105.8, zoom:6},
+        {code:'my', lang:'ms', zh:'马来西亚', en:'Malaysia', lat:4.2, lon:109.5, zoom:6},
+        {code:'sg', lang:'en', zh:'新加坡', en:'Singapore', lat:1.35, lon:103.82, zoom:11},
+        {code:'ph', lang:'en', zh:'菲律宾', en:'Philippines', lat:12.9, lon:121.8, zoom:6},
+        {code:'kh', lang:'km', zh:'柬埔寨', en:'Cambodia', lat:12.5, lon:105, zoom:7},
+        {code:'la', lang:'lo', zh:'老挝', en:'Laos', lat:19.8, lon:102.5, zoom:6},
+        {code:'mm', lang:'my', zh:'缅甸', en:'Myanmar', lat:21.9, lon:96.1, zoom:6},
+        {code:'bn', lang:'ms', zh:'文莱', en:'Brunei', lat:4.5, lon:114.7, zoom:9},
+        {code:'tl', lang:'en', zh:'东帝汶', en:'Timor-Leste', lat:-8.9, lon:125.7, zoom:8},
+        {code:'jp', lang:'ja', zh:'日本', en:'Japan', lat:36.2, lon:138.3, zoom:5},
+        {code:'kr', lang:'ko', zh:'韩国', en:'South Korea', lat:36.5, lon:127.8, zoom:7},
+        {code:'us', lang:'en', zh:'美国', en:'United States', lat:39.8, lon:-98.5, zoom:4},
+        {code:'gb', lang:'en', zh:'英国', en:'United Kingdom', lat:54.5, lon:-3.4, zoom:6},
+        {code:'au', lang:'en', zh:'澳大利亚', en:'Australia', lat:-25.3, lon:133.8, zoom:4},
+        {code:'nz', lang:'en', zh:'新西兰', en:'New Zealand', lat:-41.5, lon:172.5, zoom:5},
+        {code:'ca', lang:'en', zh:'加拿大', en:'Canada', lat:56.1, lon:-106.3, zoom:3},
+        {code:'de', lang:'de', zh:'德国', en:'Germany', lat:51.2, lon:10.4, zoom:6},
+        {code:'fr', lang:'fr', zh:'法国', en:'France', lat:46.2, lon:2.2, zoom:6},
+        {code:'es', lang:'es', zh:'西班牙', en:'Spain', lat:40.4, lon:-3.7, zoom:6},
+        {code:'it', lang:'it', zh:'意大利', en:'Italy', lat:41.9, lon:12.6, zoom:6},
+        {code:'pt', lang:'pt', zh:'葡萄牙', en:'Portugal', lat:39.4, lon:-8.2, zoom:7},
+        {code:'br', lang:'pt', zh:'巴西', en:'Brazil', lat:-14.2, lon:-51.9, zoom:4},
+        {code:'mx', lang:'es', zh:'墨西哥', en:'Mexico', lat:23.6, lon:-102.5, zoom:5},
+        {code:'ae', lang:'ar', zh:'阿联酋', en:'United Arab Emirates', lat:23.4, lon:53.8, zoom:7},
+        {code:'sa', lang:'ar', zh:'沙特阿拉伯', en:'Saudi Arabia', lat:23.9, lon:45.1, zoom:5},
+        {code:'tr', lang:'tr', zh:'土耳其', en:'Turkey', lat:39.0, lon:35.2, zoom:6},
+        {code:'ru', lang:'ru', zh:'俄罗斯', en:'Russia', lat:61.5, lon:105.3, zoom:3},
+        {code:'in', lang:'en', zh:'印度', en:'India', lat:22.0, lon:79.0, zoom:5},
+        {code:'cn', lang:'zh', zh:'中国', en:'China', lat:35.9, lon:104.2, zoom:4},
+        {code:'hk', lang:'zh', zh:'中国香港', en:'Hong Kong', lat:22.3, lon:114.2, zoom:11},
+        {code:'tw', lang:'zh', zh:'中国台湾', en:'Taiwan', lat:23.7, lon:121.0, zoom:7},
+        {code:'nl', lang:'nl', zh:'荷兰', en:'Netherlands', lat:52.1, lon:5.3, zoom:7},
+        {code:'pl', lang:'pl', zh:'波兰', en:'Poland', lat:51.9, lon:19.1, zoom:6},
+        {code:'se', lang:'sv', zh:'瑞典', en:'Sweden', lat:60.1, lon:18.6, zoom:5}
+      ];
+      var selectedCountry = null;
+      var aiTranslateEnabled = false;
+
+      function countryLabel(c) {
+        return c.zh + ' · ' + c.en;
+      }
+
+      function filterCountries(q) {
+        q = (q || '').trim().toLowerCase();
+        if (!q) return COUNTRY_LIST.slice();
+        return COUNTRY_LIST.filter(function (c) {
+          return c.zh.toLowerCase().indexOf(q) !== -1 ||
+            c.en.toLowerCase().indexOf(q) !== -1 ||
+            c.code.indexOf(q) !== -1;
+        });
+      }
+
+      function renderCountryDropdown(list) {
+        var dd = document.getElementById('country-dropdown');
+        dd.innerHTML = '';
+        if (!list.length) {
+          dd.innerHTML = '<div class="country-empty">无匹配国家</div>';
+          dd.classList.remove('hidden');
+          return;
+        }
+        list.forEach(function (c) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'country-option';
+          btn.setAttribute('role', 'option');
+          btn.innerHTML = '<span class="country-zh">' + c.zh + '</span><span class="country-en">' + c.en + '</span>';
+          btn.addEventListener('click', function () { selectCountry(c); });
+          dd.appendChild(btn);
+        });
+        dd.classList.remove('hidden');
+      }
+
+      function selectCountry(c) {
+        selectedCountry = c;
+        document.getElementById('country_code').value = c.code;
+        document.getElementById('country_name').value = c.en;
+        document.getElementById('country-search').value = countryLabel(c);
+        document.getElementById('lang').value = c.lang;
+        document.getElementById('country-dropdown').classList.add('hidden');
+        updateAIPreviewHint();
+        // 选国家后飞到该国，避免在默认深圳地图上点选导致「目标国 + 错误坐标」
+        if (c.lat != null && c.lon != null && window.flyMapTo) {
+          window.flyMapTo(c.lat, c.lon, c.zoom || 6);
+        }
+      }
+
+      // 供地图点选 / 地理编码回调：按 ISO2 同步左侧「目标国家」
+      window.selectCountryByCode = function (code) {
+        code = String(code || '').toLowerCase();
+        if (!code) return false;
+        for (var i = 0; i < COUNTRY_LIST.length; i++) {
+          if (COUNTRY_LIST[i].code === code) {
+            selectCountry(COUNTRY_LIST[i]);
+            return true;
+          }
+        }
+        // 列表外国家：至少写入 code + lang 隐藏域
+        document.getElementById('country_code').value = code;
+        document.getElementById('country_name').value = code.toUpperCase();
+        document.getElementById('country-search').value = code.toUpperCase();
+        var hl = document.getElementById('lang');
+        if (hl && !hl.value) hl.value = 'en';
+        updateAIPreviewHint();
+        return false;
+      };
+
+      function clearCountry() {
+        selectedCountry = null;
+        document.getElementById('country_code').value = '';
+        document.getElementById('country_name').value = '';
+        document.getElementById('country-search').value = '';
+        document.getElementById('country-dropdown').classList.add('hidden');
+        updateAIPreviewHint();
+      }
+
+      function syncAITranslateHidden() {
+        var on = document.getElementById('ai-translate-check').checked;
+        document.getElementById('ai_translate').value = on ? 'on' : '';
+      }
+
+      function updateAIPreviewHint() {
+        var hint = document.getElementById('ai-preview-hint');
+        var badge = document.getElementById('ai-badge');
+        var c = selectedCountry;
+        if (aiTranslateEnabled && document.getElementById('ai-translate-check').checked) {
+          badge.textContent = 'AI 已就绪';
+          badge.classList.add('on');
+          hint.textContent = c
+            ? ('提交时由 AI 译成「' + c.zh + '」本地 Google Maps 搜索词')
+            : '请先选目标国家；AI 会把中文译成当地搜索词';
+        } else {
+          badge.textContent = aiTranslateEnabled ? 'AI 已关' : '未配置 AI';
+          badge.classList.remove('on');
+          hint.textContent = aiTranslateEnabled
+            ? (c ? ('已关 AI；将用词典/机翻译成「' + c.zh + '」搜索词') : '已关 AI；提交时按地点推断国家并机翻')
+            : '服务端未配置 GRSAI_API_KEY；请用英文关键词，或配置密钥后刷新';
+        }
+      }
+
+      function initCountryPicker() {
+        var input = document.getElementById('country-search');
+        var dd = document.getElementById('country-dropdown');
+        var clearBtn = document.getElementById('country-clear');
+
+        input.addEventListener('focus', function () {
+          renderCountryDropdown(filterCountries(input.value));
+        });
+        input.addEventListener('input', function () {
+          // 手动改字时视为未选定，避免旧 country_code 残留
+          if (selectedCountry && input.value !== countryLabel(selectedCountry)) {
+            selectedCountry = null;
+            document.getElementById('country_code').value = '';
+            document.getElementById('country_name').value = '';
+          }
+          renderCountryDropdown(filterCountries(input.value));
+        });
+        clearBtn.addEventListener('click', function () {
+          clearCountry();
+          input.focus();
+        });
+        document.addEventListener('click', function (e) {
+          if (!document.getElementById('country-picker').contains(e.target)) {
+            dd.classList.add('hidden');
+          }
+        });
+        document.getElementById('ai-translate-check').addEventListener('change', function () {
+          syncAITranslateHidden();
+          updateAIPreviewHint();
+        });
+        syncAITranslateHidden();
+
+        fetch('/api/v1/ai-status').then(function (r) { return r.json(); }).then(function (d) {
+          aiTranslateEnabled = !!(d && d.enabled);
+          updateAIPreviewHint();
+        }).catch(function () {
+          aiTranslateEnabled = false;
+          updateAIPreviewHint();
+        });
+      }
 
       function buildColumnsPicker() {
         var grid = document.getElementById('columns-grid');
@@ -379,24 +546,62 @@
         }
       }
 
-      // 模式选择：quick=快速(fastmode) / standard=深度 / grid=全域全量
-      let currentMode = 'grid';
-      function selectMode(mode) {
-        currentMode = mode;
-        document.querySelectorAll('.mode-card').forEach(function (card) {
-          card.classList.toggle('active', card.dataset.mode === mode);
-        });
-        document.getElementById('fastmode').value = mode === 'quick' ? 'on' : '';
-        document.getElementById('gridmode').value = mode === 'grid' ? 'on' : '';
-        document.getElementById('grid-density-section').classList.toggle('hidden', mode !== 'grid');
-        // 快速模式只出必要字段；深度/全域模式展示字段自选区
-        document.getElementById('columns-section').classList.toggle('hidden', mode === 'quick');
-        // 选了网格模式时自动展开高级选项，让用户看到密度设置
-        if (mode === 'grid') {
-          document.getElementById('advanced-options').classList.add('open');
-          document.getElementById('advanced-icon').classList.add('open');
+      // 固定深度全量：不再提供快速/模式切换
+      let currentMode = 'standard';
+      const MAX_RADIUS_KM = 50;
+      function syncRadiusMeters() {
+        var kmEl = document.getElementById('radius_km');
+        var hidden = document.getElementById('radius');
+        if (!kmEl || !hidden) return;
+        var km = parseFloat(kmEl.value);
+        if (!isFinite(km) || km <= 0) km = 10;
+        if (km > MAX_RADIUS_KM) {
+          km = MAX_RADIUS_KM;
+          kmEl.value = String(MAX_RADIUS_KM);
         }
+        hidden.value = String(Math.round(km * 1000));
+      }
+      function selectMode(mode) {
+        // 兼容旧调用：一律深度 + 网格全量
+        currentMode = 'standard';
+        var fm = document.getElementById('fastmode');
+        var gm = document.getElementById('gridmode');
+        if (fm) fm.value = '';
+        if (gm) gm.value = 'on';
+        document.getElementById('zoom').value = '15';
+        syncRadiusMeters();
+        var emailEl = document.getElementById('email');
+        if (emailEl) emailEl.checked = true;
+        if (typeof setAllColumns === 'function') setAllColumns(true);
+        syncColumnsHidden();
         updateResultModeLabel();
+      }
+
+      // 任务坞并发提示（智能体已迁至 /agent/）
+      async function refreshConcurrencyPill() {
+        try {
+          var r = await fetch('/api/v1/system/concurrency');
+          if (!r.ok) return;
+          var s = await r.json();
+          var dockHint = document.getElementById('task-dock-hint');
+          if (dockHint && s.admit_slots) {
+            dockHint.textContent = '满速并行 ' + s.admit_slots + ' 路（多则排队）';
+          }
+        } catch (e) {}
+      }
+
+      function syncRadiusChips() {
+        var km = parseFloat((document.getElementById('radius_km') || {}).value) || 50;
+        document.querySelectorAll('.radius-chip').forEach(function (c) {
+          c.classList.toggle('active', parseFloat(c.dataset.km) === km);
+        });
+        var hint = document.getElementById('radius-volume-hint');
+        if (hint) {
+          if (km <= 5) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 街区/商圈</strong>。全市/都会区请选 40–50km（项目上限 50km）。';
+          else if (km <= 15) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 城区一片</strong>。不是全市；默认/最大为 50km。';
+          else if (km <= 30) hint.innerHTML = '当前 <strong>' + km + 'km ≈ 大半个城市</strong>，结果会明显增多，耗时也更长。';
+          else hint.innerHTML = '当前 <strong>' + km + 'km</strong>（上限 50km），深度全量网格格数多，请耐心等待。';
+        }
       }
 
       // 热门搜索词填入
@@ -424,8 +629,9 @@
         if (input) input.checked = el.classList.contains('on');
       }
 
-      // 提交前组装任务名称 + 自动推断语言
-      document.getElementById('search-form').addEventListener('htmx:configRequest', function () {
+      // 提交前组装任务名称 + 语言
+      // 注意：必须写入 event.detail.parameters，仅改隐藏 input 在 HTMX 1.9 里可能已晚于序列化
+      document.getElementById('search-form').addEventListener('htmx:configRequest', function (evt) {
         const keywords = document.getElementById('keywords').value.trim();
         const locations = document.getElementById('locations').value.trim();
 
@@ -440,23 +646,71 @@
         document.getElementById('name').value = name;
 
         const langInput = document.getElementById('lang');
-        if (!langInput.value) {
-          const hasChinese = /[\u4e00-\u9fa5]/.test(keywords + locations);
-          langInput.value = hasChinese ? 'zh' : 'en';
+        // 语言：已选国家 > 已有值 > 默认 en（勿因中文地名误设 zh）
+        if (selectedCountry && selectedCountry.lang) {
+          langInput.value = selectedCountry.lang;
+        } else if (!langInput.value) {
+          langInput.value = 'en';
         }
 
+        syncAITranslateHidden();
         // 组装结果字段参数
         syncColumnsHidden();
+        syncRadiusMeters();
+
+        const params = evt.detail && evt.detail.parameters;
+        if (params) {
+          params['name'] = name;
+          params['lang'] = langInput.value;
+          params['country_code'] = document.getElementById('country_code').value;
+          params['country_name'] = document.getElementById('country_name').value;
+          params['ai_translate'] = document.getElementById('ai_translate').value;
+          params['columns'] = document.getElementById('columns').value;
+          params['latitude'] = document.getElementById('latitude').value;
+          params['longitude'] = document.getElementById('longitude').value;
+          params['fastmode'] = '';
+          params['gridmode'] = 'on';
+          params['maxresults'] = '0';
+          params['depth'] = document.getElementById('depth').value || '50';
+          params['maxtime'] = document.getElementById('maxtime').value || '120m';
+          params['radius_km'] = document.getElementById('radius_km').value;
+          params['radius'] = document.getElementById('radius').value;
+          params['enable_intel'] = document.getElementById('enable_intel').checked ? 'on' : '';
+          // 邮箱刚需：始终提交 on（与隐藏 checkbox 状态无关）
+          params['email'] = 'on';
+          document.getElementById('email').checked = true;
+          // 不提交用户代理：由服务器 GMS_PROXIES 统一配置
+          params['proxies'] = '';
+        }
       });
 
-      // 采集成功后的处理
+      // 表单必填校验
+      document.getElementById('search-form').addEventListener('submit', function (evt) {
+        var errBox = document.getElementById('error-container');
+        var country = (document.getElementById('country_code').value || '').trim();
+        var loc = (document.getElementById('locations').value || '').trim();
+        var kw = (document.getElementById('keywords').value || '').trim();
+        var rk = parseFloat((document.getElementById('radius_km') || {}).value);
+        var msgs = [];
+        if (!country && !loc) msgs.push('请选择目标国家并填写「在哪里」');
+        else if (!country) msgs.push('请选择目标国家（必填）');
+        else if (!loc) msgs.push('请填写「在哪里」（必填）');
+        if (!kw) msgs.push('请填写「找什么」（必填）');
+        if (!isFinite(rk) || rk < 1) msgs.push('请设置目标半径（公里）');
+        if (msgs.length) {
+          evt.preventDefault();
+          if (typeof evt.stopImmediatePropagation === 'function') evt.stopImmediatePropagation();
+          if (errBox) errBox.textContent = msgs.join('；');
+        }
+      }, true);
+
+      // 采集提交成功：只刷新任务坞；不自动展开下方结果（需点击右侧任务）
       function handleScrapeSuccess() {
-        document.getElementById('keywords').value = '';
-        document.getElementById('locations').value = '';
-        // 清空地图选点
-        if (window.clearPickMarker) window.clearPickMarker();
         setTimeout(function () { lucide.createIcons(); }, 100);
-        refreshRecords();
+        setTimeout(function () {
+          refreshRecords();
+          if (window.syncTaskDock) window.syncTaskDock();
+        }, 80);
       }
 
       // 记录列表刷新后的统一处理
@@ -465,8 +719,9 @@
         const emptyState = document.getElementById('empty-state');
         emptyState.classList.toggle('hidden', records.length > 0);
         lucide.createIcons();
-        // 同步地图与结果栏（由 map.js 提供）
+        // 同步地图、结果栏、右侧任务进度（由 map.js 提供）
         if (window.syncMapWithRecords) window.syncMapWithRecords();
+        if (window.syncTaskDock) window.syncTaskDock();
       }
 
       // 清空记录
@@ -482,8 +737,8 @@
 
       // 结果栏模式文案
       function updateResultModeLabel() {
-        const label = { quick: '快速模式', standard: '深度模式', grid: '全域全量模式' }[currentMode] || '快速模式';
-        document.getElementById('result-mode').textContent = '（' + label + '）';
+        const el = document.getElementById('result-mode');
+        if (el) el.textContent = '（深度全量）';
       }
 
       // HTMX 加载完成后处理记录列表
@@ -500,10 +755,53 @@
         }
       });
 
-      // 构建结果字段选择器（脚本末尾执行，确保 ALL_COLUMNS 已就绪；
-      // 默认全域全量模式 -> 展示自选区）
+      // 初始化：国家选择器 + 深度全量默认 + 入口模式
       buildColumnsPicker();
-      document.getElementById('columns-section').classList.remove('hidden');
+      initCountryPicker();
+      var radiusKmEl = document.getElementById('radius_km');
+      if (radiusKmEl) {
+        radiusKmEl.addEventListener('change', function () { syncRadiusMeters(); syncRadiusChips(); });
+        radiusKmEl.addEventListener('input', function () { syncRadiusMeters(); syncRadiusChips(); });
+      }
+      document.querySelectorAll('.radius-chip').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+          var km = chip.dataset.km;
+          document.getElementById('radius_km').value = km;
+          syncRadiusMeters();
+          syncRadiusChips();
+        });
+      });
+      selectMode('standard');
+      syncRadiusChips();
+      refreshConcurrencyPill();
+      setInterval(refreshConcurrencyPill, 5000);
+      fetch('/api/v1/osint-status').then(function (r) { return r.ok ? r.json() : null; }).then(function (st) {
+        var note = document.getElementById('osint-status-note');
+        if (!note || !st) return;
+        var t = st.tools || st;
+        var flags = [
+          ['theHarvester', t.theharvester],
+          ['SpiderFoot', t.spiderfoot],
+          ['Photon', t.photon],
+          ['katana', t.katana],
+          ['amass', t.amass],
+          ['holehe', t.holehe],
+          ['RDAP', t.rdap],
+          ['crt.sh', t.crtsh],
+          ['Wayback', t.wayback],
+          ['Wikipedia', t.wikipedia],
+          ['Wikidata', t.wikidata],
+          ['GLEIF', t.gleif],
+          ['DDG', t.duckduckgo],
+          ['ImportYeti', t.importyeti],
+          ['Kirchner海关', t.kirchner],
+          ['Hunter', t.hunter],
+          ['AHU', t.ahu && t.ahu_proxy_configured]
+        ];
+        note.textContent = '公开/开源依赖：' + flags.map(function (x) {
+          return x[0] + (x[1] ? ' ✓' : ' ✗');
+        }).join(' · ') + (st.hint ? ' · ' + st.hint : '');
+      }).catch(function () {});
     </script>
 </body>
 </html>

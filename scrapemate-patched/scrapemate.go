@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -49,6 +50,14 @@ func New(options ...func(*ScrapeMate) error) (*ScrapeMate, error) {
 
 	if s.concurrency == 0 {
 		s.concurrency = 1
+	}
+	if s.httpConcurrency < 0 {
+		s.httpConcurrency = 0
+	}
+	// Dedicated channel for HTTP-only jobs (merchant email sites). Buffered so
+	// place/browser workers can hand off without blocking on a free HTTP worker.
+	if s.httpConcurrency > 0 && s.httpJobs == nil {
+		s.httpJobs = make(chan IJob, s.httpConcurrency*32)
 	}
 
 	s.stats.lastActivityAt = time.Now().UTC()
@@ -125,6 +134,20 @@ func WithConcurrency(concurrency int) func(*ScrapeMate) error {
 	}
 }
 
+// WithHTTPConcurrency starts extra workers that only process HTTP-only jobs
+// (non-Maps URLs such as EmailExtractJob). Browser/Maps jobs keep using the
+// concurrency from WithConcurrency, so email enrichment cannot stall place
+// detail Playwright slots.
+func WithHTTPConcurrency(n int) func(*ScrapeMate) error {
+	return func(s *ScrapeMate) error {
+		if n < 0 {
+			return ErrorConcurrency
+		}
+		s.httpConcurrency = n
+		return nil
+	}
+}
+
 // WithHTTPFetcher sets the http fetcher for the scrapemate
 func WithHTTPFetcher(client HTTPFetcher) func(*ScrapeMate) error {
 	return func(s *ScrapeMate) error {
@@ -181,17 +204,19 @@ func WithInitJob(job IJob) func(*ScrapeMate) error {
 
 // Scrapemate contains unexporter fields
 type ScrapeMate struct {
-	log         logging.Logger
-	ctx         context.Context
-	cancelFn    context.CancelCauseFunc
-	jobProvider JobProvider
-	concurrency int
-	httpFetcher HTTPFetcher
-	htmlParser  HTMLParser
-	cache       Cacher
-	results     chan Result
-	failedJobs  chan IJob
-	initJob     IJob
+	log             logging.Logger
+	ctx             context.Context
+	cancelFn        context.CancelCauseFunc
+	jobProvider     JobProvider
+	concurrency     int
+	httpConcurrency int
+	httpJobs        chan IJob
+	httpFetcher     HTTPFetcher
+	htmlParser      HTMLParser
+	cache           Cacher
+	results         chan Result
+	failedJobs      chan IJob
+	initJob         IJob
 
 	stats                    stats
 	exitOnInactivity         bool
@@ -230,6 +255,17 @@ func (s *ScrapeMate) Start() error {
 
 			s.startWorker(s.ctx)
 		}()
+	}
+
+	if s.httpConcurrency > 0 && s.httpJobs != nil {
+		s.log.Info("starting dedicated HTTP workers", "count", s.httpConcurrency)
+		wg.Add(s.httpConcurrency)
+		for i := 0; i < s.httpConcurrency; i++ {
+			go func() {
+				defer wg.Done()
+				s.startHTTPWorker(s.ctx)
+			}()
+		}
 	}
 
 	wg.Add(1)
@@ -311,6 +347,10 @@ func (s *ScrapeMate) Failed() <-chan IJob {
 // DoJob scrapes a job and returns it's result
 func (s *ScrapeMate) DoJob(ctx context.Context, job IJob) (result any, next []IJob, err error) {
 	ctx = ContextWithLogger(ctx, s.log.With("jobid", job.GetID()))
+	// Allow BrowserActions to stream follow-up jobs (Place detail) before Process.
+	ctx = ContextWithJobPusher(ctx, func(pushCtx context.Context, nextJob IJob) error {
+		return s.pushJobs(pushCtx, []IJob{nextJob})
+	})
 	startTime := time.Now().UTC()
 
 	s.log.Debug("starting job", "job", job)
@@ -543,20 +583,59 @@ func (s *ScrapeMate) startWorker(ctx context.Context) {
 
 			s.log.Info("restarted job provider")
 		case job := <-jobc:
-			ans, next, err := s.DoJob(ctx, job)
-			if err != nil {
-				s.log.Error("error while processing job", "error", err)
-
-				s.pushToFailedJobs(job)
-			} else {
-				if err := s.finishJob(ctx, job, ans, next); err != nil {
-					s.log.Error("error while finishing job", "error", err)
-
-					s.pushToFailedJobs(job)
+			// Hand HTTP-only work (email sites) to the dedicated pool so this
+			// browser worker can keep fetching Maps place pages.
+			if s.httpJobs != nil && !jobNeedsBrowser(job) {
+				select {
+				case <-ctx.Done():
+					return
+				case s.httpJobs <- job:
 				}
+				continue
 			}
+			s.runOneJob(ctx, job)
 		}
 	}
+}
+
+func (s *ScrapeMate) startHTTPWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case job, ok := <-s.httpJobs:
+			if !ok {
+				return
+			}
+			s.runOneJob(ctx, job)
+		}
+	}
+}
+
+func (s *ScrapeMate) runOneJob(ctx context.Context, job IJob) {
+	ans, next, err := s.DoJob(ctx, job)
+	if err != nil {
+		s.log.Error("error while processing job", "error", err)
+		s.pushToFailedJobs(job)
+		return
+	}
+	if err := s.finishJob(ctx, job, ans, next); err != nil {
+		s.log.Error("error while finishing job", "error", err)
+		s.pushToFailedJobs(job)
+	}
+}
+
+// jobNeedsBrowser reports whether a job must use the Playwright path.
+// Maps search/place URLs need JS; merchant contact pages are plain HTTP.
+func jobNeedsBrowser(job IJob) bool {
+	if job == nil {
+		return false
+	}
+	u := strings.ToLower(job.GetURL())
+	return strings.Contains(u, "google.com/maps") ||
+		strings.Contains(u, "maps.google.") ||
+		strings.Contains(u, "/maps/search") ||
+		strings.Contains(u, "/maps/place")
 }
 
 func (s *ScrapeMate) pushToFailedJobs(job IJob) {
@@ -595,7 +674,16 @@ func (s *ScrapeMate) finishJob(ctx context.Context, job IJob, ans any, next []IJ
 
 func (s *ScrapeMate) pushJobs(ctx context.Context, jobs []IJob) error {
 	for i := range jobs {
-		if err := s.jobProvider.Push(ctx, jobs[i]); err != nil {
+		job := jobs[i]
+		if s.httpJobs != nil && !jobNeedsBrowser(job) {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case s.httpJobs <- job:
+			}
+			continue
+		}
+		if err := s.jobProvider.Push(ctx, job); err != nil {
 			return err
 		}
 	}
