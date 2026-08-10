@@ -293,7 +293,9 @@ export function IntelPanel({ place, intel, onClose, onRefresh, refreshing }: Pro
         'fixed z-50 flex flex-col bg-white',
         // Phone: bottom sheet. Tablet/desktop: right drawer.
         'inset-x-0 bottom-0 max-h-[min(92vh,920px)] rounded-t-2xl border-t border-[#E5E7EB] shadow-[0_-8px_28px_rgba(15,23,42,0.12)]',
-        'md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-[min(420px,100vw)] md:rounded-none md:border-l md:border-t-0 md:shadow-[-8px_0_28px_rgba(15,23,42,0.08)]',
+        // Wider than the original 420px drawer so decision-makers / customs / registry
+        // tabs have room on desktop without feeling cramped.
+        'md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-[min(720px,56vw)] md:rounded-none md:border-l md:border-t-0 md:shadow-[-8px_0_28px_rgba(15,23,42,0.08)]',
       )}
       role="dialog"
       aria-label="背调详情"
