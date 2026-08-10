@@ -17,6 +17,10 @@ import (
 
 // TradeIntel 美国海关提单（ImportYeti / 同源开放数据）贸易背调。
 // 外贸公式第一步「海关定公司」：证实是否真实进口、主要供应商、HS、近期提单。
+//
+// GitHub 调研（2026-08）：无高 star、可 vendoring 的 ImportYeti 爬虫；
+// hughie21/Customs-Crawler（~12★）依赖 Cookie + cloudscraper 绕 Cloudflare，不嵌入。
+// 本文件：data.importyeti.com（IMPORTYETI_API_KEY）优先，Kirchner 多年窗口兜底。
 type TradeIntel struct {
 	Source         string          `json:"source,omitempty"` // importyeti | kirchner
 	Role           string          `json:"role,omitempty"`   // importer | supplier
@@ -77,7 +81,7 @@ func runCustomsEnrichment(ctx context.Context, intel *PlaceIntel, place Place, m
 	if !importYetiEnabled() && strings.TrimSpace(os.Getenv("KIRCHNER_DISABLE")) == "1" {
 		return
 	}
-	budget, cancel := context.WithTimeout(ctx, 18*time.Second)
+	budget, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 
 	trade, err := lookupUSCustomsTrade(budget, place.Title, intel.Domain)
@@ -133,15 +137,23 @@ func lookupUSCustomsTrade(ctx context.Context, title, domain string) (*TradeInte
 	if title == "" {
 		return nil, fmt.Errorf("empty title")
 	}
-	if importYetiEnabled() {
-		if t, err := lookupImportYeti(ctx, title, domain); err == nil && t != nil {
+	// 无 IMPORTYETI_API_KEY 时 data.importyeti.com 恒 401；DDG 探 slug 只会吃光超时，
+	// 导致 Kirchner 兜底也被 cancel。无 key 时直接走 Kirchner。
+	if importYetiEnabled() && importYetiAPIKey() != "" {
+		iyCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		t, err := lookupImportYeti(iyCtx, title, domain)
+		cancel()
+		if err == nil && t != nil && t.TotalShipments > 0 {
 			return t, nil
 		}
 	}
 	if strings.TrimSpace(os.Getenv("KIRCHNER_DISABLE")) == "1" {
 		return nil, fmt.Errorf("customs unavailable")
 	}
-	return lookupKirchnerCompany(ctx, title)
+	// 独立超时：即使父 ctx 即将到期，也尽量跑完多年窗口查询。
+	kCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 16*time.Second)
+	defer cancel()
+	return lookupKirchnerCompany(kCtx, title)
 }
 
 func lookupImportYeti(ctx context.Context, title, domain string) (*TradeIntel, error) {
@@ -414,6 +426,22 @@ func mapImportYetiData(data map[string]any, role, slug string) *TradeIntel {
 	return t
 }
 
+// kirchnerLookbackYears is how many calendar years of US AMS/BOL history to
+// request. A single-year window (especially the current incomplete year) under-
+// counts badly (e.g. Allbirds: 1 shipment in 2026 vs 687 across 2021–2026).
+const kirchnerLookbackYears = 5
+
+// kirchnerYearWindow returns an inclusive [from, to] year range for Kirchner.
+// Floor is 2015 (common public US BOL availability).
+func kirchnerYearWindow(now time.Time) (from, to int) {
+	to = now.UTC().Year()
+	from = to - (kirchnerLookbackYears - 1)
+	if from < 2015 {
+		from = 2015
+	}
+	return from, to
+}
+
 func lookupKirchnerCompany(ctx context.Context, title string) (*TradeIntel, error) {
 	if !IdentifiableCompanyName(title) {
 		return nil, fmt.Errorf("kirchner: business name too generic to match")
@@ -422,26 +450,31 @@ func lookupKirchnerCompany(ctx context.Context, title string) (*TradeIntel, erro
 	if b := companyBrandToken(title); b != "" && !strings.EqualFold(b, title) && IdentifiableCompanyName(b) {
 		names = append(names, b, strings.ToUpper(b))
 	}
-	year := time.Now().UTC().Year()
+	yrFrom, yrTo := kirchnerYearWindow(time.Now())
 	var lastErr error
+	var best *TradeIntel
 	for _, name := range names {
-		for _, yr := range []int{year, year - 1} {
-			t, err := fetchKirchnerProfile(ctx, name, yr, yr)
-			if err != nil {
-				lastErr = err
-				continue
-			}
-			if t == nil || (t.TotalShipments == 0 && len(t.TopHSCodes) == 0) {
-				continue
-			}
-			// Kirchner matches on name prefixes, so a generic query can return a
-			// different importer. Keep only profiles that echo the business name.
-			if !ExternalRecordMatchesBusiness(t.Name, title) {
-				lastErr = fmt.Errorf("kirchner: profile %q does not match %q", t.Name, title)
-				continue
-			}
-			return t, nil
+		t, err := fetchKirchnerProfile(ctx, name, yrFrom, yrTo)
+		if err != nil {
+			lastErr = err
+			continue
 		}
+		if t == nil || (t.TotalShipments == 0 && len(t.TopHSCodes) == 0) {
+			continue
+		}
+		// Kirchner matches on name prefixes, so a generic query can return a
+		// different importer. Keep only profiles that echo the business name.
+		if !ExternalRecordMatchesBusiness(t.Name, title) {
+			lastErr = fmt.Errorf("kirchner: profile %q does not match %q", t.Name, title)
+			continue
+		}
+		if best == nil || t.TotalShipments > best.TotalShipments {
+			cp := *t
+			best = &cp
+		}
+	}
+	if best != nil {
+		return best, nil
 	}
 	if lastErr != nil {
 		return nil, lastErr

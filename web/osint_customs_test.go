@@ -3,7 +3,19 @@ package web
 import (
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestKirchnerYearWindow(t *testing.T) {
+	from, to := kirchnerYearWindow(time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC))
+	if to != 2026 || from != 2022 {
+		t.Fatalf("got %d-%d want 2022-2026", from, to)
+	}
+	from, to = kirchnerYearWindow(time.Date(2016, 1, 1, 0, 0, 0, 0, time.UTC))
+	if from != 2015 || to != 2016 {
+		t.Fatalf("floor: got %d-%d want 2015-2016", from, to)
+	}
+}
 
 func TestSlugifyImportYeti(t *testing.T) {
 	if got := slugifyImportYeti("PT Deugro Indonesia"); got != "deugro-indonesia" && got != "deugro" {
