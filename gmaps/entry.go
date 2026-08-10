@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gosom/google-maps-scraper/enrich"
 )
 
 var panoidRegex = regexp.MustCompile(`panoid=([^&]+)`)
@@ -131,6 +133,9 @@ type Entry struct {
 	UserReviews         []Review     `json:"user_reviews"`
 	UserReviewsExtended []Review     `json:"user_reviews_extended"`
 	Emails              []string     `json:"emails"`
+	// CompanyProfile holds the background-research result built from the
+	// business's own website. It is nil unless company research is enabled.
+	CompanyProfile *enrich.CompanyProfile `json:"company_profile,omitempty"`
 }
 
 // entryAlias is used inside Marshal/UnmarshalJSON to avoid infinite recursion
@@ -271,6 +276,195 @@ func (e *Entry) CsvHeaders() []string {
 		"user_reviews_extended",
 		"emails",
 	}
+}
+
+// ResearchCsvHeaders are the background-research columns. They are appended to
+// CsvHeaders only when company research is enabled, so runs without it keep
+// their existing column layout.
+func ResearchCsvHeaders() []string {
+	return []string{
+		"research_completeness",
+		"best_email",
+		"role_emails",
+		"contact_people",
+		"linkedin",
+		"socials",
+		"whatsapp",
+		"trade_roles",
+		"certifications",
+		"registration_ids",
+		"founded_year",
+		"employee_range",
+		"markets",
+		"site_languages",
+		"web_platform",
+		"company_description",
+		"company_profile",
+	}
+}
+
+// ResearchCsvRow returns the background-research values in the same order as
+// ResearchCsvHeaders. Every cell is empty when no profile was collected.
+func (e *Entry) ResearchCsvRow() []string {
+	profile := e.CompanyProfile
+	if profile == nil {
+		return make([]string, len(ResearchCsvHeaders()))
+	}
+
+	return []string{
+		strconv.Itoa(profile.Completeness),
+		e.BestEmail(),
+		strings.Join(e.emailsOfKind(enrich.EmailKindRole, enrich.EmailKindPersonal), ", "),
+		formatPeople(profile.People),
+		firstSocialURL(profile.Socials, enrich.NetworkLinkedIn),
+		formatSocials(profile.Socials),
+		formatWhatsApp(profile.Phones),
+		strings.Join(profile.TradeRoles, ", "),
+		strings.Join(profile.Certifications, ", "),
+		formatRegistrationIDs(profile.RegistrationIDs),
+		formatYear(profile.FoundedYear),
+		profile.EmployeeRange,
+		strings.Join(profile.Markets, ", "),
+		strings.Join(profile.Languages, ", "),
+		profile.Platform,
+		profile.Description,
+		stringify(profile),
+	}
+}
+
+// BestEmail returns the address most likely to reach a decision maker, or the
+// first known address when no profile was built.
+func (e *Entry) BestEmail() string {
+	if e.CompanyProfile != nil && len(e.CompanyProfile.Emails) > 0 {
+		// Finalize sorted the list with the most actionable address first.
+		return e.CompanyProfile.Emails[0].Address
+	}
+
+	if len(e.Emails) > 0 {
+		return e.Emails[0]
+	}
+
+	return ""
+}
+
+func (e *Entry) emailsOfKind(kinds ...enrich.EmailKind) []string {
+	if e.CompanyProfile == nil {
+		return nil
+	}
+
+	wanted := make(map[enrich.EmailKind]bool, len(kinds))
+	for _, kind := range kinds {
+		wanted[kind] = true
+	}
+
+	out := make([]string, 0, len(e.CompanyProfile.Emails))
+
+	for i := range e.CompanyProfile.Emails {
+		if wanted[e.CompanyProfile.Emails[i].Kind] {
+			out = append(out, e.CompanyProfile.Emails[i].Address)
+		}
+	}
+
+	return out
+}
+
+func formatPeople(people []enrich.Person) string {
+	if len(people) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(people))
+
+	for i := range people {
+		part := people[i].Name
+
+		if people[i].Title != "" {
+			part += " (" + people[i].Title + ")"
+		}
+
+		if people[i].Email != "" {
+			part += " <" + people[i].Email + ">"
+		}
+
+		parts = append(parts, part)
+	}
+
+	return strings.Join(parts, "; ")
+}
+
+func formatSocials(socials []enrich.Social) string {
+	if len(socials) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(socials))
+	for i := range socials {
+		parts = append(parts, socials[i].Network+": "+socials[i].URL)
+	}
+
+	return strings.Join(parts, "; ")
+}
+
+func firstSocialURL(socials []enrich.Social, network string) string {
+	// Company pages are more useful than individual member profiles, so a
+	// company URL wins even when a person profile was seen first.
+	fallback := ""
+
+	for i := range socials {
+		if socials[i].Network != network {
+			continue
+		}
+
+		if !socials[i].IsPersonProfile {
+			return socials[i].URL
+		}
+
+		if fallback == "" {
+			fallback = socials[i].URL
+		}
+	}
+
+	return fallback
+}
+
+func formatWhatsApp(phones []enrich.Phone) string {
+	parts := make([]string, 0, len(phones))
+
+	for i := range phones {
+		if !phones[i].WhatsApp {
+			continue
+		}
+
+		number := phones[i].E164
+		if number == "" {
+			number = phones[i].Raw
+		}
+
+		parts = append(parts, number)
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+func formatRegistrationIDs(ids []enrich.RegistrationID) string {
+	if len(ids) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(ids))
+	for i := range ids {
+		parts = append(parts, strings.ToUpper(ids[i].Kind)+": "+ids[i].Value)
+	}
+
+	return strings.Join(parts, "; ")
+}
+
+func formatYear(year int) string {
+	if year == 0 {
+		return ""
+	}
+
+	return strconv.Itoa(year)
 }
 
 func (e *Entry) CsvRow() []string {

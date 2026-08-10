@@ -86,6 +86,14 @@ type Config struct {
 	BrowserPoolSize          int
 	MaxPagesPerBrowser       int
 
+	// CompanyResearch enables the background-research (背调) crawl of each
+	// business website: contacts by role, decision-maker candidates, social
+	// profiles, registration IDs, certifications and trade-role signals.
+	CompanyResearch bool
+	// CompanyResearchPages caps how many pages of each company site are
+	// fetched, homepage included.
+	CompanyResearchPages int
+
 	// Grid scraping — divide a bounding box into cells to bypass the ~120
 	// results-per-search limit imposed by Google Maps.
 	GridBBox   string  // "minLat,minLon,maxLat,maxLon"
@@ -140,6 +148,8 @@ func ParseConfig() *Config {
 	flag.StringVar(&cfg.Addr, "addr", ":8080", "address to listen on for web server")
 	flag.BoolVar(&cfg.DisablePageReuse, "disable-page-reuse", false, "disable page reuse in playwright")
 	flag.BoolVar(&cfg.ExtraReviews, "extra-reviews", false, "enable extra reviews collection")
+	flag.BoolVar(&cfg.CompanyResearch, "company-research", false, "run background research on each business website (contacts by role, decision makers, socials, registration IDs, certifications); implies -email")
+	flag.IntVar(&cfg.CompanyResearchPages, "company-research-pages", 4, "maximum pages to fetch per company site during background research [default: 4]")
 	flag.StringVar(&cfg.LeadsDBAPIKey, "leadsdb-api-key", "", "LeadsDB API key for exporting results to LeadsDB")
 	flag.StringVar(&cfg.GridBBox, "grid-bbox", "", "bounding box for grid scraping: 'minLat,minLon,maxLat,maxLon' (e.g. '40.30,-3.80,40.50,-3.60')")
 	flag.Float64Var(&cfg.GridCellKm, "grid-cell", 1.0, "grid cell size in km [default: 1.0]. Use with -grid-bbox")
@@ -209,6 +219,15 @@ func ParseConfig() *Config {
 
 	if cfg.Dsn == "" && cfg.ProduceOnly {
 		panic("Dsn must be provided when using ProduceOnly")
+	}
+
+	if cfg.CompanyResearch {
+		// Research subsumes email extraction, so enabling it alone is enough.
+		cfg.Email = true
+
+		if cfg.CompanyResearchPages < 1 {
+			panic("CompanyResearchPages must be greater than 0")
+		}
 	}
 
 	resolvedProxies, err := proxyconfig.Resolve(proxies, proxiesFile)

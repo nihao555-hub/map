@@ -29,6 +29,7 @@ type GmapJob struct {
 	ExitMonitor             exiter.Exiter
 	ExtractExtraReviews     bool
 	WriterManagedCompletion bool
+	Research                ResearchOptions
 }
 
 func NewGmapJob(
@@ -107,6 +108,16 @@ func WithWriterManagedCompletion() GmapJobOptions {
 	}
 }
 
+// WithCompanyResearch makes every place spawned by this job run a full
+// background-research crawl of the business website instead of email-only
+// extraction.
+func WithCompanyResearch(maxPages int) GmapJobOptions {
+	return func(j *GmapJob) {
+		j.Research = ResearchOptions{Enabled: true, MaxPages: maxPages}
+		j.ExtractEmail = true
+	}
+}
+
 func (j *GmapJob) UseInResults() bool {
 	return false
 }
@@ -143,31 +154,13 @@ func (j *GmapJob) Process(ctx context.Context, resp *scrapemate.Response) (any, 
 	var next []scrapemate.IJob
 
 	if strings.Contains(resp.URL, "/maps/place/") {
-		jopts := []PlaceJobOptions{}
-		if j.ExitMonitor != nil {
-			jopts = append(jopts, WithPlaceJobExitMonitor(j.ExitMonitor))
-		}
-
-		if j.WriterManagedCompletion {
-			jopts = append(jopts, WithPlaceJobWriterManagedCompletion())
-		}
-
-		placeJob := NewPlaceJob(j.ID, j.LangCode, resp.URL, j.ExtractEmail, j.ExtractExtraReviews, jopts...)
+		placeJob := NewPlaceJob(j.ID, j.LangCode, resp.URL, j.ExtractEmail, j.ExtractExtraReviews, j.placeJobOptions()...)
 
 		next = append(next, placeJob)
 	} else {
 		doc.Find(`div[role=feed] div[jsaction]>a`).Each(func(_ int, s *goquery.Selection) {
 			if href := s.AttrOr("href", ""); href != "" {
-				jopts := []PlaceJobOptions{}
-				if j.ExitMonitor != nil {
-					jopts = append(jopts, WithPlaceJobExitMonitor(j.ExitMonitor))
-				}
-
-				if j.WriterManagedCompletion {
-					jopts = append(jopts, WithPlaceJobWriterManagedCompletion())
-				}
-
-				nextJob := NewPlaceJob(j.ID, j.LangCode, href, j.ExtractEmail, j.ExtractExtraReviews, jopts...)
+				nextJob := NewPlaceJob(j.ID, j.LangCode, href, j.ExtractEmail, j.ExtractExtraReviews, j.placeJobOptions()...)
 
 				if j.Deduper == nil || j.Deduper.AddIfNotExists(ctx, href) {
 					next = append(next, nextJob)
@@ -184,6 +177,26 @@ func (j *GmapJob) Process(ctx context.Context, resp *scrapemate.Response) (any, 
 	log.Info(fmt.Sprintf("%d places found", len(next)))
 
 	return nil, next, nil
+}
+
+// placeJobOptions propagates this job's monitoring and research settings to
+// every place job it spawns.
+func (j *GmapJob) placeJobOptions() []PlaceJobOptions {
+	opts := []PlaceJobOptions{}
+
+	if j.ExitMonitor != nil {
+		opts = append(opts, WithPlaceJobExitMonitor(j.ExitMonitor))
+	}
+
+	if j.WriterManagedCompletion {
+		opts = append(opts, WithPlaceJobWriterManagedCompletion())
+	}
+
+	if j.Research.Enabled {
+		opts = append(opts, WithPlaceJobCompanyResearch(j.Research.MaxPages))
+	}
+
+	return opts
 }
 
 func (j *GmapJob) BrowserActions(ctx context.Context, page scrapemate.BrowserPage) scrapemate.Response {

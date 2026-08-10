@@ -18,6 +18,34 @@ import (
 	"github.com/gosom/scrapemate"
 )
 
+// SeedOption tweaks how seed jobs are built. Options are variadic so callers
+// that do not need the newer capabilities stay unchanged.
+type SeedOption func(*seedSettings)
+
+type seedSettings struct {
+	companyResearch      bool
+	companyResearchPages int
+}
+
+// WithSeedCompanyResearch makes every place run a background-research crawl of
+// its website instead of email-only extraction.
+func WithSeedCompanyResearch(maxPages int) SeedOption {
+	return func(s *seedSettings) {
+		s.companyResearch = true
+		s.companyResearchPages = maxPages
+	}
+}
+
+func newSeedSettings(opts []SeedOption) seedSettings {
+	var settings seedSettings
+
+	for _, opt := range opts {
+		opt(&settings)
+	}
+
+	return settings
+}
+
 func CreateSeedJobs(
 	fastmode bool,
 	langCode string,
@@ -30,7 +58,9 @@ func CreateSeedJobs(
 	dedup deduper.Deduper,
 	exitMonitor exiter.Exiter,
 	extraReviews bool,
+	seedOpts ...SeedOption,
 ) (jobs []scrapemate.IJob, err error) {
+	settings := newSeedSettings(seedOpts)
 	var lat, lon float64
 
 	if fastmode {
@@ -102,6 +132,10 @@ func CreateSeedJobs(
 				opts = append(opts, gmaps.WithExtraReviews())
 			}
 
+			if settings.companyResearch {
+				opts = append(opts, gmaps.WithCompanyResearch(settings.companyResearchPages))
+			}
+
 			job = gmaps.NewGmapJob(id, langCode, query, maxDepth, email, geoCoordinates, zoom, opts...)
 		} else {
 			jparams := gmaps.MapSearchParams{
@@ -127,7 +161,9 @@ func CreateSeedJobs(
 				opts = append(opts, gmaps.WithSearchJobDeduper(dedup))
 			}
 
-			if email {
+			if settings.companyResearch {
+				opts = append(opts, gmaps.WithSearchJobCompanyResearch(settings.companyResearchPages))
+			} else if email {
 				opts = append(opts, gmaps.WithSearchJobEmail())
 			}
 
@@ -157,10 +193,13 @@ func CreateGridSeedJobs(
 	dedup deduper.Deduper,
 	exitMonitor exiter.Exiter,
 	extraReviews bool,
+	seedOpts ...SeedOption,
 ) ([]scrapemate.IJob, error) {
 	if zoom < 1 || zoom > 21 {
 		return nil, fmt.Errorf("invalid zoom level: %d", zoom)
 	}
+
+	settings := newSeedSettings(seedOpts)
 
 	cells := grid.GenerateCells(bbox, cellSizeKm)
 	if len(cells) == 0 {
@@ -203,6 +242,10 @@ func CreateGridSeedJobs(
 				opts = append(opts, gmaps.WithExtraReviews())
 			}
 
+			if settings.companyResearch {
+				opts = append(opts, gmaps.WithCompanyResearch(settings.companyResearchPages))
+			}
+
 			job := gmaps.NewGmapJob(
 				cellID,
 				langCode,
@@ -234,10 +277,13 @@ func CreateGridSearchSeedJobs(
 	zoom int,
 	dedup deduper.Deduper,
 	exitMonitor exiter.Exiter,
+	seedOpts ...SeedOption,
 ) ([]scrapemate.IJob, error) {
 	if zoom < 1 || zoom > 21 {
 		return nil, fmt.Errorf("invalid zoom level: %d", zoom)
 	}
+
+	settings := newSeedSettings(seedOpts)
 
 	cells := grid.GenerateCells(bbox, cellSizeKm)
 	if len(cells) == 0 {
@@ -283,7 +329,9 @@ func CreateGridSearchSeedJobs(
 				opts = append(opts, gmaps.WithSearchJobDeduper(dedup))
 			}
 
-			if email {
+			if settings.companyResearch {
+				opts = append(opts, gmaps.WithSearchJobCompanyResearch(settings.companyResearchPages))
+			} else if email {
 				opts = append(opts, gmaps.WithSearchJobEmail())
 			}
 
