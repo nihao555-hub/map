@@ -157,6 +157,125 @@ paths:
         '500':
           description: Internal server error
 
+  /api/v1/outreach/campaigns:
+    get:
+      summary: List outreach campaigns with delivery statistics
+      responses:
+        '200':
+          description: Campaign list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OutreachCampaign'
+    post:
+      summary: Create an outreach campaign from a completed map job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, job_id, value_proposition]
+              properties:
+                name:
+                  type: string
+                job_id:
+                  type: string
+                  format: uuid
+                value_proposition:
+                  type: string
+                  example: help dental clinics turn more website visitors into booked appointments
+                proof:
+                  type: string
+                  description: Optional, verifiable evidence only
+                call_to_action:
+                  type: string
+                  example: Would a quick 10-minute conversation be useful?
+                start:
+                  type: boolean
+                  default: false
+      responses:
+        '201':
+          description: Campaign created and contacts imported
+        '422':
+          description: Invalid job or no valid emails
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /api/v1/outreach/campaigns/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get an outreach campaign and its contacts
+      responses:
+        '200':
+          description: Campaign details
+        '404':
+          description: Campaign not found
+    delete:
+      summary: Delete a campaign and all local message state
+      responses:
+        '204':
+          description: Campaign deleted
+
+  /api/v1/outreach/settings:
+    get:
+      summary: Get redacted mailbox and sending settings
+      responses:
+        '200':
+          description: Settings (authorization code is never returned)
+    post:
+      summary: Save mailbox and sending settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutreachSettings'
+      responses:
+        '204':
+          description: Settings saved
+
+  /api/v1/outreach/tick:
+    post:
+      summary: Check replies and send at most one due message
+      responses:
+        '200':
+          description: Idempotent tick result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutreachTickReport'
+
+  /api/v1/outreach/reply:
+    post:
+      summary: Send a human-approved reply in the existing email thread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contact_id, body]
+              properties:
+                contact_id:
+                  type: integer
+                  format: int64
+                body:
+                  type: string
+      responses:
+        '201':
+          description: Reply sent and recorded
+
 components:
   schemas:
     ApiError:
@@ -249,4 +368,110 @@ components:
           type: array
           items:
             type: string
+
+    OutreachCampaign:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+          enum: [draft, active, paused, done]
+        job_id:
+          type: string
+          format: uuid
+        value_proposition:
+          type: string
+        proof:
+          type: string
+        call_to_action:
+          type: string
+        sequence:
+          type: array
+          items:
+            type: object
+            properties:
+              subject:
+                type: string
+              body:
+                type: string
+              delay_days:
+                type: integer
+        stats:
+          type: object
+          properties:
+            contacts:
+              type: integer
+            sent:
+              type: integer
+            replied:
+              type: integer
+            bounced:
+              type: integer
+            unsubscribed:
+              type: integer
+
+    OutreachSettings:
+      type: object
+      properties:
+        smtp_host:
+          type: string
+        smtp_port:
+          type: integer
+        smtp_tls:
+          type: string
+          enum: [ssl, starttls]
+        imap_host:
+          type: string
+        imap_port:
+          type: integer
+        email_address:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          description: Held in memory only; prefer OUTREACH_SMTP_PASSWORD
+        from_name:
+          type: string
+        sender_company:
+          type: string
+        send_start_hour:
+          type: integer
+        send_end_hour:
+          type: integer
+        send_days:
+          type: string
+          example: "234"
+        daily_cap:
+          type: integer
+        warmup_start:
+          type: integer
+        warmup_step:
+          type: integer
+        min_gap_seconds:
+          type: integer
+        max_gap_seconds:
+          type: integer
+        default_timezone:
+          type: string
+
+    OutreachTickReport:
+      type: object
+      properties:
+        inbox_checked:
+          type: integer
+        replies:
+          type: integer
+        bounces:
+          type: integer
+        unsubscribed:
+          type: integer
+        sent:
+          type: integer
+        state:
+          type: string
 

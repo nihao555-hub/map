@@ -11,6 +11,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.88.5
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.3
 	github.com/digitalocean/godo v1.173.0
+	github.com/emersion/go-imap/v2 v2.0.0-beta.8
+	github.com/emersion/go-message v0.18.2
 	github.com/go-chi/chi/v5 v5.2.4
 	github.com/golangci/golangci-lint v1.64.8
 	github.com/google/open-location-code/go v0.0.0-20250415120251-fa6d7f9d4765
@@ -36,9 +38,10 @@ require (
 	github.com/swaggo/http-swagger/v2 v2.0.2
 	github.com/swaggo/swag v1.16.6
 	github.com/urfave/cli/v3 v3.6.2
-	golang.org/x/crypto v0.53.0
-	golang.org/x/sync v0.21.0
-	golang.org/x/term v0.44.0
+	github.com/wneessen/go-mail v0.8.1
+	golang.org/x/crypto v0.54.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/term v0.45.0
 	modernc.org/sqlite v1.37.0
 	riverqueue.com/riverui v0.14.0
 )
@@ -111,6 +114,7 @@ require (
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.8.3-0.20250507171810-1638563e3615 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/ettle/strcase v0.2.0 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
@@ -294,9 +298,9 @@ require (
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260625142307-59b4966ccb57 // indirect
-	golang.org/x/text v0.39.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
 	golang.org/x/vuln v1.1.4 // indirect

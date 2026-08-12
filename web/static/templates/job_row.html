@@ -4,6 +4,7 @@
     {{ if eq .Status "working" }}<div class="record-progress">采集中…</div>
     {{ else if eq .Status "pending" }}<div class="record-progress">待启动…</div>
     {{ else if eq .Status "failed" }}<div class="record-failed">采集失败</div>{{ end }}
+    {{if .Data.GeoAnchor}}<div class="record-anchor">锚定坐标 {{.Data.GeoAnchor}}</div>{{end}}
   </div>
   <div class="record-side">
     {{ if .Data.GridMode }}<span class="mode-tag tag-grid">全域全量</span>

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>开发信中心 · 地图获客</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/outreach.css">
+</head>
+<body class="outreach-body">
+  <header id="topbar">
+    <a class="brand" href="/">
+      <span class="brand-icon"><i data-lucide="map-pin" class="w-5 h-5"></i></span>
+      <span class="brand-name">地图获客</span>
+      <span class="brand-tag">智能版</span>
+    </a>
+    <nav class="outreach-nav">
+      <a href="/"><i data-lucide="map" class="w-4 h-4"></i>地图获客</a>
+      <a class="active" href="/outreach"><i data-lucide="send" class="w-4 h-4"></i>开发信中心</a>
+      <a href="#inbox"><i data-lucide="inbox" class="w-4 h-4"></i>收件箱</a>
+      <a href="#settings"><i data-lucide="settings" class="w-4 h-4"></i>邮箱设置</a>
+    </nav>
+  </header>
+
+  <main class="outreach-shell">
+    <section class="outreach-hero">
+      <div>
+        <p class="eyebrow">COLD OUTREACH</p>
+        <h1>把地图客户变成真实对话</h1>
+        <p>个性化三步开发信、客户本地时区投递、自动跟进、IMAP 回信与退信识别，全部在本机运行。</p>
+      </div>
+      <div class="mail-health {{if and .Settings.SMTPConfigured .Settings.IMAPConfigured}}healthy{{end}}">
+        <span class="health-dot"></span>
+        <div>
+          <b>{{if and .Settings.SMTPConfigured .Settings.IMAPConfigured}}邮箱已就绪{{else}}邮箱待配置{{end}}</b>
+          <small>{{if .Settings.EmailAddress}}{{.Settings.EmailAddress}}{{else}}请先填写企业邮箱与客户端授权码{{end}}</small>
+        </div>
+      </div>
+    </section>
+
+    {{if .Notice}}<div class="outreach-alert success"><i data-lucide="check-circle"></i>{{.Notice}}</div>{{end}}
+    {{if .Error}}<div class="outreach-alert error"><i data-lucide="alert-circle"></i>{{.Error}}</div>{{end}}
+
+    <section class="outreach-grid">
+      <div class="outreach-main">
+        <article class="outreach-card create-card">
+          <div class="card-heading">
+            <div>
+              <span class="step-number">1</span>
+              <h2>从地图任务创建开发信活动</h2>
+            </div>
+            <span class="soft-badge">默认先存草稿</span>
+          </div>
+          {{if .Jobs}}
+          <form method="post" action="/outreach/campaigns" class="campaign-create-form">
+            <label>
+              活动名称
+              <input name="name" required maxlength="120" placeholder="例如：柏林牙科诊所 · 8月开发">
+            </label>
+            <label>
+              已完成的地图任务
+              <select name="job_id" required>
+                <option value="">请选择包含邮箱的获客任务</option>
+                {{range .Jobs}}
+                <option value="{{.ID}}">{{.Name}} · {{.Date.Format "2006-01-02 15:04"}}</option>
+                {{end}}
+              </select>
+            </label>
+            <label>
+              你为这类客户带来的结果（必填）
+              <textarea name="value_proposition" required rows="2" maxlength="300" placeholder="英文动词短语，例如：help dental clinics turn more website visitors into booked appointments"></textarea>
+              <small>系统会写成 “We + 这句话”。只写客户结果，不要堆功能或编造承诺。</small>
+            </label>
+            <label>
+              可验证的证据（可选）
+              <textarea name="proof" rows="2" maxlength="300" placeholder="例如：A similar clinic increased qualified bookings by 18% in 60 days. 没有真实证据请留空。"></textarea>
+            </label>
+            <label>
+              单一行动问题（可选）
+              <input name="call_to_action" maxlength="200" placeholder="Would a quick 10-minute conversation be useful?">
+            </label>
+            <label class="check-row">
+              <input type="checkbox" name="start_now">
+              <span>导入后立即启用（只有到达客户当地发送窗口才会投递）</span>
+            </label>
+            <button class="outreach-primary" type="submit">
+              <i data-lucide="users"></i>导入联系人并创建活动
+            </button>
+          </form>
+          {{else}}
+          <div class="empty-panel">
+            <i data-lucide="map-pinned"></i>
+            <h3>还没有可导入的地图任务</h3>
+            <p>先创建一个勾选“抓取邮箱”的地图获客任务，等待状态变为已完成。</p>
+            <a href="/" class="outreach-primary">去地图获客</a>
+          </div>
+          {{end}}
+        </article>
+
+        <article class="outreach-card">
+          <div class="card-heading">
+            <div>
+              <span class="step-number">2</span>
+              <h2>活动与回复表现</h2>
+            </div>
+            <form method="post" action="/outreach/tick">
+              <button class="outreach-secondary" type="submit" title="立即检查收件箱并尝试发送一封到期邮件">
+                <i data-lucide="refresh-cw"></i>立即执行一次
+              </button>
+            </form>
+          </div>
+
+          {{if .Campaigns}}
+          <div class="campaign-list">
+            {{range .Campaigns}}
+            <div class="campaign-row {{if eq .Status "active"}}is-active{{end}}">
+              <a class="campaign-summary" href="/outreach?campaign={{.ID}}">
+                <div class="campaign-title-line">
+                  <h3>{{.Name}}</h3>
+                  <span class="status-pill {{.Status}}">
+                    {{if eq .Status "active"}}运行中{{else if eq .Status "paused"}}已暂停{{else if eq .Status "done"}}已完成{{else}}草稿{{end}}
+                  </span>
+                </div>
+                <div class="campaign-metrics">
+                  <span><b>{{.Stats.Contacts}}</b> 联系人</span>
+                  <span><b>{{.Stats.Sent}}</b> 已触达</span>
+                  <span><b>{{.Stats.Replied}}</b> 回复</span>
+                  <span><b>{{printf "%.1f" .Stats.ReplyRate}}%</b> 回复率</span>
+                  <span><b>{{.Stats.Bounced}}</b> 退信</span>
+                </div>
+              </a>
+              <div class="campaign-actions">
+                {{if eq .Status "active"}}
+                <form method="post" action="/outreach/campaigns/{{.ID}}/status">
+                  <input type="hidden" name="status" value="paused">
+                  <button class="icon-action" title="暂停"><i data-lucide="pause"></i></button>
+                </form>
+                {{else}}
+                <form method="post" action="/outreach/campaigns/{{.ID}}/status">
+                  <input type="hidden" name="status" value="active">
+                  <button class="icon-action start" title="启动"><i data-lucide="play"></i></button>
+                </form>
+                {{end}}
+                <form method="post" action="/outreach/campaigns/{{.ID}}" onsubmit="return confirm('确定删除该活动及全部邮件记录吗？')">
+                  <button class="icon-action danger" title="删除"><i data-lucide="trash-2"></i></button>
+                </form>
+              </div>
+            </div>
+            {{end}}
+          </div>
+          {{else}}
+          <div class="empty-panel compact">
+            <i data-lucide="mail-plus"></i>
+            <p>创建第一个活动后，会在这里看到触达、回复和退信数据。</p>
+          </div>
+          {{end}}
+        </article>
+
+        {{if .Selected}}
+        <article class="outreach-card campaign-detail">
+          <div class="card-heading">
+            <div>
+              <p class="eyebrow">活动详情</p>
+              <h2>{{.Selected.Name}}</h2>
+            </div>
+            <a class="outreach-secondary" href="/outreach">收起</a>
+          </div>
+
+          <div class="sequence-strip">
+            {{range $index, $step := .Selected.Sequence}}
+            <div class="sequence-step">
+              <span class="sequence-index">{{if eq $index 0}}首封{{else}}跟进 {{$index}}{{end}}</span>
+              <b>{{if $step.Subject}}{{$step.Subject}}{{else}}原主题内回复{{end}}</b>
+              <small>{{if eq $index 0}}到达最佳窗口后发送{{else}}上一封后 {{$step.DelayDays}} 天{{end}}</small>
+            </div>
+            {{end}}
+          </div>
+
+          <div class="contacts-table-wrap">
+            <table class="contacts-table">
+              <thead>
+                <tr><th>客户</th><th>邮箱</th><th>当地时区</th><th>状态</th><th>下一步</th></tr>
+              </thead>
+              <tbody>
+                {{range .Contacts}}
+                <tr>
+                  <td><b>{{.Name}}</b><small>{{.Category}}{{if .City}} · {{.City}}{{end}}</small></td>
+                  <td>{{.Email}}</td>
+                  <td>{{if .Timezone}}{{.Timezone}}{{else}}默认时区{{end}}</td>
+                  <td><span class="contact-status {{.Status}}">{{.Status}}</span></td>
+                  <td>
+                    {{if eq .Status "active"}}
+                      第 {{.NextStep}} 步 · {{.NextSendAt.Format "01-02 15:04 UTC"}}
+                    {{else}}—{{end}}
+                  </td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
+        </article>
+        {{end}}
+
+        <article class="outreach-card" id="inbox">
+          <div class="card-heading">
+            <div>
+              <span class="step-number">3</span>
+              <h2>统一收件箱与继续回信</h2>
+            </div>
+            <span class="soft-badge">每 2 分钟自动检查</span>
+          </div>
+
+          {{if .Messages}}
+          <div class="inbox-list">
+            {{range .Messages}}
+            {{if eq .Direction "in"}}
+            <details class="mail-item {{.Kind}}">
+              <summary>
+                <span class="mail-kind">
+                  {{if eq .Kind "bounce"}}退信{{else if eq .Kind "unsubscribe"}}退订{{else}}客户回复{{end}}
+                </span>
+                <div>
+                  <b>{{.FromEmail}}</b>
+                  <span>{{.Subject}}</span>
+                </div>
+                <time>{{.CreatedAt.Format "01-02 15:04"}}</time>
+              </summary>
+              <div class="mail-body"><pre>{{.Body}}</pre></div>
+              {{if eq .Kind "reply"}}
+              <form method="post" action="/outreach/reply" class="reply-form">
+                <input type="hidden" name="contact_id" value="{{.ContactID}}">
+                <label>在原会话中回信</label>
+                <textarea name="body" required rows="6" placeholder="感谢您的回复……&#10;&#10;建议：先回答客户问题，再提出一个明确的下一步（时间、报价或资料）。"></textarea>
+                <button class="outreach-primary" type="submit"><i data-lucide="reply"></i>确认发送回信</button>
+              </form>
+              {{end}}
+            </details>
+            {{end}}
+            {{end}}
+          </div>
+          {{else}}
+          <div class="empty-panel compact">
+            <i data-lucide="inbox"></i>
+            <p>客户回复、退信和退订会自动出现在这里；一旦收到回复，系统立即停止该客户的后续自动邮件。</p>
+          </div>
+          {{end}}
+        </article>
+      </div>
+
+      <aside class="outreach-side">
+        <article class="outreach-card strategy-card">
+          <p class="eyebrow">高回复策略</p>
+          <h2>系统默认如何发送</h2>
+          <ul class="strategy-list">
+            <li><span>01</span><div><b>客户当地周二至周四</b><small>当地 08:00–11:00，避开周一积压与周五低意愿。</small></div></li>
+            <li><span>02</span><div><b>三封同会话跟进</b><small>首封 → 3 天后轻提醒 → 4 天后礼貌结束。</small></div></li>
+            <li><span>03</span><div><b>纯文本、一个问题</b><small>不放图片、追踪像素和链接堆，降低垃圾邮件风险。</small></div></li>
+            <li><span>04</span><div><b>15 封/日起步</b><small>每天增加 5 封，最高 40 封；每封随机间隔 90–150 秒。</small></div></li>
+            <li><span>05</span><div><b>回复即停止</b><small>自动识别回复、退信、退订，并加入全局抑制名单。</small></div></li>
+          </ul>
+          <div class="truth-note">
+            <i data-lucide="info"></i>
+            <p><b>不存在“确保高回信率”。</b>名单匹配、真实价值、域名信誉与合规性比发送技巧更重要。建议先用 30–50 个高度匹配客户做 A/B 验证。</p>
+          </div>
+        </article>
+
+        <article class="outreach-card settings-card" id="settings">
+          <div class="card-heading">
+            <div>
+              <p class="eyebrow">MAILBOX</p>
+              <h2>企业邮箱设置</h2>
+            </div>
+          </div>
+          <form method="post" action="/outreach/settings" id="mail-settings-form">
+            <label>
+              邮箱服务商预设
+              <select id="provider-preset" onchange="applyProvider(this)">
+                <option value="">自定义</option>
+                {{range .Providers}}
+                <option
+                  data-smtp-host="{{.SMTPHost}}"
+                  data-smtp-port="{{.SMTPPort}}"
+                  data-smtp-tls="{{.SMTPTLS}}"
+                  data-imap-host="{{.IMAPHost}}"
+                  data-imap-port="{{.IMAPPort}}"
+                >{{.Name}}</option>
+                {{end}}
+              </select>
+            </label>
+            <div class="two-fields">
+              <label>企业邮箱<input name="email_address" type="email" required value="{{.Settings.EmailAddress}}" placeholder="name@company.com"></label>
+              <label>发件人姓名<input name="from_name" value="{{.Settings.FromName}}" placeholder="例如：Alex"></label>
+            </div>
+            <label>公司名称<input name="sender_company" value="{{.Settings.SenderCompany}}" placeholder="显示在签名中"></label>
+            <label>
+              客户端授权码
+              <input name="password" type="password" autocomplete="new-password" placeholder="{{if .Settings.PasswordConfigured}}已配置；留空保持不变{{else}}不是网页登录密码{{end}}">
+              <small>仅保存在当前进程内存。生产部署请设置环境变量 OUTREACH_SMTP_PASSWORD。</small>
+            </label>
+            <div class="server-grid">
+              <label>SMTP 主机<input id="smtp-host" name="smtp_host" required value="{{.Settings.SMTPHost}}"></label>
+              <label>端口<input id="smtp-port" name="smtp_port" type="number" required value="{{.Settings.SMTPPort}}"></label>
+              <label>加密
+                <select id="smtp-tls" name="smtp_tls">
+                  <option value="ssl" {{if eq .Settings.SMTPTLS "ssl"}}selected{{end}}>SSL/TLS</option>
+                  <option value="starttls" {{if eq .Settings.SMTPTLS "starttls"}}selected{{end}}>STARTTLS</option>
+                </select>
+              </label>
+              <label>IMAP 主机<input id="imap-host" name="imap_host" required value="{{.Settings.IMAPHost}}"></label>
+              <label>端口<input id="imap-port" name="imap_port" type="number" required value="{{.Settings.IMAPPort}}"></label>
+            </div>
+
+            <details class="advanced-settings">
+              <summary>发送策略（建议保留默认）</summary>
+              <div class="two-fields">
+                <label>当地开始小时<input name="send_start_hour" type="number" min="0" max="23" value="{{.Settings.SendStartHour}}"></label>
+                <label>当地结束小时<input name="send_end_hour" type="number" min="1" max="24" value="{{.Settings.SendEndHour}}"></label>
+              </div>
+              <label>发送星期（1=周一…7=周日）<input name="send_days" pattern="[1-7]+" value="{{.Settings.SendDays}}"></label>
+              <div class="two-fields">
+                <label>每日硬上限<input name="daily_cap" type="number" min="1" max="500" value="{{.Settings.DailyCap}}"></label>
+                <label>首日数量<input name="warmup_start" type="number" min="1" value="{{.Settings.WarmupStart}}"></label>
+              </div>
+              <div class="two-fields">
+                <label>每日增加<input name="warmup_step" type="number" min="0" value="{{.Settings.WarmupStep}}"></label>
+                <label>默认时区<input name="default_timezone" value="{{.Settings.DefaultTimezone}}" placeholder="Asia/Shanghai"></label>
+              </div>
+              <div class="two-fields">
+                <label>最短间隔（秒）<input name="min_gap_seconds" type="number" min="30" value="{{.Settings.MinGapSeconds}}"></label>
+                <label>最长间隔（秒）<input name="max_gap_seconds" type="number" min="31" value="{{.Settings.MaxGapSeconds}}"></label>
+              </div>
+              <label>退订文案<textarea name="unsubscribe_text" rows="3">{{.Settings.UnsubscribeText}}</textarea></label>
+            </details>
+
+            <button class="outreach-primary full" type="submit"><i data-lucide="save"></i>保存设置</button>
+          </form>
+          <form method="post" action="/outreach/test">
+            <button class="outreach-secondary full" type="submit"><i data-lucide="plug-zap"></i>测试 SMTP + IMAP（不发信）</button>
+          </form>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    function applyProvider(select) {
+      var option = select.options[select.selectedIndex];
+      if (!option || !option.dataset.smtpHost) return;
+      document.getElementById('smtp-host').value = option.dataset.smtpHost;
+      document.getElementById('smtp-port').value = option.dataset.smtpPort;
+      document.getElementById('smtp-tls').value = option.dataset.smtpTls;
+      document.getElementById('imap-host').value = option.dataset.imapHost;
+      document.getElementById('imap-port').value = option.dataset.imapPort;
+    }
+    lucide.createIcons();
+  </script>
+</body>
+</html>

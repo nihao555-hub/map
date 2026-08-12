@@ -219,6 +219,26 @@ The scraper has [built-in LeadsDB integration](#export-to-leadsdb) - just add yo
 
 ---
 
+## Cold Email Outreach
+
+The local Web UI includes an optional self-hosted outreach center that turns
+scraped business emails into personalized, timezone-aware email sequences:
+
+- SMTP sending through your existing business mailbox
+- IMAP reply, bounce, and unsubscribe detection
+- Three-step in-thread follow-ups with conservative daily warm-up limits
+- Local SQLite state, global suppression list, and a unified reply inbox
+
+Open `http://localhost:8080/outreach` after starting Web mode. Mailbox secrets
+are never committed; provide the client authorization code through
+`OUTREACH_SMTP_PASSWORD`.
+
+See the [Chinese outreach guide](docs/outreach.md) for mailbox setup,
+copywriting, timing, deliverability, compliance, and the open-source project
+comparison.
+
+---
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)
@@ -227,6 +247,7 @@ The scraper has [built-in LeadsDB integration](#export-to-leadsdb) - just add yo
   - [REST API](#rest-api)
   - [SaaS Edition](#saas-edition)
 - [AI Agent Skill](#ai-agent-skill)
+- [Cold Email Outreach](#cold-email-outreach)
 - [Recipes](docs/recipes.md)
 - [Proxy Sponsors](docs/proxies.md)
 - [Installation](#installation)
