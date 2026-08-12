@@ -227,6 +227,16 @@ paths:
         '204':
           description: Campaign deleted
 
+  /api/v1/outreach/overview:
+    get:
+      summary: Dashboard aggregates across all campaigns
+      description: >
+        Totals (campaigns, contacts, sent, replied, bounced, unsubscribed,
+        high-intent, suppressed) plus mailbox/AI health and today's send quota.
+      responses:
+        '200':
+          description: Overview payload
+
   /api/v1/outreach/contacts:
     get:
       summary: List contacts across campaigns for the workspace

@@ -202,7 +202,10 @@ type Overview struct {
 }
 
 // ReplyRate returns replied/contacted as a percentage.
-func (o *Overview) ReplyRate() float64 {
+//
+// Value receiver on purpose: html/template cannot call pointer-receiver
+// methods on a struct accessed as a non-addressable field (e.g. .Overview).
+func (o Overview) ReplyRate() float64 {
 	if o.Sent == 0 {
 		return 0
 	}
@@ -220,8 +223,10 @@ type CampaignStats struct {
 	Completed    int `json:"completed"`
 }
 
-// ReplyRate returns replied/contacted as a percentage string helper value.
-func (s *CampaignStats) ReplyRate() float64 {
+// ReplyRate returns replied/contacted as a percentage.
+//
+// Value receiver so html/template can call it on non-addressable values.
+func (s CampaignStats) ReplyRate() float64 {
 	contacted := s.Sent
 	if contacted == 0 {
 		return 0
