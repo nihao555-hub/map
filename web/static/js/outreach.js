@@ -60,6 +60,7 @@
 
   // 客户列表状态徽标（对应设计稿：已回复/跟进中/未联系 等）
   function badgeFor(c) {
+    if (c.needs_attention) return { cls: 'attention', text: '待人工' };
     switch (c.status) {
       case 'replied': return { cls: 'replied', text: '已回复' };
       case 'bounced': return { cls: 'bounced', text: '退信' };
@@ -184,6 +185,8 @@
     $('cnt-uncontacted').textContent = state.counts.uncontacted;
     $('cnt-following').textContent = state.counts.following;
     $('cnt-replied').textContent = state.counts.replied;
+    var attn = $('cnt-attention');
+    if (attn) attn.textContent = state.counts.attention || 0;
   }
 
   function renderPager(pageCount) {

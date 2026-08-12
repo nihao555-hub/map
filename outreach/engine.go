@@ -35,7 +35,23 @@ type TickReport struct {
 	Bounces      int    `json:"bounces"`
 	Unsubscribed int    `json:"unsubscribed"`
 	Sent         int    `json:"sent"`
+	AutoReplies  int    `json:"auto_replies"`
+	Escalated    int    `json:"escalated"`
 	State        string `json:"state"`
+}
+
+// autoReplyCap is the maximum number of autopilot replies per thread before it
+// is escalated to a human, preventing an AI-to-AI loop.
+const autoReplyCap = 1
+
+// highStakesSignals force a human handoff: money, commitments, complaints and
+// legal are never auto-answered by the AI.
+var highStakesSignals = []string{
+	"price", "prices", "pricing", "quote", "quotation", "cost", "moq",
+	"discount", "contract", "agreement", "invoice", "payment", "refund",
+	"warranty", "lawyer", "legal", "complaint", "claim", "lawsuit",
+	"报价", "价格", "多少钱", "折扣", "合同", "协议", "发票", "付款",
+	"退款", "投诉", "律师", "保修", "赔偿", "起诉",
 }
 
 // Engine executes the idempotent outreach loop.
@@ -475,9 +491,12 @@ func (e *Engine) syncInboxIfDue(
 		case InboundKindNotice:
 			// Transient delivery notice: recorded, but not an actionable reply.
 		default:
-			e.assessIntent(ctx, settings, &contact, &message)
-
+			intent := e.assessIntent(ctx, settings, &contact, &message)
 			report.Replies++
+
+			if err := e.handleInboundReply(ctx, settings, &contact, &message, intent, &report); err != nil {
+				return report, err
+			}
 		}
 	}
 
@@ -530,7 +549,7 @@ func (e *Engine) assessIntent(
 	settings *Settings,
 	contact *Contact,
 	message *Message,
-) {
+) Intent {
 	intent := HeuristicIntent(message.Kind, message.Subject, message.Body)
 
 	if message.Kind == InboundKindReply && settings.AIConfigured() {
@@ -550,6 +569,143 @@ func (e *Engine) assessIntent(
 	if err := e.store.UpdateContactIntent(ctx, contact.ID, intent); err != nil {
 		log.Printf("outreach intent update failed for contact %d: %v", contact.ID, err)
 	}
+
+	return intent
+}
+
+// handleInboundReply applies the autonomy policy after a customer reply:
+// autopilot auto-answers safe, non-committal replies and escalates everything
+// involving money/commitment/complaint/legal or a hot lead to the human queue.
+// With autopilot off (or AI unavailable), every reply is escalated for review.
+func (e *Engine) handleInboundReply(
+	ctx context.Context,
+	settings *Settings,
+	contact *Contact,
+	inbound *Message,
+	intent Intent,
+	report *TickReport,
+) error {
+	escalate := func(reason string) error {
+		report.Escalated++
+
+		return e.store.SetAttention(ctx, contact.ID, reason)
+	}
+
+	if !settings.AutoReply || !settings.AIConfigured() {
+		return escalate("客户已回复，待人工处理")
+	}
+
+	auto, reason := routeInbound(intent, inbound.Body)
+	if !auto {
+		return escalate(reason)
+	}
+
+	count, err := e.store.AutoReplyCount(ctx, contact.ID)
+	if err != nil {
+		return err
+	}
+
+	if count >= autoReplyCap {
+		return escalate("AI 已自动回复过一次，转人工继续跟进")
+	}
+
+	if err := e.autoReply(ctx, settings, contact, inbound); err != nil {
+		log.Printf("outreach autopilot reply failed for contact %d: %v", contact.ID, err)
+
+		return escalate("AI 自动回信失败，转人工处理")
+	}
+
+	report.AutoReplies++
+
+	return e.store.ClearAttention(ctx, contact.ID)
+}
+
+// routeInbound decides whether autopilot may answer a reply automatically.
+func routeInbound(intent Intent, body string) (auto bool, reason string) {
+	text := strings.ToLower(unquotedReply(body))
+	if containsAny(text, highStakesSignals) {
+		return false, "涉及报价/合同/付款/投诉等，需人工把关"
+	}
+
+	switch intent.Label {
+	case IntentHigh:
+		return false, "高意向客户，建议人工亲自跟进促成"
+	case IntentNone:
+		return false, "客户表达消极/无意向，待人工确认"
+	case IntentInvalid:
+		return false, "地址或投递异常，待人工确认"
+	}
+
+	if intent.Score >= 80 {
+		return false, "购买信号较强，建议人工跟进"
+	}
+
+	return true, ""
+}
+
+// autoReply drafts a constrained reply with the AI and sends it in-thread.
+func (e *Engine) autoReply(
+	ctx context.Context,
+	settings *Settings,
+	contact *Contact,
+	inbound *Message,
+) error {
+	campaign, err := e.store.Campaign(ctx, contact.CampaignID)
+	if err != nil {
+		return err
+	}
+
+	thread, err := e.store.ContactMessages(ctx, contact.ID, 20)
+	if err != nil {
+		return err
+	}
+
+	aiCtx, cancel := context.WithTimeout(ctx, aiWriteTimeout)
+	defer cancel()
+
+	facts := EmailFacts{
+		Contact:  contact,
+		Campaign: &campaign,
+		Settings: settings,
+		Research: contact.Research,
+		Thread:   thread,
+	}
+
+	draft, err := SuggestReply(aiCtx, e.ai, &facts)
+	if err != nil {
+		return err
+	}
+
+	subject := contact.RootSubject
+	if subject == "" {
+		subject = inbound.Subject
+	}
+
+	if !strings.HasPrefix(strings.ToLower(subject), "re:") {
+		subject = "Re: " + subject
+	}
+
+	now := e.now().UTC()
+	message := Message{
+		CampaignID: contact.CampaignID,
+		ContactID:  contact.ID,
+		Direction:  DirectionOut,
+		Kind:       KindAutoReply,
+		Step:       -2,
+		Subject:    subject,
+		Body:       draft,
+		MessageID:  NewMessageID(settings.EmailAddress),
+		InReplyTo:  inbound.MessageID,
+		FromEmail:  settings.EmailAddress,
+		ToEmail:    contact.Email,
+		CreatedAt:  now,
+	}
+
+	if err := e.sender.Send(ctx, settings, &message); err != nil {
+		return err
+	}
+
+	return e.store.RecordManualMessage(ctx, &message)
 }
 
 func (e *Engine) findBouncedContact(
@@ -715,6 +871,11 @@ func (e *Engine) Reply(ctx context.Context, contactID int64, body string) (Messa
 
 	if err := e.store.RecordManualMessage(ctx, &message); err != nil {
 		return Message{}, fmt.Errorf("reply sent but local state update failed: %w", err)
+	}
+
+	// A human handled the thread: clear it from the attention queue.
+	if err := e.store.ClearAttention(ctx, contact.ID); err != nil {
+		log.Printf("outreach clear attention after manual reply failed for contact %d: %v", contact.ID, err)
 	}
 
 	return message, nil

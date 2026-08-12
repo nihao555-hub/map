@@ -45,6 +45,12 @@ type Settings struct {
 	// UnsubscribeText is appended as a plain-text footer for compliance.
 	UnsubscribeText string `json:"unsubscribe_text"`
 
+	// AutoReply enables "autopilot" for inbound replies: when on (and AI is
+	// configured), the engine auto-answers safe, non-committal replies and
+	// escalates money/commitment/complaint/legal/hot-lead replies to the human
+	// "needs attention" queue. Off by default — replies wait for a human.
+	AutoReply bool `json:"auto_reply"`
+
 	// AI copywriting through any OpenAI-compatible chat-completions API
 	// (DeepSeek, Qwen, Kimi, OpenAI, local Ollama, ...). When configured,
 	// outgoing steps are written per contact from the scraped facts plus

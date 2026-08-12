@@ -1551,6 +1551,26 @@ body.ws-full .o-main { padding: 16px; }
 .cust-badge.bounced, .cust-badge.failed { color: #a82f43; background: #ffeef1; }
 .cust-badge.unsubscribed { color: #8a6414; background: #fdeeca; }
 .cust-badge.completed { color: #365bc3; background: #edf2ff; }
+.cust-badge.attention { color: #8a4b00; background: #ffe4c4; }
+.cust-tab.attention.active { color: #b26a00; }
+.cust-tab.attention.active::after { background: #d98b18; }
+
+.autopilot-row {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 4px;
+  padding: 11px;
+  border: 1px solid #cfe0fb;
+  border-radius: 10px;
+  background: #f6f9ff;
+}
+
+.autopilot-row input { width: auto; margin-top: 2px; }
+.autopilot-row span { display: flex; flex-direction: column; gap: 3px; }
+.autopilot-row b { font-size: 12.5px; color: #2f4a86; }
+.autopilot-row small { color: #5d6b8c; font-size: 10.5px; line-height: 1.6; font-weight: 500; }
 
 .cust-pager {
   display: flex;

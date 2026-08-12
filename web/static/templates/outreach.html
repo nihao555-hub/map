@@ -111,6 +111,16 @@
           <div class="kpi-sub">评分 ≥ 80</div>
         </div>
         <div class="kpi-card warn">
+          <div class="kpi-label"><i data-lucide="user-round-cog"></i>待人工</div>
+          <div class="kpi-value">{{.Overview.NeedsAttention}}</div>
+          <div class="kpi-sub">需人工介入的会话</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"><i data-lucide="bot"></i>自动驾驶</div>
+          <div class="kpi-value" style="font-size:18px">{{if .Overview.AIConfigured}}{{if .Settings.AutoReply}}已开启{{else}}未开启{{end}}{{else}}需配置AI{{end}}</div>
+          <div class="kpi-sub">AI 自动回信 · 高风险转人工</div>
+        </div>
+        <div class="kpi-card warn">
           <div class="kpi-label"><i data-lucide="alert-triangle"></i>退信</div>
           <div class="kpi-value">{{.Overview.Bounced}}</div>
           <div class="kpi-sub">已发完 {{.Overview.Completed}}</div>
@@ -231,6 +241,7 @@
             <button type="button" class="cust-tab" data-view="uncontacted">未联系 <span class="tab-count" id="cnt-uncontacted">0</span></button>
             <button type="button" class="cust-tab" data-view="following">跟进中 <span class="tab-count" id="cnt-following">0</span></button>
             <button type="button" class="cust-tab" data-view="replied">已回复 <span class="tab-count" id="cnt-replied">0</span></button>
+            <button type="button" class="cust-tab attention" data-view="attention">待人工 <span class="tab-count" id="cnt-attention">0</span></button>
           </div>
 
           <div class="cust-list" id="wk-contacts">
@@ -573,6 +584,13 @@
                 </label>
               </div>
               <small class="ai-note">未配置 AI 时使用内置模板发送、关键词评估意向；配置后 AI 基于官网背调逐客户撰写并评估意向，任何 AI 失败都自动回退，不影响发送。密钥推荐用环境变量 OUTREACH_AI_API_KEY。</small>
+              <label class="autopilot-row">
+                <input type="checkbox" name="auto_reply" {{if .Settings.AutoReply}}checked{{end}}>
+                <span>
+                  <b>自动驾驶回信（AI 自动回复安全咨询）</b>
+                  <small>开启后：AI 自动回复“索要资料/一般咨询/转介”等安全消息；涉及报价、合同、付款、投诉、法律或高意向客户会自动转入“待人工”队列，绝不自动报价或承诺。每个会话最多自动回 1 次后转人工。需已配置 AI。</small>
+                </span>
+              </label>
             </div>
 
             <button class="outreach-primary full" type="submit"><i data-lucide="save"></i>保存设置</button>

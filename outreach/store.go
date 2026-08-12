@@ -23,7 +23,7 @@ const contactColumns = `id, campaign_id, email, name, category, address, city, w
 	rating, review_count, timezone, status, next_step, next_send_at, last_sent_at,
 	root_message_id, root_subject, last_message_id, send_failures,
 	intent_score, intent_label, intent_reason, research, research_at,
-	created_at, updated_at`
+	needs_attention, attention_reason, created_at, updated_at`
 
 // prefixedContactColumns rewrites contactColumns for an aliased table join.
 func prefixedContactColumns(prefix string) string {
@@ -130,6 +130,8 @@ CREATE TABLE IF NOT EXISTS outreach_contacts (
 	intent_reason TEXT NOT NULL DEFAULT '',
 	research TEXT NOT NULL DEFAULT '',
 	research_at INTEGER NOT NULL DEFAULT 0,
+	needs_attention INTEGER NOT NULL DEFAULT 0,
+	attention_reason TEXT NOT NULL DEFAULT '',
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL,
 	UNIQUE(campaign_id, email)
@@ -201,6 +203,8 @@ func (s *Store) migrate() error {
 		"ALTER TABLE outreach_contacts ADD COLUMN intent_reason TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE outreach_contacts ADD COLUMN research TEXT NOT NULL DEFAULT ''",
 		"ALTER TABLE outreach_contacts ADD COLUMN research_at INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE outreach_contacts ADD COLUMN needs_attention INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE outreach_contacts ADD COLUMN attention_reason TEXT NOT NULL DEFAULT ''",
 	}
 
 	for _, statement := range alterations {
@@ -1093,6 +1097,7 @@ const (
 	ViewUncontacted = "uncontacted"
 	ViewFollowing   = "following"
 	ViewReplied     = "replied"
+	ViewAttention   = "attention"
 )
 
 // WorkspaceCounts holds the tab badge counts for the customer list.
@@ -1101,6 +1106,7 @@ type WorkspaceCounts struct {
 	Uncontacted int `json:"uncontacted"`
 	Following   int `json:"following"`
 	Replied     int `json:"replied"`
+	Attention   int `json:"attention"`
 }
 
 // viewCondition maps a view token to a SQL predicate on the aliased contacts
@@ -1113,6 +1119,8 @@ func viewCondition(view string) string {
 		return " AND c.status = 'active' AND c.last_sent_at > 0"
 	case ViewReplied:
 		return " AND c.status = 'replied'"
+	case ViewAttention:
+		return " AND c.needs_attention = 1"
 	default:
 		return ""
 	}
@@ -1214,7 +1222,8 @@ SELECT
 	COUNT(*),
 	COALESCE(SUM(CASE WHEN status = 'active' AND last_sent_at = 0 THEN 1 ELSE 0 END), 0),
 	COALESCE(SUM(CASE WHEN status = 'active' AND last_sent_at > 0 THEN 1 ELSE 0 END), 0),
-	COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0)
+	COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0),
+	COALESCE(SUM(CASE WHEN needs_attention = 1 THEN 1 ELSE 0 END), 0)
 FROM outreach_contacts`
 
 	args := []any{ContactStatusReplied}
@@ -1232,6 +1241,7 @@ FROM outreach_contacts`
 		&counts.Uncontacted,
 		&counts.Following,
 		&counts.Replied,
+		&counts.Attention,
 	)
 	if err != nil {
 		return WorkspaceCounts{}, fmt.Errorf("count workspace views: %w", err)
@@ -1240,11 +1250,61 @@ FROM outreach_contacts`
 	return counts, nil
 }
 
+// SetAttention flags a contact for human review with a short reason.
+func (s *Store) SetAttention(ctx context.Context, contactID int64, reason string) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE outreach_contacts SET needs_attention = 1, attention_reason = ?, updated_at = ? WHERE id = ?`,
+		reason,
+		time.Now().UTC().Unix(),
+		contactID,
+	)
+	if err != nil {
+		return fmt.Errorf("flag contact for attention: %w", err)
+	}
+
+	return nil
+}
+
+// ClearAttention removes the human-review flag from a contact.
+func (s *Store) ClearAttention(ctx context.Context, contactID int64) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE outreach_contacts SET needs_attention = 0, attention_reason = '', updated_at = ? WHERE id = ?`,
+		time.Now().UTC().Unix(),
+		contactID,
+	)
+	if err != nil {
+		return fmt.Errorf("clear contact attention: %w", err)
+	}
+
+	return nil
+}
+
+// AutoReplyCount counts how many autopilot replies were already sent to a
+// contact, so a thread doesn't get into an AI-to-AI loop.
+func (s *Store) AutoReplyCount(ctx context.Context, contactID int64) (int, error) {
+	var count int
+
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM outreach_messages WHERE contact_id = ? AND kind = ?`,
+		contactID,
+		KindAutoReply,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count auto replies: %w", err)
+	}
+
+	return count, nil
+}
+
 func scanWorkspaceContact(row rowScanner) (WorkspaceContact, error) {
 	var (
 		item                                                     WorkspaceContact
 		nextSendAt, lastSentAt, researchAt, createdAt, updatedAt int64
 		lastActivity                                             int64
+		needsAttention                                           int
 	)
 
 	err := row.Scan(
@@ -1273,6 +1333,8 @@ func scanWorkspaceContact(row rowScanner) (WorkspaceContact, error) {
 		&item.IntentReason,
 		&item.Research,
 		&researchAt,
+		&needsAttention,
+		&item.AttentionReason,
 		&createdAt,
 		&updatedAt,
 		&item.CampaignName,
@@ -1284,6 +1346,7 @@ func scanWorkspaceContact(row rowScanner) (WorkspaceContact, error) {
 		return WorkspaceContact{}, fmt.Errorf("scan workspace contact: %w", err)
 	}
 
+	item.NeedsAttention = needsAttention != 0
 	item.NextSendAt = fromUnix(nextSendAt)
 	item.LastSentAt = fromUnix(lastSentAt)
 	item.ResearchAt = fromUnix(researchAt)
@@ -1346,7 +1409,8 @@ SELECT
 	COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0),
 	COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0),
 	COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0),
-	COALESCE(SUM(CASE WHEN intent_score >= 80 THEN 1 ELSE 0 END), 0)
+	COALESCE(SUM(CASE WHEN intent_score >= 80 THEN 1 ELSE 0 END), 0),
+	COALESCE(SUM(CASE WHEN needs_attention = 1 THEN 1 ELSE 0 END), 0)
 FROM outreach_contacts`
 
 	err := s.db.QueryRowContext(
@@ -1364,6 +1428,7 @@ FROM outreach_contacts`
 		&overview.Unsubscribed,
 		&overview.Completed,
 		&overview.HighIntent,
+		&overview.NeedsAttention,
 	)
 	if err != nil {
 		return Overview{}, fmt.Errorf("load overview contacts: %w", err)
@@ -1566,6 +1631,7 @@ func scanContact(row rowScanner) (Contact, error) {
 	var (
 		contact                                                  Contact
 		nextSendAt, lastSentAt, researchAt, createdAt, updatedAt int64
+		needsAttention                                           int
 	)
 
 	err := row.Scan(
@@ -1594,6 +1660,8 @@ func scanContact(row rowScanner) (Contact, error) {
 		&contact.IntentReason,
 		&contact.Research,
 		&researchAt,
+		&needsAttention,
+		&contact.AttentionReason,
 		&createdAt,
 		&updatedAt,
 	)
@@ -1605,6 +1673,7 @@ func scanContact(row rowScanner) (Contact, error) {
 		return Contact{}, fmt.Errorf("scan outreach contact: %w", err)
 	}
 
+	contact.NeedsAttention = needsAttention != 0
 	contact.NextSendAt = fromUnix(nextSendAt)
 	contact.LastSentAt = fromUnix(lastSentAt)
 	contact.ResearchAt = fromUnix(researchAt)

@@ -51,6 +51,10 @@ const (
 	InboundKindNotice = "notice"
 )
 
+// KindAutoReply marks an outbound reply that autopilot sent automatically
+// (as opposed to a human-confirmed manual_reply).
+const KindAutoReply = "auto_reply"
+
 // ErrNotFound is returned when a requested record does not exist.
 var ErrNotFound = errors.New("outreach: not found")
 
@@ -156,8 +160,13 @@ type Contact struct {
 	// Research caches the website background summary used by the AI writer.
 	Research   string    `json:"research,omitempty"`
 	ResearchAt time.Time `json:"research_at"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	// NeedsAttention flags a thread the human should look at (a reply that was
+	// escalated by autopilot, or any reply in manual mode). AttentionReason is
+	// a short Chinese explanation shown in the monitor queue.
+	NeedsAttention  bool      `json:"needs_attention"`
+	AttentionReason string    `json:"attention_reason"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // DisplayIntent returns the stored assessment, or a status-derived one when
@@ -226,6 +235,7 @@ type Overview struct {
 	Completed       int `json:"completed"`
 	HighIntent      int `json:"high_intent"`
 	Suppressed      int `json:"suppressed"`
+	NeedsAttention  int `json:"needs_attention"`
 }
 
 // ReplyRate returns replied/contacted as a percentage.

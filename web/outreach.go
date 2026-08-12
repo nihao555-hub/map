@@ -180,6 +180,7 @@ func (s *Server) outreachSettings(w http.ResponseWriter, r *http.Request) {
 	settings.MaxGapSeconds = formInt(r, "max_gap_seconds", settings.MaxGapSeconds)
 	settings.DefaultTimezone = strings.TrimSpace(r.Form.Get("default_timezone"))
 	settings.UnsubscribeText = strings.TrimSpace(r.Form.Get("unsubscribe_text"))
+	settings.AutoReply = r.Form.Get("auto_reply") == formOn
 	settings.AIBaseURL = strings.TrimSpace(r.Form.Get("ai_base_url"))
 	settings.AIModel = strings.TrimSpace(r.Form.Get("ai_model"))
 	settings.AIAPIKey = strings.TrimSpace(r.Form.Get("ai_api_key"))
