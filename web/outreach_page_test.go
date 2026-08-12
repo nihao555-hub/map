@@ -37,6 +37,7 @@ func TestOutreachPageRendersFully(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
+
 	t.Cleanup(func() { _ = store.Close() })
 
 	osvc := outreach.NewService(store, outreach.NewEngine(store, nil, nil), dir)

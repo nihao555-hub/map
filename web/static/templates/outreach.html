@@ -10,52 +10,41 @@
 <body class="outreach-body" data-panel="{{.Panel}}">
   <!-- 侧边栏：默认收缩，hover 展开（忠实复刻参考设计），可固定 -->
   <aside id="orail" aria-label="侧边栏导航">
-    <div class="rail-top">
-      <div class="rail-org">
-        <button type="button" class="rail-orgbtn" data-menu="org-menu" title="{{if .Overview.SenderCompany}}{{.Overview.SenderCompany}}{{else}}地图获客{{end}}">
-          <span class="rail-avatar"><img src="/static/img/outreach-logo.png" alt="logo"></span>
-          <span class="rail-label rail-orgname">{{if .Overview.SenderCompany}}{{.Overview.SenderCompany}}{{else}}地图获客{{end}}</span>
-          <i data-lucide="chevrons-up-down" class="rail-label rail-chev"></i>
-        </button>
-        <div class="rail-menu" id="org-menu">
-          <a href="/"><i data-lucide="map"></i>去地图获客</a>
-          <button type="button" data-panel-btn="settings"><i data-lucide="settings"></i>邮箱与 AI 设置</button>
-          <a href="/api/docs" target="_blank" rel="noopener"><i data-lucide="book-open"></i>API 文档</a>
-        </div>
-      </div>
+    <div class="rail-brand">
+      <span class="rail-logo"><img src="/static/img/outreach-logo.png" alt="OutreachAI"></span>
+      <span class="rail-label rail-wordmark">OutreachAI</span>
     </div>
 
     <nav class="rail-scroll">
-      <button type="button" class="rail-item" data-panel-btn="overview" title="总览">
-        <i data-lucide="layout-dashboard"></i><span class="rail-label">总览</span>
+      <button type="button" class="rail-item" data-panel-btn="workspace" title="开发信">
+        <i data-lucide="send"></i><span class="rail-label">开发信</span>
       </button>
+      <button type="button" class="rail-item" data-panel-btn="campaigns" title="模板 / 活动">
+        <i data-lucide="layout-template"></i><span class="rail-label">模板</span>
+      </button>
+      <button type="button" class="rail-item" data-panel-btn="overview" title="数据分析">
+        <i data-lucide="bar-chart-3"></i><span class="rail-label">数据分析</span>
+      </button>
+      <button type="button" class="rail-item" data-panel-btn="settings" title="设置">
+        <i data-lucide="settings"></i><span class="rail-label">设置</span>
+      </button>
+      <div class="rail-sep"></div>
       <a class="rail-item" href="/" title="地图获客">
         <i data-lucide="map"></i><span class="rail-label">地图获客</span>
       </a>
-      <div class="rail-sep"></div>
-      <button type="button" class="rail-item" data-panel-btn="campaigns" title="开发信活动">
-        <i data-lucide="send"></i><span class="rail-label">开发信活动</span>
-      </button>
-      <button type="button" class="rail-item" data-panel-btn="workspace" title="客户工作台">
-        <i data-lucide="messages-square"></i><span class="rail-label">客户工作台</span>
-        <span class="rail-badge rail-label">AI</span>
-      </button>
-      <div class="rail-sep"></div>
-      <button type="button" class="rail-item" data-panel-btn="settings" title="邮箱与 AI 设置">
-        <i data-lucide="settings"></i><span class="rail-label">邮箱与 AI</span>
-      </button>
     </nav>
 
     <div class="rail-bottom">
-      <form method="post" action="/outreach/tick">
-        <button type="submit" class="rail-item" title="立即收信并尝试发送一封到期邮件">
-          <i data-lucide="refresh-cw"></i><span class="rail-label">立即执行一次</span>
-        </button>
-      </form>
+      <a class="rail-item" href="/api/docs" target="_blank" rel="noopener" title="帮助中心">
+        <i data-lucide="help-circle"></i><span class="rail-label">帮助中心</span>
+      </a>
       <div class="rail-acct">
         <button type="button" class="rail-item" data-menu="acct-menu" title="账户">
           <span class="rail-avatar">{{.AccountInitial}}</span>
-          <span class="rail-label">{{if .Overview.FromName}}{{.Overview.FromName}}{{else if .Overview.EmailAddress}}{{.Overview.EmailAddress}}{{else}}未配置账户{{end}}</span>
+          <span class="rail-label rail-acct-name">
+            {{if .Overview.FromName}}{{.Overview.FromName}}{{else if .Overview.EmailAddress}}{{.Overview.EmailAddress}}{{else}}未配置账户{{end}}
+            <small>{{if .Overview.SenderCompany}}{{.Overview.SenderCompany}}{{else}}Pro 账户{{end}}</small>
+          </span>
           <i data-lucide="chevrons-up-down" class="rail-label rail-chev"></i>
         </button>
         <div class="rail-menu" id="acct-menu">
@@ -213,83 +202,139 @@
 
     <!-- ===================== 面板一：客户工作台 ===================== -->
     <section id="panel-workspace" class="o-panel">
-      <div class="workspace">
-        <!-- 左：联系人列表 -->
-        <div class="wk-list">
-          <div class="wk-filters">
-            <div class="wk-search">
-              <i data-lucide="search"></i>
-              <input id="wk-search" type="text" placeholder="搜索客户 / 邮箱 / 行业 / 城市">
-            </div>
-            <div class="wk-filter-row">
-              <select id="wk-campaign">
-                <option value="">全部活动</option>
-                {{range .Campaigns}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
-              </select>
-              <select id="wk-status">
-                <option value="">全部状态</option>
-                <option value="replied">已回复</option>
-                <option value="active">进行中</option>
-                <option value="completed">已发完未回</option>
-                <option value="bounced">退信</option>
-                <option value="unsubscribed">已退订</option>
-                <option value="failed">发送失败</option>
-              </select>
+      <div class="wk3">
+        <!-- 第一栏：客户名单 -->
+        <div class="cust-pane">
+          <div class="cust-head">
+            <div class="cust-title">客户名单 <span class="cust-count" id="cust-total">0</span></div>
+            <div class="cust-tools">
+              <div class="cust-search">
+                <i data-lucide="search"></i>
+                <input id="wk-search" type="text" placeholder="搜索客户名称或公司">
+              </div>
+              <div class="cust-filter">
+                <button type="button" class="cust-icon-btn" data-menu="filter-menu" title="按活动筛选"><i data-lucide="filter"></i></button>
+                <div class="rail-menu" id="filter-menu">
+                  <div class="filter-menu-label">按活动筛选</div>
+                  <select id="wk-campaign" class="filter-select">
+                    <option value="">全部活动</option>
+                    {{range .Campaigns}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+                  </select>
+                </div>
+              </div>
+              <button type="button" class="cust-icon-btn add" data-panel-btn="campaigns" title="新建/批量群发"><i data-lucide="plus"></i></button>
             </div>
           </div>
-          <div id="wk-contacts" class="wk-contacts">
+
+          <div class="cust-tabs">
+            <button type="button" class="cust-tab active" data-view="all">全部 <span class="tab-count" id="cnt-all">0</span></button>
+            <button type="button" class="cust-tab" data-view="uncontacted">未联系 <span class="tab-count" id="cnt-uncontacted">0</span></button>
+            <button type="button" class="cust-tab" data-view="following">跟进中 <span class="tab-count" id="cnt-following">0</span></button>
+            <button type="button" class="cust-tab" data-view="replied">已回复 <span class="tab-count" id="cnt-replied">0</span></button>
+          </div>
+
+          <div class="cust-list" id="wk-contacts">
             <div class="wk-hint">载入中…</div>
+          </div>
+
+          <div class="cust-pager" id="cust-pager"></div>
+        </div>
+
+        <!-- 第二栏：沟通历史 -->
+        <div class="conv-pane" id="wk-detail">
+          <div class="conv-empty" id="wk-empty">
+            <i data-lucide="mouse-pointer-click"></i>
+            <h3>从左侧选择一个客户</h3>
+            <p>这里会显示与客户的完整收发信记录、客户详情，以及右侧 AI 生成内容与评分。</p>
+          </div>
+
+          <div class="conv-body hidden" id="wk-thread">
+            <div class="conv-head">
+              <div class="conv-who">
+                <span class="conv-avatar" id="th-avatar">A</span>
+                <div class="conv-whotext">
+                  <div class="conv-nameline"><b id="th-name"></b></div>
+                  <div class="conv-sub" id="th-sub"></div>
+                </div>
+              </div>
+              <div class="conv-actions">
+                <div class="conv-more">
+                  <button type="button" class="outreach-secondary sm" data-menu="conv-menu">更多操作 <i data-lucide="chevron-down"></i></button>
+                  <div class="rail-menu" id="conv-menu">
+                    <button type="button" id="act-copy-email"><i data-lucide="copy"></i>复制邮箱地址</button>
+                    <button type="button" id="act-suggest"><i data-lucide="sparkles"></i>AI 生成回信草稿</button>
+                    <button type="button" data-conv-tab="detail"><i data-lucide="user"></i>查看客户详情</button>
+                  </div>
+                </div>
+                <button type="button" class="outreach-primary sm" id="btn-new-mail"><i data-lucide="plus"></i>新建开发信</button>
+              </div>
+            </div>
+
+            <div class="conv-tabs">
+              <button type="button" class="conv-tab active" data-conv-tab="history">沟通历史</button>
+              <button type="button" class="conv-tab" data-conv-tab="detail">客户详情</button>
+              <button type="button" class="conv-tab" data-conv-tab="notes">相关笔记</button>
+              <button type="button" class="conv-tab" data-conv-tab="activity">活动记录</button>
+            </div>
+
+            <div class="conv-scroll">
+              <div class="conv-tabpane active" data-conv-pane="history">
+                <div id="th-timeline"></div>
+                <div class="conv-end" id="th-end">已无更多记录</div>
+              </div>
+              <div class="conv-tabpane" data-conv-pane="detail">
+                <div class="lead-facts" id="th-facts"></div>
+              </div>
+              <div class="conv-tabpane" data-conv-pane="notes">
+                <div class="conv-note-empty"><i data-lucide="sticky-note"></i><p>暂无笔记。记录本客户的沟通要点，团队协作时更清晰。</p></div>
+              </div>
+              <div class="conv-tabpane" data-conv-pane="activity">
+                <div id="th-activity" class="activity-list"></div>
+              </div>
+            </div>
+
+            <div class="compose-box hidden" id="th-compose">
+              <div class="compose-head">
+                <span id="compose-title">新建开发信</span>
+                <button type="button" class="outreach-secondary sm" id="btn-suggest"><i data-lucide="sparkles"></i>AI 生成草稿</button>
+              </div>
+              <textarea id="reply-body" rows="5" placeholder="先回答客户的问题，再给出一个明确的下一步（时间 / 报价 / 资料）。可点“AI 生成草稿”，发送前请务必人工确认。"></textarea>
+              <div class="compose-actions">
+                <span class="reply-note">AI 草稿仅供参考，发送前请确认内容真实、可兑现</span>
+                <div>
+                  <button type="button" class="outreach-secondary sm" id="btn-compose-cancel">取消</button>
+                  <button type="button" class="outreach-primary sm" id="btn-send-reply"><i data-lucide="send"></i>确认发送</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- 右：互动历史 + 意向评估 -->
-        <div class="wk-detail" id="wk-detail">
-          <div class="wk-empty" id="wk-empty">
-            <i data-lucide="mouse-pointer-click"></i>
-            <h3>从左侧选择一个客户</h3>
-            <p>右侧将显示 AI 意向评估、商户背景、全部收发信历史，并可在原会话中继续回信。</p>
+        <!-- 第三栏：AI 面板 -->
+        <div class="ai-pane" id="wk-ai">
+          <div class="ai-empty" id="ai-empty">
+            <i data-lucide="sparkles"></i>
+            <p>选择客户后，这里显示 AI 生成的开发信内容与质量评估。</p>
           </div>
 
-          <div id="wk-thread" class="wk-thread hidden">
-            <div class="thread-head">
-              <div class="thread-title">
-                <h2 id="th-name"></h2>
-                <span id="th-status" class="status-pill"></span>
+          <div class="ai-body hidden" id="ai-content">
+            <article class="ai-card">
+              <div class="ai-card-head">
+                <span><i data-lucide="sparkles" class="ai-spark"></i>AI 生成的开发信内容</span>
+                <button type="button" class="ai-copy" id="btn-copy"><i data-lucide="copy"></i>复制</button>
               </div>
-              <div class="thread-sub">
-                <span id="th-email"></span>
-                <span id="th-campaign" class="thread-campaign"></span>
+              <div class="ai-mail">
+                <div class="ai-mail-subject" id="ai-subject"></div>
+                <pre class="ai-mail-body" id="ai-mailbody"></pre>
               </div>
-            </div>
+            </article>
 
-            <div class="thread-grid">
-              <div class="intent-card">
-                <div class="intent-ring" id="th-intent-ring"><span id="th-intent-score">–</span></div>
-                <div class="intent-info">
-                  <b id="th-intent-label">待观察</b>
-                  <small id="th-intent-reason">尚未回复</small>
-                </div>
+            <article class="ai-card" id="ai-eval-card">
+              <div class="ai-card-head"><span><i data-lucide="sparkles" class="ai-spark"></i>AI 评估</span></div>
+              <div class="ai-eval-body" id="ai-eval-body">
+                <div class="ai-eval-hint" id="ai-eval-hint">正在评估…</div>
               </div>
-              <div class="lead-facts" id="th-facts"></div>
-            </div>
-
-            <div class="thread-messages" id="th-messages"></div>
-
-            <div class="reply-box" id="th-replybox">
-              <div class="reply-tools">
-                <label>在原会话中回信</label>
-                <button type="button" class="outreach-secondary sm" id="btn-suggest">
-                  <i data-lucide="sparkles"></i>AI 生成回信草稿
-                </button>
-              </div>
-              <textarea id="reply-body" rows="6" placeholder="先回答客户的问题，再给一个明确的下一步（时间 / 报价 / 资料）。&#10;点上方按钮可让 AI 按外贸专家口吻起草，发送前请务必人工确认。"></textarea>
-              <div class="reply-actions">
-                <span class="reply-note">AI 草稿仅供参考，点击发送前请确认内容真实、可兑现</span>
-                <button type="button" class="outreach-primary" id="btn-send-reply">
-                  <i data-lucide="reply"></i>确认发送
-                </button>
-              </div>
-            </div>
+            </article>
           </div>
         </div>
       </div>

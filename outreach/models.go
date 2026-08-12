@@ -170,6 +170,33 @@ func (c *Contact) DisplayIntent() Intent {
 	return StatusIntent(c.Status)
 }
 
+// Evaluation is an AI quality assessment of one outreach email, mirroring the
+// scorecard in the design: an overall 0-100 score plus five sub-dimensions and
+// a short improvement suggestion.
+type Evaluation struct {
+	Overall         int    `json:"overall"`
+	SubjectAppeal   int    `json:"subject_appeal"`
+	Relevance       int    `json:"relevance"`
+	Personalization int    `json:"personalization"`
+	CallToAction    int    `json:"call_to_action"`
+	Readability     int    `json:"readability"`
+	Suggestion      string `json:"suggestion"`
+}
+
+// Grade returns a Chinese label for the overall score.
+func (e Evaluation) Grade() string {
+	switch {
+	case e.Overall >= 85:
+		return "优秀"
+	case e.Overall >= 70:
+		return "良好"
+	case e.Overall >= 55:
+		return "一般"
+	default:
+		return "待改进"
+	}
+}
+
 // Message is a sent or received email linked to a contact.
 type Message struct {
 	ID         int64     `json:"id"`
@@ -205,6 +232,8 @@ type Overview struct {
 //
 // Value receiver on purpose: html/template cannot call pointer-receiver
 // methods on a struct accessed as a non-addressable field (e.g. .Overview).
+//
+//nolint:gocritic // value receiver required for html/template addressability
 func (o Overview) ReplyRate() float64 {
 	if o.Sent == 0 {
 		return 0

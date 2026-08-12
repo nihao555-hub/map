@@ -176,6 +176,12 @@ CREATE TABLE IF NOT EXISTS outreach_settings (
 CREATE TABLE IF NOT EXISTS outreach_meta (
 	key TEXT PRIMARY KEY,
 	value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS outreach_evaluations (
+	message_id TEXT PRIMARY KEY,
+	data TEXT NOT NULL,
+	created_at INTEGER NOT NULL
 );`
 
 	if _, err := s.db.Exec(schema); err != nil {
@@ -966,6 +972,71 @@ LIMIT ?`
 	return messages, nil
 }
 
+// LatestOutbound returns the most recent outgoing message for a contact.
+func (s *Store) LatestOutbound(ctx context.Context, contactID int64) (Message, error) {
+	const query = `
+SELECT id, campaign_id, contact_id, direction, kind, step, subject, body,
+	message_id, in_reply_to, from_email, to_email, created_at
+FROM outreach_messages
+WHERE contact_id = ? AND direction = ?
+ORDER BY created_at DESC, id DESC
+LIMIT 1`
+
+	message, err := scanMessage(s.db.QueryRowContext(ctx, query, contactID, DirectionOut))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrNotFound
+	}
+
+	if err != nil {
+		return Message{}, err
+	}
+
+	return message, nil
+}
+
+// Evaluation returns a cached AI evaluation for a message, if present.
+func (s *Store) Evaluation(ctx context.Context, messageID string) (Evaluation, bool, error) {
+	var data []byte
+
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT data FROM outreach_evaluations WHERE message_id = ?",
+		messageID,
+	).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Evaluation{}, false, nil
+	}
+
+	if err != nil {
+		return Evaluation{}, false, fmt.Errorf("load evaluation: %w", err)
+	}
+
+	var evaluation Evaluation
+	if err := json.Unmarshal(data, &evaluation); err != nil {
+		return Evaluation{}, false, fmt.Errorf("decode evaluation: %w", err)
+	}
+
+	return evaluation, true, nil
+}
+
+// SaveEvaluation caches an AI evaluation keyed by message identifier.
+func (s *Store) SaveEvaluation(ctx context.Context, messageID string, evaluation Evaluation) error {
+	data, err := json.Marshal(evaluation)
+	if err != nil {
+		return fmt.Errorf("encode evaluation: %w", err)
+	}
+
+	const query = `
+INSERT INTO outreach_evaluations(message_id, data, created_at) VALUES(?, ?, ?)
+ON CONFLICT(message_id) DO UPDATE SET data = excluded.data, created_at = excluded.created_at`
+
+	if _, err := s.db.ExecContext(ctx, query, messageID, data, time.Now().UTC().Unix()); err != nil {
+		return fmt.Errorf("save evaluation: %w", err)
+	}
+
+	return nil
+}
+
 // UpdateContactIntent stores a new intent assessment.
 func (s *Store) UpdateContactIntent(ctx context.Context, contactID int64, intent Intent) error {
 	result, err := s.db.ExecContext(
@@ -1009,8 +1080,42 @@ func (s *Store) SaveContactResearch(ctx context.Context, contactID int64, resear
 type WorkspaceFilter struct {
 	CampaignID string
 	Status     string
-	Search     string
-	Limit      int
+	// View is one of the customer-list tabs: "" / "all" / "uncontacted" /
+	// "following" / "replied".
+	View   string
+	Search string
+	Limit  int
+}
+
+// Workspace view tokens (customer-list tabs).
+const (
+	ViewAll         = "all"
+	ViewUncontacted = "uncontacted"
+	ViewFollowing   = "following"
+	ViewReplied     = "replied"
+)
+
+// WorkspaceCounts holds the tab badge counts for the customer list.
+type WorkspaceCounts struct {
+	All         int `json:"all"`
+	Uncontacted int `json:"uncontacted"`
+	Following   int `json:"following"`
+	Replied     int `json:"replied"`
+}
+
+// viewCondition maps a view token to a SQL predicate on the aliased contacts
+// table (alias "c"). An empty/unknown token matches everything.
+func viewCondition(view string) string {
+	switch view {
+	case ViewUncontacted:
+		return " AND c.status = 'active' AND c.last_sent_at = 0"
+	case ViewFollowing:
+		return " AND c.status = 'active' AND c.last_sent_at > 0"
+	case ViewReplied:
+		return " AND c.status = 'replied'"
+	default:
+		return ""
+	}
 }
 
 // WorkspaceContact is a contact row enriched for the master-detail UI.
@@ -1062,6 +1167,8 @@ WHERE 1 = 1`
 		args = append(args, filter.Status)
 	}
 
+	query += viewCondition(filter.View)
+
 	if filter.Search != "" {
 		query += " AND (c.name LIKE ? OR c.email LIKE ? OR c.category LIKE ? OR c.city LIKE ?)"
 		pattern := "%" + filter.Search + "%"
@@ -1097,6 +1204,40 @@ LIMIT ?`
 	}
 
 	return contacts, nil
+}
+
+// WorkspaceCountsFor returns the customer-list tab counts, optionally scoped
+// to one campaign.
+func (s *Store) WorkspaceCountsFor(ctx context.Context, campaignID string) (WorkspaceCounts, error) {
+	query := `
+SELECT
+	COUNT(*),
+	COALESCE(SUM(CASE WHEN status = 'active' AND last_sent_at = 0 THEN 1 ELSE 0 END), 0),
+	COALESCE(SUM(CASE WHEN status = 'active' AND last_sent_at > 0 THEN 1 ELSE 0 END), 0),
+	COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0)
+FROM outreach_contacts`
+
+	args := []any{ContactStatusReplied}
+
+	if campaignID != "" {
+		query += " WHERE campaign_id = ?"
+
+		args = append(args, campaignID)
+	}
+
+	var counts WorkspaceCounts
+
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(
+		&counts.All,
+		&counts.Uncontacted,
+		&counts.Following,
+		&counts.Replied,
+	)
+	if err != nil {
+		return WorkspaceCounts{}, fmt.Errorf("count workspace views: %w", err)
+	}
+
+	return counts, nil
 }
 
 func scanWorkspaceContact(row rowScanner) (WorkspaceContact, error) {

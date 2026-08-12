@@ -227,6 +227,76 @@ func ClassifyIntentAI(
 	return intent, nil
 }
 
+// aiEvaluatePrompt asks the model to score one outreach email. Labels stay in
+// Chinese because the operator reads them in the workspace.
+const aiEvaluatePrompt = `You are a senior cold-email coach reviewing one outreach email. Score it honestly for a B2B export context.
+
+Return ONLY a JSON object with integer 0-100 scores and one short Chinese suggestion:
+{"overall": <0-100>, "subject_appeal": <0-100>, "relevance": <0-100>, "personalization": <0-100>, "call_to_action": <0-100>, "readability": <0-100>, "suggestion": "<one actionable Chinese sentence>"}
+
+Scoring guidance:
+- subject_appeal: is the subject specific, honest and likely to be opened (not clickbait)?
+- relevance: does it connect to this prospect's actual business?
+- personalization: concrete, non-generic references vs mass-mail filler.
+- call_to_action: exactly one clear, low-friction ask.
+- readability: short, plain, human, no jargon or AI clichés.
+- overall: your holistic judgement, not a strict average.`
+
+// EvaluateEmail scores one outreach email with the AI, returning the design's
+// five sub-scores plus an overall score and an improvement suggestion.
+func EvaluateEmail(
+	ctx context.Context,
+	ai AICompleter,
+	settings *Settings,
+	contact *Contact,
+	subject, body string,
+) (Evaluation, error) {
+	if ai == nil {
+		return Evaluation{}, errors.New("AI evaluator is not available")
+	}
+
+	var b strings.Builder
+
+	writeFact(&b, "Prospect", contact.Name)
+	writeFact(&b, "Business type", contact.Category)
+	writeFact(&b, "City", contact.City)
+	b.WriteString("\nSubject: ")
+	b.WriteString(subject)
+	b.WriteString("\n\nBody:\n")
+	b.WriteString(clipRunes(body, 2500))
+
+	raw, err := ai.Complete(ctx, settings, aiEvaluatePrompt, b.String())
+	if err != nil {
+		return Evaluation{}, err
+	}
+
+	var evaluation Evaluation
+	if err := extractJSONObject(raw, &evaluation); err != nil {
+		return Evaluation{}, err
+	}
+
+	clampScore(&evaluation.Overall)
+	clampScore(&evaluation.SubjectAppeal)
+	clampScore(&evaluation.Relevance)
+	clampScore(&evaluation.Personalization)
+	clampScore(&evaluation.CallToAction)
+	clampScore(&evaluation.Readability)
+
+	evaluation.Suggestion = clipRunes(strings.TrimSpace(evaluation.Suggestion), 200)
+
+	return evaluation, nil
+}
+
+func clampScore(score *int) {
+	if *score < 0 {
+		*score = 0
+	}
+
+	if *score > 100 {
+		*score = 100
+	}
+}
+
 var robotVoiceTells = []string{
 	"i hope this email finds you well",
 	"i trust this finds you",

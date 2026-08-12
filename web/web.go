@@ -164,6 +164,7 @@ func New(svc *Service, addr string, outreachServices ...*outreach.Service) (*Ser
 	mux.HandleFunc("/api/v1/outreach/contacts", ans.apiOutreachContacts)
 	mux.HandleFunc("/api/v1/outreach/contacts/{id}", ans.apiOutreachContact)
 	mux.HandleFunc("/api/v1/outreach/contacts/{id}/suggest", ans.apiOutreachSuggest)
+	mux.HandleFunc("/api/v1/outreach/contacts/{id}/evaluation", ans.apiOutreachEvaluation)
 	mux.HandleFunc("/api/v1/outreach/settings", ans.apiOutreachSettings)
 	mux.HandleFunc("/api/v1/outreach/tick", ans.apiOutreachTick)
 	mux.HandleFunc("/api/v1/outreach/reply", ans.apiOutreachReply)

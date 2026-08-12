@@ -52,6 +52,18 @@ type ContactThreadView struct {
 	Intent       Intent    `json:"intent"`
 	Messages     []Message `json:"messages"`
 	CanReply     bool      `json:"can_reply"`
+	AIConfigured bool      `json:"ai_configured"`
+	// LatestDraft is the most recent outbound email, shown in the AI panel.
+	LatestDraft *Message `json:"latest_draft,omitempty"`
+}
+
+// EvaluationView pairs an AI evaluation with the email it graded.
+type EvaluationView struct {
+	Evaluation
+	Grade     string `json:"grade"`
+	Subject   string `json:"subject"`
+	Body      string `json:"body"`
+	MessageID string `json:"message_id"`
 }
 
 // CampaignInput is the operator-authored strategy for a new campaign.
@@ -458,6 +470,22 @@ func (s *Service) ContactThread(ctx context.Context, contactID int64) (ContactTh
 
 	canReply := contact.Status != ContactStatusBounced && contact.Status != ContactStatusUnsubscribed
 
+	settings, err := s.store.Settings(ctx)
+	if err != nil {
+		return ContactThreadView{}, err
+	}
+
+	var latestDraft *Message
+
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Direction == DirectionOut {
+			draft := messages[i]
+			latestDraft = &draft
+
+			break
+		}
+	}
+
 	return ContactThreadView{
 		Contact:      contact,
 		CampaignName: campaign.Name,
@@ -465,5 +493,29 @@ func (s *Service) ContactThread(ctx context.Context, contactID int64) (ContactTh
 		Intent:       contact.DisplayIntent(),
 		Messages:     messages,
 		CanReply:     canReply,
+		AIConfigured: settings.AIConfigured(),
+		LatestDraft:  latestDraft,
 	}, nil
+}
+
+// EvaluateContact returns an AI quality score for the contact's latest
+// outbound email (cached after the first computation).
+func (s *Service) EvaluateContact(ctx context.Context, contactID int64) (EvaluationView, error) {
+	evaluation, message, err := s.engine.EvaluateContact(ctx, contactID)
+	if err != nil {
+		return EvaluationView{}, err
+	}
+
+	return EvaluationView{
+		Evaluation: evaluation,
+		Grade:      evaluation.Grade(),
+		Subject:    message.Subject,
+		Body:       message.Body,
+		MessageID:  message.MessageID,
+	}, nil
+}
+
+// WorkspaceCounts returns the customer-list tab counts.
+func (s *Service) WorkspaceCounts(ctx context.Context, campaignID string) (WorkspaceCounts, error) {
+	return s.store.WorkspaceCountsFor(ctx, campaignID)
 }

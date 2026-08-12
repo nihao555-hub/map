@@ -423,6 +423,7 @@ func (s *Server) apiOutreachContacts(w http.ResponseWriter, r *http.Request) {
 	filter := outreach.WorkspaceFilter{
 		CampaignID: r.URL.Query().Get("campaign"),
 		Status:     r.URL.Query().Get("status"),
+		View:       r.URL.Query().Get("view"),
 		Search:     strings.TrimSpace(r.URL.Query().Get("q")),
 	}
 
@@ -437,7 +438,39 @@ func (s *Server) apiOutreachContacts(w http.ResponseWriter, r *http.Request) {
 		contacts = []outreach.WorkspaceContact{}
 	}
 
-	renderJSON(w, http.StatusOK, contacts)
+	counts, err := s.outreach.WorkspaceCounts(r.Context(), filter.CampaignID)
+	if err != nil {
+		renderOutreachAPIError(w, err)
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"counts":   counts,
+		"contacts": contacts,
+	})
+}
+
+func (s *Server) apiOutreachEvaluation(w http.ResponseWriter, r *http.Request) {
+	if !s.requireOutreachPost(w, r) {
+		return
+	}
+
+	contactID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		renderOutreachAPIError(w, errors.New("invalid contact ID"))
+
+		return
+	}
+
+	evaluation, err := s.outreach.EvaluateContact(r.Context(), contactID)
+	if err != nil {
+		renderOutreachAPIError(w, err)
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, evaluation)
 }
 
 // apiOutreachContact serves one contact's conversation thread.

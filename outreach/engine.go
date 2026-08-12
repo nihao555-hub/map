@@ -720,6 +720,63 @@ func (e *Engine) Reply(ctx context.Context, contactID int64, body string) (Messa
 	return message, nil
 }
 
+// EvaluateContact scores the contact's most recent outbound email with the AI
+// and caches the result, so repeated views don't re-call the model.
+func (e *Engine) EvaluateContact(ctx context.Context, contactID int64) (Evaluation, Message, error) {
+	settings, err := e.store.Settings(ctx)
+	if err != nil {
+		return Evaluation{}, Message{}, err
+	}
+
+	if !settings.AIConfigured() {
+		return Evaluation{}, Message{}, errors.New("AI 未配置：请在设置中填写 AI 接口地址、模型和 OUTREACH_AI_API_KEY")
+	}
+
+	message, err := e.store.LatestOutbound(ctx, contactID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return Evaluation{}, Message{}, errors.New("该客户还没有已发送的开发信，无法评估")
+		}
+
+		return Evaluation{}, Message{}, err
+	}
+
+	cacheKey := evaluationKey(&message)
+
+	if cached, ok, err := e.store.Evaluation(ctx, cacheKey); err != nil {
+		return Evaluation{}, Message{}, err
+	} else if ok {
+		return cached, message, nil
+	}
+
+	contact, err := e.store.Contact(ctx, contactID)
+	if err != nil {
+		return Evaluation{}, Message{}, err
+	}
+
+	aiCtx, cancel := context.WithTimeout(ctx, aiWriteTimeout)
+	defer cancel()
+
+	evaluation, err := EvaluateEmail(aiCtx, e.ai, &settings, &contact, message.Subject, message.Body)
+	if err != nil {
+		return Evaluation{}, Message{}, err
+	}
+
+	if err := e.store.SaveEvaluation(ctx, cacheKey, evaluation); err != nil {
+		return Evaluation{}, Message{}, err
+	}
+
+	return evaluation, message, nil
+}
+
+func evaluationKey(message *Message) string {
+	if message.MessageID != "" {
+		return message.MessageID
+	}
+
+	return "msg-" + strconv.FormatInt(message.ID, 10)
+}
+
 // SuggestReplyForContact drafts an answer to the contact's latest reply for
 // human review. It requires the AI writer to be configured.
 func (e *Engine) SuggestReplyForContact(ctx context.Context, contactID int64) (string, error) {
