@@ -1193,6 +1193,96 @@ FROM outreach_contacts WHERE campaign_id = ?`
 	return stats, nil
 }
 
+// Overview aggregates counters across every campaign for the dashboard.
+func (s *Store) Overview(ctx context.Context) (Overview, error) {
+	var overview Overview
+
+	const contactQuery = `
+SELECT
+	COUNT(*),
+	COALESCE(SUM(CASE WHEN last_sent_at > 0 THEN 1 ELSE 0 END), 0),
+	COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0),
+	COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0),
+	COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0),
+	COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0),
+	COALESCE(SUM(CASE WHEN intent_score >= 80 THEN 1 ELSE 0 END), 0)
+FROM outreach_contacts`
+
+	err := s.db.QueryRowContext(
+		ctx,
+		contactQuery,
+		ContactStatusReplied,
+		ContactStatusBounced,
+		ContactStatusUnsubscribed,
+		ContactStatusCompleted,
+	).Scan(
+		&overview.Contacts,
+		&overview.Sent,
+		&overview.Replied,
+		&overview.Bounced,
+		&overview.Unsubscribed,
+		&overview.Completed,
+		&overview.HighIntent,
+	)
+	if err != nil {
+		return Overview{}, fmt.Errorf("load overview contacts: %w", err)
+	}
+
+	const campaignQuery = `
+SELECT COUNT(*), COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0)
+FROM outreach_campaigns`
+
+	if err := s.db.QueryRowContext(ctx, campaignQuery, CampaignStatusActive).
+		Scan(&overview.Campaigns, &overview.ActiveCampaigns); err != nil {
+		return Overview{}, fmt.Errorf("load overview campaigns: %w", err)
+	}
+
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM outreach_suppressions").
+		Scan(&overview.Suppressed); err != nil {
+		return Overview{}, fmt.Errorf("load overview suppressions: %w", err)
+	}
+
+	return overview, nil
+}
+
+// RecentInbound returns the most recent inbound messages across all campaigns.
+func (s *Store) RecentInbound(ctx context.Context, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	const query = `
+SELECT id, campaign_id, contact_id, direction, kind, step, subject, body,
+	message_id, in_reply_to, from_email, to_email, created_at
+FROM outreach_messages
+WHERE direction = ?
+ORDER BY created_at DESC, id DESC
+LIMIT ?`
+
+	rows, err := s.db.QueryContext(ctx, query, DirectionIn, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list recent inbound: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []Message
+
+	for rows.Next() {
+		message, err := scanMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		messages = append(messages, message)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list recent inbound: %w", err)
+	}
+
+	return messages, nil
+}
+
 // SentToday counts outgoing messages since start, normally the sender's local
 // midnight.
 func (s *Store) SentToday(ctx context.Context, start time.Time) (int, error) {

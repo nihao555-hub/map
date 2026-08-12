@@ -82,6 +82,7 @@ func New(svc *Service, addr string, outreachServices ...*outreach.Service) (*Ser
 	mux.HandleFunc("/outreach/settings", ans.outreachSettings)
 	mux.HandleFunc("/outreach/test", ans.outreachTest)
 	mux.HandleFunc("/outreach/campaigns", ans.outreachCampaigns)
+	mux.HandleFunc("/outreach/campaigns/batch", ans.outreachBatch)
 	mux.HandleFunc("/outreach/campaigns/{id}", ans.outreachCampaign)
 	mux.HandleFunc("/outreach/campaigns/{id}/status", ans.outreachCampaignStatus)
 	mux.HandleFunc("/outreach/tick", ans.outreachTick)
@@ -157,6 +158,7 @@ func New(svc *Service, addr string, outreachServices ...*outreach.Service) (*Ser
 		ans.download(w, r)
 	})
 
+	mux.HandleFunc("/api/v1/outreach/overview", ans.apiOutreachOverview)
 	mux.HandleFunc("/api/v1/outreach/campaigns", ans.apiOutreachCampaigns)
 	mux.HandleFunc("/api/v1/outreach/campaigns/{id}", ans.apiOutreachCampaign)
 	mux.HandleFunc("/api/v1/outreach/contacts", ans.apiOutreachContacts)

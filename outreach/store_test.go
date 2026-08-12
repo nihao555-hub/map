@@ -280,6 +280,49 @@ func TestLaterReplyDoesNotOverrideUnsubscribe(t *testing.T) {
 	}
 }
 
+func TestOverviewAggregatesAcrossCampaigns(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	campaignA := makeCampaign(t, store, "A")
+	campaignB := makeCampaign(t, store, "B")
+
+	replied := seedContact(t, store, campaignA.ID, "buyer@acme.example")
+	seedContact(t, store, campaignA.ID, "cold@acme.example")
+	seedContact(t, store, campaignB.ID, "lead@beta.example")
+
+	reply := outreach.Message{
+		CampaignID: replied.CampaignID, ContactID: replied.ID,
+		Direction: outreach.DirectionIn, Kind: outreach.InboundKindReply,
+		Subject: "Re: hi", Body: "Please send your price list.", FromEmail: replied.Email,
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := store.RecordInbound(ctx, &replied, &reply); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.UpdateContactIntent(ctx, replied.ID, outreach.Intent{
+		Score: 88, Label: outreach.IntentHigh, Reason: "asked for pricing",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	overview, err := store.Overview(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if overview.Campaigns != 2 || overview.ActiveCampaigns != 2 {
+		t.Fatalf("campaign counts wrong: %+v", overview)
+	}
+
+	if overview.Contacts != 3 || overview.Replied != 1 || overview.HighIntent != 1 {
+		t.Fatalf("contact aggregates wrong: %+v", overview)
+	}
+}
+
 func TestNoticeDoesNotStopContact(t *testing.T) {
 	t.Parallel()
 

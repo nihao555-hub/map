@@ -8,34 +8,67 @@
   <link rel="stylesheet" href="/static/css/outreach.css">
 </head>
 <body class="outreach-body" data-panel="{{.Panel}}">
-  <!-- 默认收缩的侧边栏：hover 展开，可固定 -->
-  <aside id="orail" class="collapsed">
-    <a class="rail-brand" href="/" title="返回地图获客">
-      <span class="rail-brand-icon"><i data-lucide="map-pin"></i></span>
-      <span class="rail-label">地图获客</span>
-    </a>
-    <nav class="rail-nav">
-      <button type="button" class="rail-item" data-panel-btn="workspace" title="客户工作台">
-        <i data-lucide="messages-square"></i><span class="rail-label">客户工作台</span>
+  <!-- 侧边栏：默认收缩，hover 展开（忠实复刻参考设计），可固定 -->
+  <aside id="orail" aria-label="侧边栏导航">
+    <div class="rail-top">
+      <div class="rail-org">
+        <button type="button" class="rail-orgbtn" data-menu="org-menu" title="{{if .Overview.SenderCompany}}{{.Overview.SenderCompany}}{{else}}地图获客{{end}}">
+          <span class="rail-avatar"><img src="/static/img/outreach-logo.png" alt="logo"></span>
+          <span class="rail-label rail-orgname">{{if .Overview.SenderCompany}}{{.Overview.SenderCompany}}{{else}}地图获客{{end}}</span>
+          <i data-lucide="chevrons-up-down" class="rail-label rail-chev"></i>
+        </button>
+        <div class="rail-menu" id="org-menu">
+          <a href="/"><i data-lucide="map"></i>去地图获客</a>
+          <button type="button" data-panel-btn="settings"><i data-lucide="settings"></i>邮箱与 AI 设置</button>
+          <a href="/api/docs" target="_blank" rel="noopener"><i data-lucide="book-open"></i>API 文档</a>
+        </div>
+      </div>
+    </div>
+
+    <nav class="rail-scroll">
+      <button type="button" class="rail-item" data-panel-btn="overview" title="总览">
+        <i data-lucide="layout-dashboard"></i><span class="rail-label">总览</span>
       </button>
+      <a class="rail-item" href="/" title="地图获客">
+        <i data-lucide="map"></i><span class="rail-label">地图获客</span>
+      </a>
+      <div class="rail-sep"></div>
       <button type="button" class="rail-item" data-panel-btn="campaigns" title="开发信活动">
         <i data-lucide="send"></i><span class="rail-label">开发信活动</span>
       </button>
+      <button type="button" class="rail-item" data-panel-btn="workspace" title="客户工作台">
+        <i data-lucide="messages-square"></i><span class="rail-label">客户工作台</span>
+        <span class="rail-badge rail-label">AI</span>
+      </button>
+      <div class="rail-sep"></div>
       <button type="button" class="rail-item" data-panel-btn="settings" title="邮箱与 AI 设置">
         <i data-lucide="settings"></i><span class="rail-label">邮箱与 AI</span>
       </button>
     </nav>
+
     <div class="rail-bottom">
       <form method="post" action="/outreach/tick">
         <button type="submit" class="rail-item" title="立即收信并尝试发送一封到期邮件">
           <i data-lucide="refresh-cw"></i><span class="rail-label">立即执行一次</span>
         </button>
       </form>
-      <a class="rail-item" href="/" title="返回地图">
-        <i data-lucide="map"></i><span class="rail-label">返回地图</span>
-      </a>
-      <button type="button" class="rail-item" id="rail-pin" title="固定/收起侧边栏">
-        <i data-lucide="panel-left-open"></i><span class="rail-label">固定侧边栏</span>
+      <div class="rail-acct">
+        <button type="button" class="rail-item" data-menu="acct-menu" title="账户">
+          <span class="rail-avatar">{{.AccountInitial}}</span>
+          <span class="rail-label">{{if .Overview.FromName}}{{.Overview.FromName}}{{else if .Overview.EmailAddress}}{{.Overview.EmailAddress}}{{else}}未配置账户{{end}}</span>
+          <i data-lucide="chevrons-up-down" class="rail-label rail-chev"></i>
+        </button>
+        <div class="rail-menu" id="acct-menu">
+          <div class="rail-acct-head">
+            <b>{{if .Overview.FromName}}{{.Overview.FromName}}{{else}}未配置发件人{{end}}</b>
+            <small>{{if .Overview.EmailAddress}}{{.Overview.EmailAddress}}{{else}}请在设置中填写企业邮箱{{end}}</small>
+          </div>
+          <button type="button" data-panel-btn="settings"><i data-lucide="settings"></i>邮箱与 AI 设置</button>
+          <a href="/"><i data-lucide="map"></i>去地图获客</a>
+        </div>
+      </div>
+      <button type="button" class="rail-item" id="rail-pin" title="固定 / 收起侧边栏">
+        <i data-lucide="panel-left"></i><span class="rail-label">固定侧边栏</span>
       </button>
     </div>
   </aside>
@@ -43,7 +76,7 @@
   <main class="o-main">
     <header class="o-topbar">
       <div class="o-topbar-left">
-        <h1 id="panel-title">客户工作台</h1>
+        <h1 id="panel-title">总览</h1>
         <span class="mail-chip {{if and .Settings.SMTPConfigured .Settings.IMAPConfigured}}ok{{end}}">
           <span class="chip-dot"></span>
           {{if .Settings.EmailAddress}}{{.Settings.EmailAddress}}{{else}}邮箱未配置{{end}}
@@ -57,6 +90,126 @@
 
     {{if .Notice}}<div class="outreach-alert success"><i data-lucide="check-circle"></i>{{.Notice}}</div>{{end}}
     {{if .Error}}<div class="outreach-alert error"><i data-lucide="alert-circle"></i>{{.Error}}</div>{{end}}
+
+    <!-- ===================== 面板〇：总览工作台 ===================== -->
+    <section id="panel-overview" class="o-panel">
+      <div class="ov-actions">
+        <button type="button" class="outreach-primary" data-panel-btn="campaigns"><i data-lucide="send"></i>批量群发开发信</button>
+        <form method="post" action="/outreach/tick"><button type="submit" class="outreach-secondary"><i data-lucide="refresh-cw"></i>立即执行一次</button></form>
+        <button type="button" class="outreach-secondary" data-panel-btn="workspace"><i data-lucide="messages-square"></i>进入客户工作台</button>
+        <a class="outreach-secondary" href="/"><i data-lucide="map"></i>去地图获客</a>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card accent">
+          <div class="kpi-label"><i data-lucide="send"></i>活动</div>
+          <div class="kpi-value">{{.Overview.Campaigns}}</div>
+          <div class="kpi-sub">运行中 {{.Overview.ActiveCampaigns}}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"><i data-lucide="users"></i>联系人</div>
+          <div class="kpi-value">{{.Overview.Contacts}}</div>
+          <div class="kpi-sub">已触达 {{.Overview.Sent}}</div>
+        </div>
+        <div class="kpi-card good">
+          <div class="kpi-label"><i data-lucide="reply"></i>回复</div>
+          <div class="kpi-value">{{.Overview.Replied}}</div>
+          <div class="kpi-sub">回复率 {{printf "%.1f" .Overview.ReplyRate}}%</div>
+        </div>
+        <div class="kpi-card good">
+          <div class="kpi-label"><i data-lucide="flame"></i>高意向</div>
+          <div class="kpi-value">{{.Overview.HighIntent}}</div>
+          <div class="kpi-sub">评分 ≥ 80</div>
+        </div>
+        <div class="kpi-card warn">
+          <div class="kpi-label"><i data-lucide="alert-triangle"></i>退信</div>
+          <div class="kpi-value">{{.Overview.Bounced}}</div>
+          <div class="kpi-sub">已发完 {{.Overview.Completed}}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"><i data-lucide="ban"></i>退订 / 抑制</div>
+          <div class="kpi-value">{{.Overview.Unsubscribed}}</div>
+          <div class="kpi-sub">抑制名单 {{.Overview.Suppressed}}</div>
+        </div>
+      </div>
+
+      <div class="ov-grid">
+        <article class="outreach-card">
+          <div class="card-heading"><div><p class="eyebrow">今日发送</p><h2>发送进度与配额</h2></div></div>
+          <div class="ov-progress">
+            <span style="width: {{.SendProgress}}%"></span>
+          </div>
+          <p class="kpi-sub">今日已发 <b>{{.Overview.SentToday}}</b> / 今日上限 <b>{{.Overview.DailyAllowance}}</b>（新邮箱预热逐日提升）</p>
+
+          <div style="margin-top:14px">
+            <div class="ov-health-row">
+              <span class="ov-h-left"><i data-lucide="mail"></i>SMTP 发信</span>
+              <span class="ov-pill {{if .Overview.SMTPConfigured}}ok{{else}}off{{end}}">{{if .Overview.SMTPConfigured}}已就绪{{else}}未配置{{end}}</span>
+            </div>
+            <div class="ov-health-row">
+              <span class="ov-h-left"><i data-lucide="inbox"></i>IMAP 收信</span>
+              <span class="ov-pill {{if .Overview.IMAPConfigured}}ok{{else}}off{{end}}">{{if .Overview.IMAPConfigured}}已就绪{{else}}未配置{{end}}</span>
+            </div>
+            <div class="ov-health-row">
+              <span class="ov-h-left"><i data-lucide="sparkles"></i>AI 撰写 / 意向评估</span>
+              <span class="ov-pill {{if .Overview.AIConfigured}}ok{{else}}off{{end}}">{{if .Overview.AIConfigured}}已启用{{else}}未配置（用模板）{{end}}</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="outreach-card">
+          <div class="card-heading"><div><p class="eyebrow">收件箱</p><h2>最近客户往来</h2></div></div>
+          {{if .Overview.RecentInbound}}
+          <div class="ov-recent">
+            {{range .Overview.RecentInbound}}
+            <div class="ov-recent-item {{.Kind}}">
+              <span class="ov-kind">{{if eq .Kind "bounce"}}退信{{else if eq .Kind "unsubscribe"}}退订{{else if eq .Kind "notice"}}通知{{else}}回复{{end}}</span>
+              <div>
+                <b>{{.FromEmail}}</b>
+                <small>{{.Subject}}</small>
+              </div>
+              <time>{{.CreatedAt.Format "01-02 15:04"}}</time>
+            </div>
+            {{end}}
+          </div>
+          {{else}}
+          <div class="empty-panel compact">
+            <i data-lucide="inbox"></i>
+            <p>还没有收到客户来信。启用活动后，回复、退信与退订会自动出现在这里。</p>
+          </div>
+          {{end}}
+        </article>
+      </div>
+
+      <article class="outreach-card">
+        <div class="card-heading"><div><p class="eyebrow">活动</p><h2>各活动表现</h2></div></div>
+        {{if .Campaigns}}
+        <div class="contacts-table-wrap">
+          <table class="ov-table">
+            <thead><tr><th>活动</th><th>状态</th><th>联系人</th><th>已触达</th><th>回复</th><th>回复率</th><th>退信</th></tr></thead>
+            <tbody>
+              {{range .Campaigns}}
+              <tr>
+                <td><a class="ov-camp-link" href="/outreach?panel=workspace&campaign={{.ID}}"><b>{{.Name}}</b></a></td>
+                <td><span class="status-pill {{.Status}}">{{if eq .Status "active"}}运行中{{else if eq .Status "paused"}}已暂停{{else if eq .Status "done"}}已完成{{else}}草稿{{end}}</span></td>
+                <td>{{.Stats.Contacts}}</td>
+                <td>{{.Stats.Sent}}</td>
+                <td>{{.Stats.Replied}}</td>
+                <td>{{printf "%.1f" .Stats.ReplyRate}}%</td>
+                <td>{{.Stats.Bounced}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else}}
+        <div class="empty-panel compact">
+          <i data-lucide="mail-plus"></i>
+          <p>还没有活动。点“批量群发开发信”，选择已抓取的地图任务一键创建。</p>
+        </div>
+        {{end}}
+      </article>
+    </section>
 
     <!-- ===================== 面板一：客户工作台 ===================== -->
     <section id="panel-workspace" class="o-panel">
@@ -148,24 +301,30 @@
         <div class="campaigns-main">
           <article class="outreach-card">
             <div class="card-heading">
-              <div><span class="step-number">1</span><h2>从地图任务创建开发信活动</h2></div>
+              <div><span class="step-number">1</span><h2>批量群发：把抓到的客户一键发开发信</h2></div>
               <span class="soft-badge">{{if .Settings.AIConfigured}}AI 将逐客户撰写{{else}}未配置 AI，用内置模板{{end}}</span>
             </div>
             {{if .Jobs}}
-            <form method="post" action="/outreach/campaigns" class="campaign-create-form">
+            <form method="post" action="/outreach/campaigns/batch" class="campaign-create-form" id="batch-form">
               <label>
                 活动名称
-                <input name="name" required maxlength="120" placeholder="例如：柏林牙科诊所 · 8月开发">
+                <input name="name" required maxlength="120" placeholder="例如：8月牙科诊所群发">
               </label>
-              <label>
-                已完成的地图任务（需勾选过“抓取邮箱”）
-                <select name="job_id" required>
-                  <option value="">请选择获客任务</option>
+              <div class="jobs-picker">
+                <div class="jobs-picker-head">
+                  <span>选择地图任务（可多选，系统会合并去重后群发）</span>
+                  <label class="check-inline"><input type="checkbox" name="all_jobs" id="all-jobs">全部已完成任务</label>
+                </div>
+                <div class="jobs-list" id="jobs-list">
                   {{range .Jobs}}
-                  <option value="{{.ID}}">{{.Name}} · {{.Date.Format "2006-01-02 15:04"}}</option>
+                  <label class="job-opt">
+                    <input type="checkbox" name="job_ids" value="{{.ID}}">
+                    <span>{{.Name}}</span>
+                    <small>{{.Date.Format "2006-01-02 15:04"}}</small>
+                  </label>
                   {{end}}
-                </select>
-              </label>
+                </div>
+              </div>
               <label>
                 你为这类客户带来的结果（必填，英文动词短语）
                 <textarea name="value_proposition" required rows="2" maxlength="300" placeholder="例如：help dental clinics turn more website visitors into booked appointments"></textarea>
@@ -180,10 +339,10 @@
                 <input name="call_to_action" maxlength="200" placeholder="Would a quick 10-minute conversation be useful?">
               </label>
               <label class="check-row">
-                <input type="checkbox" name="start_now">
-                <span>导入后立即启用（仅在客户当地上午窗口投递）</span>
+                <input type="checkbox" name="start_now" checked>
+                <span>创建后立即启用群发（仅在每个客户当地上午窗口投递）</span>
               </label>
-              <button class="outreach-primary" type="submit"><i data-lucide="users"></i>导入联系人并创建活动</button>
+              <button class="outreach-primary" type="submit"><i data-lucide="send"></i>批量创建并群发</button>
             </form>
             {{else}}
             <div class="empty-panel">

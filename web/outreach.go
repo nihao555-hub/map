@@ -20,6 +20,7 @@ const formOn = "on"
 const outreachTestTimeout = 45 * time.Second
 
 type outreachPageData struct {
+	Overview  outreach.OverviewView
 	Campaigns []outreach.CampaignView
 	Jobs      []Job
 	Settings  outreach.SettingsView
@@ -28,6 +29,9 @@ type outreachPageData struct {
 	Panel     string
 	Notice    string
 	Error     string
+	// Presentation helpers computed server-side to avoid template funcs.
+	SendProgress   int
+	AccountInitial string
 }
 
 func (s *Server) outreachPage(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +59,7 @@ func (s *Server) outreachPage(w http.ResponseWriter, r *http.Request) {
 	data.Panel = r.URL.Query().Get("panel")
 
 	if data.Panel == "" {
-		data.Panel = "workspace"
+		data.Panel = "overview"
 	}
 
 	tmpl, ok := s.tmpl["static/templates/outreach.html"]
@@ -71,6 +75,11 @@ func (s *Server) outreachPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loadOutreachPage(ctx context.Context) (outreachPageData, error) {
+	overview, err := s.outreach.Overview(ctx)
+	if err != nil {
+		return outreachPageData{}, err
+	}
+
 	campaigns, err := s.outreach.Campaigns(ctx)
 	if err != nil {
 		return outreachPageData{}, err
@@ -95,12 +104,42 @@ func (s *Server) loadOutreachPage(ctx context.Context) (outreachPageData, error)
 	}
 
 	return outreachPageData{
-		Campaigns: campaigns,
-		Jobs:      eligibleJobs,
-		Settings:  settings,
-		Providers: outreach.Providers(),
-		Sequence:  outreach.DefaultSequence(),
+		Overview:       overview,
+		Campaigns:      campaigns,
+		Jobs:           eligibleJobs,
+		Settings:       settings,
+		Providers:      outreach.Providers(),
+		Sequence:       outreach.DefaultSequence(),
+		SendProgress:   sendProgress(overview.SentToday, overview.DailyAllowance),
+		AccountInitial: accountInitial(overview.FromName, overview.EmailAddress),
 	}, nil
+}
+
+// sendProgress returns today's send count as a 0-100 percentage of the cap.
+func sendProgress(sent, allowance int) int {
+	if allowance <= 0 {
+		return 0
+	}
+
+	if sent >= allowance {
+		return 100
+	}
+
+	return sent * 100 / allowance
+}
+
+// accountInitial returns a single display glyph for the account avatar,
+// UTF-8 safe for names in any language.
+func accountInitial(fromName, email string) string {
+	for _, r := range fromName {
+		return string(r)
+	}
+
+	for _, r := range email {
+		return string(r)
+	}
+
+	return "账"
 }
 
 func (s *Server) outreachSettings(w http.ResponseWriter, r *http.Request) {
@@ -208,6 +247,87 @@ func (s *Server) outreachCampaigns(w http.ResponseWriter, r *http.Request) {
 
 	notice := fmt.Sprintf("已创建活动并导入 %d 个有效客户（每个商户只保留一个最优邮箱）", summary.Inserted)
 	redirectOutreach(w, r, "campaigns", notice, nil)
+}
+
+// outreachBatch creates one campaign from every selected (or all eligible) map
+// job so the user can blast their entire scraped list in one action.
+func (s *Server) outreachBatch(w http.ResponseWriter, r *http.Request) {
+	if !s.requireOutreachPost(w, r) {
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		redirectOutreach(w, r, "campaigns", "", err)
+
+		return
+	}
+
+	jobIDs := r.Form["job_ids"]
+
+	if r.Form.Get("all_jobs") == formOn {
+		jobIDs, err := s.eligibleJobIDs(r.Context())
+		if err != nil {
+			redirectOutreach(w, r, "campaigns", "", err)
+
+			return
+		}
+
+		s.createBatch(w, r, jobIDs)
+
+		return
+	}
+
+	s.createBatch(w, r, jobIDs)
+}
+
+func (s *Server) createBatch(w http.ResponseWriter, r *http.Request, jobIDs []string) {
+	input := outreach.CampaignInput{
+		Name:             r.Form.Get("name"),
+		ValueProposition: r.Form.Get("value_proposition"),
+		Proof:            r.Form.Get("proof"),
+		CallToAction:     r.Form.Get("call_to_action"),
+		Start:            r.Form.Get("start_now") == formOn,
+	}
+
+	campaign, summary, err := s.outreach.CreateCampaignFromJobs(r.Context(), &input, jobIDs)
+	if err != nil {
+		redirectOutreach(w, r, "campaigns", "", err)
+
+		return
+	}
+
+	if input.Start {
+		if err := s.outreach.SetCampaignStatus(r.Context(), campaign.ID, outreach.CampaignStatusActive); err != nil {
+			redirectOutreach(w, r, "campaigns", "", err)
+
+			return
+		}
+	}
+
+	notice := fmt.Sprintf(
+		"批量群发活动已创建：从 %d 个任务导入 %d 个有效客户",
+		len(jobIDs),
+		summary.Inserted,
+	)
+	redirectOutreach(w, r, "campaigns", notice, nil)
+}
+
+// eligibleJobIDs returns all completed map jobs that scraped emails.
+func (s *Server) eligibleJobIDs(ctx context.Context) ([]string, error) {
+	jobs, err := s.svc.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, 0, len(jobs))
+
+	for i := range jobs {
+		if jobs[i].Status == StatusOK && jobs[i].Data.Email {
+			ids = append(ids, jobs[i].ID)
+		}
+	}
+
+	return ids, nil
 }
 
 func (s *Server) outreachCampaign(w http.ResponseWriter, r *http.Request) {
@@ -376,6 +496,29 @@ func (s *Server) apiOutreachSuggest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderJSON(w, http.StatusOK, map[string]string{"suggestion": suggestion})
+}
+
+func (s *Server) apiOutreachOverview(w http.ResponseWriter, r *http.Request) {
+	if s.outreach == nil {
+		renderOutreachAPIError(w, errors.New("outreach module unavailable"))
+
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
+		return
+	}
+
+	overview, err := s.outreach.Overview(r.Context())
+	if err != nil {
+		renderOutreachAPIError(w, err)
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, overview)
 }
 
 func (s *Server) apiOutreachCampaigns(w http.ResponseWriter, r *http.Request) {

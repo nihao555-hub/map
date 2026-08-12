@@ -52,7 +52,6 @@
 
   function setRailPinned(pinned) {
     rail.classList.toggle('pinned', pinned);
-    rail.classList.toggle('collapsed', !pinned);
     try { localStorage.setItem('outreach-rail-pinned', pinned ? '1' : ''); } catch (e) { /* 忽略 */ }
   }
 
@@ -64,17 +63,51 @@
     if (localStorage.getItem('outreach-rail-pinned') === '1') setRailPinned(true);
   } catch (e) { /* 忽略 */ }
 
+  /* 侧边栏下拉菜单：fixed 定位以逃出收缩态的窄轨 */
+  function closeMenus() {
+    document.querySelectorAll('.rail-menu.open').forEach(function (m) { m.classList.remove('open'); });
+  }
+
+  document.querySelectorAll('[data-menu]').forEach(function (btn) {
+    btn.addEventListener('click', function (event) {
+      event.stopPropagation();
+      var menu = $(btn.getAttribute('data-menu'));
+      if (!menu) return;
+      var willOpen = !menu.classList.contains('open');
+      closeMenus();
+      if (!willOpen) return;
+
+      var rect = btn.getBoundingClientRect();
+      menu.style.left = Math.round(rect.left) + 'px';
+      // Account menu (bottom of rail) opens upward; others open downward.
+      if (btn.closest('.rail-bottom')) {
+        menu.style.top = 'auto';
+        menu.style.bottom = (window.innerHeight - Math.round(rect.top) + 6) + 'px';
+      } else {
+        menu.style.bottom = 'auto';
+        menu.style.top = (Math.round(rect.bottom) + 6) + 'px';
+      }
+      menu.classList.add('open');
+    });
+  });
+
+  document.addEventListener('click', function (event) {
+    if (!event.target.closest('.rail-menu')) closeMenus();
+  });
+
   /* ---------- 面板切换 ---------- */
 
+  var PANELS = ['overview', 'workspace', 'campaigns', 'settings'];
   var PANEL_TITLES = {
+    overview: '总览',
     workspace: '客户工作台',
     campaigns: '开发信活动',
     settings: '邮箱与 AI 设置'
   };
 
   function showPanel(name) {
-    if (!PANEL_TITLES[name]) name = 'workspace';
-    ['workspace', 'campaigns', 'settings'].forEach(function (p) {
+    if (!PANEL_TITLES[name]) name = 'overview';
+    PANELS.forEach(function (p) {
       var panel = $('panel-' + p);
       if (panel) panel.classList.toggle('active', p === name);
     });
@@ -85,10 +118,19 @@
     var url = new URL(window.location.href);
     url.searchParams.set('panel', name);
     history.replaceState(null, '', url.toString());
+
+    // Lazily load the workspace contact list the first time it's shown.
+    if (name === 'workspace' && !state.contactsLoaded) {
+      state.contactsLoaded = true;
+      loadContacts();
+    }
   }
 
   document.querySelectorAll('[data-panel-btn]').forEach(function (btn) {
-    btn.addEventListener('click', function () { showPanel(btn.getAttribute('data-panel-btn')); });
+    btn.addEventListener('click', function () {
+      closeMenus();
+      showPanel(btn.getAttribute('data-panel-btn'));
+    });
   });
 
   /* ---------- 联系人列表 ---------- */
@@ -307,15 +349,24 @@
     $('imap-port').value = option.dataset.imapPort;
   };
 
-  /* ---------- 初始化 ---------- */
+  /* ---------- 批量群发：全选任务开关 ---------- */
 
-  var initialPanel = document.body.getAttribute('data-panel') || 'workspace';
-  showPanel(initialPanel);
+  var allJobs = $('all-jobs');
+  if (allJobs) {
+    allJobs.addEventListener('change', function () {
+      var list = $('jobs-list');
+      if (list) list.classList.toggle('disabled', allJobs.checked);
+    });
+  }
+
+  /* ---------- 初始化 ---------- */
 
   var urlParams = new URLSearchParams(window.location.search);
   var presetCampaign = urlParams.get('campaign');
-  if (presetCampaign) $('wk-campaign').value = presetCampaign;
+  if (presetCampaign && $('wk-campaign')) $('wk-campaign').value = presetCampaign;
 
-  loadContacts();
+  var initialPanel = presetCampaign ? 'workspace' : (document.body.getAttribute('data-panel') || 'overview');
+  showPanel(initialPanel);
+
   refreshIcons();
 })();

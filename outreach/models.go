@@ -187,6 +187,29 @@ type Message struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+// Overview aggregates counters across every campaign for the dashboard.
+type Overview struct {
+	Campaigns       int `json:"campaigns"`
+	ActiveCampaigns int `json:"active_campaigns"`
+	Contacts        int `json:"contacts"`
+	Sent            int `json:"sent"`
+	Replied         int `json:"replied"`
+	Bounced         int `json:"bounced"`
+	Unsubscribed    int `json:"unsubscribed"`
+	Completed       int `json:"completed"`
+	HighIntent      int `json:"high_intent"`
+	Suppressed      int `json:"suppressed"`
+}
+
+// ReplyRate returns replied/contacted as a percentage.
+func (o *Overview) ReplyRate() float64 {
+	if o.Sent == 0 {
+		return 0
+	}
+
+	return float64(o.Replied) / float64(o.Sent) * 100
+}
+
 // CampaignStats aggregates per-campaign counters for the UI.
 type CampaignStats struct {
 	Contacts     int `json:"contacts"`

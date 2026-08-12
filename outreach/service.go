@@ -29,6 +29,21 @@ type SettingsView struct {
 	AIConfigured       bool `json:"ai_configured"`
 }
 
+// OverviewView is the dashboard payload: aggregate counters plus mailbox/AI
+// health, today's sending progress and the latest inbound messages.
+type OverviewView struct {
+	Overview
+	SMTPConfigured bool      `json:"smtp_configured"`
+	IMAPConfigured bool      `json:"imap_configured"`
+	AIConfigured   bool      `json:"ai_configured"`
+	EmailAddress   string    `json:"email_address"`
+	FromName       string    `json:"from_name"`
+	SenderCompany  string    `json:"sender_company"`
+	SentToday      int       `json:"sent_today"`
+	DailyAllowance int       `json:"daily_allowance"`
+	RecentInbound  []Message `json:"recent_inbound"`
+}
+
 // ContactThreadView is everything the workspace detail pane needs.
 type ContactThreadView struct {
 	Contact      Contact   `json:"contact"`
@@ -65,11 +80,23 @@ func NewService(store *Store, engine *Engine, dataFolder string) *Service {
 	}
 }
 
-// CreateCampaignFromJob creates a draft campaign and imports recipients from
-// an existing Google Maps web job CSV.
+// CreateCampaignFromJob creates a draft campaign and imports recipients from a
+// single Google Maps web job CSV.
 func (s *Service) CreateCampaignFromJob(
 	ctx context.Context,
 	input *CampaignInput,
+) (CampaignView, ImportSummary, error) {
+	return s.CreateCampaignFromJobs(ctx, input, []string{input.JobID})
+}
+
+// CreateCampaignFromJobs creates one draft campaign and imports recipients
+// from every provided map job CSV. This powers "batch outreach" across all
+// scraped leads: contacts are de-duplicated within the campaign and against
+// the global suppression list, and one best recipient is kept per business.
+func (s *Service) CreateCampaignFromJobs(
+	ctx context.Context,
+	input *CampaignInput,
+	jobIDs []string,
 ) (CampaignView, ImportSummary, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -81,9 +108,9 @@ func (s *Service) CreateCampaignFromJob(
 		return CampaignView{}, ImportSummary{}, errors.New("value proposition is required")
 	}
 
-	jobID := strings.TrimSpace(input.JobID)
-	if _, err := uuid.Parse(jobID); err != nil {
-		return CampaignView{}, ImportSummary{}, errors.New("invalid map job ID")
+	cleanJobIDs, err := sanitizeJobIDs(jobIDs)
+	if err != nil {
+		return CampaignView{}, ImportSummary{}, err
 	}
 
 	callToAction := strings.TrimSpace(input.CallToAction)
@@ -95,7 +122,7 @@ func (s *Service) CreateCampaignFromJob(
 		ID:               uuid.NewString(),
 		Name:             name,
 		Status:           CampaignStatusDraft,
-		JobID:            jobID,
+		JobID:            cleanJobIDs[0],
 		ValueProposition: valueProposition,
 		Proof:            strings.TrimSpace(input.Proof),
 		CallToAction:     callToAction,
@@ -106,36 +133,135 @@ func (s *Service) CreateCampaignFromJob(
 		return CampaignView{}, ImportSummary{}, err
 	}
 
-	csvPath := filepath.Join(s.dataFolder, jobID+".csv")
+	var total ImportSummary
 
-	file, err := os.Open(csvPath)
-	if err != nil {
-		_ = s.store.DeleteCampaign(ctx, campaign.ID)
+	for _, jobID := range cleanJobIDs {
+		summary, err := s.importJob(ctx, campaign.ID, jobID)
+		if err != nil {
+			_ = s.store.DeleteCampaign(ctx, campaign.ID)
 
-		return CampaignView{}, ImportSummary{}, fmt.Errorf("open map job results: %w", err)
+			return CampaignView{}, ImportSummary{}, err
+		}
+
+		total.Rows += summary.Rows
+		total.Emails += summary.Emails
+		total.Inserted += summary.Inserted
+		total.Skipped += summary.Skipped
 	}
 
-	defer file.Close()
-
-	summary, err := ImportCSV(ctx, s.store, campaign.ID, file, s.engine.now().UTC())
-	if err != nil {
+	if total.Inserted == 0 {
 		_ = s.store.DeleteCampaign(ctx, campaign.ID)
 
-		return CampaignView{}, ImportSummary{}, err
-	}
-
-	if summary.Inserted == 0 {
-		_ = s.store.DeleteCampaign(ctx, campaign.ID)
-
-		return CampaignView{}, summary, errors.New("no valid email addresses found in this map job")
+		return CampaignView{}, total, errors.New("no valid, non-suppressed email addresses found in the selected map jobs")
 	}
 
 	stats, err := s.store.Stats(ctx, campaign.ID)
 	if err != nil {
-		return CampaignView{}, summary, err
+		return CampaignView{}, total, err
 	}
 
-	return CampaignView{Campaign: campaign, Stats: stats}, summary, nil
+	return CampaignView{Campaign: campaign, Stats: stats}, total, nil
+}
+
+func (s *Service) importJob(ctx context.Context, campaignID, jobID string) (ImportSummary, error) {
+	csvPath := filepath.Join(s.dataFolder, jobID+".csv")
+
+	file, err := os.Open(csvPath)
+	if err != nil {
+		return ImportSummary{}, fmt.Errorf("open map job %s results: %w", jobID, err)
+	}
+
+	defer file.Close()
+
+	return ImportCSV(ctx, s.store, campaignID, file, s.engine.now().UTC())
+}
+
+func sanitizeJobIDs(jobIDs []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(jobIDs))
+	clean := make([]string, 0, len(jobIDs))
+
+	for _, jobID := range jobIDs {
+		jobID = strings.TrimSpace(jobID)
+		if jobID == "" {
+			continue
+		}
+
+		if _, err := uuid.Parse(jobID); err != nil {
+			return nil, errors.New("invalid map job ID")
+		}
+
+		if _, dup := seen[jobID]; dup {
+			continue
+		}
+
+		seen[jobID] = struct{}{}
+
+		clean = append(clean, jobID)
+	}
+
+	if len(clean) == 0 {
+		return nil, errors.New("select at least one completed map job")
+	}
+
+	return clean, nil
+}
+
+// Overview returns dashboard aggregates, mailbox/AI health and recent inbound.
+func (s *Service) Overview(ctx context.Context) (OverviewView, error) {
+	overview, err := s.store.Overview(ctx)
+	if err != nil {
+		return OverviewView{}, err
+	}
+
+	settings, err := s.store.Settings(ctx)
+	if err != nil {
+		return OverviewView{}, err
+	}
+
+	recent, err := s.store.RecentInbound(ctx, 8)
+	if err != nil {
+		return OverviewView{}, err
+	}
+
+	now := s.engine.now().UTC()
+
+	sentToday, err := s.store.SentToday(ctx, startOfLocalDay(now, settings.DefaultTimezone))
+	if err != nil {
+		return OverviewView{}, err
+	}
+
+	firstSent, err := s.store.FirstSentAt(ctx)
+	if err != nil {
+		return OverviewView{}, err
+	}
+
+	daysActive := 0
+
+	if !firstSent.IsZero() {
+		if d := int(now.Sub(firstSent).Hours() / 24); d > 0 {
+			daysActive = d
+		}
+	}
+
+	return OverviewView{
+		Overview:       overview,
+		SMTPConfigured: settings.SMTPConfigured(),
+		IMAPConfigured: settings.IMAPConfigured(),
+		AIConfigured:   settings.AIConfigured(),
+		EmailAddress:   settings.EmailAddress,
+		FromName:       settings.FromName,
+		SenderCompany:  settings.SenderCompany,
+		SentToday:      sentToday,
+		DailyAllowance: settings.AllowedToday(daysActive),
+		RecentInbound:  recent,
+	}, nil
+}
+
+func startOfLocalDay(now time.Time, timezone string) time.Time {
+	location := LoadLocation(timezone, "UTC")
+	local := now.In(location)
+
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
 }
 
 // Campaigns returns all campaigns with aggregate counters.
