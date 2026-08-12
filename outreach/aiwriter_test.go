@@ -116,6 +116,40 @@ func TestClassifyIntentAI(t *testing.T) {
 	}
 }
 
+func TestEvaluateEmailParsesAndClamps(t *testing.T) {
+	t.Parallel()
+
+	ai := &fakeAI{response: "```json\n{\"overall\": 86, \"subject_appeal\": 85, \"relevance\": 90, " +
+		"\"personalization\": 80, \"call_to_action\": 120, \"readability\": 88, " +
+		"\"suggestion\": \"下次跟进提供更具体的案例或数据\"}\n```"}
+
+	facts := aiTestFacts()
+
+	evaluation, err := outreach.EvaluateEmail(
+		context.Background(),
+		ai,
+		facts.Settings,
+		facts.Contact,
+		"Quick idea to help Acme Corp",
+		"Hi Michael, ...",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if evaluation.Overall != 86 || evaluation.Relevance != 90 {
+		t.Fatalf("unexpected evaluation: %+v", evaluation)
+	}
+
+	if evaluation.CallToAction != 100 {
+		t.Fatalf("score above 100 should clamp to 100, got %d", evaluation.CallToAction)
+	}
+
+	if evaluation.Grade() != "优秀" {
+		t.Fatalf("overall 86 should grade 优秀, got %q", evaluation.Grade())
+	}
+}
+
 func TestSuggestReplyNeedsInbound(t *testing.T) {
 	t.Parallel()
 
