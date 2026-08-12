@@ -356,20 +356,6 @@
       factItem('git-branch', '当前状态', STATUS_TEXT[c.status] || c.status) +
       factItem('calendar-clock', '下一封', nextInfo);
 
-    // 活动记录（由消息与状态派生）
-    var activity = $('th-activity');
-    if (view.messages && view.messages.length) {
-      var rows = view.messages.map(function (m) {
-        var label = m.direction === 'out'
-          ? (m.step != null && m.step >= 0 ? '发出开发信 #' + (m.step + 1) : '发出回信')
-          : (m.kind === 'bounce' ? '收到退信' : (m.kind === 'unsubscribe' ? '客户退订' : '收到客户回复'));
-        return '<div class="activity-row"><time>' + esc(fmtTime(m.created_at)) + '</time><span>' + esc(label) + '：' + esc(m.subject || '') + '</span></div>';
-      });
-      activity.innerHTML = rows.join('');
-    } else {
-      activity.innerHTML = '<div class="wk-hint">暂无活动记录。</div>';
-    }
-
     // 撰写框可用性
     var compose = $('th-compose');
     if (view.can_reply) { compose.classList.remove('disabled'); } else { compose.classList.add('hidden'); }

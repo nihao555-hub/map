@@ -180,34 +180,6 @@
         </article>
       </div>
 
-      <article class="outreach-card">
-        <div class="card-heading"><div><p class="eyebrow">活动</p><h2>各活动表现</h2></div></div>
-        {{if .Campaigns}}
-        <div class="contacts-table-wrap">
-          <table class="ov-table">
-            <thead><tr><th>活动</th><th>状态</th><th>联系人</th><th>已触达</th><th>回复</th><th>回复率</th><th>退信</th></tr></thead>
-            <tbody>
-              {{range .Campaigns}}
-              <tr>
-                <td><a class="ov-camp-link" href="/outreach?panel=workspace&campaign={{.ID}}"><b>{{.Name}}</b></a></td>
-                <td><span class="status-pill {{.Status}}">{{if eq .Status "active"}}运行中{{else if eq .Status "paused"}}已暂停{{else if eq .Status "done"}}已完成{{else}}草稿{{end}}</span></td>
-                <td>{{.Stats.Contacts}}</td>
-                <td>{{.Stats.Sent}}</td>
-                <td>{{.Stats.Replied}}</td>
-                <td>{{printf "%.1f" .Stats.ReplyRate}}%</td>
-                <td>{{.Stats.Bounced}}</td>
-              </tr>
-              {{end}}
-            </tbody>
-          </table>
-        </div>
-        {{else}}
-        <div class="empty-panel compact">
-          <i data-lucide="mail-plus"></i>
-          <p>还没有活动。点“批量群发开发信”，选择已抓取的地图任务一键创建。</p>
-        </div>
-        {{end}}
-      </article>
     </section>
 
     <!-- ===================== 面板一：客户工作台 ===================== -->
@@ -284,8 +256,6 @@
             <div class="conv-tabs">
               <button type="button" class="conv-tab active" data-conv-tab="history">沟通历史</button>
               <button type="button" class="conv-tab" data-conv-tab="detail">客户详情</button>
-              <button type="button" class="conv-tab" data-conv-tab="notes">相关笔记</button>
-              <button type="button" class="conv-tab" data-conv-tab="activity">活动记录</button>
             </div>
 
             <div class="conv-scroll">
@@ -295,12 +265,6 @@
               </div>
               <div class="conv-tabpane" data-conv-pane="detail">
                 <div class="lead-facts" id="th-facts"></div>
-              </div>
-              <div class="conv-tabpane" data-conv-pane="notes">
-                <div class="conv-note-empty"><i data-lucide="sticky-note"></i><p>暂无笔记。记录本客户的沟通要点，团队协作时更清晰。</p></div>
-              </div>
-              <div class="conv-tabpane" data-conv-pane="activity">
-                <div id="th-activity" class="activity-list"></div>
               </div>
             </div>
 

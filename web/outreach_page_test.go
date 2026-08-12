@@ -58,7 +58,7 @@ func TestOutreachPageRendersFully(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"panel-overview",
-		"各活动表现",
+		"最近客户往来",
 		"批量群发",
 		`src="/static/js/outreach.js"`,
 		"</html>",
