@@ -1302,6 +1302,7 @@
 .jobs-picker-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
@@ -1327,9 +1328,9 @@
 }
 
 .job-opt:hover { background: var(--outreach-blue-soft); }
-.job-opt input { width: auto; }
-.job-opt span { flex: 1; font-size: 13px; font-weight: 600; color: var(--outreach-ink); }
-.job-opt small { color: var(--outreach-muted); font-size: 11px; }
+.job-opt input { width: auto; flex: none; }
+.job-opt span { overflow: hidden; min-width: 0; flex: 1; font-size: 13px; font-weight: 600; color: var(--outreach-ink); text-overflow: ellipsis; white-space: nowrap; }
+.job-opt small { flex: none; color: var(--outreach-muted); font-size: 11px; }
 .jobs-list.disabled { opacity: 0.45; pointer-events: none; }
 
 /* ============ 侧边栏品牌与账户（OutreachAI） ============ */
@@ -1472,21 +1473,27 @@ body.ws-full .o-main { padding: 16px; }
 
 .cust-tabs {
   display: flex;
+  overflow-x: auto;
   gap: 2px;
   padding: 0 10px;
   border-bottom: 1px solid var(--outreach-line);
+  scrollbar-width: none;
 }
+
+.cust-tabs::-webkit-scrollbar { display: none; }
 
 .cust-tab {
   position: relative;
-  padding: 10px 8px;
+  flex: none;
+  padding: 10px 7px;
   cursor: pointer;
   color: var(--outreach-muted);
   border: 0;
   background: transparent;
   font: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .cust-tab .tab-count { color: #9aa4b8; font-size: 11px; }
@@ -1537,9 +1544,9 @@ body.ws-full .o-main { padding: 16px; }
   font-weight: 700;
 }
 
-.cust-main { min-width: 0; flex: 1; }
-.cust-name { overflow: hidden; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.cust-company { overflow: hidden; margin-top: 2px; color: var(--outreach-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.cust-main { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.cust-name { overflow: hidden; max-width: 100%; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.cust-company { overflow: hidden; max-width: 100%; margin-top: 2px; color: var(--outreach-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 
 .cust-meta { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 6px; }
 .cust-date { color: #9aa4b8; font-size: 11px; }
@@ -1644,7 +1651,7 @@ body.ws-full .o-main { padding: 16px; }
 
 .conv-whotext { min-width: 0; }
 .conv-nameline { display: flex; align-items: center; gap: 7px; }
-.conv-nameline b { overflow: hidden; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.conv-nameline b { overflow: hidden; min-width: 0; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
 .conv-linkedin { width: 15px; color: #2f6feb; }
 .conv-sub { overflow: hidden; margin-top: 2px; color: var(--outreach-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -1717,9 +1724,9 @@ body.ws-full .o-main { padding: 16px; }
   padding: 11px 13px 6px;
 }
 
-.tl-subject { overflow: hidden; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.tl-subject { overflow: hidden; min-width: 0; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .tl-sent { flex: none; padding: 2px 8px; border-radius: 999px; background: #e5f8ef; color: #0b7a51; font-size: 10px; font-weight: 800; }
-.tl-snippet { padding: 0 13px 10px; color: #56617a; font-size: 12.5px; line-height: 1.6; }
+.tl-snippet { overflow-wrap: anywhere; padding: 0 13px 10px; color: #56617a; font-size: 12.5px; line-height: 1.6; }
 
 .tl-toggle {
   display: inline-flex;
@@ -1738,7 +1745,7 @@ body.ws-full .o-main { padding: 16px; }
 .tl-toggle svg { width: 13px; }
 .tl-full { display: none; padding: 0 13px 12px; }
 .tl-full.open { display: block; }
-.tl-full pre { overflow-x: auto; margin: 0; padding: 11px; border-radius: 8px; background: #f7f8fb; font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; }
+.tl-full pre { overflow-wrap: anywhere; word-break: break-word; margin: 0; padding: 11px; border-radius: 8px; background: #f7f8fb; font-family: inherit; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; }
 
 .conv-end { padding: 6px 0 2px; color: #aab3c4; font-size: 11px; text-align: center; }
 
@@ -1821,7 +1828,7 @@ body.ws-full .o-main { padding: 16px; }
 
 .ai-mail { padding: 14px 15px; }
 .ai-mail-subject { margin-bottom: 10px; font-size: 13px; font-weight: 700; color: var(--outreach-ink); }
-.ai-mail-body { overflow-x: auto; max-height: 320px; margin: 0; font-family: inherit; font-size: 12.5px; line-height: 1.75; white-space: pre-wrap; color: #3f4a60; }
+.ai-mail-body { overflow-y: auto; overflow-wrap: anywhere; word-break: break-word; max-height: 320px; margin: 0; font-family: inherit; font-size: 12.5px; line-height: 1.75; white-space: pre-wrap; color: #3f4a60; }
 
 .ai-eval-body { padding: 15px; }
 .ai-eval-hint { padding: 20px 0; color: var(--outreach-muted); font-size: 12.5px; text-align: center; }
@@ -1871,8 +1878,9 @@ body.ws-full .o-main { padding: 16px; }
 }
 
 .ai-suggest svg { width: 15px; flex: none; color: var(--outreach-blue); }
+.ai-suggest > div { min-width: 0; }
 .ai-suggest b { display: block; margin-bottom: 3px; font-size: 12px; color: #2f4a86; }
-.ai-suggest p { margin: 0; font-size: 12px; line-height: 1.6; color: #3f4a60; }
+.ai-suggest p { overflow-wrap: anywhere; margin: 0; font-size: 12px; line-height: 1.6; color: #3f4a60; }
 
 /* ============ 响应式 ============ */
 
@@ -1881,6 +1889,8 @@ body.ws-full .o-main { padding: 16px; }
   .campaigns-side { position: static; }
   .wk3 { grid-template-columns: 300px minmax(0, 1fr); }
   .ai-pane { display: none; }
+  .cust-tabs { padding: 0 6px; }
+  .cust-tab { padding: 10px 5px; font-size: 11.5px; }
 }
 
 @media (max-width: 900px) {
