@@ -34,12 +34,32 @@ type emptyInbox struct{}
 func (i *emptyInbox) Poll(
 	context.Context,
 	*outreach.Settings,
-	uint32,
-) ([]outreach.InboundEmail, uint32, error) {
-	return nil, 0, nil
+	outreach.InboxCursor,
+) ([]outreach.InboundEmail, outreach.InboxCursor, error) {
+	return nil, outreach.InboxCursor{}, nil
 }
 
 func (i *emptyInbox) Test(context.Context, *outreach.Settings) error {
+	return nil
+}
+
+type scriptedInbox struct {
+	gotCursor outreach.InboxCursor
+	messages  []outreach.InboundEmail
+	next      outreach.InboxCursor
+}
+
+func (i *scriptedInbox) Poll(
+	_ context.Context,
+	_ *outreach.Settings,
+	cursor outreach.InboxCursor,
+) ([]outreach.InboundEmail, outreach.InboxCursor, error) {
+	i.gotCursor = cursor
+
+	return i.messages, i.next, nil
+}
+
+func (i *scriptedInbox) Test(context.Context, *outreach.Settings) error {
 	return nil
 }
 
@@ -126,5 +146,124 @@ func TestEngineTickSendsOneDueMessageAndAdvancesSequence(t *testing.T) {
 
 	if len(messages) != 1 || messages[0].Direction != outreach.DirectionOut {
 		t.Fatalf("outgoing message not persisted: %+v", messages)
+	}
+}
+
+func TestEngineSyncInboxRecordsReplyAndPersistsCursor(t *testing.T) {
+	t.Parallel()
+
+	store, err := outreach.NewStore(filepath.Join(t.TempDir(), "outreach.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	ctx := context.Background()
+	settings := outreach.DefaultSettings()
+	settings.EmailAddress = testSenderEmail
+	settings.Password = "in-memory-test-secret"
+	settings.IMAPHost = "imap.example.com"
+	settings.IMAPPort = 993
+	// SMTP intentionally left unconfigured so the tick only exercises inbox sync.
+
+	if err := store.SaveSettings(ctx, &settings); err != nil {
+		t.Fatal(err)
+	}
+
+	campaign := outreach.Campaign{
+		ID:               uuid.NewString(),
+		Name:             "Inbox campaign",
+		Status:           outreach.CampaignStatusActive,
+		ValueProposition: "help clinics grow",
+		CallToAction:     "Worth a chat?",
+		Sequence:         outreach.DefaultSequence(),
+	}
+	if err := store.CreateCampaign(ctx, &campaign); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.AddContacts(ctx, []outreach.Contact{{
+		CampaignID: campaign.ID,
+		Email:      "owner@example.org",
+		Name:       "Example Dental",
+		Status:     outreach.ContactStatusActive,
+		NextSendAt: time.Now().UTC(),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	contacts, err := store.Contacts(ctx, campaign.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contact := contacts[0]
+
+	// Simulate an already-sent opener so the inbound reply matches by thread.
+	outbound := outreach.Message{
+		CampaignID: campaign.ID,
+		ContactID:  contact.ID,
+		Direction:  outreach.DirectionOut,
+		Step:       0,
+		Subject:    "Quick question about Example Dental",
+		Body:       "opener",
+		MessageID:  outreach.NewMessageID(settings.EmailAddress),
+		FromEmail:  settings.EmailAddress,
+		ToEmail:    contact.Email,
+		CreatedAt:  time.Now().UTC(),
+	}
+	if err := store.RecordSent(ctx, &contact, &outbound, time.Time{}, true); err != nil {
+		t.Fatal(err)
+	}
+
+	inbox := &scriptedInbox{
+		messages: []outreach.InboundEmail{{
+			UID:       7,
+			MessageID: outreach.NewMessageID(contact.Email),
+			InReplyTo: []string{outbound.MessageID},
+			FromEmail: contact.Email,
+			Subject:   "Re: Quick question about Example Dental",
+			Body:      "Please send your price list and MOQ.",
+			Date:      time.Now().UTC(),
+		}},
+		next: outreach.InboxCursor{UIDValidity: 42, LastUID: 7},
+	}
+
+	engine := outreach.NewEngine(store, &fakeSender{}, inbox)
+
+	report, err := engine.Tick(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if report.Replies != 1 {
+		t.Fatalf("expected one reply recorded, got %+v", report)
+	}
+
+	updated, err := store.Contact(ctx, contact.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if updated.Status != outreach.ContactStatusReplied {
+		t.Fatalf("contact should be marked replied, got %s", updated.Status)
+	}
+
+	if updated.IntentScore < 80 || updated.IntentLabel != outreach.IntentHigh {
+		t.Fatalf("price question should score high intent, got %d/%s", updated.IntentScore, updated.IntentLabel)
+	}
+
+	cursor, err := store.Meta(ctx, "imap_last_uid")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cursor != "42:7" {
+		t.Fatalf("cursor not persisted with UIDVALIDITY, got %q", cursor)
 	}
 }

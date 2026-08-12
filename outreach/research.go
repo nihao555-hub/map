@@ -22,6 +22,7 @@ const (
 var (
 	scriptStylePattern = regexp.MustCompile(`(?is)<(script|style|noscript|svg|head)[^>]*>.*?</\s*(script|style|noscript|svg|head)\s*>`)
 	tagPattern         = regexp.MustCompile(`(?s)<[^>]*>`)
+	blockBreakPattern  = regexp.MustCompile(`(?i)</(p|div|tr|li|blockquote|h[1-6])>|<br\s*/?>`)
 	titlePattern       = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 	metaDescPattern    = regexp.MustCompile(`(?is)<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']`)
 	metaDescPatternAlt = regexp.MustCompile(`(?is)<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']`)

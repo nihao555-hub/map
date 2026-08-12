@@ -133,6 +133,10 @@ func newSMTPClient(settings *Settings) (*mail.Client, error) {
 		mail.WithUsername(settings.EmailAddress),
 		mail.WithPassword(settings.Password),
 		mail.WithTimeout(20 * time.Second),
+		// go-mail defaults to no authentication even when a username and
+		// password are set. Enterprise SMTP relays reject unauthenticated
+		// mail, so negotiate the best mechanism the server advertises.
+		mail.WithSMTPAuth(mail.SMTPAuthAutoDiscover),
 	}
 
 	switch settings.SMTPTLS {

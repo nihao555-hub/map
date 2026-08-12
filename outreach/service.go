@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -253,7 +254,34 @@ func (s *Service) SaveSettings(ctx context.Context, settings *Settings) error {
 		return errors.New("daily cap must be between 1 and 500")
 	}
 
+	// Reject malformed send days/timezone: an invalid value would otherwise
+	// make the scheduler fall through to sending immediately, bypassing the
+	// weekday and time-window guards.
+	if err := validateSendDays(settings.SendDays); err != nil {
+		return err
+	}
+
+	if settings.DefaultTimezone != "" {
+		if _, err := time.LoadLocation(settings.DefaultTimezone); err != nil {
+			return fmt.Errorf("invalid default timezone %q", settings.DefaultTimezone)
+		}
+	}
+
 	return s.store.SaveSettings(ctx, settings)
+}
+
+func validateSendDays(days string) error {
+	if days == "" {
+		return errors.New("send days must contain at least one weekday (1-7)")
+	}
+
+	for _, r := range days {
+		if r < '1' || r > '7' {
+			return errors.New("send days must only contain digits 1-7 (1=Monday)")
+		}
+	}
+
+	return nil
 }
 
 // TestConnections verifies SMTP/IMAP without sending email.

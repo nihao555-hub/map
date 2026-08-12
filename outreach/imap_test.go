@@ -39,3 +39,17 @@ func TestClassifyInboundRecognizesOptOutAndBounce(t *testing.T) {
 		t.Fatalf("bounce classified as %q", got)
 	}
 }
+
+func TestClassifyInboundTreatsDelayAsNotice(t *testing.T) {
+	t.Parallel()
+
+	delay := outreach.InboundEmail{
+		FromEmail: "mailer-daemon@example.com",
+		Subject:   "Delivery delay notification",
+		Body:      "Your message is still being delivered.",
+	}
+
+	if got := outreach.ClassifyInbound(&delay); got != outreach.InboundKindNotice {
+		t.Fatalf("transient delay classified as %q, want notice", got)
+	}
+}

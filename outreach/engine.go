@@ -407,9 +407,9 @@ func (e *Engine) syncInboxIfDue(
 		return report, err
 	}
 
-	cursor, _ := strconv.ParseUint(cursorValue, 10, 32)
+	cursor := parseInboxCursor(cursorValue)
 
-	inbound, lastUID, err := e.inbox.Poll(ctx, settings, uint32(cursor))
+	inbound, nextCursor, err := e.inbox.Poll(ctx, settings, cursor)
 	if err != nil {
 		return report, err
 	}
@@ -467,20 +467,22 @@ func (e *Engine) syncInboxIfDue(
 			return report, err
 		}
 
-		e.assessIntent(ctx, settings, &contact, &message)
-
 		switch kind {
 		case InboundKindBounce:
 			report.Bounces++
 		case InboundKindUnsubscribe:
 			report.Unsubscribed++
+		case InboundKindNotice:
+			// Transient delivery notice: recorded, but not an actionable reply.
 		default:
+			e.assessIntent(ctx, settings, &contact, &message)
+
 			report.Replies++
 		}
 	}
 
-	if uint64(lastUID) > cursor {
-		if err := e.store.SetMeta(ctx, metaInboxUID, strconv.FormatUint(uint64(lastUID), 10)); err != nil {
+	if nextCursor != cursor {
+		if err := e.store.SetMeta(ctx, metaInboxUID, formatInboxCursor(nextCursor)); err != nil {
 			return report, err
 		}
 	}
@@ -490,6 +492,34 @@ func (e *Engine) syncInboxIfDue(
 	}
 
 	return report, nil
+}
+
+// parseInboxCursor decodes a "uidvalidity:uid" meta value. A legacy bare UID
+// or unpardsable value yields validity 0, which forces one safe recent-window
+// rescan on the next poll.
+func parseInboxCursor(value string) InboxCursor {
+	if value == "" {
+		return InboxCursor{}
+	}
+
+	var cursor InboxCursor
+
+	if validity, uid, ok := strings.Cut(value, ":"); ok {
+		if v, err := strconv.ParseUint(validity, 10, 32); err == nil {
+			cursor.UIDValidity = uint32(v)
+		}
+
+		if u, err := strconv.ParseUint(uid, 10, 32); err == nil {
+			cursor.LastUID = uint32(u)
+		}
+	}
+
+	return cursor
+}
+
+func formatInboxCursor(cursor InboxCursor) string {
+	return strconv.FormatUint(uint64(cursor.UIDValidity), 10) + ":" +
+		strconv.FormatUint(uint64(cursor.LastUID), 10)
 }
 
 // assessIntent scores the contact from the inbound message: heuristics first,
@@ -634,6 +664,15 @@ func (e *Engine) Reply(ctx context.Context, contactID int64, body string) (Messa
 
 	if contact.Status == ContactStatusBounced || contact.Status == ContactStatusUnsubscribed {
 		return Message{}, fmt.Errorf("cannot reply to contact with status %s", contact.Status)
+	}
+
+	suppressed, err := e.store.IsSuppressed(ctx, contact.Email)
+	if err != nil {
+		return Message{}, err
+	}
+
+	if suppressed {
+		return Message{}, errors.New("this address is on the suppression list (bounced or unsubscribed)")
 	}
 
 	settings, err := e.store.Settings(ctx)

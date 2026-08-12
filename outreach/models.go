@@ -45,6 +45,10 @@ const (
 	InboundKindReply       = "reply"
 	InboundKindBounce      = "bounce"
 	InboundKindUnsubscribe = "unsubscribe"
+	// InboundKindNotice is a transient automated notice (e.g. a delivery-delay
+	// warning) that is recorded but must not stop the sequence or suppress the
+	// address.
+	InboundKindNotice = "notice"
 )
 
 // ErrNotFound is returned when a requested record does not exist.

@@ -13,13 +13,16 @@ import (
 // 内部强制保留列：结果地图与 places 接口解析 CSV 时依赖它们，
 // 即使用户在深度模式里取消勾选也必须写出，否则前端表格/地图会失效。
 var forcedColumns = map[string]bool{
-	"input_id": true,
-	"link":     true,
-	"title":    true,
-	"latitude": true,
+	"input_id":  true,
+	"link":      true,
+	"title":     true,
+	"latitude":  true,
 	"longitude": true,
-	"cid":      true,
-	"place_id": true,
+	"cid":       true,
+	"place_id":  true,
+	// timezone is always written so the outreach module can send during the
+	// lead's local morning even in fast mode or with a custom column set.
+	"timezone": true,
 }
 
 // 快速模式必要列（对客户有用的核心字段）

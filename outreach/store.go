@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -50,14 +51,28 @@ type Store struct {
 
 // NewStore opens (or creates) the outreach SQLite database.
 func NewStore(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+	// PRAGMAs such as foreign_keys and busy_timeout are per-connection, so
+	// they are passed through the DSN. Otherwise a rotated pooled connection
+	// would silently drop foreign-key enforcement and break cascade deletes.
+	dsn := "file:" + path + "?" + url.Values{
+		"_pragma": []string{
+			"busy_timeout(5000)",
+			"journal_mode(WAL)",
+			"synchronous(NORMAL)",
+			"foreign_keys(1)",
+		},
+	}.Encode()
+
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open outreach database: %w", err)
 	}
 
+	// Pin to a single connection: SQLite handles one writer at a time and
+	// this keeps PRAGMA state stable. No lifetime rotation.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetConnMaxLifetime(0)
 
 	store := &Store{db: db}
 
@@ -71,17 +86,8 @@ func NewStore(path string) (*Store, error) {
 }
 
 func (s *Store) initialize() error {
-	pragmas := []string{
-		"PRAGMA busy_timeout = 5000",
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA synchronous = NORMAL",
-		"PRAGMA foreign_keys = ON",
-	}
-
-	for _, statement := range pragmas {
-		if _, err := s.db.Exec(statement); err != nil {
-			return fmt.Errorf("configure outreach database: %w", err)
-		}
+	if err := s.db.Ping(); err != nil {
+		return fmt.Errorf("configure outreach database: %w", err)
 	}
 
 	const schema = `
@@ -530,6 +536,7 @@ func (s *Store) DueContacts(ctx context.Context, now time.Time, limit int) ([]Co
 FROM outreach_contacts c
 JOIN outreach_campaigns p ON p.id = c.campaign_id
 WHERE c.status = ? AND c.next_send_at <= ? AND p.status = ?
+	AND NOT EXISTS (SELECT 1 FROM outreach_suppressions s WHERE s.email = c.email)
 ORDER BY c.next_send_at, c.id
 LIMIT ?`
 
@@ -779,6 +786,16 @@ func (s *Store) RecordInbound(ctx context.Context, contact *Contact, message *Me
 		return err
 	}
 
+	// A transient notice (e.g. a delivery-delay warning) is recorded for the
+	// history but must not change the contact's state or suppress the address.
+	if message.Kind == InboundKindNotice {
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit inbound notice: %w", err)
+		}
+
+		return nil
+	}
+
 	status := ContactStatusReplied
 	if message.Kind == InboundKindBounce {
 		status = ContactStatusBounced
@@ -788,32 +805,50 @@ func (s *Store) RecordInbound(ctx context.Context, contact *Contact, message *Me
 		status = ContactStatusUnsubscribed
 	}
 
+	now := time.Now().UTC().Unix()
+
+	// Never downgrade a compliance-terminal state: a later ordinary reply must
+	// not flip an unsubscribed or bounced contact back to "replied".
 	if _, err := tx.ExecContext(
 		ctx,
 		`UPDATE outreach_contacts
 		 SET status = ?, last_message_id = ?, updated_at = ?
-		 WHERE id = ?`,
+		 WHERE id = ? AND status NOT IN (?, ?)`,
 		status,
 		message.MessageID,
-		time.Now().UTC().Unix(),
+		now,
 		contact.ID,
+		ContactStatusUnsubscribed,
+		ContactStatusBounced,
 	); err != nil {
 		return fmt.Errorf("stop outreach contact after inbound message: %w", err)
 	}
 
 	if message.Kind == InboundKindBounce || message.Kind == InboundKindUnsubscribe {
+		email := normalizeEmail(contact.Email)
+
 		const suppress = `
 INSERT INTO outreach_suppressions(email, reason, created_at) VALUES(?, ?, ?)
 ON CONFLICT(email) DO UPDATE SET reason = excluded.reason`
 
+		if _, err := tx.ExecContext(ctx, suppress, email, message.Kind, now); err != nil {
+			return fmt.Errorf("suppress outreach contact: %w", err)
+		}
+
+		// Stop the same address everywhere: a person who bounced or opted out
+		// in one campaign must not keep receiving mail from another.
 		if _, err := tx.ExecContext(
 			ctx,
-			suppress,
-			normalizeEmail(contact.Email),
-			message.Kind,
-			time.Now().UTC().Unix(),
+			`UPDATE outreach_contacts
+			 SET status = ?, updated_at = ?
+			 WHERE email = ? AND status IN (?, ?)`,
+			status,
+			now,
+			email,
+			ContactStatusActive,
+			ContactStatusCompleted,
 		); err != nil {
-			return fmt.Errorf("suppress outreach contact: %w", err)
+			return fmt.Errorf("stop suppressed address across campaigns: %w", err)
 		}
 	}
 
@@ -822,6 +857,27 @@ ON CONFLICT(email) DO UPDATE SET reason = excluded.reason`
 	}
 
 	return nil
+}
+
+// IsSuppressed reports whether an email is on the global suppression list
+// (previously bounced or unsubscribed).
+func (s *Store) IsSuppressed(ctx context.Context, email string) (bool, error) {
+	var exists int
+
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT 1 FROM outreach_suppressions WHERE email = ?",
+		normalizeEmail(email),
+	).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, fmt.Errorf("check suppression: %w", err)
+	}
+
+	return true, nil
 }
 
 // Messages lists messages, optionally constrained to one campaign.

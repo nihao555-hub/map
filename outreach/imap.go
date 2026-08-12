@@ -15,13 +15,23 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	_ "github.com/emersion/go-message/charset" // registers GB2312/Big5/etc. decoders
 	messagemail "github.com/emersion/go-message/mail"
 )
 
 const (
 	maxInboxBatch  = 200
 	maxInboundBody = 128 * 1024
+	imapLookbackD  = 30
 )
+
+// InboxCursor tracks IMAP polling progress. UIDs are only comparable within a
+// single UIDVALIDITY generation, so both are persisted together; if the
+// mailbox is recreated (validity changes) the UID cursor is reset.
+type InboxCursor struct {
+	UIDValidity uint32
+	LastUID     uint32
+}
 
 // InboundEmail is a normalized message fetched from IMAP.
 type InboundEmail struct {
@@ -38,7 +48,7 @@ type InboundEmail struct {
 
 // Inbox polls incoming mail and supports a non-destructive connection test.
 type Inbox interface {
-	Poll(context.Context, *Settings, uint32) ([]InboundEmail, uint32, error)
+	Poll(context.Context, *Settings, InboxCursor) ([]InboundEmail, InboxCursor, error)
 	Test(context.Context, *Settings) error
 }
 
@@ -70,24 +80,38 @@ func (i *IMAPInbox) Test(_ context.Context, settings *Settings) error {
 
 // Poll returns messages with UIDs after afterUID. On the first poll it scans
 // only the previous 30 days, avoiding an expensive fetch of an old mailbox.
+//
+// When more than maxInboxBatch messages are pending it processes the OLDEST
+// batch and advances the cursor to that batch's highest UID, so a later poll
+// continues contiguously and no message is ever skipped.
 func (i *IMAPInbox) Poll(
 	_ context.Context,
 	settings *Settings,
-	afterUID uint32,
-) ([]InboundEmail, uint32, error) {
+	cursor InboxCursor,
+) ([]InboundEmail, InboxCursor, error) {
 	if !settings.IMAPConfigured() {
-		return nil, afterUID, nil
+		return nil, cursor, nil
 	}
 
 	client, err := connectIMAP(settings)
 	if err != nil {
-		return nil, afterUID, err
+		return nil, cursor, err
 	}
 	defer client.Close()
 
-	if _, err := client.Select("INBOX", &imap.SelectOptions{ReadOnly: true}).Wait(); err != nil {
-		return nil, afterUID, fmt.Errorf("select IMAP inbox: %w", err)
+	selectData, err := client.Select("INBOX", &imap.SelectOptions{ReadOnly: true}).Wait()
+	if err != nil {
+		return nil, cursor, fmt.Errorf("select IMAP inbox: %w", err)
 	}
+
+	// A UIDVALIDITY change means the previous UID space is gone; restart from
+	// the recent-window scan under the new generation.
+	afterUID := cursor.LastUID
+	if cursor.UIDValidity != selectData.UIDValidity {
+		afterUID = 0
+	}
+
+	next := InboxCursor{UIDValidity: selectData.UIDValidity, LastUID: afterUID}
 
 	criteria := &imap.SearchCriteria{}
 
@@ -98,29 +122,30 @@ func (i *IMAPInbox) Poll(
 
 		criteria.UID = append(criteria.UID, uidSet)
 	} else {
-		criteria.Since = time.Now().UTC().AddDate(0, 0, -30)
+		criteria.Since = time.Now().UTC().AddDate(0, 0, -imapLookbackD)
 	}
 
 	searchData, err := client.UIDSearch(criteria, nil).Wait()
 	if err != nil {
-		return nil, afterUID, fmt.Errorf("search IMAP inbox: %w", err)
+		return nil, cursor, fmt.Errorf("search IMAP inbox: %w", err)
 	}
 
 	uids := searchData.AllUIDs()
 	if len(uids) == 0 {
 		if err := client.Logout().Wait(); err != nil {
-			return nil, afterUID, fmt.Errorf("logout IMAP: %w", err)
+			return nil, cursor, fmt.Errorf("logout IMAP: %w", err)
 		}
 
-		return nil, afterUID, nil
+		return nil, next, nil
 	}
 
 	sort.Slice(uids, func(a, b int) bool {
 		return uids[a] < uids[b]
 	})
 
+	// Keep the OLDEST batch so the cursor advances without gaps.
 	if len(uids) > maxInboxBatch {
-		uids = uids[len(uids)-maxInboxBatch:]
+		uids = uids[:maxInboxBatch]
 	}
 
 	section := &imap.FetchItemBodySection{Peek: true}
@@ -133,15 +158,14 @@ func (i *IMAPInbox) Poll(
 
 	fetched, err := client.Fetch(imap.UIDSetNum(uids...), options).Collect()
 	if err != nil {
-		return nil, afterUID, fmt.Errorf("fetch IMAP messages: %w", err)
+		return nil, cursor, fmt.Errorf("fetch IMAP messages: %w", err)
 	}
 
 	messages := make([]InboundEmail, 0, len(fetched))
-	lastUID := afterUID
 
 	for _, item := range fetched {
-		if uint32(item.UID) > lastUID {
-			lastUID = uint32(item.UID)
+		if uint32(item.UID) > next.LastUID {
+			next.LastUID = uint32(item.UID)
 		}
 
 		message := inboundFromEnvelope(item.UID, item.Envelope, item.InternalDate)
@@ -159,10 +183,10 @@ func (i *IMAPInbox) Poll(
 	})
 
 	if err := client.Logout().Wait(); err != nil {
-		return nil, afterUID, fmt.Errorf("logout IMAP: %w", err)
+		return nil, cursor, fmt.Errorf("logout IMAP: %w", err)
 	}
 
-	return messages, lastUID, nil
+	return messages, next, nil
 }
 
 func connectIMAP(settings *Settings) (*imapclient.Client, error) {
@@ -286,11 +310,35 @@ func parseInboundRaw(raw []byte, target *InboundEmail) {
 
 			return
 		case "text/html":
-			htmlFallback = strings.TrimSpace(string(data))
+			htmlFallback = string(data)
 		}
 	}
 
-	target.Body = htmlFallback
+	// Only an HTML body was offered: strip tags so classification and the
+	// history view operate on readable text instead of markup.
+	if htmlFallback != "" {
+		target.Body = htmlToText(htmlFallback)
+	}
+}
+
+// htmlToText reduces an HTML body to plain text, converting block boundaries
+// to newlines so quote/footer detection still works.
+func htmlToText(html string) string {
+	html = scriptStylePattern.ReplaceAllString(html, " ")
+	html = blockBreakPattern.ReplaceAllString(html, "\n")
+	html = tagPattern.ReplaceAllString(html, " ")
+	html = decodeBasicEntities(html)
+
+	lines := strings.Split(html, "\n")
+	kept := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		if trimmed := collapseSpace(line); trimmed != "" {
+			kept = append(kept, trimmed)
+		}
+	}
+
+	return clipRunes(strings.Join(kept, "\n"), maxInboundBody)
 }
 
 func appendUnique(values []string, value string) []string {
@@ -307,11 +355,14 @@ func appendUnique(values []string, value string) []string {
 	return append(values, value)
 }
 
-// ClassifyInbound identifies hard bounces and explicit opt-outs. Every other
-// matched inbound message is a reply and stops future follow-ups.
+// ClassifyInbound identifies hard bounces, transient delivery notices and
+// explicit opt-outs. Every other matched inbound message is a reply and stops
+// future follow-ups.
 func ClassifyInbound(message *InboundEmail) string {
 	from := strings.ToLower(message.FromEmail)
 	subject := strings.ToLower(message.Subject)
+
+	fromDaemon := strings.Contains(from, "mailer-daemon@") || strings.Contains(from, "postmaster@")
 
 	bouncePhrases := []string{
 		"undelivered", "delivery status notification", "mail delivery failed",
@@ -319,8 +370,18 @@ func ClassifyInbound(message *InboundEmail) string {
 		"退信", "无法送达", "投递失败", "邮件投递失败",
 	}
 
-	if strings.Contains(from, "mailer-daemon@") || strings.Contains(from, "postmaster@") ||
-		containsAny(subject, bouncePhrases) {
+	delayPhrases := []string{
+		"delivery delay", "delayed", "delay notification", "warning: message",
+		"still being delivered", "延迟", "投递延迟",
+	}
+
+	// A delay warning is transient: the address may still work, so treat it as
+	// a notice instead of a permanent bounce that would suppress the lead.
+	if fromDaemon && containsAny(subject, delayPhrases) {
+		return InboundKindNotice
+	}
+
+	if fromDaemon || containsAny(subject, bouncePhrases) {
 		return InboundKindBounce
 	}
 
