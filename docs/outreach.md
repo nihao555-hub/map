@@ -1,6 +1,6 @@
 # 开发信收发模块
 
-开发信中心把地图获客任务产生的 CSV 客户数据导入三步邮件活动，通过企业邮箱 SMTP 发送，并通过 IMAP 自动识别客户回复、退信和退订。
+开发信中心把地图获客任务产生的 CSV 客户数据导入三步邮件活动，通过企业邮箱 SMTP 发送，并通过 IMAP 自动识别客户回复、退信和退订。配置 AI 后，每封开发信基于客户官网背调结果、以资深外贸业务口吻单独撰写，客户回信后自动评估购买意向并可生成回信草稿。
 
 > 重要：不存在能“确保高回信率”的文案或发送时间。回复率主要由名单匹配度、产品价值、发件域名信誉、个性化质量和合规性决定。本模块提供可验证的良好默认值，但应先用 30–50 个高度匹配客户测试，再按数据调整。
 
@@ -16,9 +16,37 @@
 - 每封间隔随机 90–150 秒，进程重启后仍保留间隔
 - IMAP 每两分钟检查一次；回复即停止后续自动邮件
 - 识别退信和显式退订，并永久停止该地址
-- 统一收件箱中人工审核、在原会话继续回信
+- **AI 逐客户撰写**：抓取客户官网做背调（标题/描述/正文摘要，缓存 30 天），结合评分、城市、行业等真实数据，以 15 年经验外贸 BD 的人设撰写；内置“去 AI 味”校验（拒绝 I hope this email finds you well、delve 等模板腔），禁止编造数字与客户案例，AI 失败自动回退内置模板，发送永不阻塞
+- **意向评估**：客户回信先按关键词启发式评分（报价/样品/MOQ→高意向，明确拒绝→无意向，自动回复→待观察），配置 AI 后由模型输出 0–100 分、中文标签与依据；退信/退订自动标记
+- **客户工作台**：默认收缩的侧边栏 + 左侧全部联系人（搜索、按活动/状态筛选、意向徽标）+ 右侧完整收发信历史（气泡时间线）、意向评估卡、商户背景，以及“AI 生成回信草稿 → 人工确认发送”的回信框
 - SQLite 本地存储，无外部 CRM 或 SaaS 依赖
 - SMTP 与 IMAP 连接测试不会发送测试邮件
+
+## AI 配置（可选，推荐）
+
+兼容任意 OpenAI 格式的 chat-completions 接口：
+
+| 服务 | 接口地址 | 模型示例 |
+|---|---|---|
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| 通义千问 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
+| Kimi (Moonshot) | `https://api.moonshot.cn/v1` | `moonshot-v1-8k` |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+| 本地 Ollama | `http://localhost:11434/v1` | `qwen2.5:14b` |
+
+```bash
+export OUTREACH_AI_BASE_URL="https://api.deepseek.com/v1"
+export OUTREACH_AI_MODEL="deepseek-chat"
+export OUTREACH_AI_API_KEY="sk-..."
+```
+
+也可在设置页填写；AI 密钥与邮箱授权码一样只保存在进程内存，重启后需重新输入（推荐环境变量）。
+
+AI 的行为边界（刻意设计）：
+
+- 只允许引用抓取到的真实数据、官网背调摘要和你在活动里填写的价值主张/证据；提示词明确禁止编造数字、客户与认证
+- 输出经过“去 AI 味”与长度校验，不合格直接弃用并回退模板
+- 客户回信永远不会被 AI 自动回复：AI 只生成草稿，发送必须人工点击确认，价格、承诺、法律相关内容必须人工把关
 
 ## 启动
 
@@ -216,8 +244,11 @@ Best regards,
 | POST | `/api/v1/outreach/campaigns` | 从地图任务创建活动 |
 | GET | `/api/v1/outreach/campaigns/{id}` | 活动和联系人 |
 | DELETE | `/api/v1/outreach/campaigns/{id}` | 删除活动 |
-| GET | `/api/v1/outreach/settings` | 获取脱敏邮箱设置 |
-| POST | `/api/v1/outreach/settings` | 保存邮箱与发送策略 |
+| GET | `/api/v1/outreach/contacts` | 工作台联系人列表（含意向；支持 campaign/status/q 筛选） |
+| GET | `/api/v1/outreach/contacts/{id}` | 单个客户的完整收发信历史与意向 |
+| POST | `/api/v1/outreach/contacts/{id}/suggest` | AI 起草回信（仅草稿，需人工发送） |
+| GET | `/api/v1/outreach/settings` | 获取脱敏邮箱/AI 设置 |
+| POST | `/api/v1/outreach/settings` | 保存邮箱、发送策略与 AI 设置 |
 | POST | `/api/v1/outreach/tick` | 手动执行一次幂等循环 |
 | POST | `/api/v1/outreach/reply` | 人工确认后在原会话回信 |
 

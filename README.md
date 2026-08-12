@@ -227,6 +227,11 @@ scraped business emails into personalized, timezone-aware email sequences:
 - SMTP sending through your existing business mailbox
 - IMAP reply, bounce, and unsubscribe detection
 - Three-step in-thread follow-ups with conservative daily warm-up limits
+- Optional AI copywriting (any OpenAI-compatible API): per-lead emails written
+  from website research, reply drafts for human review, and buying-intent
+  scoring, with deterministic template fallbacks
+- A contacts workspace: collapsed sidebar, contact list with intent badges,
+  and the full send/receive history per customer
 - Local SQLite state, global suppression list, and a unified reply inbox
 
 Open `http://localhost:8080/outreach` after starting Web mode. Mailbox secrets

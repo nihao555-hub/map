@@ -141,12 +141,29 @@ type Contact struct {
 	NextSendAt time.Time `json:"next_send_at"`
 	LastSentAt time.Time `json:"last_sent_at"`
 	// RootMessageID/RootSubject identify the thread opened by step one.
-	RootMessageID string    `json:"root_message_id"`
-	RootSubject   string    `json:"root_subject"`
-	LastMessageID string    `json:"last_message_id"`
-	SendFailures  int       `json:"send_failures"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	RootMessageID string `json:"root_message_id"`
+	RootSubject   string `json:"root_subject"`
+	LastMessageID string `json:"last_message_id"`
+	SendFailures  int    `json:"send_failures"`
+	// IntentScore is -1 until an assessment ran; see intent.go for labels.
+	IntentScore  int    `json:"intent_score"`
+	IntentLabel  string `json:"intent_label"`
+	IntentReason string `json:"intent_reason"`
+	// Research caches the website background summary used by the AI writer.
+	Research   string    `json:"research,omitempty"`
+	ResearchAt time.Time `json:"research_at"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// DisplayIntent returns the stored assessment, or a status-derived one when
+// no reply has been scored yet.
+func (c *Contact) DisplayIntent() Intent {
+	if c.IntentScore >= 0 && c.IntentLabel != "" {
+		return Intent{Score: c.IntentScore, Label: c.IntentLabel, Reason: c.IntentReason}
+	}
+
+	return StatusIntent(c.Status)
 }
 
 // Message is a sent or received email linked to a contact.

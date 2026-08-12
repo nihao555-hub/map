@@ -8,10 +8,10 @@ import (
 
 func TestValidateProxyLines(t *testing.T) {
 	tests := []struct {
-		name      string
-		raw       string
-		want      []string
-		wantErr   string // 错误信息中应包含的片段，空表示不应报错
+		name    string
+		raw     string
+		want    []string
+		wantErr string // 错误信息中应包含的片段，空表示不应报错
 	}{
 		{
 			name: "空输入",

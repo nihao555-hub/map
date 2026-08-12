@@ -17,15 +17,15 @@ type fakeSender struct {
 
 func (f *fakeSender) Send(
 	_ context.Context,
-	_ outreach.Settings,
-	message outreach.Message,
+	_ *outreach.Settings,
+	message *outreach.Message,
 ) error {
-	f.messages = append(f.messages, message)
+	f.messages = append(f.messages, *message)
 
 	return nil
 }
 
-func (f *fakeSender) Test(context.Context, outreach.Settings) error {
+func (f *fakeSender) Test(context.Context, *outreach.Settings) error {
 	return nil
 }
 
@@ -33,13 +33,13 @@ type emptyInbox struct{}
 
 func (i *emptyInbox) Poll(
 	context.Context,
-	outreach.Settings,
+	*outreach.Settings,
 	uint32,
 ) ([]outreach.InboundEmail, uint32, error) {
 	return nil, 0, nil
 }
 
-func (i *emptyInbox) Test(context.Context, outreach.Settings) error {
+func (i *emptyInbox) Test(context.Context, *outreach.Settings) error {
 	return nil
 }
 
@@ -50,6 +50,7 @@ func TestEngineTickSendsOneDueMessageAndAdvancesSequence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() {
 		if err := store.Close(); err != nil {
 			t.Error(err)
@@ -60,15 +61,16 @@ func TestEngineTickSendsOneDueMessageAndAdvancesSequence(t *testing.T) {
 	settings := outreach.DefaultSettings()
 	settings.SMTPHost = "smtp.example.com"
 	settings.SMTPPort = 465
-	settings.EmailAddress = "alex@example.com"
+	settings.EmailAddress = testSenderEmail
 	settings.Password = "in-memory-test-secret"
-	settings.FromName = "Alex"
-	settings.SenderCompany = "Example Co"
+	settings.FromName = testSenderName
+	settings.SenderCompany = testSenderCompany
 	settings.SendDays = "1234567"
 	settings.SendStartHour = 0
 	settings.SendEndHour = 24
 	settings.DefaultTimezone = "UTC"
-	if err := store.SaveSettings(ctx, settings); err != nil {
+
+	if err := store.SaveSettings(ctx, &settings); err != nil {
 		t.Fatal(err)
 	}
 

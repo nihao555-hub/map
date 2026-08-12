@@ -133,14 +133,14 @@ func LoadLocation(name, fallback string) *time.Location {
 // until DailyCap is reached. daysActive is the number of days since the very
 // first send from this mailbox.
 func (s *Settings) AllowedToday(daysActive int) int {
-	cap_ := s.DailyCap
-	if cap_ <= 0 {
-		cap_ = 40
+	hardCap := s.DailyCap
+	if hardCap <= 0 {
+		hardCap = 40
 	}
 
 	start := s.WarmupStart
 	if start <= 0 {
-		return cap_
+		return hardCap
 	}
 
 	step := s.WarmupStep
@@ -149,8 +149,8 @@ func (s *Settings) AllowedToday(daysActive int) int {
 	}
 
 	allowed := start + step*daysActive
-	if allowed > cap_ {
-		return cap_
+	if allowed > hardCap {
+		return hardCap
 	}
 
 	return allowed

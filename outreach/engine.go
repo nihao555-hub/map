@@ -16,6 +16,8 @@ import (
 const (
 	defaultTickInterval = 30 * time.Second
 	inboxPollInterval   = 2 * time.Minute
+	aiWriteTimeout      = 75 * time.Second
+	sendFailureBackoff  = 15 * time.Minute
 
 	metaInboxUID      = "imap_last_uid"
 	metaInboxLastPoll = "imap_last_poll_unix"
@@ -42,15 +44,18 @@ type TickReport struct {
 // authoritative even across restarts and prevents accidental bursts when many
 // contacts become due at the same time.
 type Engine struct {
-	store  *Store
-	sender MailSender
-	inbox  Inbox
-	now    func() time.Time
+	store      *Store
+	sender     MailSender
+	inbox      Inbox
+	ai         AICompleter
+	researcher Researcher
+	now        func() time.Time
 
 	mu sync.Mutex
 }
 
-// NewEngine constructs an outreach engine.
+// NewEngine constructs an outreach engine. Nil collaborators are replaced by
+// the production implementations.
 func NewEngine(store *Store, sender MailSender, inbox Inbox) *Engine {
 	if sender == nil {
 		sender = &SMTPMailer{}
@@ -61,11 +66,23 @@ func NewEngine(store *Store, sender MailSender, inbox Inbox) *Engine {
 	}
 
 	return &Engine{
-		store:  store,
-		sender: sender,
-		inbox:  inbox,
-		now:    time.Now,
+		store:      store,
+		sender:     sender,
+		inbox:      inbox,
+		ai:         NewAIClient(),
+		researcher: NewWebsiteResearcher(),
+		now:        time.Now,
 	}
+}
+
+// SetAI overrides the AI completer (used by tests).
+func (e *Engine) SetAI(ai AICompleter) {
+	e.ai = ai
+}
+
+// SetResearcher overrides the website researcher (used by tests).
+func (e *Engine) SetResearcher(researcher Researcher) {
+	e.researcher = researcher
 }
 
 // Run polls replies and sends due messages until the context is cancelled.
@@ -101,7 +118,7 @@ func (e *Engine) Tick(ctx context.Context) (TickReport, error) {
 		return TickReport{}, err
 	}
 
-	report, err := e.syncInboxIfDue(ctx, settings, now)
+	report, err := e.syncInboxIfDue(ctx, &settings, now)
 	if err != nil {
 		return report, err
 	}
@@ -130,7 +147,7 @@ func (e *Engine) Tick(ctx context.Context) (TickReport, error) {
 		return report, nil
 	}
 
-	allowed, sent, err := e.dailyAllowance(ctx, settings, now)
+	allowed, sent, err := e.dailyAllowance(ctx, &settings, now)
 	if err != nil {
 		return report, err
 	}
@@ -152,16 +169,17 @@ func (e *Engine) Tick(ctx context.Context) (TickReport, error) {
 		nextWindow := NextSendTime(now, location, settings.Window())
 
 		if nextWindow.After(now.Add(time.Second)) {
-			if err := e.store.RescheduleContact(ctx, contact.ID, NextSendTimeJittered(now, location, settings.Window())); err != nil {
+			jittered := NextSendTimeJittered(now, location, settings.Window())
+			if err := e.store.RescheduleContact(ctx, contact.ID, jittered); err != nil {
 				return report, err
 			}
 
 			continue
 		}
 
-		sentMessage, err := e.sendSequenceStep(ctx, settings, contact, now)
+		sentMessage, err := e.sendSequenceStep(ctx, &settings, contact, now)
 		if err != nil {
-			retryAt := now.Add(time.Duration(contact.SendFailures+1) * 15 * time.Minute)
+			retryAt := now.Add(time.Duration(contact.SendFailures+1) * sendFailureBackoff)
 			if recordErr := e.store.RecordSendFailure(ctx, contact.ID, retryAt); recordErr != nil {
 				return report, errors.Join(err, recordErr)
 			}
@@ -194,7 +212,7 @@ func (e *Engine) Tick(ctx context.Context) (TickReport, error) {
 
 func (e *Engine) sendSequenceStep(
 	ctx context.Context,
-	settings Settings,
+	settings *Settings,
 	contact *Contact,
 	now time.Time,
 ) (bool, error) {
@@ -207,13 +225,7 @@ func (e *Engine) sendSequenceStep(
 		return false, e.store.CompleteContact(ctx, contact.ID)
 	}
 
-	step := &campaign.Sequence[contact.NextStep]
-	renderContext := NewRenderContext(contact, &settings, &campaign)
-
-	subject, body, err := RenderStep(step, &renderContext, contact.RootSubject)
-	if err != nil {
-		return false, err
-	}
+	subject, body := e.composeStep(ctx, settings, &campaign, contact)
 
 	message := Message{
 		CampaignID: campaign.ID,
@@ -229,11 +241,12 @@ func (e *Engine) sendSequenceStep(
 		CreatedAt:  now,
 	}
 
-	if err := e.sender.Send(ctx, settings, message); err != nil {
+	if err := e.sender.Send(ctx, settings, &message); err != nil {
 		return false, err
 	}
 
 	completed := contact.NextStep+1 >= len(campaign.Sequence)
+
 	var nextSendAt time.Time
 
 	if !completed {
@@ -253,9 +266,125 @@ func (e *Engine) sendSequenceStep(
 	return true, nil
 }
 
+// composeStep produces the subject and body for the contact's next step. With
+// AI configured it writes a fresh personalized email from the scraped facts
+// and website research; any AI failure falls back to the campaign templates
+// so the sequence never stalls.
+func (e *Engine) composeStep(
+	ctx context.Context,
+	settings *Settings,
+	campaign *Campaign,
+	contact *Contact,
+) (subject, body string) {
+	if settings.AIConfigured() {
+		subject, body, err := e.composeStepAI(ctx, settings, campaign, contact)
+		if err == nil {
+			return subject, body
+		}
+
+		log.Printf("outreach AI writer fallback for contact %d step %d: %v", contact.ID, contact.NextStep, err)
+	}
+
+	step := &campaign.Sequence[contact.NextStep]
+	renderContext := NewRenderContext(contact, settings, campaign)
+
+	subject, body, err := RenderStep(step, &renderContext, contact.RootSubject)
+	if err != nil {
+		// Templates were validated at campaign creation; render errors here
+		// mean template variables misbehaved. Fail visibly in the body
+		// rather than sending an empty email.
+		log.Printf("outreach template render error for contact %d: %v", contact.ID, err)
+
+		return "Quick question about " + contact.Name, "Hi " + contact.Name + " team,\n\n" +
+			campaign.ValueProposition + ".\n\n" + campaign.CallToAction + "\n\n" + signatureFor(settings)
+	}
+
+	return subject, body
+}
+
+func (e *Engine) composeStepAI(
+	ctx context.Context,
+	settings *Settings,
+	campaign *Campaign,
+	contact *Contact,
+) (subject, body string, err error) {
+	research := e.ensureResearch(ctx, contact)
+
+	thread, err := e.store.ContactMessages(ctx, contact.ID, 20)
+	if err != nil {
+		return "", "", err
+	}
+
+	aiCtx, cancel := context.WithTimeout(ctx, aiWriteTimeout)
+	defer cancel()
+
+	facts := EmailFacts{
+		Contact:  contact,
+		Campaign: campaign,
+		Settings: settings,
+		Research: research,
+		Thread:   thread,
+	}
+
+	email, err := GenerateStepEmail(aiCtx, e.ai, &facts, contact.NextStep)
+	if err != nil {
+		return "", "", err
+	}
+
+	subject = email.Subject
+	if contact.NextStep > 0 || subject == "" {
+		subject = contact.RootSubject
+		if subject == "" {
+			subject = email.Subject
+		}
+
+		if contact.NextStep > 0 && !strings.HasPrefix(strings.ToLower(subject), "re:") {
+			subject = "Re: " + subject
+		}
+	}
+
+	if subject == "" {
+		return "", "", errors.New("AI produced no usable subject")
+	}
+
+	return subject, email.Body, nil
+}
+
+// ensureResearch returns cached website research, refreshing it when stale.
+// Research failures are logged and ignored: a missing summary only reduces
+// personalization quality.
+func (e *Engine) ensureResearch(ctx context.Context, contact *Contact) string {
+	if contact.Website == "" || e.researcher == nil {
+		return contact.Research
+	}
+
+	fresh := !contact.ResearchAt.IsZero() && e.now().UTC().Sub(contact.ResearchAt) < researchTTL
+	if contact.Research != "" && fresh {
+		return contact.Research
+	}
+
+	summary, err := e.researcher.Research(ctx, contact.Website)
+	if err != nil || summary == "" {
+		if err != nil {
+			log.Printf("outreach research failed for %s (%s): %v", contact.Name, contact.Website, err)
+		}
+
+		return contact.Research
+	}
+
+	if err := e.store.SaveContactResearch(ctx, contact.ID, summary); err != nil {
+		log.Printf("outreach research cache failed for contact %d: %v", contact.ID, err)
+	}
+
+	contact.Research = summary
+	contact.ResearchAt = e.now().UTC()
+
+	return summary
+}
+
 func (e *Engine) syncInboxIfDue(
 	ctx context.Context,
-	settings Settings,
+	settings *Settings,
 	now time.Time,
 ) (TickReport, error) {
 	report := TickReport{}
@@ -312,6 +441,7 @@ func (e *Engine) syncInboxIfDue(
 		}
 
 		kind := ClassifyInbound(incoming)
+
 		messageTime := incoming.Date
 		if messageTime.IsZero() {
 			messageTime = now
@@ -337,6 +467,8 @@ func (e *Engine) syncInboxIfDue(
 			return report, err
 		}
 
+		e.assessIntent(ctx, settings, &contact, &message)
+
 		switch kind {
 		case InboundKindBounce:
 			report.Bounces++
@@ -347,7 +479,7 @@ func (e *Engine) syncInboxIfDue(
 		}
 	}
 
-	if lastUID > uint32(cursor) {
+	if uint64(lastUID) > cursor {
 		if err := e.store.SetMeta(ctx, metaInboxUID, strconv.FormatUint(uint64(lastUID), 10)); err != nil {
 			return report, err
 		}
@@ -358,6 +490,36 @@ func (e *Engine) syncInboxIfDue(
 	}
 
 	return report, nil
+}
+
+// assessIntent scores the contact from the inbound message: heuristics first,
+// then the AI classifier when configured. Intent problems never fail the
+// inbound pipeline.
+func (e *Engine) assessIntent(
+	ctx context.Context,
+	settings *Settings,
+	contact *Contact,
+	message *Message,
+) {
+	intent := HeuristicIntent(message.Kind, message.Subject, message.Body)
+
+	if message.Kind == InboundKindReply && settings.AIConfigured() {
+		aiCtx, cancel := context.WithTimeout(ctx, aiWriteTimeout)
+
+		aiIntent, err := ClassifyIntentAI(aiCtx, e.ai, settings, message)
+
+		cancel()
+
+		if err == nil {
+			intent = aiIntent
+		} else {
+			log.Printf("outreach AI intent fallback for contact %d: %v", contact.ID, err)
+		}
+	}
+
+	if err := e.store.UpdateContactIntent(ctx, contact.ID, intent); err != nil {
+		log.Printf("outreach intent update failed for contact %d: %v", contact.ID, err)
+	}
 }
 
 func (e *Engine) findBouncedContact(
@@ -385,9 +547,9 @@ func (e *Engine) findBouncedContact(
 
 func (e *Engine) dailyAllowance(
 	ctx context.Context,
-	settings Settings,
+	settings *Settings,
 	now time.Time,
-) (allowed int, sent int, err error) {
+) (allowed, sent int, err error) {
 	location := LoadLocation(settings.DefaultTimezone, "UTC")
 	localNow := now.In(location)
 	startLocal := time.Date(
@@ -443,11 +605,11 @@ func (e *Engine) TestConnections(ctx context.Context) error {
 		return err
 	}
 
-	if err := e.sender.Test(ctx, settings); err != nil {
+	if err := e.sender.Test(ctx, &settings); err != nil {
 		return err
 	}
 
-	if err := e.inbox.Test(ctx, settings); err != nil {
+	if err := e.inbox.Test(ctx, &settings); err != nil {
 		return err
 	}
 
@@ -484,6 +646,10 @@ func (e *Engine) Reply(ctx context.Context, contactID int64, body string) (Messa
 	}
 
 	subject := contact.RootSubject
+	if subject == "" {
+		subject = "Regarding " + contact.Name
+	}
+
 	if !strings.HasPrefix(strings.ToLower(subject), "re:") {
 		subject = "Re: " + subject
 	}
@@ -504,7 +670,7 @@ func (e *Engine) Reply(ctx context.Context, contactID int64, body string) (Messa
 		CreatedAt:  now,
 	}
 
-	if err := e.sender.Send(ctx, settings, message); err != nil {
+	if err := e.sender.Send(ctx, &settings, &message); err != nil {
 		return Message{}, err
 	}
 
@@ -513,4 +679,45 @@ func (e *Engine) Reply(ctx context.Context, contactID int64, body string) (Messa
 	}
 
 	return message, nil
+}
+
+// SuggestReplyForContact drafts an answer to the contact's latest reply for
+// human review. It requires the AI writer to be configured.
+func (e *Engine) SuggestReplyForContact(ctx context.Context, contactID int64) (string, error) {
+	settings, err := e.store.Settings(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	if !settings.AIConfigured() {
+		return "", errors.New("AI 未配置：请在设置中填写 AI 接口地址、模型和 OUTREACH_AI_API_KEY")
+	}
+
+	contact, err := e.store.Contact(ctx, contactID)
+	if err != nil {
+		return "", err
+	}
+
+	campaign, err := e.store.Campaign(ctx, contact.CampaignID)
+	if err != nil {
+		return "", err
+	}
+
+	thread, err := e.store.ContactMessages(ctx, contact.ID, 20)
+	if err != nil {
+		return "", err
+	}
+
+	aiCtx, cancel := context.WithTimeout(ctx, aiWriteTimeout)
+	defer cancel()
+
+	facts := EmailFacts{
+		Contact:  &contact,
+		Campaign: &campaign,
+		Settings: &settings,
+		Research: contact.Research,
+		Thread:   thread,
+	}
+
+	return SuggestReply(aiCtx, e.ai, &facts)
 }

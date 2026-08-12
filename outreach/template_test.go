@@ -11,9 +11,9 @@ func TestDefaultSequenceRendersPersonalizedThread(t *testing.T) {
 	t.Parallel()
 
 	settings := outreach.DefaultSettings()
-	settings.FromName = "Alex"
-	settings.SenderCompany = "Example Co"
-	settings.EmailAddress = "alex@example.com"
+	settings.FromName = testSenderName
+	settings.SenderCompany = testSenderCompany
+	settings.EmailAddress = testSenderEmail
 
 	contact := outreach.Contact{
 		Name:        "Acme Dental",

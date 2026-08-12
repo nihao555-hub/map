@@ -14,14 +14,18 @@ import (
 	"github.com/gosom/google-maps-scraper/outreach"
 )
 
+// formOn is the value browsers submit for checked checkboxes.
+const formOn = "on"
+
+const outreachTestTimeout = 45 * time.Second
+
 type outreachPageData struct {
 	Campaigns []outreach.CampaignView
 	Jobs      []Job
 	Settings  outreach.SettingsView
-	Messages  []outreach.Message
-	Contacts  []outreach.Contact
-	Selected  *outreach.CampaignView
 	Providers []outreach.Provider
+	Sequence  []outreach.SequenceStep
+	Panel     string
 	Notice    string
 	Error     string
 }
@@ -39,7 +43,7 @@ func (s *Server) outreachPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := s.loadOutreachPage(r.Context(), r.URL.Query().Get("campaign"))
+	data, err := s.loadOutreachPage(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -48,6 +52,11 @@ func (s *Server) outreachPage(w http.ResponseWriter, r *http.Request) {
 
 	data.Notice = r.URL.Query().Get("notice")
 	data.Error = r.URL.Query().Get("error")
+	data.Panel = r.URL.Query().Get("panel")
+
+	if data.Panel == "" {
+		data.Panel = "workspace"
+	}
 
 	tmpl, ok := s.tmpl["static/templates/outreach.html"]
 	if !ok {
@@ -61,7 +70,7 @@ func (s *Server) outreachPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) loadOutreachPage(ctx context.Context, selectedID string) (outreachPageData, error) {
+func (s *Server) loadOutreachPage(ctx context.Context) (outreachPageData, error) {
 	campaigns, err := s.outreach.Campaigns(ctx)
 	if err != nil {
 		return outreachPageData{}, err
@@ -73,6 +82,7 @@ func (s *Server) loadOutreachPage(ctx context.Context, selectedID string) (outre
 	}
 
 	eligibleJobs := make([]Job, 0, len(jobs))
+
 	for i := range jobs {
 		if jobs[i].Status == StatusOK && jobs[i].Data.Email {
 			eligibleJobs = append(eligibleJobs, jobs[i])
@@ -84,53 +94,29 @@ func (s *Server) loadOutreachPage(ctx context.Context, selectedID string) (outre
 		return outreachPageData{}, err
 	}
 
-	messages, err := s.outreach.Messages(ctx, "", 50)
-	if err != nil {
-		return outreachPageData{}, err
-	}
-
-	data := outreachPageData{
+	return outreachPageData{
 		Campaigns: campaigns,
 		Jobs:      eligibleJobs,
 		Settings:  settings,
-		Messages:  messages,
 		Providers: outreach.Providers(),
-	}
-
-	if selectedID == "" {
-		return data, nil
-	}
-
-	selected, err := s.outreach.Campaign(ctx, selectedID)
-	if err != nil {
-		return outreachPageData{}, err
-	}
-
-	contacts, err := s.outreach.Contacts(ctx, selectedID, 500)
-	if err != nil {
-		return outreachPageData{}, err
-	}
-
-	data.Selected = &selected
-	data.Contacts = contacts
-
-	return data, nil
+		Sequence:  outreach.DefaultSequence(),
+	}, nil
 }
 
 func (s *Server) outreachSettings(w http.ResponseWriter, r *http.Request) {
-	if !s.requireOutreachMethod(w, r, http.MethodPost) {
+	if !s.requireOutreachPost(w, r) {
 		return
 	}
 
 	if err := r.ParseForm(); err != nil {
-		redirectOutreach(w, r, "", err)
+		redirectOutreach(w, r, "settings", "", err)
 
 		return
 	}
 
 	current, err := s.outreach.Settings(r.Context())
 	if err != nil {
-		redirectOutreach(w, r, "", err)
+		redirectOutreach(w, r, "settings", "", err)
 
 		return
 	}
@@ -155,71 +141,73 @@ func (s *Server) outreachSettings(w http.ResponseWriter, r *http.Request) {
 	settings.MaxGapSeconds = formInt(r, "max_gap_seconds", settings.MaxGapSeconds)
 	settings.DefaultTimezone = strings.TrimSpace(r.Form.Get("default_timezone"))
 	settings.UnsubscribeText = strings.TrimSpace(r.Form.Get("unsubscribe_text"))
+	settings.AIBaseURL = strings.TrimSpace(r.Form.Get("ai_base_url"))
+	settings.AIModel = strings.TrimSpace(r.Form.Get("ai_model"))
+	settings.AIAPIKey = strings.TrimSpace(r.Form.Get("ai_api_key"))
 
-	if err := s.outreach.SaveSettings(r.Context(), settings); err != nil {
-		redirectOutreach(w, r, "", err)
+	if err := s.outreach.SaveSettings(r.Context(), &settings); err != nil {
+		redirectOutreach(w, r, "settings", "", err)
 
 		return
 	}
 
-	redirectOutreach(w, r, "邮箱设置已保存；授权码只保存在本进程内存中", nil)
+	redirectOutreach(w, r, "settings", "设置已保存；授权码与 AI 密钥只保存在本进程内存中", nil)
 }
 
 func (s *Server) outreachTest(w http.ResponseWriter, r *http.Request) {
-	if !s.requireOutreachMethod(w, r, http.MethodPost) {
+	if !s.requireOutreachPost(w, r) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), outreachTestTimeout)
 	defer cancel()
 
 	if err := s.outreach.TestConnections(ctx); err != nil {
-		redirectOutreach(w, r, "", fmt.Errorf("连接测试失败: %w", err))
+		redirectOutreach(w, r, "settings", "", fmt.Errorf("连接测试失败: %w", err))
 
 		return
 	}
 
-	redirectOutreach(w, r, "SMTP 和 IMAP 连接、认证均成功（未发送测试邮件）", nil)
+	redirectOutreach(w, r, "settings", "SMTP 和 IMAP 连接、认证均成功（未发送测试邮件）", nil)
 }
 
 func (s *Server) outreachCampaigns(w http.ResponseWriter, r *http.Request) {
-	if !s.requireOutreachMethod(w, r, http.MethodPost) {
+	if !s.requireOutreachPost(w, r) {
 		return
 	}
 
 	if err := r.ParseForm(); err != nil {
-		redirectOutreach(w, r, "", err)
+		redirectOutreach(w, r, "campaigns", "", err)
 
 		return
 	}
 
-	campaign, summary, err := s.outreach.CreateCampaignFromJob(
-		r.Context(),
-		outreach.CampaignInput{
-			Name:             r.Form.Get("name"),
-			JobID:            r.Form.Get("job_id"),
-			ValueProposition: r.Form.Get("value_proposition"),
-			Proof:            r.Form.Get("proof"),
-			CallToAction:     r.Form.Get("call_to_action"),
-			Start:            r.Form.Get("start_now") == "on",
-		},
-	)
+	input := outreach.CampaignInput{
+		Name:             r.Form.Get("name"),
+		JobID:            r.Form.Get("job_id"),
+		ValueProposition: r.Form.Get("value_proposition"),
+		Proof:            r.Form.Get("proof"),
+		CallToAction:     r.Form.Get("call_to_action"),
+		Start:            r.Form.Get("start_now") == formOn,
+	}
+
+	campaign, summary, err := s.outreach.CreateCampaignFromJob(r.Context(), &input)
 	if err != nil {
-		redirectOutreach(w, r, "", err)
+		redirectOutreach(w, r, "campaigns", "", err)
 
 		return
 	}
 
-	if r.Form.Get("start_now") == "on" {
+	if input.Start {
 		if err := s.outreach.SetCampaignStatus(r.Context(), campaign.ID, outreach.CampaignStatusActive); err != nil {
-			redirectOutreach(w, r, "", err)
+			redirectOutreach(w, r, "campaigns", "", err)
 
 			return
 		}
 	}
 
-	notice := fmt.Sprintf("已创建活动并导入 %d 个有效邮箱", summary.Inserted)
-	redirectOutreachToCampaign(w, r, campaign.ID, notice, nil)
+	notice := fmt.Sprintf("已创建活动并导入 %d 个有效客户（每个商户只保留一个最优邮箱）", summary.Inserted)
+	redirectOutreach(w, r, "campaigns", notice, nil)
 }
 
 func (s *Server) outreachCampaign(w http.ResponseWriter, r *http.Request) {
@@ -236,29 +224,29 @@ func (s *Server) outreachCampaign(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(
 			w,
 			r,
-			"/outreach?campaign="+url.QueryEscape(id),
+			"/outreach?panel=workspace&campaign="+url.QueryEscape(id),
 			http.StatusSeeOther,
 		)
 	case http.MethodDelete, http.MethodPost:
 		if err := s.outreach.DeleteCampaign(r.Context(), id); err != nil {
-			redirectOutreach(w, r, "", err)
+			redirectOutreach(w, r, "campaigns", "", err)
 
 			return
 		}
 
-		redirectOutreach(w, r, "活动已删除", nil)
+		redirectOutreach(w, r, "campaigns", "活动已删除", nil)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 func (s *Server) outreachCampaignStatus(w http.ResponseWriter, r *http.Request) {
-	if !s.requireOutreachMethod(w, r, http.MethodPost) {
+	if !s.requireOutreachPost(w, r) {
 		return
 	}
 
 	if err := r.ParseForm(); err != nil {
-		redirectOutreach(w, r, "", err)
+		redirectOutreach(w, r, "campaigns", "", err)
 
 		return
 	}
@@ -267,22 +255,22 @@ func (s *Server) outreachCampaignStatus(w http.ResponseWriter, r *http.Request) 
 	status := r.Form.Get("status")
 
 	if err := s.outreach.SetCampaignStatus(r.Context(), id, status); err != nil {
-		redirectOutreachToCampaign(w, r, id, "", err)
+		redirectOutreach(w, r, "campaigns", "", err)
 
 		return
 	}
 
-	redirectOutreachToCampaign(w, r, id, "活动状态已更新", nil)
+	redirectOutreach(w, r, "campaigns", "活动状态已更新", nil)
 }
 
 func (s *Server) outreachTick(w http.ResponseWriter, r *http.Request) {
-	if !s.requireOutreachMethod(w, r, http.MethodPost) {
+	if !s.requireOutreachPost(w, r) {
 		return
 	}
 
 	report, err := s.outreach.Tick(r.Context())
 	if err != nil {
-		redirectOutreach(w, r, "", err)
+		redirectOutreach(w, r, "workspace", "", err)
 
 		return
 	}
@@ -295,35 +283,99 @@ func (s *Server) outreachTick(w http.ResponseWriter, r *http.Request) {
 		report.Unsubscribed,
 		report.State,
 	)
-	redirectOutreach(w, r, notice, nil)
+	redirectOutreach(w, r, "workspace", notice, nil)
 }
 
-func (s *Server) outreachReply(w http.ResponseWriter, r *http.Request) {
-	if !s.requireOutreachMethod(w, r, http.MethodPost) {
-		return
-	}
-
-	if err := r.ParseForm(); err != nil {
-		redirectOutreach(w, r, "", err)
+// apiOutreachContacts serves the workspace contact list as JSON.
+func (s *Server) apiOutreachContacts(w http.ResponseWriter, r *http.Request) {
+	if s.outreach == nil {
+		renderOutreachAPIError(w, errors.New("outreach module unavailable"))
 
 		return
 	}
 
-	contactID, err := strconv.ParseInt(r.Form.Get("contact_id"), 10, 64)
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
+		return
+	}
+
+	filter := outreach.WorkspaceFilter{
+		CampaignID: r.URL.Query().Get("campaign"),
+		Status:     r.URL.Query().Get("status"),
+		Search:     strings.TrimSpace(r.URL.Query().Get("q")),
+	}
+
+	contacts, err := s.outreach.WorkspaceContacts(r.Context(), filter)
 	if err != nil {
-		redirectOutreach(w, r, "", errors.New("invalid contact ID"))
+		renderOutreachAPIError(w, err)
 
 		return
 	}
 
-	message, err := s.outreach.Reply(r.Context(), contactID, r.Form.Get("body"))
+	if contacts == nil {
+		contacts = []outreach.WorkspaceContact{}
+	}
+
+	renderJSON(w, http.StatusOK, contacts)
+}
+
+// apiOutreachContact serves one contact's conversation thread.
+func (s *Server) apiOutreachContact(w http.ResponseWriter, r *http.Request) {
+	if s.outreach == nil {
+		renderOutreachAPIError(w, errors.New("outreach module unavailable"))
+
+		return
+	}
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
+		return
+	}
+
+	contactID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		redirectOutreach(w, r, "", err)
+		renderOutreachAPIError(w, errors.New("invalid contact ID"))
 
 		return
 	}
 
-	redirectOutreachToCampaign(w, r, message.CampaignID, "回信已在原邮件会话中发出", nil)
+	thread, err := s.outreach.ContactThread(r.Context(), contactID)
+	if err != nil {
+		renderOutreachAPIError(w, err)
+
+		return
+	}
+
+	if thread.Messages == nil {
+		thread.Messages = []outreach.Message{}
+	}
+
+	renderJSON(w, http.StatusOK, thread)
+}
+
+// apiOutreachSuggest drafts an AI reply for one contact.
+func (s *Server) apiOutreachSuggest(w http.ResponseWriter, r *http.Request) {
+	if !s.requireOutreachPost(w, r) {
+		return
+	}
+
+	contactID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		renderOutreachAPIError(w, errors.New("invalid contact ID"))
+
+		return
+	}
+
+	suggestion, err := s.outreach.SuggestReply(r.Context(), contactID)
+	if err != nil {
+		renderOutreachAPIError(w, err)
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]string{"suggestion": suggestion})
 }
 
 func (s *Server) apiOutreachCampaigns(w http.ResponseWriter, r *http.Request) {
@@ -358,10 +410,7 @@ func (s *Server) apiOutreachCampaigns(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		campaign, summary, err := s.outreach.CreateCampaignFromJob(
-			r.Context(),
-			request,
-		)
+		campaign, summary, err := s.outreach.CreateCampaignFromJob(r.Context(), &request)
 		if err != nil {
 			renderOutreachAPIError(w, err)
 
@@ -452,6 +501,7 @@ func (s *Server) apiOutreachSettings(w http.ResponseWriter, r *http.Request) {
 		renderJSON(w, http.StatusOK, settings)
 	case http.MethodPost:
 		var settings outreach.Settings
+
 		if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
 			renderJSON(w, http.StatusUnprocessableEntity, apiError{
 				Code:    http.StatusUnprocessableEntity,
@@ -461,7 +511,7 @@ func (s *Server) apiOutreachSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := s.outreach.SaveSettings(r.Context(), settings); err != nil {
+		if err := s.outreach.SaveSettings(r.Context(), &settings); err != nil {
 			renderOutreachAPIError(w, err)
 
 			return
@@ -474,7 +524,7 @@ func (s *Server) apiOutreachSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiOutreachTick(w http.ResponseWriter, r *http.Request) {
-	if !s.requireOutreachMethod(w, r, http.MethodPost) {
+	if !s.requireOutreachPost(w, r) {
 		return
 	}
 
@@ -489,7 +539,7 @@ func (s *Server) apiOutreachTick(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) apiOutreachReply(w http.ResponseWriter, r *http.Request) {
-	if !s.requireOutreachMethod(w, r, http.MethodPost) {
+	if !s.requireOutreachPost(w, r) {
 		return
 	}
 
@@ -517,14 +567,14 @@ func (s *Server) apiOutreachReply(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusCreated, message)
 }
 
-func (s *Server) requireOutreachMethod(w http.ResponseWriter, r *http.Request, method string) bool {
+func (s *Server) requireOutreachPost(w http.ResponseWriter, r *http.Request) bool {
 	if s.outreach == nil {
 		http.Error(w, "Outreach module is unavailable", http.StatusServiceUnavailable)
 
 		return false
 	}
 
-	if r.Method != method {
+	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 
 		return false
@@ -547,20 +597,11 @@ func formInt(r *http.Request, name string, fallback int) int {
 	return result
 }
 
-func redirectOutreach(w http.ResponseWriter, r *http.Request, notice string, err error) {
-	redirectOutreachToCampaign(w, r, "", notice, err)
-}
-
-func redirectOutreachToCampaign(
-	w http.ResponseWriter,
-	r *http.Request,
-	campaignID string,
-	notice string,
-	err error,
-) {
+func redirectOutreach(w http.ResponseWriter, r *http.Request, panel, notice string, err error) {
 	values := url.Values{}
-	if campaignID != "" {
-		values.Set("campaign", campaignID)
+
+	if panel != "" {
+		values.Set("panel", panel)
 	}
 
 	if err != nil {

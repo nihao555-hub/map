@@ -18,12 +18,24 @@ type CampaignView struct {
 }
 
 // SettingsView exposes configuration state without exposing the authorization
-// code.
+// code or the AI API key.
 type SettingsView struct {
 	Settings
 	PasswordConfigured bool `json:"password_configured"`
+	AIKeyConfigured    bool `json:"ai_key_configured"`
 	SMTPConfigured     bool `json:"smtp_configured"`
 	IMAPConfigured     bool `json:"imap_configured"`
+	AIConfigured       bool `json:"ai_configured"`
+}
+
+// ContactThreadView is everything the workspace detail pane needs.
+type ContactThreadView struct {
+	Contact      Contact   `json:"contact"`
+	CampaignName string    `json:"campaign_name"`
+	Sequence     int       `json:"sequence_steps"`
+	Intent       Intent    `json:"intent"`
+	Messages     []Message `json:"messages"`
+	CanReply     bool      `json:"can_reply"`
 }
 
 // CampaignInput is the operator-authored strategy for a new campaign.
@@ -56,7 +68,7 @@ func NewService(store *Store, engine *Engine, dataFolder string) *Service {
 // an existing Google Maps web job CSV.
 func (s *Service) CreateCampaignFromJob(
 	ctx context.Context,
-	input CampaignInput,
+	input *CampaignInput,
 ) (CampaignView, ImportSummary, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
@@ -94,12 +106,14 @@ func (s *Service) CreateCampaignFromJob(
 	}
 
 	csvPath := filepath.Join(s.dataFolder, jobID+".csv")
+
 	file, err := os.Open(csvPath)
 	if err != nil {
 		_ = s.store.DeleteCampaign(ctx, campaign.ID)
 
 		return CampaignView{}, ImportSummary{}, fmt.Errorf("open map job results: %w", err)
 	}
+
 	defer file.Close()
 
 	summary, err := ImportCSV(ctx, s.store, campaign.ID, file, s.engine.now().UTC())
@@ -200,17 +214,22 @@ func (s *Service) Settings(ctx context.Context) (SettingsView, error) {
 	view := SettingsView{
 		Settings:           settings,
 		PasswordConfigured: settings.Password != "",
+		AIKeyConfigured:    settings.AIAPIKey != "",
 		SMTPConfigured:     settings.SMTPConfigured(),
 		IMAPConfigured:     settings.IMAPConfigured(),
+		AIConfigured:       settings.AIConfigured(),
 	}
 	view.Password = ""
+	view.AIAPIKey = ""
 
 	return view, nil
 }
 
-// SaveSettings validates and stores settings. A non-empty authorization code
-// is held in memory only; use OUTREACH_SMTP_PASSWORD for restart persistence.
-func (s *Service) SaveSettings(ctx context.Context, settings Settings) error {
+// SaveSettings validates and stores settings. Non-empty secrets (mailbox
+// authorization code, AI API key) are held in memory only; use the
+// OUTREACH_SMTP_PASSWORD / OUTREACH_AI_API_KEY environment variables for
+// restart persistence.
+func (s *Service) SaveSettings(ctx context.Context, settings *Settings) error {
 	if settings.EmailAddress == "" {
 		return errors.New("email address is required")
 	}
@@ -250,4 +269,47 @@ func (s *Service) Tick(ctx context.Context) (TickReport, error) {
 // Reply sends a human-approved threaded reply.
 func (s *Service) Reply(ctx context.Context, contactID int64, body string) (Message, error) {
 	return s.engine.Reply(ctx, contactID, body)
+}
+
+// SuggestReply drafts an AI answer to the contact's latest reply for human
+// review.
+func (s *Service) SuggestReply(ctx context.Context, contactID int64) (string, error) {
+	return s.engine.SuggestReplyForContact(ctx, contactID)
+}
+
+// WorkspaceContacts lists contacts for the master-detail workspace.
+func (s *Service) WorkspaceContacts(
+	ctx context.Context,
+	filter WorkspaceFilter,
+) ([]WorkspaceContact, error) {
+	return s.store.WorkspaceContacts(ctx, filter)
+}
+
+// ContactThread returns one contact with its full conversation history.
+func (s *Service) ContactThread(ctx context.Context, contactID int64) (ContactThreadView, error) {
+	contact, err := s.store.Contact(ctx, contactID)
+	if err != nil {
+		return ContactThreadView{}, err
+	}
+
+	campaign, err := s.store.Campaign(ctx, contact.CampaignID)
+	if err != nil {
+		return ContactThreadView{}, err
+	}
+
+	messages, err := s.store.ContactMessages(ctx, contactID, 200)
+	if err != nil {
+		return ContactThreadView{}, err
+	}
+
+	canReply := contact.Status != ContactStatusBounced && contact.Status != ContactStatusUnsubscribed
+
+	return ContactThreadView{
+		Contact:      contact,
+		CampaignName: campaign.Name,
+		Sequence:     len(campaign.Sequence),
+		Intent:       contact.DisplayIntent(),
+		Messages:     messages,
+		CanReply:     canReply,
+	}, nil
 }

@@ -15,6 +15,25 @@ import (
 
 const defaultQueryLimit = 100
 
+// contactColumns is the canonical SELECT column list for outreach_contacts.
+// Every query that feeds scanContact must use it (optionally prefixed) so the
+// column order and the scan order can never drift apart.
+const contactColumns = `id, campaign_id, email, name, category, address, city, website, phone,
+	rating, review_count, timezone, status, next_step, next_send_at, last_sent_at,
+	root_message_id, root_subject, last_message_id, send_failures,
+	intent_score, intent_label, intent_reason, research, research_at,
+	created_at, updated_at`
+
+// prefixedContactColumns rewrites contactColumns for an aliased table join.
+func prefixedContactColumns(prefix string) string {
+	parts := strings.Split(contactColumns, ",")
+	for i := range parts {
+		parts[i] = prefix + "." + strings.TrimSpace(parts[i])
+	}
+
+	return strings.Join(parts, ", ")
+}
+
 // Store persists outreach campaigns, contacts, message history and
 // suppressions in SQLite.
 //
@@ -26,6 +45,7 @@ type Store struct {
 
 	secretMu        sync.RWMutex
 	runtimePassword string
+	runtimeAIKey    string
 }
 
 // NewStore opens (or creates) the outreach SQLite database.
@@ -99,6 +119,11 @@ CREATE TABLE IF NOT EXISTS outreach_contacts (
 	root_subject TEXT NOT NULL DEFAULT '',
 	last_message_id TEXT NOT NULL DEFAULT '',
 	send_failures INTEGER NOT NULL DEFAULT 0,
+	intent_score INTEGER NOT NULL DEFAULT -1,
+	intent_label TEXT NOT NULL DEFAULT '',
+	intent_reason TEXT NOT NULL DEFAULT '',
+	research TEXT NOT NULL DEFAULT '',
+	research_at INTEGER NOT NULL DEFAULT 0,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL,
 	UNIQUE(campaign_id, email)
@@ -151,6 +176,30 @@ CREATE TABLE IF NOT EXISTS outreach_meta (
 		return fmt.Errorf("create outreach schema: %w", err)
 	}
 
+	return s.migrate()
+}
+
+// migrate upgrades databases created before newer columns existed. SQLite has
+// no ADD COLUMN IF NOT EXISTS, so duplicate-column errors are expected and
+// ignored.
+func (s *Store) migrate() error {
+	alterations := []string{
+		"ALTER TABLE outreach_contacts ADD COLUMN intent_score INTEGER NOT NULL DEFAULT -1",
+		"ALTER TABLE outreach_contacts ADD COLUMN intent_label TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE outreach_contacts ADD COLUMN intent_reason TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE outreach_contacts ADD COLUMN research TEXT NOT NULL DEFAULT ''",
+		"ALTER TABLE outreach_contacts ADD COLUMN research_at INTEGER NOT NULL DEFAULT 0",
+	}
+
+	for _, statement := range alterations {
+		_, err := s.db.Exec(statement)
+		if err == nil || strings.Contains(err.Error(), "duplicate column name") {
+			continue
+		}
+
+		return fmt.Errorf("migrate outreach schema: %w", err)
+	}
+
 	return nil
 }
 
@@ -159,17 +208,27 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// SaveSettings stores non-secret mailbox and scheduling settings.
-func (s *Store) SaveSettings(ctx context.Context, settings Settings) error {
+// SaveSettings stores non-secret mailbox and scheduling settings. The mailbox
+// authorization code and the AI API key are kept in process memory only and
+// never written to disk.
+func (s *Store) SaveSettings(ctx context.Context, settings *Settings) error {
+	s.secretMu.Lock()
+
 	if settings.Password != "" {
-		s.secretMu.Lock()
 		s.runtimePassword = settings.Password
-		s.secretMu.Unlock()
 	}
 
-	settings.Password = ""
+	if settings.AIAPIKey != "" {
+		s.runtimeAIKey = settings.AIAPIKey
+	}
 
-	data, err := json.Marshal(settings)
+	s.secretMu.Unlock()
+
+	persisted := *settings
+	persisted.Password = ""
+	persisted.AIAPIKey = ""
+
+	data, err := json.Marshal(persisted)
 	if err != nil {
 		return fmt.Errorf("encode outreach settings: %w", err)
 	}
@@ -205,6 +264,7 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 
 	s.secretMu.RLock()
 	settings.Password = s.runtimePassword
+	settings.AIAPIKey = s.runtimeAIKey
 	s.secretMu.RUnlock()
 
 	settings.ApplyEnvOverrides()
@@ -351,6 +411,7 @@ func (s *Store) AddContacts(ctx context.Context, contacts []Contact) (int, error
 	if err != nil {
 		return 0, fmt.Errorf("begin contact import: %w", err)
 	}
+
 	defer func() {
 		_ = tx.Rollback()
 	}()
@@ -360,9 +421,9 @@ INSERT OR IGNORE INTO outreach_contacts(
 	campaign_id, email, name, category, address, city, website, phone, rating,
 	review_count, timezone,
 	status, next_step, next_send_at, last_sent_at, root_message_id, root_subject,
-	last_message_id, send_failures, created_at, updated_at
+	last_message_id, send_failures, intent_score, created_at, updated_at
 )
-SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 WHERE NOT EXISTS(SELECT 1 FROM outreach_suppressions WHERE email = ?)`
 
 	inserted := 0
@@ -371,6 +432,7 @@ WHERE NOT EXISTS(SELECT 1 FROM outreach_suppressions WHERE email = ?)`
 	for i := range contacts {
 		contact := &contacts[i]
 		contact.Email = normalizeEmail(contact.Email)
+
 		if contact.CampaignID == "" || contact.Email == "" {
 			continue
 		}
@@ -411,6 +473,7 @@ WHERE NOT EXISTS(SELECT 1 FROM outreach_suppressions WHERE email = ?)`
 			contact.RootSubject,
 			contact.LastMessageID,
 			contact.SendFailures,
+			-1, // intent not assessed yet
 			toUnix(contact.CreatedAt),
 			toUnix(contact.UpdatedAt),
 			contact.Email,
@@ -440,11 +503,7 @@ func (s *Store) Contacts(ctx context.Context, campaignID string, limit int) ([]C
 		limit = defaultQueryLimit
 	}
 
-	const query = `
-SELECT id, campaign_id, email, name, category, address, city, website, phone,
-	rating, review_count, timezone, status, next_step, next_send_at, last_sent_at,
-	root_message_id, root_subject, last_message_id, send_failures, created_at,
-	updated_at
+	query := `SELECT ` + contactColumns + `
 FROM outreach_contacts
 WHERE campaign_id = ?
 ORDER BY created_at DESC
@@ -455,12 +514,7 @@ LIMIT ?`
 
 // Contact returns one contact by ID.
 func (s *Store) Contact(ctx context.Context, id int64) (Contact, error) {
-	const query = `
-SELECT id, campaign_id, email, name, category, address, city, website, phone,
-	rating, review_count, timezone, status, next_step, next_send_at, last_sent_at,
-	root_message_id, root_subject, last_message_id, send_failures, created_at,
-	updated_at
-FROM outreach_contacts WHERE id = ?`
+	query := `SELECT ` + contactColumns + ` FROM outreach_contacts WHERE id = ?`
 
 	return scanContact(s.db.QueryRowContext(ctx, query, id))
 }
@@ -472,12 +526,7 @@ func (s *Store) DueContacts(ctx context.Context, now time.Time, limit int) ([]Co
 		limit = 1
 	}
 
-	const query = `
-SELECT c.id, c.campaign_id, c.email, c.name, c.category, c.address, c.city,
-	c.website, c.phone, c.rating, c.review_count, c.timezone, c.status,
-	c.next_step, c.next_send_at, c.last_sent_at, c.root_message_id,
-	c.root_subject, c.last_message_id, c.send_failures, c.created_at,
-	c.updated_at
+	query := `SELECT ` + prefixedContactColumns("c") + `
 FROM outreach_contacts c
 JOIN outreach_campaigns p ON p.id = c.campaign_id
 WHERE c.status = ? AND c.next_send_at <= ? AND p.status = ?
@@ -546,6 +595,7 @@ func (s *Store) RecordSent(
 	if err != nil {
 		return fmt.Errorf("begin sent message transaction: %w", err)
 	}
+
 	defer func() {
 		_ = tx.Rollback()
 	}()
@@ -561,6 +611,7 @@ func (s *Store) RecordSent(
 
 	rootMessageID := contact.RootMessageID
 	rootSubject := contact.RootSubject
+
 	if rootMessageID == "" {
 		rootMessageID = message.MessageID
 		rootSubject = strings.TrimPrefix(message.Subject, "Re: ")
@@ -574,6 +625,7 @@ SET status = ?, next_step = ?, next_send_at = ?, last_sent_at = ?,
 WHERE id = ? AND status = ?`
 
 	now := message.CreatedAt.UTC()
+
 	result, err := tx.ExecContext(
 		ctx,
 		update,
@@ -610,6 +662,7 @@ func (s *Store) RecordManualMessage(ctx context.Context, message *Message) error
 	if err != nil {
 		return fmt.Errorf("begin manual message transaction: %w", err)
 	}
+
 	defer func() {
 		_ = tx.Rollback()
 	}()
@@ -671,24 +724,19 @@ func (s *Store) FindContactForInbound(
 	fromEmail string,
 	references []string,
 ) (Contact, error) {
+	byReference := `SELECT ` + prefixedContactColumns("c") + `
+FROM outreach_contacts c
+LEFT JOIN outreach_messages m ON m.contact_id = c.id
+WHERE c.root_message_id = ? OR c.last_message_id = ? OR m.message_id = ?
+ORDER BY c.updated_at DESC LIMIT 1`
+
 	for _, reference := range references {
 		reference = normalizeMessageID(reference)
 		if reference == "" {
 			continue
 		}
 
-		const query = `
-SELECT c.id, c.campaign_id, c.email, c.name, c.category, c.address, c.city,
-	c.website, c.phone, c.rating, c.review_count, c.timezone, c.status,
-	c.next_step, c.next_send_at, c.last_sent_at, c.root_message_id,
-	c.root_subject, c.last_message_id, c.send_failures, c.created_at,
-	c.updated_at
-FROM outreach_contacts c
-LEFT JOIN outreach_messages m ON m.contact_id = c.id
-WHERE c.root_message_id = ? OR c.last_message_id = ? OR m.message_id = ?
-ORDER BY c.updated_at DESC LIMIT 1`
-
-		contact, err := scanContact(s.db.QueryRowContext(ctx, query, reference, reference, reference))
+		contact, err := scanContact(s.db.QueryRowContext(ctx, byReference, reference, reference, reference))
 		if err == nil {
 			return contact, nil
 		}
@@ -703,11 +751,7 @@ ORDER BY c.updated_at DESC LIMIT 1`
 		return Contact{}, ErrNotFound
 	}
 
-	const byEmail = `
-SELECT id, campaign_id, email, name, category, address, city, website, phone,
-	rating, review_count, timezone, status, next_step, next_send_at, last_sent_at,
-	root_message_id, root_subject, last_message_id, send_failures, created_at,
-	updated_at
+	byEmail := `SELECT ` + contactColumns + `
 FROM outreach_contacts
 WHERE email = ? AND last_sent_at > 0
 ORDER BY last_sent_at DESC LIMIT 1`
@@ -722,6 +766,7 @@ func (s *Store) RecordInbound(ctx context.Context, contact *Contact, message *Me
 	if err != nil {
 		return fmt.Errorf("begin inbound message transaction: %w", err)
 	}
+
 	defer func() {
 		_ = tx.Rollback()
 	}()
@@ -791,12 +836,15 @@ SELECT id, campaign_id, contact_id, direction, kind, step, subject, body,
 FROM outreach_messages`
 
 	var args []any
+
 	if campaignID != "" {
 		query += " WHERE campaign_id = ?"
+
 		args = append(args, campaignID)
 	}
 
 	query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+
 	args = append(args, limit)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -821,6 +869,235 @@ FROM outreach_messages`
 	}
 
 	return messages, nil
+}
+
+// ContactMessages returns the full conversation with one contact, oldest
+// first, ready for thread rendering.
+func (s *Store) ContactMessages(ctx context.Context, contactID int64, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = defaultQueryLimit
+	}
+
+	const query = `
+SELECT id, campaign_id, contact_id, direction, kind, step, subject, body,
+	message_id, in_reply_to, from_email, to_email, created_at
+FROM outreach_messages
+WHERE contact_id = ?
+ORDER BY created_at, id
+LIMIT ?`
+
+	rows, err := s.db.QueryContext(ctx, query, contactID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list contact messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []Message
+
+	for rows.Next() {
+		message, err := scanMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		messages = append(messages, message)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list contact messages: %w", err)
+	}
+
+	return messages, nil
+}
+
+// UpdateContactIntent stores a new intent assessment.
+func (s *Store) UpdateContactIntent(ctx context.Context, contactID int64, intent Intent) error {
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE outreach_contacts
+		 SET intent_score = ?, intent_label = ?, intent_reason = ?, updated_at = ?
+		 WHERE id = ?`,
+		intent.Score,
+		intent.Label,
+		intent.Reason,
+		time.Now().UTC().Unix(),
+		contactID,
+	)
+	if err != nil {
+		return fmt.Errorf("update contact intent: %w", err)
+	}
+
+	return requireAffected(result)
+}
+
+// SaveContactResearch caches the website background summary.
+func (s *Store) SaveContactResearch(ctx context.Context, contactID int64, research string) error {
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE outreach_contacts
+		 SET research = ?, research_at = ?, updated_at = ?
+		 WHERE id = ?`,
+		research,
+		time.Now().UTC().Unix(),
+		time.Now().UTC().Unix(),
+		contactID,
+	)
+	if err != nil {
+		return fmt.Errorf("save contact research: %w", err)
+	}
+
+	return requireAffected(result)
+}
+
+// WorkspaceFilter narrows the workspace contact list.
+type WorkspaceFilter struct {
+	CampaignID string
+	Status     string
+	Search     string
+	Limit      int
+}
+
+// WorkspaceContact is a contact row enriched for the master-detail UI.
+type WorkspaceContact struct {
+	Contact
+	CampaignName string    `json:"campaign_name"`
+	LastActivity time.Time `json:"last_activity"`
+	LastSnippet  string    `json:"last_snippet"`
+	LastDir      string    `json:"last_direction"`
+	Intent       Intent    `json:"intent"`
+}
+
+// WorkspaceContacts lists contacts across campaigns for the workspace panel,
+// newest activity first.
+func (s *Store) WorkspaceContacts(ctx context.Context, filter WorkspaceFilter) ([]WorkspaceContact, error) {
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 300
+	}
+
+	//nolint:gosec // concatenates the constant column list; values go through placeholders
+	query := `
+SELECT ` + prefixedContactColumns("c") + `,
+	p.name,
+	COALESCE(m.created_at, c.updated_at),
+	COALESCE(m.body, ''),
+	COALESCE(m.direction, '')
+FROM outreach_contacts c
+JOIN outreach_campaigns p ON p.id = c.campaign_id
+LEFT JOIN outreach_messages m ON m.id = (
+	SELECT id FROM outreach_messages
+	WHERE contact_id = c.id
+	ORDER BY created_at DESC, id DESC
+	LIMIT 1
+)
+WHERE 1 = 1`
+
+	var args []any
+
+	if filter.CampaignID != "" {
+		query += " AND c.campaign_id = ?"
+
+		args = append(args, filter.CampaignID)
+	}
+
+	if filter.Status != "" {
+		query += " AND c.status = ?"
+
+		args = append(args, filter.Status)
+	}
+
+	if filter.Search != "" {
+		query += " AND (c.name LIKE ? OR c.email LIKE ? OR c.category LIKE ? OR c.city LIKE ?)"
+		pattern := "%" + filter.Search + "%"
+
+		args = append(args, pattern, pattern, pattern, pattern)
+	}
+
+	query += `
+ORDER BY COALESCE(m.created_at, c.updated_at) DESC, c.id DESC
+LIMIT ?`
+
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query workspace contacts: %w", err)
+	}
+	defer rows.Close()
+
+	var contacts []WorkspaceContact
+
+	for rows.Next() {
+		item, err := scanWorkspaceContact(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		contacts = append(contacts, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("query workspace contacts: %w", err)
+	}
+
+	return contacts, nil
+}
+
+func scanWorkspaceContact(row rowScanner) (WorkspaceContact, error) {
+	var (
+		item                                                     WorkspaceContact
+		nextSendAt, lastSentAt, researchAt, createdAt, updatedAt int64
+		lastActivity                                             int64
+	)
+
+	err := row.Scan(
+		&item.ID,
+		&item.CampaignID,
+		&item.Email,
+		&item.Name,
+		&item.Category,
+		&item.Address,
+		&item.City,
+		&item.Website,
+		&item.Phone,
+		&item.Rating,
+		&item.ReviewCount,
+		&item.Timezone,
+		&item.Status,
+		&item.NextStep,
+		&nextSendAt,
+		&lastSentAt,
+		&item.RootMessageID,
+		&item.RootSubject,
+		&item.LastMessageID,
+		&item.SendFailures,
+		&item.IntentScore,
+		&item.IntentLabel,
+		&item.IntentReason,
+		&item.Research,
+		&researchAt,
+		&createdAt,
+		&updatedAt,
+		&item.CampaignName,
+		&lastActivity,
+		&item.LastSnippet,
+		&item.LastDir,
+	)
+	if err != nil {
+		return WorkspaceContact{}, fmt.Errorf("scan workspace contact: %w", err)
+	}
+
+	item.NextSendAt = fromUnix(nextSendAt)
+	item.LastSentAt = fromUnix(lastSentAt)
+	item.ResearchAt = fromUnix(researchAt)
+	item.CreatedAt = fromUnix(createdAt)
+	item.UpdatedAt = fromUnix(updatedAt)
+	item.LastActivity = fromUnix(lastActivity)
+	item.LastSnippet = clipRunes(collapseSpace(unquotedReply(item.LastSnippet)), 90)
+	item.Research = ""
+	item.Intent = item.DisplayIntent()
+
+	return item, nil
 }
 
 // Stats returns aggregate counters for one campaign.
@@ -1000,8 +1277,8 @@ func queryContacts(
 
 func scanContact(row rowScanner) (Contact, error) {
 	var (
-		contact                                      Contact
-		nextSendAt, lastSentAt, createdAt, updatedAt int64
+		contact                                                  Contact
+		nextSendAt, lastSentAt, researchAt, createdAt, updatedAt int64
 	)
 
 	err := row.Scan(
@@ -1025,6 +1302,11 @@ func scanContact(row rowScanner) (Contact, error) {
 		&contact.RootSubject,
 		&contact.LastMessageID,
 		&contact.SendFailures,
+		&contact.IntentScore,
+		&contact.IntentLabel,
+		&contact.IntentReason,
+		&contact.Research,
+		&researchAt,
 		&createdAt,
 		&updatedAt,
 	)
@@ -1038,6 +1320,7 @@ func scanContact(row rowScanner) (Contact, error) {
 
 	contact.NextSendAt = fromUnix(nextSendAt)
 	contact.LastSentAt = fromUnix(lastSentAt)
+	contact.ResearchAt = fromUnix(researchAt)
 	contact.CreatedAt = fromUnix(createdAt)
 	contact.UpdatedAt = fromUnix(updatedAt)
 

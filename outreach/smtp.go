@@ -14,8 +14,8 @@ import (
 
 // MailSender is implemented by SMTPMailer and by test doubles.
 type MailSender interface {
-	Send(context.Context, Settings, Message) error
-	Test(context.Context, Settings) error
+	Send(context.Context, *Settings, *Message) error
+	Test(context.Context, *Settings) error
 }
 
 // SMTPMailer sends RFC-compliant plain-text email over authenticated SMTP.
@@ -36,7 +36,7 @@ func NewMessageID(senderAddress string) string {
 // Send sends one message. It intentionally creates only a text/plain body and
 // no open pixels or click-tracking links: those are common spam signals and
 // misleading for privacy-conscious recipients.
-func (s *SMTPMailer) Send(ctx context.Context, settings Settings, message Message) error {
+func (s *SMTPMailer) Send(ctx context.Context, settings *Settings, message *Message) error {
 	if !settings.SMTPConfigured() {
 		return errors.New("SMTP is not configured; set server, account and OUTREACH_SMTP_PASSWORD")
 	}
@@ -103,7 +103,7 @@ func (s *SMTPMailer) Send(ctx context.Context, settings Settings, message Messag
 }
 
 // Test verifies DNS/TLS/authentication without sending a message.
-func (s *SMTPMailer) Test(ctx context.Context, settings Settings) error {
+func (s *SMTPMailer) Test(ctx context.Context, settings *Settings) error {
 	if !settings.SMTPConfigured() {
 		return errors.New("SMTP is not configured; set server, account and OUTREACH_SMTP_PASSWORD")
 	}
@@ -127,7 +127,7 @@ func (s *SMTPMailer) Test(ctx context.Context, settings Settings) error {
 	return nil
 }
 
-func newSMTPClient(settings Settings) (*mail.Client, error) {
+func newSMTPClient(settings *Settings) (*mail.Client, error) {
 	options := []mail.Option{
 		mail.WithPort(settings.SMTPPort),
 		mail.WithUsername(settings.EmailAddress),

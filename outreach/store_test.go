@@ -20,6 +20,7 @@ func TestImportCSVAndCampaignStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() {
 		if err := store.Close(); err != nil {
 			t.Error(err)
@@ -29,7 +30,8 @@ func TestImportCSVAndCampaignStats(t *testing.T) {
 	ctx := context.Background()
 	settings := outreach.DefaultSettings()
 	settings.DefaultTimezone = "Europe/Berlin"
-	if err := store.SaveSettings(ctx, settings); err != nil {
+
+	if err := store.SaveSettings(ctx, &settings); err != nil {
 		t.Fatal(err)
 	}
 
@@ -46,13 +48,16 @@ func TestImportCSVAndCampaignStats(t *testing.T) {
 	}
 
 	var data bytes.Buffer
+
 	writer := csv.NewWriter(&data)
+
 	if err := writer.Write([]string{
 		"title", "category", "address", "website", "phone", "review_rating",
 		"review_count", "timezone", "complete_address", "emails",
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := writer.Write([]string{
 		"Acme Dental", "dentist", "Main Street", "https://example.com", "+49 1",
 		"4.8", "120", "Europe/Berlin", `{"city":"Berlin"}`,
@@ -60,7 +65,9 @@ func TestImportCSVAndCampaignStats(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	writer.Flush()
+
 	if err := writer.Error(); err != nil {
 		t.Fatal(err)
 	}

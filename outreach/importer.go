@@ -87,6 +87,7 @@ func ImportCSV(
 		summary.Emails += len(emails)
 
 		validEmails := make([]string, 0, len(emails))
+
 		for _, value := range emails {
 			email, valid := validRecipient(value)
 			if !valid {
@@ -112,6 +113,7 @@ func ImportCSV(
 
 			continue
 		}
+
 		seen[email] = struct{}{}
 
 		timezone := field(record, index, "timezone")
@@ -165,10 +167,11 @@ func splitEmails(value string) []string {
 	})
 
 	emails := make([]string, 0, len(fields))
-	for _, field := range fields {
-		field = strings.Trim(strings.TrimPrefix(strings.TrimSpace(field), "mailto:"), "<>[]()\"'")
-		if field != "" {
-			emails = append(emails, field)
+
+	for _, item := range fields {
+		item = strings.Trim(strings.TrimPrefix(strings.TrimSpace(item), "mailto:"), "<>[]()\"'")
+		if item != "" {
+			emails = append(emails, item)
 		}
 	}
 
@@ -182,6 +185,7 @@ func validRecipient(value string) (string, bool) {
 	}
 
 	normalized := normalizeEmail(address.Address)
+
 	at := strings.LastIndex(normalized, "@")
 	if at <= 0 || at == len(normalized)-1 || !strings.Contains(normalized[at+1:], ".") {
 		return "", false

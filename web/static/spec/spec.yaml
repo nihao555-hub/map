@@ -227,6 +227,60 @@ paths:
         '204':
           description: Campaign deleted
 
+  /api/v1/outreach/contacts:
+    get:
+      summary: List contacts across campaigns for the workspace
+      parameters:
+        - name: campaign
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, replied, bounced, unsubscribed, completed, failed]
+        - name: q
+          in: query
+          description: Search in name, email, category and city
+          schema: { type: string }
+      responses:
+        '200':
+          description: Contacts with intent assessment and last activity
+
+  /api/v1/outreach/contacts/{id}:
+    get:
+      summary: Get one contact with its full send/receive history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Contact, campaign name, intent, and messages oldest first
+        '404':
+          description: Contact not found
+
+  /api/v1/outreach/contacts/{id}/suggest:
+    post:
+      summary: Draft an AI reply to the contact's latest response (human review required)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Suggested reply text
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestion: { type: string }
+        '422':
+          description: AI not configured or the contact has no reply yet
+
   /api/v1/outreach/settings:
     get:
       summary: Get redacted mailbox and sending settings
@@ -458,6 +512,17 @@ components:
           type: integer
         default_timezone:
           type: string
+        ai_base_url:
+          type: string
+          description: OpenAI-compatible endpoint base URL (DeepSeek/Qwen/Kimi/OpenAI/Ollama)
+          example: https://api.deepseek.com/v1
+        ai_model:
+          type: string
+          example: deepseek-chat
+        ai_api_key:
+          type: string
+          format: password
+          description: Held in memory only; prefer OUTREACH_AI_API_KEY
 
     OutreachTickReport:
       type: object

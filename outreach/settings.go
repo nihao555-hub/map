@@ -44,6 +44,16 @@ type Settings struct {
 	DefaultTimezone string `json:"default_timezone"`
 	// UnsubscribeText is appended as a plain-text footer for compliance.
 	UnsubscribeText string `json:"unsubscribe_text"`
+
+	// AI copywriting through any OpenAI-compatible chat-completions API
+	// (DeepSeek, Qwen, Kimi, OpenAI, local Ollama, ...). When configured,
+	// outgoing steps are written per contact from the scraped facts plus
+	// website research, replies get suggested drafts, and customer intent
+	// is scored from reply content. Without it the module falls back to
+	// deterministic templates and keyword heuristics.
+	AIBaseURL string `json:"ai_base_url"`
+	AIModel   string `json:"ai_model"`
+	AIAPIKey  string `json:"ai_api_key,omitempty"`
 }
 
 // DefaultSettings returns conservative defaults tuned for a fresh mailbox on
@@ -69,14 +79,20 @@ func DefaultSettings() Settings {
 
 // Environment variable names for secret/connection overrides.
 const (
-	EnvSMTPHost = "OUTREACH_SMTP_HOST"
-	EnvSMTPPort = "OUTREACH_SMTP_PORT"
-	EnvIMAPHost = "OUTREACH_IMAP_HOST"
-	EnvIMAPPort = "OUTREACH_IMAP_PORT"
-	EnvEmail    = "OUTREACH_EMAIL"
-	EnvPassword = "OUTREACH_SMTP_PASSWORD"
-	EnvFromName = "OUTREACH_FROM_NAME"
-	EnvDisabled = "OUTREACH_DISABLED"
+	EnvSMTPHost  = "OUTREACH_SMTP_HOST"
+	EnvSMTPPort  = "OUTREACH_SMTP_PORT"
+	EnvIMAPHost  = "OUTREACH_IMAP_HOST"
+	EnvIMAPPort  = "OUTREACH_IMAP_PORT"
+	EnvEmail     = "OUTREACH_EMAIL"
+	EnvFromName  = "OUTREACH_FROM_NAME"
+	EnvDisabled  = "OUTREACH_DISABLED"
+	EnvAIBaseURL = "OUTREACH_AI_BASE_URL"
+	EnvAIModel   = "OUTREACH_AI_MODEL"
+
+	// EnvPassword and EnvAIKey are the names of environment variables that
+	// carry secrets; the secret values themselves are never persisted.
+	EnvPassword = "OUTREACH_SMTP_PASSWORD" //nolint:gosec // env var name, not a credential
+	EnvAIKey    = "OUTREACH_AI_API_KEY"    //nolint:gosec // env var name, not a credential
 )
 
 // ApplyEnvOverrides overlays environment variables on top of stored settings.
@@ -113,6 +129,18 @@ func (s *Settings) ApplyEnvOverrides() {
 		s.FromName = v
 	}
 
+	if v := os.Getenv(EnvAIBaseURL); v != "" {
+		s.AIBaseURL = v
+	}
+
+	if v := os.Getenv(EnvAIModel); v != "" {
+		s.AIModel = v
+	}
+
+	if v := os.Getenv(EnvAIKey); v != "" {
+		s.AIAPIKey = v
+	}
+
 	if s.SMTPHost == "" || s.IMAPHost == "" {
 		if preset, ok := PresetForEmail(s.EmailAddress); ok {
 			if s.SMTPHost == "" {
@@ -137,6 +165,12 @@ func (s *Settings) SMTPConfigured() bool {
 // IMAPConfigured reports whether the inbox can be polled.
 func (s *Settings) IMAPConfigured() bool {
 	return s.IMAPHost != "" && s.IMAPPort > 0 && s.EmailAddress != "" && s.Password != ""
+}
+
+// AIConfigured reports whether AI copywriting, reply drafting and intent
+// scoring can run.
+func (s *Settings) AIConfigured() bool {
+	return s.AIBaseURL != "" && s.AIModel != "" && s.AIAPIKey != ""
 }
 
 // Provider is a well-known mail platform preset.

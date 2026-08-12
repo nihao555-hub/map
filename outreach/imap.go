@@ -38,15 +38,15 @@ type InboundEmail struct {
 
 // Inbox polls incoming mail and supports a non-destructive connection test.
 type Inbox interface {
-	Poll(context.Context, Settings, uint32) ([]InboundEmail, uint32, error)
-	Test(context.Context, Settings) error
+	Poll(context.Context, *Settings, uint32) ([]InboundEmail, uint32, error)
+	Test(context.Context, *Settings) error
 }
 
 // IMAPInbox reads replies without marking them as seen.
 type IMAPInbox struct{}
 
 // Test verifies TLS, authentication and INBOX access without reading messages.
-func (i *IMAPInbox) Test(_ context.Context, settings Settings) error {
+func (i *IMAPInbox) Test(_ context.Context, settings *Settings) error {
 	if !settings.IMAPConfigured() {
 		return errors.New("IMAP is not configured; set server, account and OUTREACH_SMTP_PASSWORD")
 	}
@@ -72,7 +72,7 @@ func (i *IMAPInbox) Test(_ context.Context, settings Settings) error {
 // only the previous 30 days, avoiding an expensive fetch of an old mailbox.
 func (i *IMAPInbox) Poll(
 	_ context.Context,
-	settings Settings,
+	settings *Settings,
 	afterUID uint32,
 ) ([]InboundEmail, uint32, error) {
 	if !settings.IMAPConfigured() {
@@ -90,9 +90,12 @@ func (i *IMAPInbox) Poll(
 	}
 
 	criteria := &imap.SearchCriteria{}
+
 	if afterUID > 0 {
 		var uidSet imap.UIDSet
+
 		uidSet.AddRange(imap.UID(afterUID+1), 0) // zero is IMAP's "*" wildcard.
+
 		criteria.UID = append(criteria.UID, uidSet)
 	} else {
 		criteria.Since = time.Now().UTC().AddDate(0, 0, -30)
@@ -162,7 +165,7 @@ func (i *IMAPInbox) Poll(
 	return messages, lastUID, nil
 }
 
-func connectIMAP(settings Settings) (*imapclient.Client, error) {
+func connectIMAP(settings *Settings) (*imapclient.Client, error) {
 	address := net.JoinHostPort(settings.IMAPHost, strconv.Itoa(settings.IMAPPort))
 	options := &imapclient.Options{
 		Dialer: &net.Dialer{Timeout: 15 * time.Second},
