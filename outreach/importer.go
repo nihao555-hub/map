@@ -193,8 +193,20 @@ func validRecipient(value string) (string, bool) {
 
 	local := normalized[:at]
 	switch local {
-	case "noreply", "no-reply", "donotreply", "do-not-reply", "mailer-daemon":
+	case "noreply", "no-reply", "donotreply", "do-not-reply", "mailer-daemon",
+		"youremail", "your-email", "email", "example", "test", "sentry":
 		return "", false
+	}
+
+	// Skip addresses that scrapers commonly pick up from page scripts/widgets
+	// rather than a real human inbox (e.g. Sentry DSNs, tracking endpoints).
+	domain := normalized[at+1:]
+	junkDomains := []string{"sentry.io", "sentry-cdn.com", "wixpress.com", "ingest.sentry.io"}
+
+	for _, junk := range junkDomains {
+		if domain == junk || strings.HasSuffix(domain, "."+junk) {
+			return "", false
+		}
 	}
 
 	return normalized, true
