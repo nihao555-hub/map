@@ -15,6 +15,12 @@ import (
 // includes 300 transactional emails per day with full API access.
 const brevoBaseURL = "https://api.brevo.com"
 
+// ipAllowlistRetries retries requests rejected by Brevo's authorised-IP
+// feature. Deployments behind rotating NAT pools would otherwise fail
+// randomly even when some of the pool addresses are authorised; a 401 at
+// this stage never sends email, so retrying is safe.
+const ipAllowlistRetries = 4
+
 // BrevoMailer sends email through the Brevo transactional HTTP API instead
 // of the mailbox's own SMTP relay. The From/Reply-To address stays the
 // operator's mailbox, so customer replies keep arriving over IMAP and the
@@ -120,14 +126,45 @@ func (b *BrevoMailer) request(
 	method, path string,
 	payload any,
 ) (status int, body []byte, err error) {
-	var reader io.Reader
+	var encoded []byte
 
 	if payload != nil {
-		encoded, err := json.Marshal(payload)
+		encoded, err = json.Marshal(payload)
 		if err != nil {
 			return 0, nil, fmt.Errorf("encode brevo request: %w", err)
 		}
+	}
 
+	for attempt := 0; ; attempt++ {
+		status, body, err = b.doRequest(ctx, settings, method, path, encoded)
+		if err != nil {
+			return 0, nil, err
+		}
+
+		if status == http.StatusUnauthorized &&
+			attempt < ipAllowlistRetries &&
+			bytes.Contains(body, []byte("unrecognised IP")) {
+			select {
+			case <-ctx.Done():
+				return 0, nil, ctx.Err()
+			case <-time.After(time.Second):
+			}
+
+			continue
+		}
+
+		return status, body, nil
+	}
+}
+
+func (b *BrevoMailer) doRequest(
+	ctx context.Context,
+	settings *Settings,
+	method, path string,
+	encoded []byte,
+) (status int, body []byte, err error) {
+	var reader io.Reader
+	if encoded != nil {
 		reader = bytes.NewReader(encoded)
 	}
 
@@ -139,7 +176,7 @@ func (b *BrevoMailer) request(
 	req.Header.Set("api-key", settings.SendAPIKey)
 	req.Header.Set("accept", "application/json")
 
-	if payload != nil {
+	if encoded != nil {
 		req.Header.Set("content-type", "application/json")
 	}
 

@@ -138,3 +138,35 @@ func TestRoutingSenderPicksChannelFromSettings(t *testing.T) {
 		t.Fatalf("smtp channel not used after switching back: smtp=%d", len(smtp.messages))
 	}
 }
+
+func TestBrevoMailerRetriesIPAllowlistRejections(t *testing.T) {
+	t.Parallel()
+
+	var calls int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls <= 2 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"message":"We have detected you are using an unrecognised IP address 1.2.3.4","code":"unauthorized"}`))
+
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"messageId":"<ok@smtp-relay.mailin.fr>"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	mailer := outreach.NewBrevoMailerForTest(server.URL)
+	settings := brevoSettings("xkeysib-test")
+	message := outreach.Message{ToEmail: "buyer@example.org", Subject: "s", Body: "b"}
+
+	if err := mailer.Send(context.Background(), &settings, &message); err != nil {
+		t.Fatalf("send should succeed after IP-allowlist retries: %v", err)
+	}
+
+	if calls != 3 {
+		t.Fatalf("expected 3 attempts (2 rejected + 1 accepted), got %d", calls)
+	}
+}
