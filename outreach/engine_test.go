@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +13,10 @@ import (
 	"github.com/gosom/google-maps-scraper/outreach"
 )
 
-const testMailboxSecret = "in-memory-test-secret"
+const (
+	testMailboxSecret = "in-memory-test-secret"
+	testSMTPHost      = "smtp.example.com"
+)
 
 type fakeSender struct {
 	messages []outreach.Message
@@ -100,7 +104,7 @@ func TestEngineTickSendsOneDueMessageAndAdvancesSequence(t *testing.T) {
 
 	ctx := context.Background()
 	settings := outreach.DefaultSettings()
-	settings.SMTPHost = "smtp.example.com"
+	settings.SMTPHost = testSMTPHost
 	settings.SMTPPort = 465
 	settings.EmailAddress = testSenderEmail
 	settings.Password = testMailboxSecret
@@ -307,7 +311,7 @@ func autopilotContact(t *testing.T) (*outreach.Store, outreach.Contact, string) 
 	settings.Password = testMailboxSecret
 	settings.IMAPHost = "imap.example.com"
 	settings.IMAPPort = 993
-	settings.SMTPHost = "smtp.example.com"
+	settings.SMTPHost = testSMTPHost
 	settings.SMTPPort = 465
 	settings.AIBaseURL = "https://ai.example.com/v1"
 	settings.AIModel = testAIModel
@@ -446,5 +450,115 @@ func TestAutopilotEscalatesHighStakesReply(t *testing.T) {
 
 	if !updated.NeedsAttention || updated.AttentionReason == "" {
 		t.Fatalf("high-stakes reply should be flagged for a human: %+v", updated)
+	}
+}
+
+// blockedSender simulates a provider that rejects every external recipient,
+// e.g. "550 5.8.3 Relay access denied" on restricted free mailboxes.
+type blockedSender struct {
+	attempts int
+}
+
+func (b *blockedSender) Send(context.Context, *outreach.Settings, *outreach.Message) error {
+	b.attempts++
+
+	return errors.New(`sending SMTP RCPT TO command: 550 "5.8.3 Relay access denied"`)
+}
+
+func (b *blockedSender) Test(context.Context, *outreach.Settings) error { return nil }
+
+func TestEngineTickPausesOutboundOnMailboxLevelError(t *testing.T) {
+	t.Parallel()
+
+	store, err := outreach.NewStore(filepath.Join(t.TempDir(), "outreach.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	ctx := context.Background()
+	settings := outreach.DefaultSettings()
+	settings.SMTPHost = testSMTPHost
+	settings.SMTPPort = 465
+	settings.EmailAddress = testSenderEmail
+	settings.Password = testMailboxSecret
+	settings.SendDays = "1234567"
+	settings.SendStartHour = 0
+	settings.SendEndHour = 24
+	settings.DefaultTimezone = "UTC"
+
+	if err := store.SaveSettings(ctx, &settings); err != nil {
+		t.Fatal(err)
+	}
+
+	campaign := outreach.Campaign{
+		ID:               uuid.NewString(),
+		Name:             "Blocked mailbox campaign",
+		Status:           outreach.CampaignStatusActive,
+		ValueProposition: "help distributors source tools at better margins",
+		Sequence:         outreach.DefaultSequence(),
+	}
+	if err := store.CreateCampaign(ctx, &campaign); err != nil {
+		t.Fatal(err)
+	}
+
+	contacts := []outreach.Contact{
+		{
+			CampaignID: campaign.ID,
+			Email:      "buyer-one@example.org",
+			Name:       "Buyer One",
+			Status:     outreach.ContactStatusActive,
+			NextSendAt: time.Now().UTC().Add(-time.Minute),
+		},
+		{
+			CampaignID: campaign.ID,
+			Email:      "buyer-two@example.org",
+			Name:       "Buyer Two",
+			Status:     outreach.ContactStatusActive,
+			NextSendAt: time.Now().UTC().Add(-time.Minute),
+		},
+	}
+	if _, err := store.AddContacts(ctx, contacts); err != nil {
+		t.Fatal(err)
+	}
+
+	sender := &blockedSender{}
+	engine := outreach.NewEngine(store, sender, &emptyInbox{})
+
+	if _, err := engine.Tick(ctx); err == nil {
+		t.Fatal("tick should surface the mailbox-level SMTP error")
+	}
+
+	if sender.attempts != 1 {
+		t.Fatalf("expected exactly one attempt before pausing, got %d", sender.attempts)
+	}
+
+	stored, err := store.Contacts(ctx, campaign.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := range stored {
+		if stored[i].Status != outreach.ContactStatusActive || stored[i].SendFailures != 0 {
+			t.Fatalf("mailbox-level error must not burn contact retries: %+v", stored[i])
+		}
+	}
+
+	report, err := engine.Tick(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if sender.attempts != 1 {
+		t.Fatalf("outbound should be on hold, but sender was called again (%d attempts)", sender.attempts)
+	}
+
+	if !strings.Contains(report.State, "paused") {
+		t.Fatalf("expected paused state, got %q", report.State)
 	}
 }

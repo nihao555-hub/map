@@ -2,15 +2,53 @@ package outreach
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
+	"net/smtp"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	mail "github.com/wneessen/go-mail"
 )
+
+// relayProbeRecipient is an external address used only for an RCPT TO
+// permission check. The session is reset before DATA, so no email is ever
+// sent to it.
+const relayProbeRecipient = "postmaster@gmail.com"
+
+// mailboxLevelErrorMarkers identify SMTP failures caused by the sender
+// account itself (blocked relay, broken auth, suspended mailbox). These fail
+// for every recipient, so retrying per contact only burns the sequence.
+var mailboxLevelErrorMarkers = []string{
+	"relay access denied",
+	"relaying denied",
+	"relay not permitted",
+	"authentication required",
+	"authentication failed",
+	"5.8.3",
+}
+
+// IsMailboxLevelError reports whether the SMTP failure is a sender-account
+// problem that would affect every recipient, as opposed to one bad address.
+func IsMailboxLevelError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	text := strings.ToLower(err.Error())
+	for _, marker := range mailboxLevelErrorMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+
+	return false
+}
 
 // MailSender is implemented by SMTPMailer and by test doubles.
 type MailSender interface {
@@ -102,7 +140,11 @@ func (s *SMTPMailer) Send(ctx context.Context, settings *Settings, message *Mess
 	return nil
 }
 
-// Test verifies DNS/TLS/authentication without sending a message.
+// Test verifies DNS/TLS/authentication without sending a message, then
+// checks that the account may deliver to external domains: providers
+// sometimes accept the login but reject every outside recipient (e.g.
+// "550 Relay access denied" on restricted free mailboxes), which would
+// silently break a whole campaign.
 func (s *SMTPMailer) Test(ctx context.Context, settings *Settings) error {
 	if !settings.SMTPConfigured() {
 		return errors.New("SMTP is not configured; set server, account and OUTREACH_SMTP_PASSWORD")
@@ -124,7 +166,64 @@ func (s *SMTPMailer) Test(ctx context.Context, settings *Settings) error {
 		return fmt.Errorf("close SMTP test connection: %w", err)
 	}
 
-	return nil
+	return probeExternalRelay(settings)
+}
+
+// probeExternalRelay authenticates and issues RCPT TO for one external
+// address, then resets the session without sending anything. A rejection
+// here means the provider will refuse every real campaign email.
+func probeExternalRelay(settings *Settings) error {
+	addr := net.JoinHostPort(settings.SMTPHost, strconv.Itoa(settings.SMTPPort))
+
+	var (
+		client *smtp.Client
+		err    error
+	)
+
+	if settings.SMTPTLS == TLSModeSSL {
+		conn, dialErr := tls.DialWithDialer(
+			&net.Dialer{Timeout: 15 * time.Second},
+			"tcp",
+			addr,
+			&tls.Config{ServerName: settings.SMTPHost, MinVersion: tls.VersionTLS12},
+		)
+		if dialErr != nil {
+			return fmt.Errorf("connect SMTP for relay probe: %w", dialErr)
+		}
+
+		client, err = smtp.NewClient(conn, settings.SMTPHost)
+	} else {
+		client, err = smtp.Dial(addr)
+		if err == nil {
+			err = client.StartTLS(&tls.Config{ServerName: settings.SMTPHost, MinVersion: tls.VersionTLS12})
+		}
+	}
+
+	if err != nil {
+		return fmt.Errorf("prepare SMTP relay probe: %w", err)
+	}
+
+	defer func() { _ = client.Quit() }()
+
+	auth := smtp.PlainAuth("", settings.EmailAddress, settings.Password, settings.SMTPHost)
+	if err := client.Auth(auth); err != nil {
+		return fmt.Errorf("authenticate for relay probe: %w", err)
+	}
+
+	if err := client.Mail(settings.EmailAddress); err != nil {
+		return fmt.Errorf("MAIL FROM during relay probe: %w", err)
+	}
+
+	if err := client.Rcpt(relayProbeRecipient); err != nil {
+		_ = client.Reset()
+
+		return fmt.Errorf(
+			"账号无法向外部域名发信（服务商拒绝: %w）——通常是免费/新邮箱被限制外发或触发了反垃圾封禁，请到邮箱服务商后台申诉解除，或更换正规发信邮箱",
+			err,
+		)
+	}
+
+	return client.Reset()
 }
 
 func newSMTPClient(settings *Settings) (*mail.Client, error) {

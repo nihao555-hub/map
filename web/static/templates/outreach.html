@@ -153,6 +153,13 @@
               <span class="ov-h-left"><i data-lucide="sparkles"></i>AI 撰写 / 意向评估</span>
               <span class="ov-pill {{if .Overview.AIConfigured}}ok{{else}}off{{end}}">{{if .Overview.AIConfigured}}已启用{{else}}未配置（用模板）{{end}}</span>
             </div>
+            {{if .Overview.MailboxError}}
+            <div class="ov-health-row">
+              <span class="ov-h-left"><i data-lucide="shield-alert"></i>外部投递</span>
+              <span class="ov-pill err">外发被拒</span>
+            </div>
+            <p class="mailbox-error-note">邮箱服务商拒绝向外部域名发信，发送已自动暂停并会定时重试。请到邮箱后台申诉解除限制，或到“设置”更换发信邮箱。<br><small>{{printf "%.150s" .Overview.MailboxError}}</small></p>
+            {{end}}
           </div>
         </article>
 

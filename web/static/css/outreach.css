@@ -1243,6 +1243,21 @@
 
 .ov-pill.ok { color: #0b7a51; background: #e5f8ef; }
 .ov-pill.off { color: #a82f43; background: #ffeef1; }
+.ov-pill.err { color: #fff; background: #dc4c64; }
+
+.mailbox-error-note {
+  overflow-wrap: anywhere;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #f3c2cc;
+  border-radius: 10px;
+  background: #fff5f7;
+  color: #8c2f42;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.mailbox-error-note small { color: #b06373; font-size: 11px; }
 
 .ov-progress {
   height: 8px;

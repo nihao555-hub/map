@@ -18,10 +18,17 @@ const (
 	inboxPollInterval   = 2 * time.Minute
 	aiWriteTimeout      = 75 * time.Second
 	sendFailureBackoff  = 15 * time.Minute
+	// mailboxErrorHold pauses all outbound after a sender-account-level SMTP
+	// failure (blocked relay, broken auth): every recipient would fail, so
+	// retrying per contact only burns sequences and reputation.
+	mailboxErrorHold = 30 * time.Minute
 
-	metaInboxUID      = "imap_last_uid"
-	metaInboxLastPoll = "imap_last_poll_unix"
-	metaNextOutbound  = "next_outbound_unix"
+	metaInboxUID       = "imap_last_uid"
+	metaInboxLastPoll  = "imap_last_poll_unix"
+	metaNextOutbound   = "next_outbound_unix"
+	metaOutboundHold   = "outbound_hold_until"
+	metaMailboxError   = "mailbox_error"
+	metaMailboxErrorAt = "mailbox_error_at_unix"
 )
 
 var emailInTextPattern = regexp.MustCompile(
@@ -152,6 +159,18 @@ func (e *Engine) Tick(ctx context.Context) (TickReport, error) {
 		return report, nil
 	}
 
+	holdUntil, err := e.metaTime(ctx, metaOutboundHold)
+	if err != nil {
+		return report, err
+	}
+
+	if now.Before(holdUntil) {
+		report.State = "outbound paused: mailbox-level SMTP error (retry " +
+			holdUntil.UTC().Format(time.RFC3339) + ")"
+
+		return report, nil
+	}
+
 	nextOutbound, err := e.metaTime(ctx, metaNextOutbound)
 	if err != nil {
 		return report, err
@@ -195,6 +214,20 @@ func (e *Engine) Tick(ctx context.Context) (TickReport, error) {
 
 		sentMessage, err := e.sendSequenceStep(ctx, &settings, contact, now)
 		if err != nil {
+			if IsMailboxLevelError(err) {
+				// The sender account itself is broken (e.g. "relay access
+				// denied"): keep the contact scheduled and pause all
+				// outbound instead of failing every lead in the batch.
+				if holdErr := e.holdOutbound(ctx, now, err); holdErr != nil {
+					return report, errors.Join(err, holdErr)
+				}
+
+				report.State = "outbound paused: mailbox-level SMTP error"
+
+				return report, fmt.Errorf("mailbox-level SMTP error, outbound paused %s: %w",
+					mailboxErrorHold, err)
+			}
+
 			retryAt := now.Add(time.Duration(contact.SendFailures+1) * sendFailureBackoff)
 			if recordErr := e.store.RecordSendFailure(ctx, contact.ID, retryAt); recordErr != nil {
 				return report, errors.Join(err, recordErr)
@@ -205,6 +238,10 @@ func (e *Engine) Tick(ctx context.Context) (TickReport, error) {
 
 		if !sentMessage {
 			continue
+		}
+
+		if err := e.clearMailboxError(ctx); err != nil {
+			return report, err
 		}
 
 		if err := e.store.SetMeta(
@@ -768,6 +805,30 @@ func (e *Engine) dailyAllowance(
 	}
 
 	return settings.AllowedToday(daysActive), sent, nil
+}
+
+// holdOutbound pauses sending for mailboxErrorHold and records the error so
+// the overview can surface a "sender mailbox is blocked" warning.
+func (e *Engine) holdOutbound(ctx context.Context, now time.Time, cause error) error {
+	until := strconv.FormatInt(now.Add(mailboxErrorHold).Unix(), 10)
+	if err := e.store.SetMeta(ctx, metaOutboundHold, until); err != nil {
+		return err
+	}
+
+	if err := e.store.SetMeta(ctx, metaMailboxError, cause.Error()); err != nil {
+		return err
+	}
+
+	return e.store.SetMeta(ctx, metaMailboxErrorAt, strconv.FormatInt(now.Unix(), 10))
+}
+
+// clearMailboxError removes the outbound hold after a successful send.
+func (e *Engine) clearMailboxError(ctx context.Context) error {
+	if err := e.store.SetMeta(ctx, metaOutboundHold, ""); err != nil {
+		return err
+	}
+
+	return e.store.SetMeta(ctx, metaMailboxError, "")
 }
 
 func (e *Engine) metaTime(ctx context.Context, key string) (time.Time, error) {

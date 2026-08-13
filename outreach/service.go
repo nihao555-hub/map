@@ -42,6 +42,9 @@ type OverviewView struct {
 	SentToday      int       `json:"sent_today"`
 	DailyAllowance int       `json:"daily_allowance"`
 	RecentInbound  []Message `json:"recent_inbound"`
+	// MailboxError is set when the engine paused outbound because the
+	// sender account itself is rejected by the provider (e.g. relay denied).
+	MailboxError string `json:"mailbox_error,omitempty"`
 }
 
 // ContactThreadView is everything the workspace detail pane needs.
@@ -255,6 +258,11 @@ func (s *Service) Overview(ctx context.Context) (OverviewView, error) {
 		}
 	}
 
+	mailboxError, err := s.store.Meta(ctx, metaMailboxError)
+	if err != nil {
+		return OverviewView{}, err
+	}
+
 	return OverviewView{
 		Overview:       overview,
 		SMTPConfigured: settings.SMTPConfigured(),
@@ -266,6 +274,7 @@ func (s *Service) Overview(ctx context.Context) (OverviewView, error) {
 		SentToday:      sentToday,
 		DailyAllowance: settings.AllowedToday(daysActive),
 		RecentInbound:  recent,
+		MailboxError:   mailboxError,
 	}, nil
 }
 
