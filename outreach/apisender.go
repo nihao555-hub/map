@@ -102,7 +102,10 @@ func (b *BrevoMailer) Send(ctx context.Context, settings *Settings, message *Mes
 	return nil
 }
 
-// Test verifies the API key against GET /v3/account without sending email.
+// Test verifies the API key against GET /v3/account without sending email,
+// and checks that transactional sending is activated: fresh Brevo accounts
+// have SMTP/API sending disabled until Brevo approves it, so an early check
+// prevents a false "all good" before a campaign launches.
 func (b *BrevoMailer) Test(ctx context.Context, settings *Settings) error {
 	if !settings.APISendConfigured() {
 		return fmt.Errorf("brevo API is not configured; set the API key and sender address")
@@ -115,6 +118,18 @@ func (b *BrevoMailer) Test(ctx context.Context, settings *Settings) error {
 
 	if status != http.StatusOK {
 		return brevoError("verify brevo API key", status, body)
+	}
+
+	var account struct {
+		Relay struct {
+			Enabled bool `json:"enabled"`
+		} `json:"relay"`
+	}
+
+	if err := json.Unmarshal(body, &account); err == nil && !account.Relay.Enabled {
+		return fmt.Errorf(
+			"brevo 交易发送（SMTP/API）尚未激活：新账号需先激活才能发信——登录 Brevo 后台按提示完成开通，或发邮件至 contact@brevo.com 说明用途申请激活",
+		)
 	}
 
 	return nil

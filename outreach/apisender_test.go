@@ -170,3 +170,42 @@ func TestBrevoMailerRetriesIPAllowlistRejections(t *testing.T) {
 		t.Fatalf("expected 3 attempts (2 rejected + 1 accepted), got %d", calls)
 	}
 }
+
+func TestBrevoMailerTestDetectsInactiveRelay(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v3/account" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"email":"a@b.c","relay":{"enabled":false}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	mailer := outreach.NewBrevoMailerForTest(server.URL)
+	settings := brevoSettings("xkeysib-test")
+
+	err := mailer.Test(context.Background(), &settings)
+	if err == nil || !strings.Contains(err.Error(), "尚未激活") {
+		t.Fatalf("inactive relay must fail the connection test, got %v", err)
+	}
+}
+
+func TestBrevoMailerTestPassesWithActiveRelay(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"email":"a@b.c","relay":{"enabled":true,"data":{"relay":"smtp-relay.brevo.com"}}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	mailer := outreach.NewBrevoMailerForTest(server.URL)
+	settings := brevoSettings("xkeysib-test")
+
+	if err := mailer.Test(context.Background(), &settings); err != nil {
+		t.Fatalf("active relay should pass: %v", err)
+	}
+}
