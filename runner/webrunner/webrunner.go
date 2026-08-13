@@ -16,6 +16,7 @@ import (
 	"github.com/gosom/google-maps-scraper/deduper"
 	"github.com/gosom/google-maps-scraper/exiter"
 	"github.com/gosom/google-maps-scraper/grid"
+	"github.com/gosom/google-maps-scraper/outreach"
 	"github.com/gosom/google-maps-scraper/runner"
 	"github.com/gosom/google-maps-scraper/tlmt"
 	"github.com/gosom/google-maps-scraper/web"
@@ -30,6 +31,9 @@ type webrunner struct {
 	svc       *web.Service
 	cfg       *runner.Config
 	setupMate func(context.Context, io.Writer, *web.Job) (mateRunner, error)
+
+	outreachEngine *outreach.Engine
+	outreachStore  *outreach.Store
 }
 
 type mateRunner interface {
@@ -57,8 +61,18 @@ func New(cfg *runner.Config) (runner.Runner, error) {
 
 	svc := web.NewService(repo, cfg.DataFolder)
 
-	srv, err := web.New(svc, cfg.Addr)
+	outreachStore, err := outreach.NewStore(filepath.Join(cfg.DataFolder, "outreach.db"))
 	if err != nil {
+		return nil, err
+	}
+
+	outreachEngine := outreach.NewEngine(outreachStore, nil, nil)
+	outreachService := outreach.NewService(outreachStore, outreachEngine, cfg.DataFolder)
+
+	srv, err := web.New(svc, cfg.Addr, outreachService)
+	if err != nil {
+		_ = outreachStore.Close()
+
 		return nil, err
 	}
 
@@ -67,6 +81,9 @@ func New(cfg *runner.Config) (runner.Runner, error) {
 		svc:       svc,
 		cfg:       cfg,
 		setupMate: defaultSetupMate(cfg),
+
+		outreachEngine: outreachEngine,
+		outreachStore:  outreachStore,
 	}
 
 	return &ans, nil
@@ -83,11 +100,19 @@ func (w *webrunner) Run(ctx context.Context) error {
 		return w.srv.Start(ctx)
 	})
 
+	egroup.Go(func() error {
+		return w.outreachEngine.Run(ctx)
+	})
+
 	return egroup.Wait()
 }
 
 func (w *webrunner) Close(context.Context) error {
-	return nil
+	if w.outreachStore == nil {
+		return nil
+	}
+
+	return w.outreachStore.Close()
 }
 
 func (w *webrunner) work(ctx context.Context) error {

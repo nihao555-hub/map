@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>开发信中心 · 地图获客</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/css/outreach.css">
+</head>
+<body class="outreach-body" data-panel="{{.Panel}}">
+  <!-- 侧边栏：默认收缩，hover 展开（忠实复刻参考设计），可固定 -->
+  <aside id="orail" aria-label="侧边栏导航">
+    <div class="rail-brand">
+      <span class="rail-logo"><img src="/static/img/outreach-logo.png" alt="OutreachAI"></span>
+      <span class="rail-label rail-wordmark">OutreachAI</span>
+    </div>
+
+    <nav class="rail-scroll">
+      <button type="button" class="rail-item" data-panel-btn="workspace" title="开发信">
+        <i data-lucide="send"></i><span class="rail-label">开发信</span>
+      </button>
+      <button type="button" class="rail-item" data-panel-btn="campaigns" title="模板 / 活动">
+        <i data-lucide="layout-template"></i><span class="rail-label">模板</span>
+      </button>
+      <button type="button" class="rail-item" data-panel-btn="overview" title="数据分析">
+        <i data-lucide="bar-chart-3"></i><span class="rail-label">数据分析</span>
+      </button>
+      <button type="button" class="rail-item" data-panel-btn="settings" title="设置">
+        <i data-lucide="settings"></i><span class="rail-label">设置</span>
+      </button>
+      <div class="rail-sep"></div>
+      <a class="rail-item" href="/" title="地图获客">
+        <i data-lucide="map"></i><span class="rail-label">地图获客</span>
+      </a>
+    </nav>
+
+    <div class="rail-bottom">
+      <a class="rail-item" href="/api/docs" target="_blank" rel="noopener" title="帮助中心">
+        <i data-lucide="help-circle"></i><span class="rail-label">帮助中心</span>
+      </a>
+      <div class="rail-acct">
+        <button type="button" class="rail-item" data-menu="acct-menu" title="账户">
+          <span class="rail-avatar">{{.AccountInitial}}</span>
+          <span class="rail-label rail-acct-name">
+            {{if .Overview.FromName}}{{.Overview.FromName}}{{else if .Overview.EmailAddress}}{{.Overview.EmailAddress}}{{else}}未配置账户{{end}}
+            <small>{{if .Overview.SenderCompany}}{{.Overview.SenderCompany}}{{else}}Pro 账户{{end}}</small>
+          </span>
+          <i data-lucide="chevrons-up-down" class="rail-label rail-chev"></i>
+        </button>
+        <div class="rail-menu" id="acct-menu">
+          <div class="rail-acct-head">
+            <b>{{if .Overview.FromName}}{{.Overview.FromName}}{{else}}未配置发件人{{end}}</b>
+            <small>{{if .Overview.EmailAddress}}{{.Overview.EmailAddress}}{{else}}请在设置中填写企业邮箱{{end}}</small>
+          </div>
+          <button type="button" data-panel-btn="settings"><i data-lucide="settings"></i>邮箱与 AI 设置</button>
+          <a href="/"><i data-lucide="map"></i>去地图获客</a>
+        </div>
+      </div>
+      <button type="button" class="rail-item" id="rail-pin" title="固定 / 收起侧边栏">
+        <i data-lucide="panel-left"></i><span class="rail-label">固定侧边栏</span>
+      </button>
+    </div>
+  </aside>
+
+  <main class="o-main">
+    <header class="o-topbar">
+      <div class="o-topbar-left">
+        <h1 id="panel-title">总览</h1>
+        <span class="mail-chip {{if and .Settings.SMTPConfigured .Settings.IMAPConfigured}}ok{{end}}">
+          <span class="chip-dot"></span>
+          {{if .Settings.EmailAddress}}{{.Settings.EmailAddress}}{{else}}邮箱未配置{{end}}
+        </span>
+        <span class="mail-chip {{if .Settings.AIConfigured}}ok{{end}}" title="AI 撰写与意向评估">
+          <i data-lucide="sparkles"></i>
+          {{if .Settings.AIConfigured}}AI 已启用{{else}}AI 未配置（用模板发送）{{end}}
+        </span>
+      </div>
+    </header>
+
+    {{if .Notice}}<div class="outreach-alert success"><i data-lucide="check-circle"></i>{{.Notice}}</div>{{end}}
+    {{if .Error}}<div class="outreach-alert error"><i data-lucide="alert-circle"></i>{{.Error}}</div>{{end}}
+
+    <!-- ===================== 面板〇：总览工作台 ===================== -->
+    <section id="panel-overview" class="o-panel">
+      <div class="ov-actions">
+        <button type="button" class="outreach-primary" data-panel-btn="campaigns"><i data-lucide="send"></i>批量群发开发信</button>
+        <form method="post" action="/outreach/tick"><button type="submit" class="outreach-secondary"><i data-lucide="refresh-cw"></i>立即执行一次</button></form>
+        <button type="button" class="outreach-secondary" data-panel-btn="workspace"><i data-lucide="messages-square"></i>进入客户工作台</button>
+        <a class="outreach-secondary" href="/"><i data-lucide="map"></i>去地图获客</a>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card accent">
+          <div class="kpi-label"><i data-lucide="send"></i>活动</div>
+          <div class="kpi-value">{{.Overview.Campaigns}}</div>
+          <div class="kpi-sub">运行中 {{.Overview.ActiveCampaigns}}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"><i data-lucide="users"></i>联系人</div>
+          <div class="kpi-value">{{.Overview.Contacts}}</div>
+          <div class="kpi-sub">已触达 {{.Overview.Sent}}</div>
+        </div>
+        <div class="kpi-card good">
+          <div class="kpi-label"><i data-lucide="reply"></i>回复</div>
+          <div class="kpi-value">{{.Overview.Replied}}</div>
+          <div class="kpi-sub">回复率 {{printf "%.1f" .Overview.ReplyRate}}%</div>
+        </div>
+        <div class="kpi-card good">
+          <div class="kpi-label"><i data-lucide="flame"></i>高意向</div>
+          <div class="kpi-value">{{.Overview.HighIntent}}</div>
+          <div class="kpi-sub">评分 ≥ 80</div>
+        </div>
+        <div class="kpi-card warn">
+          <div class="kpi-label"><i data-lucide="user-round-cog"></i>待人工</div>
+          <div class="kpi-value">{{.Overview.NeedsAttention}}</div>
+          <div class="kpi-sub">需人工介入的会话</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"><i data-lucide="bot"></i>自动驾驶</div>
+          <div class="kpi-value" style="font-size:18px">{{if .Overview.AIConfigured}}{{if .Settings.AutoReply}}已开启{{else}}未开启{{end}}{{else}}需配置AI{{end}}</div>
+          <div class="kpi-sub">AI 自动回信 · 高风险转人工</div>
+        </div>
+        <div class="kpi-card warn">
+          <div class="kpi-label"><i data-lucide="alert-triangle"></i>退信</div>
+          <div class="kpi-value">{{.Overview.Bounced}}</div>
+          <div class="kpi-sub">已发完 {{.Overview.Completed}}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"><i data-lucide="ban"></i>退订 / 抑制</div>
+          <div class="kpi-value">{{.Overview.Unsubscribed}}</div>
+          <div class="kpi-sub">抑制名单 {{.Overview.Suppressed}}</div>
+        </div>
+      </div>
+
+      <div class="ov-grid">
+        <article class="outreach-card">
+          <div class="card-heading"><div><p class="eyebrow">今日发送</p><h2>发送进度与配额</h2></div></div>
+          <div class="ov-progress">
+            <span style="width: {{.SendProgress}}%"></span>
+          </div>
+          <p class="kpi-sub">今日已发 <b>{{.Overview.SentToday}}</b> / 今日上限 <b>{{.Overview.DailyAllowance}}</b>（新邮箱预热逐日提升）</p>
+
+          <div style="margin-top:14px">
+            <div class="ov-health-row">
+              <span class="ov-h-left"><i data-lucide="mail"></i>{{if eq .Overview.SendVia "api"}}Brevo API 发信{{else}}SMTP 发信{{end}}</span>
+              <span class="ov-pill {{if .Overview.SendConfigured}}ok{{else}}off{{end}}">{{if .Overview.SendConfigured}}已就绪{{else}}未配置{{end}}</span>
+            </div>
+            <div class="ov-health-row">
+              <span class="ov-h-left"><i data-lucide="inbox"></i>IMAP 收信</span>
+              <span class="ov-pill {{if .Overview.IMAPConfigured}}ok{{else}}off{{end}}">{{if .Overview.IMAPConfigured}}已就绪{{else}}未配置{{end}}</span>
+            </div>
+            <div class="ov-health-row">
+              <span class="ov-h-left"><i data-lucide="sparkles"></i>AI 撰写 / 意向评估</span>
+              <span class="ov-pill {{if .Overview.AIConfigured}}ok{{else}}off{{end}}">{{if .Overview.AIConfigured}}已启用{{else}}未配置（用模板）{{end}}</span>
+            </div>
+            {{if .Overview.MailboxError}}
+            <div class="ov-health-row">
+              <span class="ov-h-left"><i data-lucide="shield-alert"></i>外部投递</span>
+              <span class="ov-pill err">外发被拒</span>
+            </div>
+            <p class="mailbox-error-note">邮箱服务商拒绝向外部域名发信，发送已自动暂停并会定时重试。请到邮箱后台申诉解除限制，或到“设置”更换发信邮箱。<br><small>{{printf "%.150s" .Overview.MailboxError}}</small></p>
+            {{end}}
+          </div>
+        </article>
+
+        <article class="outreach-card">
+          <div class="card-heading"><div><p class="eyebrow">收件箱</p><h2>最近客户往来</h2></div></div>
+          {{if .Overview.RecentInbound}}
+          <div class="ov-recent">
+            {{range .Overview.RecentInbound}}
+            <div class="ov-recent-item {{.Kind}}">
+              <span class="ov-kind">{{if eq .Kind "bounce"}}退信{{else if eq .Kind "unsubscribe"}}退订{{else if eq .Kind "notice"}}通知{{else}}回复{{end}}</span>
+              <div>
+                <b>{{.FromEmail}}</b>
+                <small>{{.Subject}}</small>
+              </div>
+              <time>{{.CreatedAt.Format "01-02 15:04"}}</time>
+            </div>
+            {{end}}
+          </div>
+          {{else}}
+          <div class="empty-panel compact">
+            <i data-lucide="inbox"></i>
+            <p>还没有收到客户来信。启用活动后，回复、退信与退订会自动出现在这里。</p>
+          </div>
+          {{end}}
+        </article>
+      </div>
+
+    </section>
+
+    <!-- ===================== 面板一：客户工作台 ===================== -->
+    <section id="panel-workspace" class="o-panel">
+      <div class="wk3">
+        <!-- 第一栏：客户名单 -->
+        <div class="cust-pane">
+          <div class="cust-head">
+            <div class="cust-title">客户名单 <span class="cust-count" id="cust-total">0</span></div>
+            <div class="cust-tools">
+              <div class="cust-search">
+                <i data-lucide="search"></i>
+                <input id="wk-search" type="text" placeholder="搜索客户名称或公司">
+              </div>
+              <div class="cust-filter">
+                <button type="button" class="cust-icon-btn" data-menu="filter-menu" title="按活动筛选"><i data-lucide="filter"></i></button>
+                <div class="rail-menu" id="filter-menu">
+                  <div class="filter-menu-label">按活动筛选</div>
+                  <select id="wk-campaign" class="filter-select">
+                    <option value="">全部活动</option>
+                    {{range .Campaigns}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+                  </select>
+                </div>
+              </div>
+              <button type="button" class="cust-icon-btn add" data-panel-btn="campaigns" title="新建/批量群发"><i data-lucide="plus"></i></button>
+            </div>
+          </div>
+
+          <div class="cust-tabs">
+            <button type="button" class="cust-tab active" data-view="all">全部 <span class="tab-count" id="cnt-all">0</span></button>
+            <button type="button" class="cust-tab" data-view="uncontacted">未联系 <span class="tab-count" id="cnt-uncontacted">0</span></button>
+            <button type="button" class="cust-tab" data-view="following">跟进中 <span class="tab-count" id="cnt-following">0</span></button>
+            <button type="button" class="cust-tab" data-view="replied">已回复 <span class="tab-count" id="cnt-replied">0</span></button>
+            <button type="button" class="cust-tab attention" data-view="attention">待人工 <span class="tab-count" id="cnt-attention">0</span></button>
+          </div>
+
+          <div class="cust-list" id="wk-contacts">
+            <div class="wk-hint">载入中…</div>
+          </div>
+
+          <div class="cust-pager" id="cust-pager"></div>
+        </div>
+
+        <!-- 第二栏：沟通历史 -->
+        <div class="conv-pane" id="wk-detail">
+          <div class="conv-empty" id="wk-empty">
+            <i data-lucide="mouse-pointer-click"></i>
+            <h3>从左侧选择一个客户</h3>
+            <p>这里会显示与客户的完整收发信记录、客户详情，以及右侧 AI 生成内容与评分。</p>
+          </div>
+
+          <div class="conv-body hidden" id="wk-thread">
+            <div class="conv-head">
+              <div class="conv-who">
+                <span class="conv-avatar" id="th-avatar">A</span>
+                <div class="conv-whotext">
+                  <div class="conv-nameline"><b id="th-name"></b></div>
+                  <div class="conv-sub" id="th-sub"></div>
+                </div>
+              </div>
+              <div class="conv-actions">
+                <div class="conv-more">
+                  <button type="button" class="outreach-secondary sm" data-menu="conv-menu">更多操作 <i data-lucide="chevron-down"></i></button>
+                  <div class="rail-menu" id="conv-menu">
+                    <button type="button" id="act-copy-email"><i data-lucide="copy"></i>复制邮箱地址</button>
+                    <button type="button" id="act-suggest"><i data-lucide="sparkles"></i>AI 生成回信草稿</button>
+                    <button type="button" data-conv-tab="detail"><i data-lucide="user"></i>查看客户详情</button>
+                  </div>
+                </div>
+                <button type="button" class="outreach-primary sm" id="btn-new-mail"><i data-lucide="plus"></i>新建开发信</button>
+              </div>
+            </div>
+
+            <div class="conv-tabs">
+              <button type="button" class="conv-tab active" data-conv-tab="history">沟通历史</button>
+              <button type="button" class="conv-tab" data-conv-tab="detail">客户详情</button>
+            </div>
+
+            <div class="conv-scroll">
+              <div class="conv-tabpane active" data-conv-pane="history">
+                <div id="th-timeline"></div>
+                <div class="conv-end" id="th-end">已无更多记录</div>
+              </div>
+              <div class="conv-tabpane" data-conv-pane="detail">
+                <div class="lead-facts" id="th-facts"></div>
+              </div>
+            </div>
+
+            <div class="compose-box hidden" id="th-compose">
+              <div class="compose-head">
+                <span id="compose-title">新建开发信</span>
+                <button type="button" class="outreach-secondary sm" id="btn-suggest"><i data-lucide="sparkles"></i>AI 生成草稿</button>
+              </div>
+              <textarea id="reply-body" rows="5" placeholder="先回答客户的问题，再给出一个明确的下一步（时间 / 报价 / 资料）。可点“AI 生成草稿”，发送前请务必人工确认。"></textarea>
+              <div class="compose-actions">
+                <span class="reply-note">AI 草稿仅供参考，发送前请确认内容真实、可兑现</span>
+                <div>
+                  <button type="button" class="outreach-secondary sm" id="btn-compose-cancel">取消</button>
+                  <button type="button" class="outreach-primary sm" id="btn-send-reply"><i data-lucide="send"></i>确认发送</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 第三栏：AI 面板 -->
+        <div class="ai-pane" id="wk-ai">
+          <div class="ai-empty" id="ai-empty">
+            <i data-lucide="sparkles"></i>
+            <p>选择客户后，这里显示 AI 生成的开发信内容与质量评估。</p>
+          </div>
+
+          <div class="ai-body hidden" id="ai-content">
+            <article class="ai-card">
+              <div class="ai-card-head">
+                <span><i data-lucide="sparkles" class="ai-spark"></i>AI 生成的开发信内容</span>
+                <button type="button" class="ai-copy" id="btn-copy"><i data-lucide="copy"></i>复制</button>
+              </div>
+              <div class="ai-mail">
+                <div class="ai-mail-subject" id="ai-subject"></div>
+                <pre class="ai-mail-body" id="ai-mailbody"></pre>
+              </div>
+            </article>
+
+            <article class="ai-card" id="ai-eval-card">
+              <div class="ai-card-head"><span><i data-lucide="sparkles" class="ai-spark"></i>AI 评估</span></div>
+              <div class="ai-eval-body" id="ai-eval-body">
+                <div class="ai-eval-hint" id="ai-eval-hint">正在评估…</div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 面板二：开发信活动 ===================== -->
+    <section id="panel-campaigns" class="o-panel">
+      <div class="campaigns-grid">
+        <div class="campaigns-main">
+          <article class="outreach-card">
+            <div class="card-heading">
+              <div><span class="step-number">1</span><h2>批量群发：把抓到的客户一键发开发信</h2></div>
+              <span class="soft-badge">{{if .Settings.AIConfigured}}AI 将逐客户撰写{{else}}未配置 AI，用内置模板{{end}}</span>
+            </div>
+            {{if .Jobs}}
+            <form method="post" action="/outreach/campaigns/batch" class="campaign-create-form" id="batch-form">
+              <label>
+                活动名称
+                <input name="name" required maxlength="120" placeholder="例如：8月牙科诊所群发">
+              </label>
+              <div class="jobs-picker">
+                <div class="jobs-picker-head">
+                  <span>选择地图任务（可多选，系统会合并去重后群发）</span>
+                  <label class="check-inline"><input type="checkbox" name="all_jobs" id="all-jobs">全部已完成任务</label>
+                </div>
+                <div class="jobs-list" id="jobs-list">
+                  {{range .Jobs}}
+                  <label class="job-opt">
+                    <input type="checkbox" name="job_ids" value="{{.ID}}">
+                    <span>{{.Name}}</span>
+                    <small>{{.Date.Format "2006-01-02 15:04"}}</small>
+                  </label>
+                  {{end}}
+                </div>
+              </div>
+              <label>
+                你为这类客户带来的结果（必填，英文动词短语）
+                <textarea name="value_proposition" required rows="2" maxlength="300" placeholder="例如：help dental clinics turn more website visitors into booked appointments"></textarea>
+                <small>写客户得到的结果，不要堆功能。AI 撰写和模板都会引用这句话。</small>
+              </label>
+              <label>
+                可验证的证据（可选）
+                <textarea name="proof" rows="2" maxlength="300" placeholder="例如：A similar clinic increased qualified bookings by 18% in 60 days. 没有真实证据请留空，AI 被禁止编造。"></textarea>
+              </label>
+              <label>
+                单一行动问题（可选）
+                <input name="call_to_action" maxlength="200" placeholder="Would a quick 10-minute conversation be useful?">
+              </label>
+              <label class="check-row">
+                <input type="checkbox" name="start_now" checked>
+                <span>创建后立即启用群发（仅在每个客户当地上午窗口投递）</span>
+              </label>
+              <button class="outreach-primary" type="submit"><i data-lucide="send"></i>批量创建并群发</button>
+            </form>
+            {{else}}
+            <div class="empty-panel">
+              <i data-lucide="map-pinned"></i>
+              <h3>还没有可导入的地图任务</h3>
+              <p>先创建一个勾选“抓取邮箱”的地图获客任务，等待状态变为已完成。</p>
+              <a href="/" class="outreach-primary">去地图获客</a>
+            </div>
+            {{end}}
+          </article>
+
+          <article class="outreach-card">
+            <div class="card-heading">
+              <div><span class="step-number">2</span><h2>活动与回复表现</h2></div>
+            </div>
+            {{if .Campaigns}}
+            <div class="campaign-list">
+              {{range .Campaigns}}
+              <div class="campaign-row {{if eq .Status "active"}}is-active{{end}}">
+                <a class="campaign-summary" href="/outreach?panel=workspace&campaign={{.ID}}">
+                  <div class="campaign-title-line">
+                    <h3>{{.Name}}</h3>
+                    <span class="status-pill {{.Status}}">
+                      {{if eq .Status "active"}}运行中{{else if eq .Status "paused"}}已暂停{{else if eq .Status "done"}}已完成{{else}}草稿{{end}}
+                    </span>
+                  </div>
+                  <div class="campaign-metrics">
+                    <span><b>{{.Stats.Contacts}}</b> 联系人</span>
+                    <span><b>{{.Stats.Sent}}</b> 已触达</span>
+                    <span><b>{{.Stats.Replied}}</b> 回复</span>
+                    <span><b>{{printf "%.1f" .Stats.ReplyRate}}%</b> 回复率</span>
+                    <span><b>{{.Stats.Bounced}}</b> 退信</span>
+                  </div>
+                </a>
+                <div class="campaign-actions">
+                  {{if eq .Status "active"}}
+                  <form method="post" action="/outreach/campaigns/{{.ID}}/status">
+                    <input type="hidden" name="status" value="paused">
+                    <button class="icon-action" title="暂停"><i data-lucide="pause"></i></button>
+                  </form>
+                  {{else}}
+                  <form method="post" action="/outreach/campaigns/{{.ID}}/status">
+                    <input type="hidden" name="status" value="active">
+                    <button class="icon-action start" title="启动"><i data-lucide="play"></i></button>
+                  </form>
+                  {{end}}
+                  <form method="post" action="/outreach/campaigns/{{.ID}}" onsubmit="return confirm('确定删除该活动及全部邮件记录吗？')">
+                    <button class="icon-action danger" title="删除"><i data-lucide="trash-2"></i></button>
+                  </form>
+                </div>
+              </div>
+              {{end}}
+            </div>
+            {{else}}
+            <div class="empty-panel compact">
+              <i data-lucide="mail-plus"></i>
+              <p>创建第一个活动后，这里会显示触达、回复率和退信数据。</p>
+            </div>
+            {{end}}
+          </article>
+
+          <article class="outreach-card">
+            <div class="card-heading">
+              <div><span class="step-number">3</span><h2>默认三步模板（AI 未配置时使用）</h2></div>
+              <span class="soft-badge">跟进都在同一会话内</span>
+            </div>
+            <div class="template-preview">
+              {{range $index, $step := .Sequence}}
+              <details class="template-step" {{if eq $index 0}}open{{end}}>
+                <summary>
+                  <span class="sequence-index">{{if eq $index 0}}首封 · 到窗口即发{{else}}跟进 {{$index}} · 上一封后 {{$step.DelayDays}} 天{{end}}</span>
+                  <b>{{if $step.Subject}}{{$step.Subject}}{{else}}Re: 原主题（同一会话）{{end}}</b>
+                </summary>
+                <pre>{{$step.Body}}</pre>
+              </details>
+              {{end}}
+              <p class="template-note">变量：<code>{{"{{.Name}} {{.Category}} {{.City}} {{.FirstLine}} {{.ValueProposition}} {{.Proof}} {{.CallToAction}} {{.SenderName}} {{.SenderCompany}}"}}</code>。配置 AI 后，每封信改为按客户官网背调结果单独撰写，以上模板仅作兜底。</p>
+            </div>
+          </article>
+        </div>
+
+        <aside class="campaigns-side">
+          <article class="outreach-card strategy-card">
+            <p class="eyebrow">发送频率与高回复策略</p>
+            <h2>系统默认如何发送</h2>
+            <ul class="strategy-list">
+              <li><span>01</span><div><b>客户当地周二至周四 08:00–11:00</b><small>按抓取到的商户时区投递，避开周一积压与周五低意愿。</small></div></li>
+              <li><span>02</span><div><b>三封同会话序列</b><small>首封 → 3 天后轻提醒 → 4 天后礼貌收尾，回复立即停发。</small></div></li>
+              <li><span>03</span><div><b>15 封/日起步，每天 +5，上限 40</b><small>新邮箱先养信誉；每封随机间隔 90–150 秒，重启不丢间隔。</small></div></li>
+              <li><span>04</span><div><b>AI 像外贸专家一样写</b><small>基于官网背调与真实数据逐客户撰写，禁用 AI 腔和虚构承诺，失败自动回退模板。</small></div></li>
+              <li><span>05</span><div><b>意向自动评估</b><small>回信按关键词+AI 归类为高/中/低/无意向，退信退订全局拉黑。</small></div></li>
+            </ul>
+            <div class="truth-note">
+              <i data-lucide="info"></i>
+              <p><b>没有任何设置能“确保”高回信率。</b>名单匹配、真实价值与域名信誉才是根本。建议先用 30–50 个高匹配客户小规模验证。</p>
+            </div>
+          </article>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ===================== 面板三：邮箱与 AI 设置 ===================== -->
+    <section id="panel-settings" class="o-panel">
+      <div class="settings-grid">
+        <article class="outreach-card settings-card">
+          <div class="card-heading">
+            <div><p class="eyebrow">MAILBOX</p><h2>企业邮箱设置</h2></div>
+          </div>
+          <form method="post" action="/outreach/settings" id="mail-settings-form">
+            <label>
+              邮箱服务商预设
+              <select id="provider-preset" onchange="applyProvider(this)">
+                <option value="">自定义</option>
+                {{range .Providers}}
+                <option
+                  data-smtp-host="{{.SMTPHost}}"
+                  data-smtp-port="{{.SMTPPort}}"
+                  data-smtp-tls="{{.SMTPTLS}}"
+                  data-imap-host="{{.IMAPHost}}"
+                  data-imap-port="{{.IMAPPort}}"
+                >{{.Name}}</option>
+                {{end}}
+              </select>
+            </label>
+            <div class="two-fields">
+              <label>企业邮箱<input name="email_address" type="email" required value="{{.Settings.EmailAddress}}" placeholder="name@company.com"></label>
+              <label>发件人姓名<input name="from_name" value="{{.Settings.FromName}}" placeholder="例如：Alex"></label>
+            </div>
+            <label>公司名称<input name="sender_company" value="{{.Settings.SenderCompany}}" placeholder="显示在签名中"></label>
+            <label>
+              客户端授权码
+              <input name="password" type="password" autocomplete="new-password" placeholder="{{if .Settings.PasswordConfigured}}已配置；留空保持不变{{else}}不是网页登录密码{{end}}">
+              <small>仅保存在当前进程内存。生产部署请设置环境变量 OUTREACH_SMTP_PASSWORD。</small>
+            </label>
+
+            <div class="send-channel">
+              <div class="send-channel-head">
+                <i data-lucide="send"></i>
+                <div>
+                  <b>发信通道</b>
+                  <small>邮箱被限制外发时，可切换到 Brevo API 发送（免费 300 封/天），回信仍收到上面的邮箱</small>
+                </div>
+              </div>
+              <div class="two-fields">
+                <label>通道
+                  <select name="send_via">
+                    <option value="smtp" {{if ne .Settings.SendVia "api"}}selected{{end}}>邮箱 SMTP 直发</option>
+                    <option value="api" {{if eq .Settings.SendVia "api"}}selected{{end}}>Brevo API（免费 300 封/天）</option>
+                  </select>
+                </label>
+                <label>Brevo API Key
+                  <input name="send_api_key" type="password" autocomplete="new-password" placeholder="{{if .Settings.SendAPIKeyConfigured}}已配置；留空保持不变{{else}}xkeysib-…{{end}}">
+                </label>
+              </div>
+              <small class="send-channel-hint">用法：到 <a href="https://www.brevo.com" target="_blank" rel="noopener">brevo.com</a> 免费注册 → Senders 里添加并验证发件人 {{if .Settings.EmailAddress}}{{.Settings.EmailAddress}}{{else}}你的邮箱{{end}}（验证邮件会寄到该邮箱，点击链接即可）→ 生成 API Key（SMTP &amp; API 页面）粘贴到这里 → 选择 Brevo 通道并保存 → 点“测试连接”。环境变量：OUTREACH_SEND_VIA=api、OUTREACH_SEND_API_KEY。</small>
+            </div>
+            <div class="server-grid">
+              <label>SMTP 主机<input id="smtp-host" name="smtp_host" required value="{{.Settings.SMTPHost}}"></label>
+              <label>端口<input id="smtp-port" name="smtp_port" type="number" required value="{{.Settings.SMTPPort}}"></label>
+              <label>加密
+                <select id="smtp-tls" name="smtp_tls">
+                  <option value="ssl" {{if eq .Settings.SMTPTLS "ssl"}}selected{{end}}>SSL/TLS</option>
+                  <option value="starttls" {{if eq .Settings.SMTPTLS "starttls"}}selected{{end}}>STARTTLS</option>
+                </select>
+              </label>
+              <label>IMAP 主机<input id="imap-host" name="imap_host" required value="{{.Settings.IMAPHost}}"></label>
+              <label>端口<input id="imap-port" name="imap_port" type="number" required value="{{.Settings.IMAPPort}}"></label>
+            </div>
+
+            <details class="advanced-settings" open>
+              <summary>发送频率策略（建议保留默认）</summary>
+              <div class="two-fields">
+                <label>当地开始小时<input name="send_start_hour" type="number" min="0" max="23" value="{{.Settings.SendStartHour}}"></label>
+                <label>当地结束小时<input name="send_end_hour" type="number" min="1" max="24" value="{{.Settings.SendEndHour}}"></label>
+              </div>
+              <label>发送星期（1=周一…7=周日）<input name="send_days" pattern="[1-7]+" value="{{.Settings.SendDays}}"></label>
+              <div class="two-fields">
+                <label>每日硬上限<input name="daily_cap" type="number" min="1" max="500" value="{{.Settings.DailyCap}}"></label>
+                <label>首日数量<input name="warmup_start" type="number" min="1" value="{{.Settings.WarmupStart}}"></label>
+              </div>
+              <div class="two-fields">
+                <label>每日增加<input name="warmup_step" type="number" min="0" value="{{.Settings.WarmupStep}}"></label>
+                <label>默认时区<input name="default_timezone" value="{{.Settings.DefaultTimezone}}" placeholder="Asia/Shanghai"></label>
+              </div>
+              <div class="two-fields">
+                <label>最短间隔（秒）<input name="min_gap_seconds" type="number" min="30" value="{{.Settings.MinGapSeconds}}"></label>
+                <label>最长间隔（秒）<input name="max_gap_seconds" type="number" min="31" value="{{.Settings.MaxGapSeconds}}"></label>
+              </div>
+              <label>退订文案<textarea name="unsubscribe_text" rows="3">{{.Settings.UnsubscribeText}}</textarea></label>
+            </details>
+
+            <div class="ai-settings">
+              <div class="ai-settings-head">
+                <i data-lucide="sparkles"></i>
+                <div>
+                  <b>AI 撰写 / 回信建议 / 意向评估</b>
+                  <small>兼容任意 OpenAI 格式接口：DeepSeek、通义千问、Kimi、OpenAI、本地 Ollama 等</small>
+                </div>
+              </div>
+              <label>接口地址<input name="ai_base_url" value="{{.Settings.AIBaseURL}}" placeholder="https://api.deepseek.com/v1"></label>
+              <div class="two-fields">
+                <label>模型<input name="ai_model" value="{{.Settings.AIModel}}" placeholder="deepseek-chat"></label>
+                <label>API Key
+                  <input name="ai_api_key" type="password" autocomplete="new-password" placeholder="{{if .Settings.AIKeyConfigured}}已配置；留空保持不变{{else}}sk-…{{end}}">
+                </label>
+              </div>
+              <small class="ai-note">未配置 AI 时使用内置模板发送、关键词评估意向；配置后 AI 基于官网背调逐客户撰写并评估意向，任何 AI 失败都自动回退，不影响发送。密钥推荐用环境变量 OUTREACH_AI_API_KEY。</small>
+              <label class="autopilot-row">
+                <input type="checkbox" name="auto_reply" {{if .Settings.AutoReply}}checked{{end}}>
+                <span>
+                  <b>自动驾驶回信（AI 自动回复安全咨询）</b>
+                  <small>开启后：AI 自动回复“索要资料/一般咨询/转介”等安全消息；涉及报价、合同、付款、投诉、法律或高意向客户会自动转入“待人工”队列，绝不自动报价或承诺。每个会话最多自动回 1 次后转人工。需已配置 AI。</small>
+                </span>
+              </label>
+            </div>
+
+            <button class="outreach-primary full" type="submit"><i data-lucide="save"></i>保存设置</button>
+          </form>
+          <form method="post" action="/outreach/test">
+            <button class="outreach-secondary full" type="submit"><i data-lucide="plug-zap"></i>测试 SMTP + IMAP（不发信）</button>
+          </form>
+        </article>
+
+        <article class="outreach-card reply-guide">
+          <p class="eyebrow">收到回信怎么办</p>
+          <h2>不同回复的专家应对</h2>
+          <table>
+            <tr><td>问价 / 要样品</td><td>给区间与条件 + 一个澄清问题，24 小时内回</td></tr>
+            <tr><td>有兴趣但没细问</td><td>回答 + 给两个具体会谈时间</td></tr>
+            <tr><td>不是负责人</td><td>致谢，只请求一次转介</td></tr>
+            <tr><td>现在不合适</td><td>约定明确月份再联系并记录</td></tr>
+            <tr><td>已有供应商</td><td>问一个差异化问题，不贬低对手</td></tr>
+            <tr><td>拒绝 / 退订</td><td>立即停止，系统已自动拉黑</td></tr>
+          </table>
+          <p class="guide-note">工作台里的“AI 生成回信草稿”会按以上原则、用客户的语言起草；发送永远需要人工确认。</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/js/outreach.js"></script>
+</body>
+</html>

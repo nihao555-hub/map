@@ -1,0 +1,275 @@
+// Package outreach implements a cold-email outreach module: it imports leads
+// scraped from Google Maps, sends personalized multi-step email sequences via
+// SMTP at reply-optimized times, and polls an IMAP inbox to detect replies,
+// bounces and unsubscribe requests.
+package outreach
+
+import (
+	"errors"
+	"time"
+)
+
+// Campaign statuses.
+const (
+	CampaignStatusDraft  = "draft"
+	CampaignStatusActive = "active"
+	CampaignStatusPaused = "paused"
+	CampaignStatusDone   = "done"
+)
+
+// Contact statuses.
+const (
+	// ContactStatusActive means the contact is in the sequence and more
+	// steps are scheduled.
+	ContactStatusActive = "active"
+	// ContactStatusReplied means the contact answered; the sequence stops.
+	ContactStatusReplied = "replied"
+	// ContactStatusBounced means delivery failed permanently.
+	ContactStatusBounced = "bounced"
+	// ContactStatusUnsubscribed means the contact asked to stop.
+	ContactStatusUnsubscribed = "unsubscribed"
+	// ContactStatusCompleted means all steps were sent without a reply.
+	ContactStatusCompleted = "completed"
+	// ContactStatusFailed means sending failed repeatedly.
+	ContactStatusFailed = "failed"
+)
+
+// Message directions.
+const (
+	DirectionOut = "out"
+	DirectionIn  = "in"
+)
+
+// Inbound message kinds.
+const (
+	InboundKindReply       = "reply"
+	InboundKindBounce      = "bounce"
+	InboundKindUnsubscribe = "unsubscribe"
+	// InboundKindNotice is a transient automated notice (e.g. a delivery-delay
+	// warning) that is recorded but must not stop the sequence or suppress the
+	// address.
+	InboundKindNotice = "notice"
+)
+
+// KindAutoReply marks an outbound reply that autopilot sent automatically
+// (as opposed to a human-confirmed manual_reply).
+const KindAutoReply = "auto_reply"
+
+// ErrNotFound is returned when a requested record does not exist.
+var ErrNotFound = errors.New("outreach: not found")
+
+// SequenceStep is a single email in a campaign sequence.
+// The first step opens a new thread. Follow-up steps are sent as replies in
+// the same thread ("Re: <original subject>") because follow-ups in-thread get
+// substantially more answers than fresh threads.
+type SequenceStep struct {
+	// Subject is a text/template string. Only used for the first step;
+	// follow-ups reuse the thread subject.
+	Subject string `json:"subject"`
+	// Body is a text/template string (plain text).
+	Body string `json:"body"`
+	// DelayDays is the number of days to wait after the previous step.
+	// Ignored for the first step.
+	DelayDays int `json:"delay_days"`
+}
+
+// Campaign groups contacts and the sequence sent to them.
+type Campaign struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	JobID  string `json:"job_id"`
+	// ValueProposition must describe the recipient's outcome, not a list of
+	// sender features. It is rendered into every step.
+	ValueProposition string `json:"value_proposition"`
+	// Proof is optional verifiable evidence (customer result, case study or
+	// concrete credential). It must never be fabricated.
+	Proof string `json:"proof"`
+	// CallToAction is one low-friction question used in the opening email.
+	CallToAction string         `json:"call_to_action"`
+	Sequence     []SequenceStep `json:"sequence"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+}
+
+// Validate checks that the campaign can be persisted.
+func (c *Campaign) Validate() error {
+	if c.ID == "" {
+		return errors.New("missing id")
+	}
+
+	if c.Name == "" {
+		return errors.New("missing name")
+	}
+
+	if c.ValueProposition == "" {
+		return errors.New("missing value proposition")
+	}
+
+	if len(c.Sequence) == 0 {
+		return errors.New("missing sequence steps")
+	}
+
+	for i := range c.Sequence {
+		if c.Sequence[i].Body == "" {
+			return errors.New("sequence step with empty body")
+		}
+
+		if i == 0 && c.Sequence[i].Subject == "" {
+			return errors.New("first sequence step needs a subject")
+		}
+	}
+
+	return nil
+}
+
+// Contact is a single lead inside a campaign.
+type Contact struct {
+	ID         int64  `json:"id"`
+	CampaignID string `json:"campaign_id"`
+	Email      string `json:"email"`
+	// Name is the business name (Google Maps title).
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	Address  string `json:"address"`
+	City     string `json:"city"`
+	Website  string `json:"website"`
+	Phone    string `json:"phone"`
+	Rating   string `json:"rating"`
+	// ReviewCount is kept with Rating so the opener can mention credible
+	// social proof instead of using a generic compliment.
+	ReviewCount int `json:"review_count"`
+	// Timezone is an IANA zone like "Europe/Berlin"; used to send during
+	// the recipient's local morning.
+	Timezone string `json:"timezone"`
+	Status   string `json:"status"`
+	// NextStep is the index of the next sequence step to send.
+	NextStep int `json:"next_step"`
+	// NextSendAt is when the next step may be sent (UTC).
+	NextSendAt time.Time `json:"next_send_at"`
+	LastSentAt time.Time `json:"last_sent_at"`
+	// RootMessageID/RootSubject identify the thread opened by step one.
+	RootMessageID string `json:"root_message_id"`
+	RootSubject   string `json:"root_subject"`
+	LastMessageID string `json:"last_message_id"`
+	SendFailures  int    `json:"send_failures"`
+	// IntentScore is -1 until an assessment ran; see intent.go for labels.
+	IntentScore  int    `json:"intent_score"`
+	IntentLabel  string `json:"intent_label"`
+	IntentReason string `json:"intent_reason"`
+	// Research caches the website background summary used by the AI writer.
+	Research   string    `json:"research,omitempty"`
+	ResearchAt time.Time `json:"research_at"`
+	// NeedsAttention flags a thread the human should look at (a reply that was
+	// escalated by autopilot, or any reply in manual mode). AttentionReason is
+	// a short Chinese explanation shown in the monitor queue.
+	NeedsAttention  bool      `json:"needs_attention"`
+	AttentionReason string    `json:"attention_reason"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// DisplayIntent returns the stored assessment, or a status-derived one when
+// no reply has been scored yet.
+func (c *Contact) DisplayIntent() Intent {
+	if c.IntentScore >= 0 && c.IntentLabel != "" {
+		return Intent{Score: c.IntentScore, Label: c.IntentLabel, Reason: c.IntentReason}
+	}
+
+	return StatusIntent(c.Status)
+}
+
+// Evaluation is an AI quality assessment of one outreach email, mirroring the
+// scorecard in the design: an overall 0-100 score plus five sub-dimensions and
+// a short improvement suggestion.
+type Evaluation struct {
+	Overall         int    `json:"overall"`
+	SubjectAppeal   int    `json:"subject_appeal"`
+	Relevance       int    `json:"relevance"`
+	Personalization int    `json:"personalization"`
+	CallToAction    int    `json:"call_to_action"`
+	Readability     int    `json:"readability"`
+	Suggestion      string `json:"suggestion"`
+}
+
+// Grade returns a Chinese label for the overall score.
+func (e Evaluation) Grade() string {
+	switch {
+	case e.Overall >= 85:
+		return "优秀"
+	case e.Overall >= 70:
+		return "良好"
+	case e.Overall >= 55:
+		return "一般"
+	default:
+		return "待改进"
+	}
+}
+
+// Message is a sent or received email linked to a contact.
+type Message struct {
+	ID         int64     `json:"id"`
+	CampaignID string    `json:"campaign_id"`
+	ContactID  int64     `json:"contact_id"`
+	Direction  string    `json:"direction"`
+	Kind       string    `json:"kind"`
+	Step       int       `json:"step"`
+	Subject    string    `json:"subject"`
+	Body       string    `json:"body"`
+	MessageID  string    `json:"message_id"`
+	InReplyTo  string    `json:"in_reply_to"`
+	FromEmail  string    `json:"from_email"`
+	ToEmail    string    `json:"to_email"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// Overview aggregates counters across every campaign for the dashboard.
+type Overview struct {
+	Campaigns       int `json:"campaigns"`
+	ActiveCampaigns int `json:"active_campaigns"`
+	Contacts        int `json:"contacts"`
+	Sent            int `json:"sent"`
+	Replied         int `json:"replied"`
+	Bounced         int `json:"bounced"`
+	Unsubscribed    int `json:"unsubscribed"`
+	Completed       int `json:"completed"`
+	HighIntent      int `json:"high_intent"`
+	Suppressed      int `json:"suppressed"`
+	NeedsAttention  int `json:"needs_attention"`
+}
+
+// ReplyRate returns replied/contacted as a percentage.
+//
+// Value receiver on purpose: html/template cannot call pointer-receiver
+// methods on a struct accessed as a non-addressable field (e.g. .Overview).
+//
+//nolint:gocritic // value receiver required for html/template addressability
+func (o Overview) ReplyRate() float64 {
+	if o.Sent == 0 {
+		return 0
+	}
+
+	return float64(o.Replied) / float64(o.Sent) * 100
+}
+
+// CampaignStats aggregates per-campaign counters for the UI.
+type CampaignStats struct {
+	Contacts     int `json:"contacts"`
+	Sent         int `json:"sent"`
+	Replied      int `json:"replied"`
+	Bounced      int `json:"bounced"`
+	Unsubscribed int `json:"unsubscribed"`
+	Completed    int `json:"completed"`
+}
+
+// ReplyRate returns replied/contacted as a percentage.
+//
+// Value receiver so html/template can call it on non-addressable values.
+func (s CampaignStats) ReplyRate() float64 {
+	contacted := s.Sent
+	if contacted == 0 {
+		return 0
+	}
+
+	return float64(s.Replied) / float64(contacted) * 100
+}

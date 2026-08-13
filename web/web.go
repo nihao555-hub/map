@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/gosom/google-maps-scraper/outreach"
 )
 
 //go:embed static
@@ -28,9 +30,11 @@ type Server struct {
 	tmpl map[string]*template.Template
 	srv  *http.Server
 	svc  *Service
+
+	outreach *outreach.Service
 }
 
-func New(svc *Service, addr string) (*Server, error) {
+func New(svc *Service, addr string, outreachServices ...*outreach.Service) (*Server, error) {
 	ans := Server{
 		svc:  svc,
 		tmpl: make(map[string]*template.Template),
@@ -42,6 +46,10 @@ func New(svc *Service, addr string) (*Server, error) {
 			IdleTimeout:       120 * time.Second,
 			MaxHeaderBytes:    1 << 20,
 		},
+	}
+
+	if len(outreachServices) > 0 {
+		ans.outreach = outreachServices[0]
 	}
 
 	staticFS, err := fs.Sub(static, "static")
@@ -70,6 +78,14 @@ func New(svc *Service, addr string) (*Server, error) {
 
 		ans.viewJob(w, r)
 	})
+	mux.HandleFunc("/outreach", ans.outreachPage)
+	mux.HandleFunc("/outreach/settings", ans.outreachSettings)
+	mux.HandleFunc("/outreach/test", ans.outreachTest)
+	mux.HandleFunc("/outreach/campaigns", ans.outreachCampaigns)
+	mux.HandleFunc("/outreach/campaigns/batch", ans.outreachBatch)
+	mux.HandleFunc("/outreach/campaigns/{id}", ans.outreachCampaign)
+	mux.HandleFunc("/outreach/campaigns/{id}/status", ans.outreachCampaignStatus)
+	mux.HandleFunc("/outreach/tick", ans.outreachTick)
 	mux.HandleFunc("/", ans.index)
 
 	// api routes
@@ -142,6 +158,17 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.download(w, r)
 	})
 
+	mux.HandleFunc("/api/v1/outreach/overview", ans.apiOutreachOverview)
+	mux.HandleFunc("/api/v1/outreach/campaigns", ans.apiOutreachCampaigns)
+	mux.HandleFunc("/api/v1/outreach/campaigns/{id}", ans.apiOutreachCampaign)
+	mux.HandleFunc("/api/v1/outreach/contacts", ans.apiOutreachContacts)
+	mux.HandleFunc("/api/v1/outreach/contacts/{id}", ans.apiOutreachContact)
+	mux.HandleFunc("/api/v1/outreach/contacts/{id}/suggest", ans.apiOutreachSuggest)
+	mux.HandleFunc("/api/v1/outreach/contacts/{id}/evaluation", ans.apiOutreachEvaluation)
+	mux.HandleFunc("/api/v1/outreach/settings", ans.apiOutreachSettings)
+	mux.HandleFunc("/api/v1/outreach/tick", ans.apiOutreachTick)
+	mux.HandleFunc("/api/v1/outreach/reply", ans.apiOutreachReply)
+
 	handler := securityHeaders(mux)
 	ans.srv.Handler = handler
 
@@ -151,6 +178,7 @@ func New(svc *Service, addr string) (*Server, error) {
 		"static/templates/job_row.html",
 		"static/templates/job_view.html",
 		"static/templates/redoc.html",
+		"static/templates/outreach.html",
 	}
 
 	for _, key := range tmplsKeys {
@@ -343,7 +371,7 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Form.Get("fastmode") == "on" {
+	if r.Form.Get("fastmode") == formOn {
 		newJob.Data.FastMode = true
 	}
 
@@ -364,10 +392,10 @@ func (s *Server) scrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newJob.Data.Email = r.Form.Get("email") == "on"
+	newJob.Data.Email = r.Form.Get("email") == formOn
 
 	// 网格全量模式
-	if r.Form.Get("gridmode") == "on" {
+	if r.Form.Get("gridmode") == formOn {
 		newJob.Data.GridMode = true
 		// 网格边长（公里），默认 1.5
 		cellKm := 1.5
@@ -748,8 +776,11 @@ func (s *Server) viewJob(w http.ResponseWriter, r *http.Request) {
 
 	// 附带上任务 ID 与状态：前端据此在任务运行中流式追加结果行
 	status := ""
-	if job, jerr := s.svc.Get(r.Context(), id.String()); jerr == nil {
-		status = job.Status
+
+	if s.svc != nil && s.svc.repo != nil {
+		if job, jerr := s.svc.Get(r.Context(), id.String()); jerr == nil {
+			status = job.Status
+		}
 	}
 
 	viewData := map[string]any{
@@ -814,13 +845,13 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; "+
-			"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
-			"worker-src 'self' blob:; "+
-			"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
-			"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org *.is.autonavi.com; "+
-			"font-src 'self' fonts.gstatic.com; "+
-			"connect-src 'self'")
+			"default-src 'self'; "+
+				"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
+				"worker-src 'self' blob:; "+
+				"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
+				"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org *.is.autonavi.com; "+
+				"font-src 'self' fonts.gstatic.com; "+
+				"connect-src 'self' unpkg.com cdnjs.cloudflare.com")
 
 		next.ServeHTTP(w, r)
 	})
