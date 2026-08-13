@@ -163,6 +163,8 @@ func (s *Server) outreachSettings(w http.ResponseWriter, r *http.Request) {
 	settings := current.Settings
 	settings.EmailAddress = strings.TrimSpace(r.Form.Get("email_address"))
 	settings.Password = r.Form.Get("password")
+	settings.SendVia = strings.TrimSpace(r.Form.Get("send_via"))
+	settings.SendAPIKey = strings.TrimSpace(r.Form.Get("send_api_key"))
 	settings.FromName = strings.TrimSpace(r.Form.Get("from_name"))
 	settings.SenderCompany = strings.TrimSpace(r.Form.Get("sender_company"))
 	settings.SMTPHost = strings.TrimSpace(r.Form.Get("smtp_host"))
@@ -191,7 +193,7 @@ func (s *Server) outreachSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	redirectOutreach(w, r, "settings", "设置已保存；授权码与 AI 密钥只保存在本进程内存中", nil)
+	redirectOutreach(w, r, "settings", "设置已保存；授权码与各类 API Key 只保存在本进程内存中", nil)
 }
 
 func (s *Server) outreachTest(w http.ResponseWriter, r *http.Request) {

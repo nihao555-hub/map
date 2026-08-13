@@ -12,6 +12,14 @@ const (
 	TLSModeStartTLS = "starttls" // STARTTLS upgrade (port 587/25)
 )
 
+// Outbound channels. SMTP sends through the mailbox provider directly; API
+// sends through the Brevo transactional HTTP API (free tier: 300 emails/day)
+// while replies keep arriving in the mailbox over IMAP.
+const (
+	SendViaSMTP = "smtp"
+	SendViaAPI  = "api"
+)
+
 // Settings holds the mailbox configuration and the sending policy.
 // It is stored locally in the outreach SQLite database; secrets can instead
 // be provided via environment variables (recommended) which always win.
@@ -25,6 +33,14 @@ type Settings struct {
 	Password      string `json:"password,omitempty"`
 	FromName      string `json:"from_name"`
 	SenderCompany string `json:"sender_company"`
+
+	// SendVia selects the outbound channel: SendViaSMTP (default) or
+	// SendViaAPI. With the API channel the From/Reply-To address stays the
+	// mailbox above, so customer replies flow into the same IMAP inbox.
+	SendVia string `json:"send_via"`
+	// SendAPIKey is the Brevo v3 API key. Like Password it is never
+	// persisted; provide it via the UI (in-memory) or the environment.
+	SendAPIKey string `json:"send_api_key,omitempty"`
 
 	// Send policy. Times are in the recipient's local timezone.
 	SendStartHour int `json:"send_start_hour"`
@@ -94,11 +110,13 @@ const (
 	EnvDisabled  = "OUTREACH_DISABLED"
 	EnvAIBaseURL = "OUTREACH_AI_BASE_URL"
 	EnvAIModel   = "OUTREACH_AI_MODEL"
+	EnvSendVia   = "OUTREACH_SEND_VIA"
 
-	// EnvPassword and EnvAIKey are the names of environment variables that
-	// carry secrets; the secret values themselves are never persisted.
-	EnvPassword = "OUTREACH_SMTP_PASSWORD" //nolint:gosec // env var name, not a credential
-	EnvAIKey    = "OUTREACH_AI_API_KEY"    //nolint:gosec // env var name, not a credential
+	// EnvPassword, EnvAIKey and EnvSendAPIKey are the names of environment
+	// variables that carry secrets; the values themselves are never persisted.
+	EnvPassword   = "OUTREACH_SMTP_PASSWORD" //nolint:gosec // env var name, not a credential
+	EnvAIKey      = "OUTREACH_AI_API_KEY"    //nolint:gosec // env var name, not a credential
+	EnvSendAPIKey = "OUTREACH_SEND_API_KEY"  //nolint:gosec // env var name, not a credential
 )
 
 // ApplyEnvOverrides overlays environment variables on top of stored settings.
@@ -147,6 +165,14 @@ func (s *Settings) ApplyEnvOverrides() {
 		s.AIAPIKey = v
 	}
 
+	if v := os.Getenv(EnvSendVia); v != "" {
+		s.SendVia = v
+	}
+
+	if v := os.Getenv(EnvSendAPIKey); v != "" {
+		s.SendAPIKey = v
+	}
+
 	if s.SMTPHost == "" || s.IMAPHost == "" {
 		if preset, ok := PresetForEmail(s.EmailAddress); ok {
 			if s.SMTPHost == "" {
@@ -163,9 +189,24 @@ func (s *Settings) ApplyEnvOverrides() {
 	}
 }
 
-// SMTPConfigured reports whether outgoing mail can be sent.
+// SMTPConfigured reports whether direct SMTP sending is possible.
 func (s *Settings) SMTPConfigured() bool {
 	return s.SMTPHost != "" && s.SMTPPort > 0 && s.EmailAddress != "" && s.Password != ""
+}
+
+// APISendConfigured reports whether the Brevo API channel is usable.
+func (s *Settings) APISendConfigured() bool {
+	return s.SendAPIKey != "" && s.EmailAddress != ""
+}
+
+// SendConfigured reports whether the currently selected outbound channel is
+// ready to send.
+func (s *Settings) SendConfigured() bool {
+	if s.SendVia == SendViaAPI {
+		return s.APISendConfigured()
+	}
+
+	return s.SMTPConfigured()
 }
 
 // IMAPConfigured reports whether the inbox can be polled.

@@ -44,9 +44,10 @@ func prefixedContactColumns(prefix string) string {
 type Store struct {
 	db *sql.DB
 
-	secretMu        sync.RWMutex
-	runtimePassword string
-	runtimeAIKey    string
+	secretMu          sync.RWMutex
+	runtimePassword   string
+	runtimeAIKey      string
+	runtimeSendAPIKey string
 }
 
 // NewStore opens (or creates) the outreach SQLite database.
@@ -238,11 +239,16 @@ func (s *Store) SaveSettings(ctx context.Context, settings *Settings) error {
 		s.runtimeAIKey = settings.AIAPIKey
 	}
 
+	if settings.SendAPIKey != "" {
+		s.runtimeSendAPIKey = settings.SendAPIKey
+	}
+
 	s.secretMu.Unlock()
 
 	persisted := *settings
 	persisted.Password = ""
 	persisted.AIAPIKey = ""
+	persisted.SendAPIKey = ""
 
 	data, err := json.Marshal(persisted)
 	if err != nil {
@@ -281,6 +287,7 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 	s.secretMu.RLock()
 	settings.Password = s.runtimePassword
 	settings.AIAPIKey = s.runtimeAIKey
+	settings.SendAPIKey = s.runtimeSendAPIKey
 	s.secretMu.RUnlock()
 
 	settings.ApplyEnvOverrides()

@@ -1145,6 +1145,24 @@
 .ai-settings-head b { font-size: 13px; }
 .ai-settings-head small { color: var(--outreach-muted); font-size: 10.5px; }
 
+.send-channel {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid #cfe6da;
+  border-radius: 11px;
+  background: linear-gradient(160deg, #f4fbf7, #eef8f2);
+}
+
+.send-channel-head { display: flex; align-items: center; gap: 10px; }
+.send-channel-head svg { width: 18px; color: var(--outreach-green); }
+.send-channel-head > div { display: flex; flex-direction: column; gap: 2px; }
+.send-channel-head b { font-size: 13px; }
+.send-channel-head small { color: var(--outreach-muted); font-size: 10.5px; }
+.send-channel-hint { color: #4c6b5b; font-size: 10.5px; line-height: 1.7; overflow-wrap: anywhere; }
+.send-channel-hint a { color: var(--outreach-green); font-weight: 700; }
+
 .ai-note { color: #5d6b8c; font-size: 10.5px; line-height: 1.6; }
 
 .reply-guide table {

@@ -19,14 +19,16 @@ type CampaignView struct {
 }
 
 // SettingsView exposes configuration state without exposing the authorization
-// code or the AI API key.
+// code or the API keys.
 type SettingsView struct {
 	Settings
-	PasswordConfigured bool `json:"password_configured"`
-	AIKeyConfigured    bool `json:"ai_key_configured"`
-	SMTPConfigured     bool `json:"smtp_configured"`
-	IMAPConfigured     bool `json:"imap_configured"`
-	AIConfigured       bool `json:"ai_configured"`
+	PasswordConfigured   bool `json:"password_configured"`
+	AIKeyConfigured      bool `json:"ai_key_configured"`
+	SendAPIKeyConfigured bool `json:"send_api_key_configured"`
+	SMTPConfigured       bool `json:"smtp_configured"`
+	IMAPConfigured       bool `json:"imap_configured"`
+	AIConfigured         bool `json:"ai_configured"`
+	SendConfigured       bool `json:"send_configured"`
 }
 
 // OverviewView is the dashboard payload: aggregate counters plus mailbox/AI
@@ -42,6 +44,10 @@ type OverviewView struct {
 	SentToday      int       `json:"sent_today"`
 	DailyAllowance int       `json:"daily_allowance"`
 	RecentInbound  []Message `json:"recent_inbound"`
+	// SendVia and SendConfigured describe the active outbound channel
+	// (direct SMTP or the Brevo API).
+	SendVia        string `json:"send_via"`
+	SendConfigured bool   `json:"send_configured"`
 	// MailboxError is set when the engine paused outbound because the
 	// sender account itself is rejected by the provider (e.g. relay denied).
 	MailboxError string `json:"mailbox_error,omitempty"`
@@ -274,6 +280,8 @@ func (s *Service) Overview(ctx context.Context) (OverviewView, error) {
 		SentToday:      sentToday,
 		DailyAllowance: settings.AllowedToday(daysActive),
 		RecentInbound:  recent,
+		SendVia:        settings.SendVia,
+		SendConfigured: settings.SendConfigured(),
 		MailboxError:   mailboxError,
 	}, nil
 }
@@ -360,15 +368,18 @@ func (s *Service) Settings(ctx context.Context) (SettingsView, error) {
 	}
 
 	view := SettingsView{
-		Settings:           settings,
-		PasswordConfigured: settings.Password != "",
-		AIKeyConfigured:    settings.AIAPIKey != "",
-		SMTPConfigured:     settings.SMTPConfigured(),
-		IMAPConfigured:     settings.IMAPConfigured(),
-		AIConfigured:       settings.AIConfigured(),
+		Settings:             settings,
+		PasswordConfigured:   settings.Password != "",
+		AIKeyConfigured:      settings.AIAPIKey != "",
+		SendAPIKeyConfigured: settings.SendAPIKey != "",
+		SMTPConfigured:       settings.SMTPConfigured(),
+		IMAPConfigured:       settings.IMAPConfigured(),
+		AIConfigured:         settings.AIConfigured(),
+		SendConfigured:       settings.SendConfigured(),
 	}
 	view.Password = ""
 	view.AIAPIKey = ""
+	view.SendAPIKey = ""
 
 	return view, nil
 }
@@ -412,6 +423,12 @@ func (s *Service) SaveSettings(ctx context.Context, settings *Settings) error {
 		if _, err := time.LoadLocation(settings.DefaultTimezone); err != nil {
 			return fmt.Errorf("invalid default timezone %q", settings.DefaultTimezone)
 		}
+	}
+
+	switch settings.SendVia {
+	case "", SendViaSMTP, SendViaAPI:
+	default:
+		return fmt.Errorf("unsupported send channel %q", settings.SendVia)
 	}
 
 	return s.store.SaveSettings(ctx, settings)

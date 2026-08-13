@@ -21,9 +21,10 @@ import (
 // sent to it.
 const relayProbeRecipient = "postmaster@gmail.com"
 
-// mailboxLevelErrorMarkers identify SMTP failures caused by the sender
-// account itself (blocked relay, broken auth, suspended mailbox). These fail
-// for every recipient, so retrying per contact only burns the sequence.
+// mailboxLevelErrorMarkers identify send failures caused by the sender
+// account itself (blocked relay, broken auth, suspended mailbox, rejected
+// or exhausted API key). These fail for every recipient, so retrying per
+// contact only burns the sequence.
 var mailboxLevelErrorMarkers = []string{
 	"relay access denied",
 	"relaying denied",
@@ -31,9 +32,12 @@ var mailboxLevelErrorMarkers = []string{
 	"authentication required",
 	"authentication failed",
 	"5.8.3",
+	"api key rejected",
+	"account quota problem",
+	"account suspended",
 }
 
-// IsMailboxLevelError reports whether the SMTP failure is a sender-account
+// IsMailboxLevelError reports whether the send failure is a sender-account
 // problem that would affect every recipient, as opposed to one bad address.
 func IsMailboxLevelError(err error) bool {
 	if err == nil {
@@ -48,6 +52,27 @@ func IsMailboxLevelError(err error) bool {
 	}
 
 	return false
+}
+
+// unsubscribeMailto builds the mailto List-Unsubscribe target. It is
+// supported by most providers and gives recipients an easy opt-out path
+// without requiring a public HTTP endpoint.
+func unsubscribeMailto(settings *Settings) string {
+	values := url.Values{}
+	values.Set("subject", "unsubscribe")
+
+	return "mailto:" + settings.EmailAddress + "?" + values.Encode()
+}
+
+// bodyWithUnsubscribeFooter appends the compliance footer to the plain-text
+// body, identically for every outbound channel.
+func bodyWithUnsubscribeFooter(settings *Settings, message *Message) string {
+	body := strings.TrimSpace(message.Body)
+	if settings.UnsubscribeText != "" {
+		body += "\n\n--\n" + strings.TrimSpace(settings.UnsubscribeText)
+	}
+
+	return body
 }
 
 // MailSender is implemented by SMTPMailer and by test doubles.
@@ -117,21 +142,8 @@ func (s *SMTPMailer) Send(ctx context.Context, settings *Settings, message *Mess
 		email.SetGenHeader(mail.HeaderReferences, reference)
 	}
 
-	// A mailto List-Unsubscribe header is supported by most providers and
-	// gives recipients another easy opt-out path without requiring a public
-	// HTTP endpoint.
-	unsubscribeURI := "mailto:" + settings.EmailAddress
-	values := url.Values{}
-	values.Set("subject", "unsubscribe")
-	unsubscribeURI += "?" + values.Encode()
-	email.SetListUnsubscribe(unsubscribeURI)
-
-	body := strings.TrimSpace(message.Body)
-	if settings.UnsubscribeText != "" {
-		body += "\n\n--\n" + strings.TrimSpace(settings.UnsubscribeText)
-	}
-
-	email.SetBodyString(mail.TypeTextPlain, body)
+	email.SetListUnsubscribe(unsubscribeMailto(settings))
+	email.SetBodyString(mail.TypeTextPlain, bodyWithUnsubscribeFooter(settings, message))
 
 	if err := client.DialAndSendWithContext(ctx, email); err != nil {
 		return fmt.Errorf("send SMTP message: %w", err)

@@ -16,6 +16,8 @@ import (
 const (
 	testMailboxSecret = "in-memory-test-secret"
 	testSMTPHost      = "smtp.example.com"
+	testIMAPHost      = "imap.example.com"
+	testTimezoneUTC   = "UTC"
 )
 
 type fakeSender struct {
@@ -113,7 +115,7 @@ func TestEngineTickSendsOneDueMessageAndAdvancesSequence(t *testing.T) {
 	settings.SendDays = "1234567"
 	settings.SendStartHour = 0
 	settings.SendEndHour = 24
-	settings.DefaultTimezone = "UTC"
+	settings.DefaultTimezone = testTimezoneUTC
 
 	if err := store.SaveSettings(ctx, &settings); err != nil {
 		t.Fatal(err)
@@ -192,7 +194,7 @@ func TestEngineSyncInboxRecordsReplyAndPersistsCursor(t *testing.T) {
 	settings := outreach.DefaultSettings()
 	settings.EmailAddress = testSenderEmail
 	settings.Password = testMailboxSecret
-	settings.IMAPHost = "imap.example.com"
+	settings.IMAPHost = testIMAPHost
 	settings.IMAPPort = 993
 	// SMTP intentionally left unconfigured so the tick only exercises inbox sync.
 
@@ -309,7 +311,7 @@ func autopilotContact(t *testing.T) (*outreach.Store, outreach.Contact, string) 
 	settings := outreach.DefaultSettings()
 	settings.EmailAddress = testSenderEmail
 	settings.Password = testMailboxSecret
-	settings.IMAPHost = "imap.example.com"
+	settings.IMAPHost = testIMAPHost
 	settings.IMAPPort = 993
 	settings.SMTPHost = testSMTPHost
 	settings.SMTPPort = 465
@@ -490,7 +492,7 @@ func TestEngineTickPausesOutboundOnMailboxLevelError(t *testing.T) {
 	settings.SendDays = "1234567"
 	settings.SendStartHour = 0
 	settings.SendEndHour = 24
-	settings.DefaultTimezone = "UTC"
+	settings.DefaultTimezone = testTimezoneUTC
 
 	if err := store.SaveSettings(ctx, &settings); err != nil {
 		t.Fatal(err)
@@ -581,14 +583,14 @@ func TestConnectionsClearsMailboxHoldSoSendingResumes(t *testing.T) {
 	settings := outreach.DefaultSettings()
 	settings.SMTPHost = testSMTPHost
 	settings.SMTPPort = 465
-	settings.IMAPHost = "imap.example.com"
+	settings.IMAPHost = testIMAPHost
 	settings.IMAPPort = 993
 	settings.EmailAddress = testSenderEmail
 	settings.Password = testMailboxSecret
 	settings.SendDays = "1234567"
 	settings.SendStartHour = 0
 	settings.SendEndHour = 24
-	settings.DefaultTimezone = "UTC"
+	settings.DefaultTimezone = testTimezoneUTC
 
 	if err := store.SaveSettings(ctx, &settings); err != nil {
 		t.Fatal(err)

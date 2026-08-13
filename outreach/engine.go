@@ -81,7 +81,7 @@ type Engine struct {
 // the production implementations.
 func NewEngine(store *Store, sender MailSender, inbox Inbox) *Engine {
 	if sender == nil {
-		sender = &SMTPMailer{}
+		sender = NewRoutingSender()
 	}
 
 	if inbox == nil {
@@ -153,8 +153,8 @@ func (e *Engine) Tick(ctx context.Context) (TickReport, error) {
 		return report, nil
 	}
 
-	if !settings.SMTPConfigured() {
-		report.State = "SMTP not configured"
+	if !settings.SendConfigured() {
+		report.State = "sending channel not configured"
 
 		return report, nil
 	}
