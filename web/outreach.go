@@ -208,7 +208,7 @@ func (s *Server) outreachTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	redirectOutreach(w, r, "settings", "SMTP 和 IMAP 连接、认证均成功（未发送测试邮件）", nil)
+	redirectOutreach(w, r, "settings", "SMTP/IMAP 认证与外部投递权限均正常（未发送测试邮件）", nil)
 }
 
 func (s *Server) outreachCampaigns(w http.ResponseWriter, r *http.Request) {

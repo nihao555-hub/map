@@ -846,6 +846,9 @@ func (e *Engine) metaTime(ctx context.Context, key string) (time.Time, error) {
 }
 
 // TestConnections verifies both SMTP and IMAP without sending any email.
+// A full pass (including the external relay probe) also clears a recorded
+// mailbox error, so the overview warning disappears as soon as the operator
+// confirms the account is unblocked.
 func (e *Engine) TestConnections(ctx context.Context) error {
 	settings, err := e.store.Settings(ctx)
 	if err != nil {
@@ -860,7 +863,7 @@ func (e *Engine) TestConnections(ctx context.Context) error {
 		return err
 	}
 
-	return nil
+	return e.clearMailboxError(ctx)
 }
 
 // Reply sends a human-approved reply in the same thread. Automated sequences

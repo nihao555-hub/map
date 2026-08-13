@@ -562,3 +562,78 @@ func TestEngineTickPausesOutboundOnMailboxLevelError(t *testing.T) {
 		t.Fatalf("expected paused state, got %q", report.State)
 	}
 }
+
+func TestConnectionsClearsMailboxHoldSoSendingResumes(t *testing.T) {
+	t.Parallel()
+
+	store, err := outreach.NewStore(filepath.Join(t.TempDir(), "outreach.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	ctx := context.Background()
+	settings := outreach.DefaultSettings()
+	settings.SMTPHost = testSMTPHost
+	settings.SMTPPort = 465
+	settings.IMAPHost = "imap.example.com"
+	settings.IMAPPort = 993
+	settings.EmailAddress = testSenderEmail
+	settings.Password = testMailboxSecret
+	settings.SendDays = "1234567"
+	settings.SendStartHour = 0
+	settings.SendEndHour = 24
+	settings.DefaultTimezone = "UTC"
+
+	if err := store.SaveSettings(ctx, &settings); err != nil {
+		t.Fatal(err)
+	}
+
+	campaign := outreach.Campaign{
+		ID:               uuid.NewString(),
+		Name:             "Unblock recovery campaign",
+		Status:           outreach.CampaignStatusActive,
+		ValueProposition: "help buyers source tools at better margins",
+		Sequence:         outreach.DefaultSequence(),
+	}
+	if err := store.CreateCampaign(ctx, &campaign); err != nil {
+		t.Fatal(err)
+	}
+
+	contacts := []outreach.Contact{{
+		CampaignID: campaign.ID,
+		Email:      "buyer@example.org",
+		Name:       "Buyer",
+		Status:     outreach.ContactStatusActive,
+		NextSendAt: time.Now().UTC().Add(-time.Minute),
+	}}
+	if _, err := store.AddContacts(ctx, contacts); err != nil {
+		t.Fatal(err)
+	}
+
+	blocked := outreach.NewEngine(store, &blockedSender{}, &emptyInbox{})
+	if _, err := blocked.Tick(ctx); err == nil {
+		t.Fatal("blocked tick should return the mailbox-level error")
+	}
+
+	// Provider unblocked the account: the operator re-runs the connection
+	// test, which passes and must lift the outbound hold immediately.
+	recovered := outreach.NewEngine(store, &fakeSender{}, &emptyInbox{})
+	if err := recovered.TestConnections(ctx); err != nil {
+		t.Fatalf("test connections: %v", err)
+	}
+
+	report, err := recovered.Tick(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if report.Sent != 1 {
+		t.Fatalf("sending should resume right after a passing test, report=%+v", report)
+	}
+}
