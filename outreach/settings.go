@@ -254,6 +254,16 @@ func Providers() []Provider {
 			DomainSuffixes: []string{"ym.163.com"},
 		},
 		{
+			// 免费版绑定自有域名后对外发信上限为 100 封/天/账号；
+			// 赠送域名（freeqiye.com）仅能域内发信，无法用于开发信。
+			Name:     "网易免费企业邮·自有域名 (ym.163.com)",
+			SMTPHost: "smtp.ym.163.com",
+			SMTPPort: 994,
+			SMTPTLS:  TLSModeSSL,
+			IMAPHost: "imap.ym.163.com",
+			IMAPPort: 993,
+		},
+		{
 			Name:           "腾讯企业邮箱 (exmail.qq.com)",
 			SMTPHost:       "smtp.exmail.qq.com",
 			SMTPPort:       465,
