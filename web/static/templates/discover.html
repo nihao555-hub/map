@@ -4,93 +4,195 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>智能引擎搜索 · 地图获客</title>
-  <link rel="stylesheet" href="/static/css/main.css">
   <link rel="stylesheet" href="/static/css/discover.css">
 </head>
-<body data-tab="{{.Tab}}">
-  <nav id="app-rail" aria-label="功能模块">
-    <a class="rail-logo" href="/" title="地图获客">
-      <span>
-        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-      </span>
+<body class="wmt" data-tab="{{.Tab}}">
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 2v4M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/></symbol>
+    <symbol id="i-ship" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-8.188-3.639a2 2 0 0 0-1.624 0L3 14a11.6 11.6 0 0 0 1.81 6"/><path d="M12 10V2"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5M4 19h16"/><path d="M8 15v-4M12 15V8M16 15v-7"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 7v4M15 7v4M8 11h8v2a4 4 0 0 1-8 0v-2Z"/><path d="M12 17v4"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 2.4 6.8H21l-5.4 4.2 2 6.8L12 17.2 6.4 20.8l2-6.8L3 9.8h6.6Z"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.5 1.1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 7H20v13H6.5A2.5 2.5 0 0 1 4 17.5Z"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+    <symbol id="i-tick" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12.5 10 17l9-10"/></symbol>
+    <symbol id="i-wa" viewBox="0 0 24 24"><path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></symbol>
+    <symbol id="i-google" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></symbol>
+    <symbol id="i-bing" viewBox="0 0 24 24"><path fill="#008373" d="M5 3v16.56l4.67 2.11 9.33-5.4v-4.5L9.5 14.2V6.8z"/></symbol>
+    <symbol id="i-in" viewBox="0 0 24 24"><path fill="#0A66C2" d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></symbol>
+    <symbol id="i-fb" viewBox="0 0 24 24"><path fill="#1877F2" d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/></symbol>
+  </svg>
+
+  <header class="wmt-top">
+    <a class="wmt-logo" href="/discover">
+      <span class="wmt-logo-mark"><svg class="wmt-icon" style="color:#fff"><use href="#i-spark"/></svg></span>
+      地图获客
     </a>
-    <div class="rail-nav">
-      <a class="rail-item" href="/">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-        地图搜索
-      </a>
-      <a class="rail-item" data-nav="people" href="/discover">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
-        智能引擎
-      </a>
-      <a class="rail-item" data-nav="exhibition" href="/discover?tab=exhibition">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
-        展会获客
-      </a>
-      <a class="rail-item" data-nav="customs" href="/discover?tab=customs">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-8.188-3.639a2 2 0 0 0-1.624 0L3 14a11.6 11.6 0 0 0 1.81 6"/><path d="M12 10V2"/><circle cx="12" cy="14" r="1"/></svg>
-        海关数据
-      </a>
+    <nav class="wmt-tabs" aria-label="顶栏模块">
+      <a href="#" data-soon="工作台">工作台</a>
+      <a href="#" data-soon="邮件">邮件</a>
+      <a href="#" data-soon="WA">WA</a>
+      <a class="is-on" href="/discover">客户发现</a>
+      <a href="#" data-soon="客户开发">客户开发</a>
+      <a href="#" data-soon="客户管理">客户管理</a>
+      <a href="#" data-soon="客户履约">客户履约</a>
+      <a href="#" data-soon="协同办公">协同办公</a>
+    </nav>
+    <div class="wmt-top-right">
+      <a href="#" data-soon="品牌建设">品牌建设</a>
+      <a href="/api/docs">知识广场</a>
+      <button type="button" class="wmt-icon-btn" data-soon="设置" title="设置"><svg class="wmt-icon"><use href="#i-gear"/></svg></button>
+      <span class="wmt-user"><span class="wmt-avatar"><svg class="wmt-icon"><use href="#i-user"/></svg></span>张三</span>
     </div>
-  </nav>
+  </header>
 
-  <div id="app-body">
-    <header id="topbar">
-      <div class="page-heading" id="discover-title">智能引擎搜索</div>
-      <div class="topbar-right">
-        <button type="button" class="vip-btn">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519L19.03 18.94A2 2 0 0 1 17.09 20H6.91a2 2 0 0 1-1.94-1.06L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"/><path d="M5 21h14"/></svg>
-          升级会员
-        </button>
-        <a class="help-btn" href="/api/docs" style="text-decoration:none">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
-          使用帮助
-        </a>
-        <div class="user-box">
-          <span class="avatar">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </span>
-          <span class="user-name">张三</span>
-        </div>
+  <div class="wmt-shell">
+    <aside class="wmt-side" aria-label="数据获客">
+      <div class="wmt-group">
+        <div class="wmt-group-title"><svg class="wmt-icon"><use href="#i-star"/></svg>常用功能</div>
+        <a class="wmt-item" href="/discover"><svg class="wmt-icon"><use href="#i-spark"/></svg>智能引擎搜索</a>
+        <a class="wmt-item" href="/"><svg class="wmt-icon"><use href="#i-map"/></svg>地图搜索</a>
+        <a class="wmt-item" href="/discover?tab=customs"><svg class="wmt-icon"><use href="#i-ship"/></svg>海关数据</a>
       </div>
-    </header>
-
-    <div id="discover-workspace">
-      <form id="discover-form" class="discover-toolbar">
-        <div class="toolbar-search">
-          <svg class="w-4 h-4 input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" id="keyword" name="keyword" placeholder="请输入企业或商品名称，如 power tools" required />
-        </div>
-        <div class="plat-chip-row" id="platform-group"></div>
-        <input type="hidden" id="limit" name="limit" value="20">
-        <button type="submit" class="btn-primary toolbar-submit" id="discover-btn">搜索</button>
-        <span class="toolbar-live" id="backend-live">连接搜索引擎…</span>
-        <span class="toolbar-hint">不代发私信，仅打开官方主页</span>
-      </form>
-
-      <div class="discover-table-wrap">
-        <div id="discover-status" class="discover-status">正在连接后端平台列表…</div>
-        <div id="discover-warnings" class="discover-warnings hidden"></div>
-        <table class="discover-table" id="discover-table">
-          <thead>
-            <tr>
-              <th style="width:36px"></th>
-              <th>名称</th>
-              <th style="width:130px">平台</th>
-              <th style="width:180px">账号</th>
-              <th>主页</th>
-              <th>简介</th>
-              <th style="width:160px">操作</th>
-            </tr>
-          </thead>
-          <tbody id="discover-results"></tbody>
-        </table>
-        <div id="discover-empty" class="discover-empty">暂无结果。请输入企业或商品名称后搜索。</div>
-        <div id="discover-foot" class="discover-foot hidden"></div>
+      <div class="wmt-group">
+        <div class="wmt-group-title"><svg class="wmt-icon"><use href="#i-globe"/></svg>数据获客</div>
+        <a class="wmt-item" href="#" data-soon="全球搜索"><svg class="wmt-icon"><use href="#i-search"/></svg>全球搜索</a>
+        <a class="wmt-item" href="/discover?tab=customs"><svg class="wmt-icon"><use href="#i-ship"/></svg>海关数据</a>
+        <a class="wmt-item" data-nav="people" href="/discover"><svg class="wmt-icon"><use href="#i-spark"/></svg>智能引擎搜索</a>
+        <a class="wmt-item" href="#" data-soon="智能推荐">智能推荐<span class="new-tag">NEW</span></a>
+        <a class="wmt-item" data-nav="exhibition" href="/discover?tab=exhibition"><svg class="wmt-icon"><use href="#i-cal"/></svg>展会买家</a>
+        <a class="wmt-item" href="/"><svg class="wmt-icon"><use href="#i-map"/></svg>地图搜索</a>
+        <a class="wmt-item" href="#" data-soon="社媒搜索"><svg class="wmt-icon"><use href="#i-users"/></svg>社媒搜索</a>
       </div>
-    </div>
+      <div class="wmt-group">
+        <div class="wmt-group-title"><svg class="wmt-icon"><use href="#i-chart"/></svg>市场洞察</div>
+        <a class="wmt-item" href="#" data-soon="贸易分析">贸易分析</a>
+        <a class="wmt-item" href="#" data-soon="公司订阅">公司订阅</a>
+      </div>
+      <div class="wmt-group">
+        <div class="wmt-group-title"><svg class="wmt-icon"><use href="#i-plug"/></svg>找客工具</div>
+        <a class="wmt-item" href="#" data-soon="浏览器插件获客">浏览器插件获客<span class="new-tag">NEW</span></a>
+      </div>
+    </aside>
+
+    <main class="wmt-main">
+      <section id="landing">
+        <div class="wmt-hero">
+          <div class="wmt-ai-orb">AI</div>
+          <h1 class="wmt-hero-title" id="discover-title">智能引擎搜索</h1>
+          <ul class="wmt-bullets">
+            <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>Google、Bing 等主流搜索引擎</li>
+            <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>覆盖 Facebook 等已支持社媒平台</li>
+            <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>数据自动清洗整理</li>
+            <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>打开官方主页，不代发私信</li>
+          </ul>
+          <form id="landing-form" class="wmt-search-row">
+            <div class="wmt-channel" data-channel>
+              <button type="button" class="is-on" data-ch="whatsapp"><svg class="wmt-icon"><use href="#i-wa"/></svg>WhatsApp</button>
+              <button type="button" data-ch="email"><svg class="wmt-icon"><use href="#i-mail"/></svg>邮箱</button>
+            </div>
+            <div class="wmt-searchbox">
+              <svg class="wmt-icon" style="color:#8f959e"><use href="#i-search"/></svg>
+              <input type="text" id="keyword-landing" placeholder="请输入搜索的企业或产品名称" required />
+              <label class="wmt-precise"><input type="checkbox" id="precise-landing"> 精准搜索</label>
+              <button type="button" class="wmt-icon-btn" title="精准搜索会尽量完全匹配关键词" style="color:#8f959e"><svg class="wmt-icon"><use href="#i-help"/></svg></button>
+              <button type="submit" class="wmt-search-btn" id="landing-btn">搜索</button>
+            </div>
+          </form>
+        </div>
+        <div class="wmt-features">
+          <h2>产品特性</h2>
+          <div class="wmt-feat-grid">
+            <div class="wmt-feat">
+              <span class="wmt-feat-ico"><svg class="wmt-icon-22"><use href="#i-in"/></svg></span>
+              <p>实时检索公开网页，从 Facebook、LinkedIn、Instagram、YouTube、TikTok 等已支持社媒抽出主页；WhatsApp / 邮箱需在官方页手动联系，系统不代发。</p>
+            </div>
+            <div class="wmt-feat">
+              <span class="wmt-feat-ico"><svg class="wmt-icon-22" style="color:#3b66f5"><use href="#i-globe"/></svg></span>
+              <p>覆盖公开搜索引擎与社媒主页链接。可用平台筛选、精准搜索缩小范围，提高主页命中准确度。</p>
+            </div>
+            <div class="wmt-feat">
+              <span class="wmt-feat-ico"><svg class="wmt-icon-22" style="color:#3b66f5"><use href="#i-clock"/></svg></span>
+              <p>一次搜索即可汇总多平台公开主页。请在官方主页登录后手动私信或发邮件，系统不会绕过平台接口群发。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="results-view" class="wmt-results hidden">
+        <div class="wmt-crumb">数据获客 &gt; <b id="crumb-name">智能引擎搜索</b></div>
+        <form id="discover-form" class="wmt-results-head">
+          <div class="wmt-channel" data-channel>
+            <button type="button" class="is-on" data-ch="whatsapp"><svg class="wmt-icon"><use href="#i-wa"/></svg>WhatsApp</button>
+            <button type="button" data-ch="email"><svg class="wmt-icon"><use href="#i-mail"/></svg>邮箱</button>
+          </div>
+          <div class="wmt-searchbox">
+            <svg class="wmt-icon" style="color:#8f959e"><use href="#i-search"/></svg>
+            <input type="text" id="keyword" name="keyword" placeholder="请输入搜索的企业或产品名称" required />
+            <label class="wmt-precise"><input type="checkbox" id="precise"> 精准搜索</label>
+            <button type="submit" class="wmt-search-btn" id="discover-btn">搜索</button>
+          </div>
+          <input type="hidden" id="limit" name="limit" value="20">
+        </form>
+        <div class="wmt-filters">
+          <label>搜索平台
+            <select id="platform-select"><option value="">默认</option></select>
+          </label>
+          <label>搜索引擎
+            <select id="engine-select">
+              <option value="auto">自动（DuckDuckGo / Brave / Bing）</option>
+            </select>
+          </label>
+          <a class="wmt-adv" id="adv-toggle">高级筛选</a>
+        </div>
+        <div id="adv-panel" class="wmt-adv-panel hidden">
+          <div class="wmt-plat-list" id="platform-group"></div>
+        </div>
+        <div class="wmt-actions">
+          <button type="button" class="wmt-search-btn" id="btn-market">一键营销</button>
+          <button type="button" class="btn-ghost" id="btn-book">加入营销地址簿</button>
+          <button type="button" class="btn-ghost" id="btn-export">全部导出</button>
+          <span class="wmt-pageinfo" id="discover-foot"></span>
+        </div>
+        <div id="discover-status" class="wmt-status"></div>
+        <div id="discover-warnings" class="wmt-warn hidden"></div>
+        <div class="wmt-table-wrap">
+          <table class="wmt-table" id="discover-table">
+            <thead>
+              <tr>
+                <th style="width:36px"><input type="checkbox" id="check-all"></th>
+                <th id="col-contact" style="width:220px">账号</th>
+                <th>网页标题</th>
+                <th>来源链接</th>
+              </tr>
+            </thead>
+            <tbody id="discover-results"></tbody>
+          </table>
+          <div id="discover-empty" class="wmt-empty">暂无结果。请输入企业或产品名称后搜索。</div>
+        </div>
+      </section>
+
+      <div class="wmt-float" aria-hidden="true">
+        <button type="button" data-soon="日程"><svg class="wmt-icon"><use href="#i-cal"/></svg></button>
+        <button type="button" data-soon="知识"><svg class="wmt-icon"><use href="#i-book"/></svg></button>
+        <button type="button" data-soon="任务"><svg class="wmt-icon"><use href="#i-list"/></svg></button>
+        <button type="button" data-soon="客户"><svg class="wmt-icon"><use href="#i-user"/></svg></button>
+        <button type="button" data-soon="数据"><svg class="wmt-icon"><use href="#i-db"/></svg></button>
+      </div>
+    </main>
   </div>
-
+  <div id="toast" class="wmt-toast hidden"></div>
   <script src="/static/js/discover.js"></script>
 </body>
 </html>
