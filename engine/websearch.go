@@ -110,35 +110,35 @@ func (c *Client) searchOneIndex(ctx context.Context, query string) ([]Hit, strin
 	}
 
 	attempts := []attempt{
-		{"duckduckgo", c.fetchDuckDuckGo},
 		{"brave", c.fetchBrave},
+		{"duckduckgo", c.fetchDuckDuckGo},
 		{"bing", c.fetchBing},
 	}
 
-	var lastErr error
+	var errs []string
 	for _, a := range attempts {
 		raw, err := a.fn(ctx, query)
 		if err != nil {
-			lastErr = fmt.Errorf("%s: %w", a.name, err)
+			errs = append(errs, fmt.Sprintf("%s: %s", a.name, err.Error()))
 			continue
 		}
 
 		if looksLikeChallenge(raw) {
-			lastErr = fmt.Errorf("%s: challenge page", a.name)
+			errs = append(errs, a.name+": challenge page")
 			continue
 		}
 
 		hits := extractProfilesFromHTML(raw, a.name)
 		if len(hits) == 0 {
-			lastErr = fmt.Errorf("%s: no profiles", a.name)
+			errs = append(errs, a.name+": no profiles")
 			continue
 		}
 
 		return hits, a.name, nil
 	}
 
-	if lastErr != nil {
-		return nil, "", lastErr
+	if len(errs) > 0 {
+		return nil, "", fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 
 	return nil, "", fmt.Errorf("public search empty")

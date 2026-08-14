@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -55,11 +56,23 @@ func OptionsFromEnv() *Client {
 	}
 
 	return &Client{
-		HTTP:        &http.Client{Timeout: timeout},
+		HTTP:        &http.Client{Timeout: timeout, Transport: browserTransport()},
 		TikTokURL:   tiktok,
 		F2URL:       f2,
 		TikHubToken: strings.TrimSpace(firstNonEmpty(os.Getenv("TIKHUB_API_TOKEN"), os.Getenv("TIKHUB_API_KEY"))),
 	}
+}
+
+func browserTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ForceAttemptHTTP2 = false
+	if t.TLSClientConfig == nil {
+		t.TLSClientConfig = &tls.Config{}
+	} else {
+		t.TLSClientConfig = t.TLSClientConfig.Clone()
+	}
+	t.TLSClientConfig.NextProtos = []string{"http/1.1"}
+	return t
 }
 
 func (c *Client) httpClient() *http.Client {
@@ -67,7 +80,7 @@ func (c *Client) httpClient() *http.Client {
 		return c.HTTP
 	}
 
-	return &http.Client{Timeout: defaultHTTPTimeout}
+	return &http.Client{Timeout: defaultHTTPTimeout, Transport: browserTransport()}
 }
 
 func (c *Client) get(ctx context.Context, rawURL string, extra map[string]string) ([]byte, error) {
@@ -162,8 +175,15 @@ func newBrowserRequest(ctx context.Context, method, rawURL, body string) (*http.
 	}
 
 	req.Header.Set("User-Agent", browserUA)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Site", "none")
+	req.Header.Set("Sec-CH-UA", `"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"`)
+	req.Header.Set("Sec-CH-UA-Mobile", "?0")
+	req.Header.Set("Sec-CH-UA-Platform", `"Windows"`)
 
 	return req, nil
 }
