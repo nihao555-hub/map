@@ -278,6 +278,18 @@ func displayName(title, fallback string) string {
 	title = strings.TrimSpace(strings.Split(title, "|")[0])
 	title = strings.TrimSpace(strings.Split(title, " - ")[0])
 	title = strings.TrimSpace(strings.Split(title, " | ")[0])
+	if i := strings.LastIndex(title, "›"); i >= 0 {
+		if rest := strings.TrimSpace(title[i+len("›"):]); rest != "" {
+			title = rest
+			if parts := strings.Fields(title); len(parts) >= 2 {
+				first := strings.TrimPrefix(parts[0], "@")
+				nicer := strings.Join(parts[1:], " ")
+				if looksLikeHandle(first) && nicer != "" {
+					title = nicer
+				}
+			}
+		}
+	}
 	title = strings.TrimSpace(strings.TrimSuffix(title, "的抖音"))
 	title = strings.TrimSpace(strings.TrimSuffix(title, "- 抖音"))
 	title = strings.TrimSpace(strings.TrimSuffix(title, "– 抖音"))

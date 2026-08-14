@@ -102,6 +102,10 @@ func TestDisplayNameStripsHandle(t *testing.T) {
 	if got := displayName("便宜，耐用，自有工厂#电动工具", "cfhardware"); got != "cfhardware" {
 		t.Fatalf("got %q", got)
 	}
+
+	if got := displayName("Instagram instagram.com › tonyspowertools   Tony's Power Tools", "tonyspowertools"); got != "Tony's Power Tools" {
+		t.Fatalf("got %q", got)
+	}
 }
 
 func TestMergeHitsDedupAndScore(t *testing.T) {
