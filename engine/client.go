@@ -132,6 +132,10 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 	}
 
 	if resp.StatusCode >= 400 {
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return raw, fmt.Errorf("%s: status 429 rate limited", req.URL.Host)
+		}
+
 		msg := strings.TrimSpace(string(raw))
 		if len(msg) > 300 {
 			msg = msg[:300]
