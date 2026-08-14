@@ -49,6 +49,25 @@
   width: auto;
 }
 
+.toolbar-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-aux);
+}
+
+.toolbar-live::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d9d9d9;
+}
+
+.toolbar-live.is-on::before { background: #52c41a; }
+.toolbar-live.is-err::before { background: #ff4d4f; }
+
 .toolbar-hint {
   margin-left: auto;
   font-size: 12px;
@@ -62,6 +81,9 @@
 }
 
 .plat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid var(--border-color);
   background: #fff;
   color: var(--text-secondary);
@@ -69,6 +91,13 @@
   padding: 4px 10px;
   font-size: 12px;
   line-height: 18px;
+}
+
+.plat-logo {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: block;
 }
 
 .plat-chip.is-on {
@@ -145,10 +174,12 @@
   white-space: nowrap;
 }
 .hit-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   border-radius: 4px;
-  padding: 1px 8px;
+  padding: 2px 8px;
   background: #f5f5f5;
   color: var(--text-secondary);
 }

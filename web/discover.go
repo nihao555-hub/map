@@ -64,6 +64,21 @@ func (s *Server) apiDiscoverSearch(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusOK, res)
 }
 
+func (s *Server) apiDiscoverPlatforms(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"platforms": engine.PeoplePlatformCatalog(),
+	})
+}
+
 func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		renderJSON(w, http.StatusMethodNotAllowed, apiError{

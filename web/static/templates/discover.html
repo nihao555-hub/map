@@ -4,20 +4,33 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>智能引擎搜索 · 地图获客</title>
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <link rel="stylesheet" href="/static/css/main.css">
   <link rel="stylesheet" href="/static/css/discover.css">
 </head>
 <body data-tab="{{.Tab}}">
   <nav id="app-rail" aria-label="功能模块">
     <a class="rail-logo" href="/" title="地图获客">
-      <span><i data-lucide="map-pin" class="w-5 h-5"></i></span>
+      <span>
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+      </span>
     </a>
     <div class="rail-nav">
-      <a class="rail-item" href="/"><i data-lucide="map-pin" class="w-4 h-4"></i>地图搜索</a>
-      <a class="rail-item" data-nav="people" href="/discover"><i data-lucide="sparkles" class="w-4 h-4"></i>智能引擎</a>
-      <a class="rail-item" data-nav="exhibition" href="/discover?tab=exhibition"><i data-lucide="calendar" class="w-4 h-4"></i>展会获客</a>
-      <a class="rail-item" data-nav="customs" href="/discover?tab=customs"><i data-lucide="ship" class="w-4 h-4"></i>海关数据</a>
+      <a class="rail-item" href="/">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        地图搜索
+      </a>
+      <a class="rail-item" data-nav="people" href="/discover">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+        智能引擎
+      </a>
+      <a class="rail-item" data-nav="exhibition" href="/discover?tab=exhibition">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+        展会获客
+      </a>
+      <a class="rail-item" data-nav="customs" href="/discover?tab=customs">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-8.188-3.639a2 2 0 0 0-1.624 0L3 14a11.6 11.6 0 0 0 1.81 6"/><path d="M12 10V2"/><circle cx="12" cy="14" r="1"/></svg>
+        海关数据
+      </a>
     </div>
   </nav>
 
@@ -25,10 +38,18 @@
     <header id="topbar">
       <div class="page-heading" id="discover-title">智能引擎搜索</div>
       <div class="topbar-right">
-        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
-        <a class="help-btn" href="/api/docs" style="text-decoration:none"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</a>
+        <button type="button" class="vip-btn">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519L19.03 18.94A2 2 0 0 1 17.09 20H6.91a2 2 0 0 1-1.94-1.06L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"/><path d="M5 21h14"/></svg>
+          升级会员
+        </button>
+        <a class="help-btn" href="/api/docs" style="text-decoration:none">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+          使用帮助
+        </a>
         <div class="user-box">
-          <span class="avatar"><i data-lucide="user" class="w-4 h-4"></i></span>
+          <span class="avatar">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </span>
           <span class="user-name">张三</span>
         </div>
       </div>
@@ -37,34 +58,25 @@
     <div id="discover-workspace">
       <form id="discover-form" class="discover-toolbar">
         <div class="toolbar-search">
-          <i data-lucide="search" class="w-4 h-4 input-icon"></i>
+          <svg class="w-4 h-4 input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           <input type="text" id="keyword" name="keyword" placeholder="请输入企业或商品名称，如 power tools" required />
         </div>
-        <div class="plat-chip-row" id="platform-group">
-          <button type="button" class="plat-chip is-on" data-platform="facebook">Facebook</button>
-          <button type="button" class="plat-chip is-on" data-platform="linkedin">LinkedIn</button>
-          <button type="button" class="plat-chip is-on" data-platform="instagram">Instagram</button>
-          <button type="button" class="plat-chip is-on" data-platform="youtube">YouTube</button>
-          <button type="button" class="plat-chip is-on" data-platform="tiktok">TikTok</button>
-          <button type="button" class="plat-chip" data-platform="x">X</button>
-          <button type="button" class="plat-chip" data-platform="pinterest">Pinterest</button>
-          <button type="button" class="plat-chip" data-platform="threads">Threads</button>
-          <button type="button" class="plat-chip" data-platform="douyin">抖音</button>
-        </div>
+        <div class="plat-chip-row" id="platform-group"></div>
         <input type="hidden" id="limit" name="limit" value="20">
         <button type="submit" class="btn-primary toolbar-submit" id="discover-btn">搜索</button>
+        <span class="toolbar-live" id="backend-live">连接搜索引擎…</span>
         <span class="toolbar-hint">不代发私信，仅打开官方主页</span>
       </form>
 
       <div class="discover-table-wrap">
-        <div id="discover-status" class="discover-status">输入关键词后从 Facebook / LinkedIn / Instagram / YouTube / TikTok 等海外社媒检索公开主页</div>
+        <div id="discover-status" class="discover-status">正在连接后端平台列表…</div>
         <div id="discover-warnings" class="discover-warnings hidden"></div>
         <table class="discover-table" id="discover-table">
           <thead>
             <tr>
               <th style="width:36px"></th>
               <th>名称</th>
-              <th style="width:110px">平台</th>
+              <th style="width:130px">平台</th>
               <th style="width:180px">账号</th>
               <th>主页</th>
               <th>简介</th>

@@ -20,7 +20,7 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-  for _, want := range []string{"智能引擎搜索", "discover-form", "app-rail", "Facebook", "LinkedIn"} {
+	for _, want := range []string{"智能引擎搜索", "discover-form", "app-rail", "platform-group", "/static/js/discover.js"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
@@ -28,6 +28,61 @@ func TestDiscoverPageRenders(t *testing.T) {
 
 	if !strings.Contains(body, "地图搜索") {
 		t.Fatal("rail should include 地图搜索")
+	}
+}
+
+func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/static/js/discover.js", nil)
+	rec := httptest.NewRecorder()
+	srv.srv.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "plat-logo"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
+func TestDiscoverPlatformsListsSupportedOnly(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/platforms", nil)
+	rec := httptest.NewRecorder()
+	srv.apiDiscoverPlatforms(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Platforms []struct {
+			ID      string `json:"id"`
+			Label   string `json:"label"`
+			Default bool   `json:"default"`
+		} `json:"platforms"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+
+	ids := map[string]bool{}
+	for _, p := range payload.Platforms {
+		ids[p.ID] = true
+	}
+
+	for _, want := range []string{"facebook", "linkedin", "instagram", "youtube", "tiktok", "x", "pinterest", "threads", "douyin"} {
+		if !ids[want] {
+			t.Fatalf("missing supported platform %s in %+v", want, payload.Platforms)
+		}
+	}
+
+	if ids["exhibition"] || ids["customs"] {
+		t.Fatalf("unsupported modules leaked into people platforms: %+v", payload.Platforms)
 	}
 }
 

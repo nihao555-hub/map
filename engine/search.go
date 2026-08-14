@@ -72,15 +72,7 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 }
 
 func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
-	platforms := q.Platforms
-	if len(platforms) == 0 {
-		platforms = append([]string{}, DefaultPeoplePlatforms...)
-	}
-
-	wanted := map[string]bool{}
-	for _, p := range platforms {
-		wanted[strings.ToLower(strings.TrimSpace(p))] = true
-	}
+	wanted := wantedPeoplePlatforms(q.Platforms)
 
 	var (
 		mu       sync.Mutex

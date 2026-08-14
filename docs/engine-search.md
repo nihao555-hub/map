@@ -30,7 +30,7 @@ export TIKHUB_API_TOKEN=...          # 抖音「关键词搜人」f2 仍为 🔵
 ./google_maps_scraper -web
 ```
 
-打开 `/discover`（左侧图标栏点「智能引擎」）。布局对齐网易外贸通：窄图标栏 + 顶栏搜索 + 结果表。**默认公开网页检索** Facebook / LinkedIn / Instagram / YouTube / TikTok（还可勾选 X / Pinterest / Threads / 抖音），不需要先起 sidecar。直播验证（2026-08-14）：
+打开 `/discover`（左侧图标栏点「智能引擎」）。布局对齐网易外贸通：窄图标栏 + 顶栏搜索 + 结果表。平台 chip 与表格图标由 `GET /api/v1/discover/platforms` 驱动，只展示引擎真正能搜的社媒（Facebook / LinkedIn / Instagram / YouTube / TikTok，以及可选 X / Pinterest / Threads / 抖音），并使用各平台官方品牌色图标。**默认公开网页检索**，不需要先起 sidecar。直播验证（2026-08-14）：
 
 - 关键词「电动工具」→ 抖音：电动工具小王、盛隆绿巨人、河北喜提工厂、东成旗舰店、大有工具 等，均带 `douyin.com/user/MS4wLjAB…`
 - 关键词「power tools」→ TikTok：`@boschpowertools`、`@mjdtpowertools` 等

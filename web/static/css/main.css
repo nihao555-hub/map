@@ -141,7 +141,7 @@ button { font-family: inherit; cursor: pointer; }
 .h-3 { height: 12px; }
 .h-4 { height: 16px; }
 .h-5 { height: 20px; }
-svg.lucide { flex-shrink: 0; }
+svg.lucide, #app-rail svg { flex-shrink: 0; }
 
 /* ========================================
    顶部导航栏
