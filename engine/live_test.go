@@ -45,11 +45,28 @@ func TestLivePublicSearchDouyinAndTikTok(t *testing.T) {
 		t.Logf("  tk %s @%s %s", h.Name, h.Handle, h.HomepageURL)
 	}
 
-	if len(dy.Hits)+len(tk.Hits) == 0 {
+	ov, err := c.Search(ctx, Query{
+		Keyword:   "power tools",
+		Kind:      KindPeople,
+		Platforms: []string{PlatformInstagram, PlatformYouTube, PlatformFacebook, PlatformLinkedIn, PlatformX},
+		Limit:     15,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("overseas hits=%d sources=%v warnings=%v", len(ov.Hits), ov.Sources, ov.Warnings)
+	seen := map[string]int{}
+	for _, h := range ov.Hits {
+		seen[h.Platform]++
+		t.Logf("  %s %s %s", h.Platform, h.Name, h.HomepageURL)
+	}
+
+	if len(dy.Hits)+len(tk.Hits)+len(ov.Hits) == 0 {
 		t.Fatal("live public search returned no profiles for 电动工具 or power tools")
 	}
 
-	for _, h := range append(dy.Hits, tk.Hits...) {
+	for _, h := range append(append(dy.Hits, tk.Hits...), ov.Hits...) {
 		if h.HomepageURL == "" || !strings.Contains(h.MessageHint, "不会代发") {
 			t.Fatalf("incomplete hit %+v", h)
 		}

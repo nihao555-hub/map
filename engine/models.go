@@ -8,9 +8,23 @@ const (
 	PlatformDouyin     = "douyin"
 	PlatformInstagram  = "instagram"
 	PlatformYouTube    = "youtube"
+	PlatformFacebook   = "facebook"
+	PlatformLinkedIn   = "linkedin"
+	PlatformX          = "x"
+	PlatformPinterest  = "pinterest"
+	PlatformThreads    = "threads"
 	PlatformExhibition = "exhibition"
 	PlatformCustoms    = "customs"
 )
+
+// DefaultPeoplePlatforms is the overseas-first set used when the UI sends no platforms.
+var DefaultPeoplePlatforms = []string{
+	PlatformFacebook,
+	PlatformLinkedIn,
+	PlatformInstagram,
+	PlatformYouTube,
+	PlatformTikTok,
+}
 
 // Kind selects which customer-discovery module to run.
 const (

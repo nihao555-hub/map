@@ -11,19 +11,20 @@
     <link rel="stylesheet" href="/static/css/main.css">
 </head>
 <body>
-    <!-- 顶部导航栏 -->
-    <header id="topbar">
-      <a class="brand" href="/">
-        <span class="brand-icon"><i data-lucide="map-pin" class="w-5 h-5"></i></span>
-        <span class="brand-name">地图获客</span>
-        <span class="brand-tag">智能版</span>
+    <nav id="app-rail" aria-label="功能模块">
+      <a class="rail-logo" href="/" title="地图获客">
+        <span><i data-lucide="map-pin" class="w-5 h-5"></i></span>
       </a>
-      <nav class="mod-nav" aria-label="功能模块">
-        <a class="mod-nav-item is-active" href="/">地图搜索</a>
-        <a class="mod-nav-item" href="/discover">智能引擎</a>
-        <a class="mod-nav-item" href="/discover?tab=exhibition">展会获客</a>
-        <a class="mod-nav-item" href="/discover?tab=customs">海关数据</a>
-      </nav>
+      <div class="rail-nav">
+        <a class="rail-item is-active" href="/"><i data-lucide="map-pin" class="w-4 h-4"></i>地图搜索</a>
+        <a class="rail-item" href="/discover"><i data-lucide="sparkles" class="w-4 h-4"></i>智能引擎</a>
+        <a class="rail-item" href="/discover?tab=exhibition"><i data-lucide="calendar" class="w-4 h-4"></i>展会获客</a>
+        <a class="rail-item" href="/discover?tab=customs"><i data-lucide="ship" class="w-4 h-4"></i>海关数据</a>
+      </div>
+    </nav>
+    <div id="app-body">
+    <header id="topbar">
+      <div class="page-heading">地图搜索</div>
       <div class="topbar-right">
         <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
         <button type="button" class="help-btn"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</button>
@@ -511,5 +512,6 @@
       buildColumnsPicker();
       document.getElementById('columns-section').classList.remove('hidden');
     </script>
+    </div>
 </body>
 </html>

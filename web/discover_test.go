@@ -20,7 +20,7 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"智能引擎搜索", "TikTok-Api", "discover-form", "公开检索"} {
+	for _, want := range []string{"智能引擎搜索", "discover-form", "app-rail", "Facebook", "LinkedIn"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}

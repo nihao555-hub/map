@@ -30,6 +30,37 @@ func TestParseSocialURLRejectsTag(t *testing.T) {
 	}
 }
 
+func TestParseSocialURLFacebookLinkedInX(t *testing.T) {
+	fb, ok := ParseSocialURL("https://www.facebook.com/BoschPowerTools", "Bosch Power Tools", "")
+	if !ok || fb.Platform != PlatformFacebook || fb.Handle != "BoschPowerTools" {
+		t.Fatalf("facebook %+v ok=%v", fb, ok)
+	}
+
+	in, ok := ParseSocialURL("https://www.linkedin.com/in/jane-doe", "Jane Doe | LinkedIn", "")
+	if !ok || in.Platform != PlatformLinkedIn || in.Handle != "jane-doe" {
+		t.Fatalf("linkedin in %+v ok=%v", in, ok)
+	}
+
+	co, ok := ParseSocialURL("https://www.linkedin.com/company/bosch", "Bosch", "")
+	if !ok || co.Platform != PlatformLinkedIn {
+		t.Fatalf("linkedin co %+v ok=%v", co, ok)
+	}
+
+	x, ok := ParseSocialURL("https://x.com/dewalt", "DEWALT (@dewalt)", "")
+	if !ok || x.Platform != PlatformX || x.Handle != "dewalt" {
+		t.Fatalf("x %+v ok=%v", x, ok)
+	}
+
+	th, ok := ParseSocialURL("https://www.threads.net/@nike", "Nike", "")
+	if !ok || th.Platform != PlatformThreads {
+		t.Fatalf("threads %+v ok=%v", th, ok)
+	}
+
+	if _, ok := ParseSocialURL("https://www.facebook.com/watch", "watch", ""); ok {
+		t.Fatal("facebook watch must be rejected")
+	}
+}
+
 func TestParseSocialURLDouyin(t *testing.T) {
 	hit, ok := ParseSocialURL("https://www.douyin.com/user/MS4wLjABAAAA1234", "某工厂", "主营电动工具")
 	if !ok {

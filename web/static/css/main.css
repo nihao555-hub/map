@@ -38,6 +38,97 @@ html, body {
   overflow: hidden;
 }
 
+body {
+  display: flex;
+  flex-direction: row;
+}
+
+/* ========================================
+   网易外贸通式：左侧窄图标栏
+   ======================================== */
+#app-rail {
+  width: 80px;
+  flex-shrink: 0;
+  height: 100%;
+  background: #1e2a3a;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  z-index: 1200;
+}
+
+.rail-logo {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.rail-logo span {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #3370ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rail-nav {
+  flex: 1;
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.rail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 72px;
+  color: rgba(255, 255, 255, 0.62);
+  text-decoration: none;
+  font-size: 11px;
+  line-height: 1.2;
+  position: relative;
+}
+
+.rail-item:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+
+.rail-item.is-active {
+  color: #fff;
+  background: #2a3b50;
+}
+
+.rail-item.is-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  background: #3370ff;
+  border-radius: 0 2px 2px 0;
+}
+
+#app-body {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-heading {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 button { font-family: inherit; cursor: pointer; }
 
 .hidden { display: none !important; }
@@ -185,7 +276,8 @@ svg.lucide { flex-shrink: 0; }
    ======================================== */
 #app-shell {
   display: flex;
-  height: calc(100vh - var(--topbar-h));
+  flex: 1;
+  min-height: 0;
 }
 
 #sidebar {

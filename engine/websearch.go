@@ -6,8 +6,10 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/sync/errgroup"
 )
 
 var hrefAbsRe = regexp.MustCompile(`https?://[^\s"'<>]+`)
@@ -17,56 +19,79 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wante
 		return nil, nil, nil
 	}
 
-	var queries []string
-	if wanted[PlatformTikTok] {
-		queries = append(queries,
-			keyword+" tiktok",
-			"site:tiktok.com "+keyword,
-		)
-	}
-
-	if wanted[PlatformDouyin] {
-		queries = append(queries,
-			keyword+" 抖音",
-			"site:douyin.com/user "+keyword,
-		)
-	}
+	queries := publicSearchQueries(keyword, wanted)
 
 	var (
+		mu       sync.Mutex
 		hits     []Hit
 		warnings []string
 		sources  []string
 	)
 
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(4)
+
 	for _, q := range queries {
-		if ctx.Err() != nil {
-			break
-		}
-
-		if limit > 0 && len(hits) >= limit*3 {
-			break
-		}
-
-		batch, src, err := c.searchOneIndex(ctx, q)
-		if err != nil {
-			warnings = append(warnings, err.Error())
-			continue
-		}
-
-		if src != "" {
-			sources = append(sources, src)
-		}
-
-		for _, h := range batch {
-			if len(wanted) > 0 && !wanted[h.Platform] {
-				continue
+		q := q
+		g.Go(func() error {
+			if gctx.Err() != nil {
+				return nil
 			}
 
-			hits = append(hits, h)
+			batch, src, err := c.searchOneIndex(gctx, q)
+			mu.Lock()
+			defer mu.Unlock()
+
+			if err != nil {
+				warnings = append(warnings, err.Error())
+				return nil
+			}
+
+			if src != "" {
+				sources = append(sources, src)
+			}
+
+			for _, h := range batch {
+				if len(wanted) > 0 && !wanted[h.Platform] {
+					continue
+				}
+
+				hits = append(hits, h)
+			}
+
+			return nil
+		})
+	}
+
+	_ = g.Wait()
+
+	return hits, uniqueStrings(warnings), uniqueStrings(sources)
+}
+
+func publicSearchQueries(keyword string, wanted map[string]bool) []string {
+	specs := []struct {
+		platform string
+		query    string
+	}{
+		{PlatformFacebook, "site:facebook.com " + keyword},
+		{PlatformLinkedIn, "site:linkedin.com " + keyword},
+		{PlatformInstagram, "site:instagram.com " + keyword},
+		{PlatformYouTube, "site:youtube.com " + keyword},
+		{PlatformTikTok, "site:tiktok.com " + keyword},
+		{PlatformX, "site:x.com " + keyword},
+		{PlatformPinterest, "site:pinterest.com " + keyword},
+		{PlatformThreads, "site:threads.net " + keyword},
+		{PlatformDouyin, "site:douyin.com/user " + keyword},
+	}
+
+	out := make([]string, 0, len(specs))
+	for _, s := range specs {
+		if wanted[s.platform] {
+			out = append(out, s.query)
 		}
 	}
 
-	return hits, uniqueStrings(warnings), uniqueStrings(sources)
+	return out
 }
 
 func (c *Client) searchOneIndex(ctx context.Context, query string) ([]Hit, string, error) {
@@ -190,6 +215,48 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 	for _, m := range tiktokHandleRe.FindAllStringSubmatch(blob, 40) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.tiktok.com/@"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range instagramRe.FindAllStringSubmatch(blob, 40) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.instagram.com/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range youtubeAtRe.FindAllStringSubmatch(blob, 40) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.youtube.com/@"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range facebookUserRe.FindAllStringSubmatch(blob, 40) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.facebook.com/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range linkedinInRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.linkedin.com/in/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range linkedinCoRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.linkedin.com/company/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range xHandleRe.FindAllStringSubmatch(blob, 40) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://x.com/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range threadsRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.threads.net/@"+m[1], m[1], ""))
 		}
 	}
 

@@ -9,76 +9,74 @@
   <link rel="stylesheet" href="/static/css/discover.css">
 </head>
 <body data-tab="{{.Tab}}">
-  <header id="topbar">
-    <a class="brand" href="/">
-      <span class="brand-icon"><i data-lucide="map-pin" class="w-5 h-5"></i></span>
-      <span class="brand-name">地图获客</span>
-      <span class="brand-tag">智能版</span>
+  <nav id="app-rail" aria-label="功能模块">
+    <a class="rail-logo" href="/" title="地图获客">
+      <span><i data-lucide="map-pin" class="w-5 h-5"></i></span>
     </a>
-    <nav class="mod-nav" aria-label="功能模块">
-      <a class="mod-nav-item" href="/">地图搜索</a>
-      <a class="mod-nav-item" data-nav="people" href="/discover">智能引擎</a>
-      <a class="mod-nav-item" data-nav="exhibition" href="/discover?tab=exhibition">展会获客</a>
-      <a class="mod-nav-item" data-nav="customs" href="/discover?tab=customs">海关数据</a>
-    </nav>
-    <div class="topbar-right">
-      <a class="help-btn" href="/api/docs" style="text-decoration:none"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</a>
+    <div class="rail-nav">
+      <a class="rail-item" href="/"><i data-lucide="map-pin" class="w-4 h-4"></i>地图搜索</a>
+      <a class="rail-item" data-nav="people" href="/discover"><i data-lucide="sparkles" class="w-4 h-4"></i>智能引擎</a>
+      <a class="rail-item" data-nav="exhibition" href="/discover?tab=exhibition"><i data-lucide="calendar" class="w-4 h-4"></i>展会获客</a>
+      <a class="rail-item" data-nav="customs" href="/discover?tab=customs"><i data-lucide="ship" class="w-4 h-4"></i>海关数据</a>
     </div>
-  </header>
+  </nav>
 
-  <div class="discover-shell">
-    <aside class="discover-side">
-      <p class="oss-chip"><i data-lucide="search" class="w-4 h-4"></i>输入关键词即可找人，打开官方主页私信</p>
-      <h1 class="page-title" id="discover-title">智能引擎搜索</h1>
-      <p class="page-subtitle" id="discover-sub">搜抖音 / TikTok 公开主页。有 sidecar 时走 TikTok-Api / f2，没有也能用公开检索。</p>
-
-      <form id="discover-form">
-        <div class="field-group">
-          <label class="field-label" for="keyword">关键词</label>
-          <div class="input-field">
-            <i data-lucide="search" class="w-4 h-4 input-icon"></i>
-            <input type="text" id="keyword" name="keyword" placeholder="例如：电动工具 / power tools" required />
-          </div>
+  <div id="app-body">
+    <header id="topbar">
+      <div class="page-heading" id="discover-title">智能引擎搜索</div>
+      <div class="topbar-right">
+        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
+        <a class="help-btn" href="/api/docs" style="text-decoration:none"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</a>
+        <div class="user-box">
+          <span class="avatar"><i data-lucide="user" class="w-4 h-4"></i></span>
+          <span class="user-name">张三</span>
         </div>
+      </div>
+    </header>
 
-        <div class="field-group" id="platform-group">
-          <label class="field-label">平台</label>
-          <div class="plat-row">
-            <label class="plat"><input type="checkbox" name="platform" value="tiktok" checked> TikTok</label>
-            <label class="plat"><input type="checkbox" name="platform" value="douyin" checked> 抖音</label>
-          </div>
+    <div id="discover-workspace">
+      <form id="discover-form" class="discover-toolbar">
+        <div class="toolbar-search">
+          <i data-lucide="search" class="w-4 h-4 input-icon"></i>
+          <input type="text" id="keyword" name="keyword" placeholder="请输入企业或商品名称，如 power tools" required />
         </div>
-
-        <div class="field-group">
-          <label class="field-label" for="limit">数量上限</label>
-          <div class="input-field">
-            <i data-lucide="target" class="w-4 h-4 input-icon"></i>
-            <input type="number" id="limit" name="limit" min="1" max="50" value="20">
-          </div>
+        <div class="plat-chip-row" id="platform-group">
+          <button type="button" class="plat-chip is-on" data-platform="facebook">Facebook</button>
+          <button type="button" class="plat-chip is-on" data-platform="linkedin">LinkedIn</button>
+          <button type="button" class="plat-chip is-on" data-platform="instagram">Instagram</button>
+          <button type="button" class="plat-chip is-on" data-platform="youtube">YouTube</button>
+          <button type="button" class="plat-chip is-on" data-platform="tiktok">TikTok</button>
+          <button type="button" class="plat-chip" data-platform="x">X</button>
+          <button type="button" class="plat-chip" data-platform="pinterest">Pinterest</button>
+          <button type="button" class="plat-chip" data-platform="threads">Threads</button>
+          <button type="button" class="plat-chip" data-platform="douyin">抖音</button>
         </div>
-
-        <button type="submit" class="btn-primary" id="discover-btn">
-          <i data-lucide="search" class="w-5 h-5"></i>
-          <span>开始搜索</span>
-        </button>
+        <input type="hidden" id="limit" name="limit" value="20">
+        <button type="submit" class="btn-primary toolbar-submit" id="discover-btn">搜索</button>
+        <span class="toolbar-hint">不代发私信，仅打开官方主页</span>
       </form>
 
-      <div class="oss-card">
-        <h3>正在用的盘子</h3>
-        <ul>
-          <li><b>公开检索</b> DuckDuckGo / Brave / Bing · 默认即可搜到主页</li>
-          <li><b>davidteather/TikTok-Api</b> 6.5k★ MIT · 2026-07 · sidecar 增强搜人</li>
-          <li><b>Johnserf-Seed/f2</b> 2.6k★ Apache-2.0 · 2026-04 · TK 作品抽作者 / 抖音主页</li>
-        </ul>
-        <p class="oss-note">62k★ 的 MediaCrawler 是非商业学习许可，不能进商用产品。海关 / 展会没有可商用高 star 库，先不自研。</p>
+      <div class="discover-table-wrap">
+        <div id="discover-status" class="discover-status">输入关键词后从 Facebook / LinkedIn / Instagram / YouTube / TikTok 等海外社媒检索公开主页</div>
+        <div id="discover-warnings" class="discover-warnings hidden"></div>
+        <table class="discover-table" id="discover-table">
+          <thead>
+            <tr>
+              <th style="width:36px"></th>
+              <th>名称</th>
+              <th style="width:110px">平台</th>
+              <th style="width:180px">账号</th>
+              <th>主页</th>
+              <th>简介</th>
+              <th style="width:160px">操作</th>
+            </tr>
+          </thead>
+          <tbody id="discover-results"></tbody>
+        </table>
+        <div id="discover-empty" class="discover-empty">暂无结果。请输入企业或商品名称后搜索。</div>
+        <div id="discover-foot" class="discover-foot hidden"></div>
       </div>
-    </aside>
-
-    <main class="discover-main">
-      <div id="discover-status" class="discover-status">输入关键词开始搜索。建议：电动工具、power tools、nike</div>
-      <div id="discover-warnings" class="discover-warnings hidden"></div>
-      <div id="discover-results" class="hit-grid"></div>
-    </main>
+    </div>
   </div>
 
   <script src="/static/js/discover.js"></script>

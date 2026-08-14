@@ -13,6 +13,13 @@ var (
 	instagramRe    = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9._]+)`)
 	youtubeAtRe    = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?youtube\.com/@([A-Za-z0-9._\-]+)`)
 	youtubeChanRe  = regexp.MustCompile(`(?i)youtube\.com/channel/([A-Za-z0-9_\-]+)`)
+	facebookIDRe   = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/profile\.php\?id=(\d+)`)
+	facebookUserRe = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/([A-Za-z0-9.]+)`)
+	linkedinInRe   = regexp.MustCompile(`(?i)linkedin\.com/in/([A-Za-z0-9_\-%]+)`)
+	linkedinCoRe   = regexp.MustCompile(`(?i)linkedin\.com/company/([A-Za-z0-9_\-%]+)`)
+	xHandleRe      = regexp.MustCompile(`(?i)(?:twitter|x)\.com/([A-Za-z0-9_]+)`)
+	pinterestRe    = regexp.MustCompile(`(?i)pinterest\.(?:com|co\.[a-z]{2})/([A-Za-z0-9_]+)`)
+	threadsRe      = regexp.MustCompile(`(?i)threads\.net/@([A-Za-z0-9._]+)`)
 )
 
 var reservedPaths = map[string]struct{}{
@@ -21,6 +28,13 @@ var reservedPaths = map[string]struct{}{
 	"p": {}, "reel": {}, "stories": {}, "accounts": {}, "about": {},
 	"watch": {}, "results": {}, "channel": {}, "c": {}, "user": {},
 	"feed": {}, "hashtag": {}, "trending": {}, "foryou": {},
+	"share": {}, "sharer": {}, "dialog": {}, "groups": {}, "events": {},
+	"reels": {}, "marketplace": {}, "gaming": {}, "photos": {}, "photo": {},
+	"videos": {}, "posts": {}, "permalink": {}, "people": {}, "pages": {},
+	"privacy": {}, "settings": {}, "notifications": {}, "friends": {},
+	"ads": {}, "business": {}, "jobs": {}, "home": {}, "intent": {},
+	"compose": {}, "signup": {}, "download": {}, "pin": {}, "ideas": {},
+	"today": {}, "i": {}, "tos": {}, "help": {}, "recover": {},
 }
 
 // ParseSocialURL extracts a profile hit from a TikTok / Douyin / Instagram / YouTube URL.
@@ -83,10 +97,73 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 			Snippet:     snippet,
 			HomepageURL: home,
 			MessageURL:  home,
-			MessageHint: "YouTube 无统一私信；请通过主页「关于」里的邮箱/社媒联系",
+			MessageHint: "YouTube 无统一私信；请通过主页「关于」里的邮箱/社媒联系（系统不会代发）",
 			Source:      "websearch",
 			Score:       60,
 		}, true
+	}
+
+	if m := facebookIDRe.FindStringSubmatch(decoded); len(m) == 2 {
+		home := "https://www.facebook.com/profile.php?id=" + m[1]
+		return makeHit(PlatformFacebook, "id:"+m[1], m[1], home, title, snippet,
+			"打开 Facebook 主页后点击 Message（需登录官方账号，系统不会代发私信）", 75), true
+	}
+
+	if m := facebookUserRe.FindStringSubmatch(decoded); len(m) == 2 {
+		handle := strings.TrimRight(m[1], ".")
+		if _, skip := reservedPaths[strings.ToLower(handle)]; skip {
+			return Hit{}, false
+		}
+		if strings.EqualFold(handle, "profile.php") {
+			return Hit{}, false
+		}
+		home := "https://www.facebook.com/" + handle
+		return makeHit(PlatformFacebook, handle, handle, home, title, snippet,
+			"打开 Facebook 主页后点击 Message（需登录官方账号，系统不会代发私信）", 75), true
+	}
+
+	if m := linkedinInRe.FindStringSubmatch(decoded); len(m) == 2 {
+		handle, _ := url.PathUnescape(m[1])
+		home := "https://www.linkedin.com/in/" + m[1]
+		return makeHit(PlatformLinkedIn, "in:"+strings.ToLower(handle), handle, home, title, snippet,
+			"打开 LinkedIn 主页后点击 Message（需登录官方账号，系统不会代发私信）", 85), true
+	}
+
+	if m := linkedinCoRe.FindStringSubmatch(decoded); len(m) == 2 {
+		handle, _ := url.PathUnescape(m[1])
+		home := "https://www.linkedin.com/company/" + m[1]
+		return makeHit(PlatformLinkedIn, "company:"+strings.ToLower(handle), handle, home, title, snippet,
+			"打开 LinkedIn 公司页后通过官网/联系人沟通（系统不会代发私信）", 80), true
+	}
+
+	if m := xHandleRe.FindStringSubmatch(decoded); len(m) == 2 {
+		handle := m[1]
+		if _, skip := reservedPaths[strings.ToLower(handle)]; skip {
+			return Hit{}, false
+		}
+		home := "https://x.com/" + handle
+		return makeHit(PlatformX, handle, handle, home, title, snippet,
+			"打开 X 主页后点击 Message（需登录官方账号，系统不会代发私信）", 70), true
+	}
+
+	if m := pinterestRe.FindStringSubmatch(decoded); len(m) == 2 {
+		handle := m[1]
+		if _, skip := reservedPaths[strings.ToLower(handle)]; skip {
+			return Hit{}, false
+		}
+		home := "https://www.pinterest.com/" + handle + "/"
+		return makeHit(PlatformPinterest, handle, handle, home, title, snippet,
+			"Pinterest 无统一私信；请通过主页链接的官网/社媒联系（系统不会代发）", 55), true
+	}
+
+	if m := threadsRe.FindStringSubmatch(decoded); len(m) == 2 {
+		handle := m[1]
+		if _, skip := reservedPaths[strings.ToLower(handle)]; skip {
+			return Hit{}, false
+		}
+		home := "https://www.threads.net/@" + handle
+		return makeHit(PlatformThreads, handle, handle, home, title, snippet,
+			"打开 Threads 主页后点击 Message（需登录官方账号，系统不会代发私信）", 65), true
 	}
 
 	if m := youtubeChanRe.FindStringSubmatch(decoded); len(m) == 2 {
@@ -102,7 +179,7 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 			Snippet:     snippet,
 			HomepageURL: home,
 			MessageURL:  home,
-			MessageHint: "YouTube 无统一私信；请通过主页「关于」里的邮箱/社媒联系",
+			MessageHint: "YouTube 无统一私信；请通过主页「关于」里的邮箱/社媒联系（系统不会代发）",
 			Source:      "websearch",
 			Score:       55,
 		}, true
@@ -128,6 +205,27 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 	}
 
 	return Hit{}, false
+}
+
+func makeHit(platform, id, handle, home, title, snippet, hint string, score int) Hit {
+	if handle == "" {
+		handle = id
+	}
+
+	return Hit{
+		ID:          platform + ":" + strings.ToLower(id),
+		Kind:        KindPeople,
+		Platform:    platform,
+		Name:        displayName(title, handle),
+		Handle:      handle,
+		Title:       title,
+		Snippet:     snippet,
+		HomepageURL: home,
+		MessageURL:  home,
+		MessageHint: hint,
+		Source:      "websearch",
+		Score:       score,
+	}
 }
 
 func tiktokHit(handle, title, snippet, source string) Hit {

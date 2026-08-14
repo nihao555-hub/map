@@ -81,7 +81,7 @@ func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 				"stars":   "",
 				"license": "",
 				"pushed":  "",
-				"use":     "默认：公开网页检索抽抖音 / TikTok 官方主页，无需 sidecar",
+				"use":     "默认：公开网页检索抽 Facebook / LinkedIn / Instagram / YouTube / TikTok 等海外主页，无需 sidecar",
 			},
 			{
 				"name":    "davidteather/TikTok-Api",
