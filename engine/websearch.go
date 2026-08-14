@@ -3,10 +3,12 @@ package engine
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/sync/errgroup"
@@ -29,7 +31,7 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wante
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(6)
+	g.SetLimit(3)
 
 	for _, q := range queries {
 		q := q
@@ -161,23 +163,46 @@ func (c *Client) fetchBing(ctx context.Context, query string) ([]byte, error) {
 }
 
 func (c *Client) getHTML(ctx context.Context, rawURL string) ([]byte, error) {
-	req, err := newBrowserRequest(ctx, "GET", rawURL, "")
-	if err != nil {
-		return nil, err
-	}
-
-	return c.do(req)
+	return c.doHTML(ctx, func() (*http.Request, error) {
+		return newBrowserRequest(ctx, "GET", rawURL, "")
+	})
 }
 
 func (c *Client) postFormHTML(ctx context.Context, rawURL, body string) ([]byte, error) {
-	req, err := newBrowserRequest(ctx, "POST", rawURL, body)
-	if err != nil {
-		return nil, err
+	return c.doHTML(ctx, func() (*http.Request, error) {
+		req, err := newBrowserRequest(ctx, "POST", rawURL, body)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		return req, nil
+	})
+}
+
+func (c *Client) doHTML(ctx context.Context, makeReq func() (*http.Request, error)) ([]byte, error) {
+	var last error
+	for i := 0; i < 3; i++ {
+		req, err := makeReq()
+		if err != nil {
+			return nil, err
+		}
+
+		raw, err := c.do(req)
+		if err != nil && strings.Contains(err.Error(), "status 429") {
+			last = err
+			wait := time.Duration(1200*(1<<i)) * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(wait):
+			}
+			continue
+		}
+
+		return raw, err
 	}
 
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	return c.do(req)
+	return nil, last
 }
 
 func extractProfilesFromHTML(raw []byte, source string) []Hit {
