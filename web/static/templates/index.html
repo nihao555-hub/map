@@ -36,234 +36,125 @@
       </div>
     </header>
 
-    <div id="app-shell">
-      <!-- 左侧表单面板 -->
-      <aside id="sidebar">
-        <div id="sidebar-content">
-          <h1 class="page-title">找到精准客户，从地图开始</h1>
-          <p class="page-subtitle">输入位置和需求，智能为您挖掘潜在客户</p>
+    <div id="app-shell" class="map-shell">
+      <form
+        id="search-form"
+        hx-post="/scrape"
+        hx-target="#job-list"
+        hx-swap="afterbegin"
+        hx-indicator="#spinner"
+        hx-on::before-request="document.getElementById('error-container').innerHTML = ''; document.getElementById('map-area').classList.add('map-loading')"
+        hx-on::after-request="document.getElementById('map-area').classList.remove('map-loading'); if(!event.detail.successful) { document.getElementById('error-container').innerHTML = event.detail.xhr.responseText; } else { handleScrapeSuccess(); }"
+      >
+        <input type="hidden" id="name" name="name" value="">
+        <input type="hidden" id="zoom" name="zoom" value="15">
+        <input type="hidden" id="latitude" name="latitude" value="0">
+        <input type="hidden" id="longitude" name="longitude" value="0">
+        <input type="hidden" id="fastmode" name="fastmode" value="">
+        <input type="hidden" id="gridmode" name="gridmode" value="on">
+        <input type="hidden" id="gridbbox" name="gridbbox" value="">
+        <input type="hidden" id="radius" name="radius" value="10000">
+        <input type="hidden" id="columns" name="columns" value="">
 
-          <div id="error-container" class="error-message"></div>
-          <form
-            id="search-form"
-            hx-post="/scrape"
-            hx-target="#job-list"
-            hx-swap="afterbegin"
-            hx-indicator="#spinner"
-            hx-on::before-request="document.getElementById('error-container').innerHTML = ''; document.getElementById('map-area').classList.add('map-loading')"
-            hx-on::after-request="document.getElementById('map-area').classList.remove('map-loading'); if(!event.detail.successful) { document.getElementById('error-container').innerHTML = event.detail.xhr.responseText; } else { handleScrapeSuccess(); }"
-          >
-            <!-- 隐藏字段：任务名称 = 关键词+地点 -->
-            <input type="hidden" id="name" name="name" value="">
+        <div class="map-toolbar">
+          <div class="toolbar-search wide">
+            <i data-lucide="map-pin" class="w-4 h-4 input-icon icon-blue"></i>
+            <input type="text" id="locations" name="locations" placeholder="地点，如洛杉矶 / 深圳市南山区" autocomplete="off" />
+          </div>
+          <div class="toolbar-search">
+            <i data-lucide="search" class="w-4 h-4 input-icon"></i>
+            <input type="text" id="keywords" name="keywords" placeholder="关键词，如 coffee roaster" autocomplete="off" />
+            <button type="button" class="clear-btn" id="keywords-clear" title="清除">&times;</button>
+          </div>
+          <div class="plat-chip-row" id="mode-chips">
+            <button type="button" class="plat-chip" data-mode="quick" onclick="selectMode('quick')">快速</button>
+            <button type="button" class="plat-chip" data-mode="standard" onclick="selectMode('standard')">深度</button>
+            <button type="button" class="plat-chip is-on" data-mode="grid" onclick="selectMode('grid')">全域全量</button>
+          </div>
+          <button type="submit" id="start-btn" class="btn-primary toolbar-submit">
+            <i data-lucide="search" class="w-4 h-4"></i>
+            <span>搜索</span>
+          </button>
+          <button type="button" id="advanced-toggle" class="plat-chip" onclick="toggleAdvanced()">高级</button>
+          <div id="spinner" class="spinner htmx-indicator"></div>
+        </div>
 
-            <!-- 在哪里 -->
-            <div class="field-group">
-              <label class="field-label" for="locations">在哪里</label>
-              <div class="input-field">
-                <i data-lucide="map-pin" class="w-4 h-4 input-icon icon-blue"></i>
-                <input
-                  type="text"
-                  id="locations"
-                  name="locations"
-                  placeholder="请输入地点，如：深圳市南山区科技园"
-                  autocomplete="off"
-                />
-              </div>
-              <p class="field-hint">支持输入关键词搜索和地图选点两种方式</p>
-            </div>
+        <div id="error-container" class="error-message"></div>
 
-            <!-- 找什么 -->
-            <div class="field-group">
-              <label class="field-label" for="keywords">找什么</label>
-              <div class="input-field">
-                <i data-lucide="search" class="w-4 h-4 input-icon"></i>
-                <input
-                  type="text"
-                  id="keywords"
-                  name="keywords"
-                  placeholder="咖啡馆"
-                  autocomplete="off"
-                />
-                <button type="button" class="clear-btn" id="keywords-clear" title="清除">&times;</button>
-              </div>
-            </div>
-
-            <!-- 热门搜索 -->
-            <div class="hot-search">
-              <span class="hot-label">热门搜索：</span>
-              <div class="hot-tags">
-                <button type="button" class="hot-tag" onclick="fillKeyword('咖啡馆')">咖啡馆</button>
-                <button type="button" class="hot-tag" onclick="fillKeyword('奶茶店')">奶茶店</button>
-                <button type="button" class="hot-tag" onclick="fillKeyword('健身房')">健身房</button>
-                <button type="button" class="hot-tag" onclick="fillKeyword('美容院')">美容院</button>
-                <button type="button" class="hot-tag" onclick="fillKeyword('宠物店')">宠物店</button>
-              </div>
-            </div>
-
-            <!-- 模式选择 -->
-            <div class="field-group">
-              <label class="field-label">模式选择</label>
-              <div class="mode-cards">
-                <div class="mode-card" data-mode="quick" onclick="selectMode('quick')">
-                  <div class="mode-head">
-                    <i data-lucide="zap" class="w-4 h-4 mode-icon"></i>
-                    <span class="mode-label">快速模式</span>
-                    <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
-                  </div>
-                  <p class="mode-desc">极速通道，1分钟约25家<br/>名称/地址/电话/网站/评分</p>
-                </div>
-                <div class="mode-card" data-mode="standard" onclick="selectMode('standard')">
-                  <div class="mode-head">
-                    <i data-lucide="crosshair" class="w-4 h-4 mode-icon"></i>
-                    <span class="mode-label">深度模式</span>
-                    <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
-                  </div>
-                  <p class="mode-desc">深度挖掘详细信息<br/>适合精准分析</p>
-                </div>
-              </div>
-            </div>
-
-            <!-- 深度模式：结果字段自选（点击深度模式后展开） -->
-            <div class="field-group hidden" id="columns-section">
-              <label class="field-label">结果字段（深度模式可自选）</label>
-              <p class="columns-note">名称 / 链接 / 经纬度 / CID / PlaceID 为系统保留字段，始终包含</p>
-              <div class="columns-grid" id="columns-grid">
-                <!-- 由 JS 生成复选框 -->
-              </div>
+        <div id="advanced-options" class="map-advanced">
+          <div class="adv-inner">
+            <div id="columns-section" class="hidden">
+              <label class="field-label-sm">结果字段</label>
+              <p class="columns-note">名称 / 链接 / 经纬度 / CID / PlaceID 始终包含</p>
+              <div class="columns-grid" id="columns-grid"></div>
               <div class="columns-actions">
                 <button type="button" class="columns-btn" onclick="setAllColumns(true)">全选</button>
                 <button type="button" class="columns-btn" onclick="setAllColumns(false)">清空</button>
                 <button type="button" class="columns-btn" onclick="resetEssentialColumns()">只留必要字段</button>
               </div>
             </div>
-
-            <!-- 目标客户数量上限 -->
-            <div class="field-group">
-              <label class="field-label" for="maxresults">目标客户数量上限</label>
+            <div>
+              <label class="field-label-sm" for="maxresults">数量上限（0=不限）</label>
               <div class="input-field">
-                <i data-lucide="target" class="w-4 h-4 input-icon"></i>
-                <input type="number" id="maxresults" name="maxresults" min="0" step="50" value="0" placeholder="0 或留空 = 不限，抓到全域全量为止"/>
-              </div>
-              <p class="columns-note">不设限时结果最全，但量大时耗时较长（建议配合 30 分钟以上运行时间）</p>
-            </div>
-
-            <!-- 开始搜索 -->
-            <button type="submit" id="start-btn" class="btn-primary">
-              <i data-lucide="search" class="w-5 h-5"></i>
-              <span>开始搜索</span>
-            </button>
-            <div id="spinner" class="spinner htmx-indicator"></div>
-
-            <!-- 高级选项（折叠） -->
-            <div class="advanced-block">
-              <button type="button" id="advanced-toggle" onclick="toggleAdvanced()">
-                <span class="adv-left">
-                  <i data-lucide="settings" class="w-4 h-4"></i>
-                  高级选项
-                </span>
-                <i data-lucide="chevron-down" class="w-4 h-4 collapse-icon open" id="advanced-icon"></i>
-              </button>
-
-              <div id="advanced-options" class="collapse-content open">
-                <div class="adv-inner">
-                  <!-- 全域全量模式 -->
-                  <div>
-                    <label class="field-label-sm">全域全量模式（网格搜索，突破数量上限）</label>
-                    <div class="mode-card mode-card-sm active" data-mode="grid" onclick="selectMode('grid')">
-                      <div class="mode-head">
-                        <i data-lucide="grid-3x3" class="w-4 h-4 mode-icon"></i>
-                        <span class="mode-label">全域全量</span>
-                        <i data-lucide="check-circle-2" class="w-4 h-4 mode-check"></i>
-                      </div>
-                      <p class="mode-desc">区域切块搜索<br/>结果更全但更慢</p>
-                    </div>
-                  </div>
-
-                  <!-- 网格密度 -->
-                  <div id="grid-density-section">
-                    <label class="field-label-sm" for="gridcell">网格密度</label>
-                    <select id="gridcell" name="gridcell" class="select-field">
-                      <option value="2.0">稀疏（约 2km 一格，速度快）</option>
-                      <option value="1.5" selected>标准（约 1.5km 一格，推荐）</option>
-                      <option value="1.0">密集（约 1km 一格，更全但慢）</option>
-                      <option value="0.5">极密（约 500m 一格，最慢最全）</option>
-                    </select>
-                  </div>
-
-                  <!-- 抓取邮箱开关 -->
-                  <div class="switch-row">
-                    <span class="switch-label"><i data-lucide="mail" class="w-4 h-4"></i>抓取邮箱</span>
-                    <input type="checkbox" id="email" name="email" checked class="hidden">
-                    <div class="toggle-switch on" id="email-toggle" onclick="toggleSwitch(this, 'email')"></div>
-                  </div>
-
-                  <!-- 语言 -->
-                  <div>
-                    <label class="field-label-sm" for="lang">语言</label>
-                    <div class="input-field">
-                      <i data-lucide="globe" class="w-4 h-4 input-icon"></i>
-                      <input type="text" id="lang" name="lang" value="" placeholder="自动检测"/>
-                    </div>
-                  </div>
-
-                  <!-- 最大运行时间 -->
-                  <div>
-                    <label class="field-label-sm" for="maxtime">最大运行时间</label>
-                    <select id="maxtime" name="maxtime" class="select-field">
-                      <option value="3m">3 分钟</option>
-                      <option value="10m">10 分钟</option>
-                      <option value="30m" selected>30 分钟（推荐，量大时更稳）</option>
-                      <option value="60m">1 小时</option>
-                      <option value="120m">2 小时</option>
-                    </select>
-                  </div>
-
-                  <!-- 滚动深度 -->
-                  <div>
-                    <label class="field-label-sm" for="depth">滚动深度</label>
-                    <select id="depth" name="depth" class="select-field">
-                      <option value="5">浅（5 次，快速）</option>
-                      <option value="10">标准（10 次）</option>
-                      <option value="20" selected>深（20 次）</option>
-                      <option value="50">极深（50 次）</option>
-                    </select>
-                  </div>
-
-                  <!-- 隐藏的后端参数 -->
-                  <input type="hidden" id="zoom" name="zoom" value="15">
-                  <input type="hidden" id="latitude" name="latitude" value="0">
-                  <input type="hidden" id="longitude" name="longitude" value="0">
-                  <input type="hidden" id="fastmode" name="fastmode" value="">
-                  <input type="hidden" id="gridmode" name="gridmode" value="on">
-                  <input type="hidden" id="gridbbox" name="gridbbox" value="">
-                  <input type="hidden" id="radius" name="radius" value="10000">
-                  <input type="hidden" id="columns" name="columns" value="">
-
-                  <!-- 代理设置 -->
-                  <div>
-                    <label class="field-label-sm" for="proxies">代理设置 <span class="label-note">（可选）</span></label>
-                    <textarea
-                      id="proxies"
-                      name="proxies"
-                      class="custom-textarea"
-                      rows="3"
-                      placeholder="每行一个代理，支持 HTTP/HTTPS/SOCKS5&#10;例如：http://user:pass@host:port"
-                    ></textarea>
-                  </div>
-                </div>
+                <input type="number" id="maxresults" name="maxresults" min="0" step="50" value="0"/>
               </div>
             </div>
-          </form>
+            <div id="grid-density-section">
+              <label class="field-label-sm" for="gridcell">网格密度</label>
+              <select id="gridcell" name="gridcell" class="select-field">
+                <option value="2.0">稀疏（约 2km）</option>
+                <option value="1.5" selected>标准（约 1.5km）</option>
+                <option value="1.0">密集（约 1km）</option>
+                <option value="0.5">极密（约 500m）</option>
+              </select>
+            </div>
+            <div class="switch-row">
+              <span class="switch-label"><i data-lucide="mail" class="w-4 h-4"></i>抓取邮箱</span>
+              <input type="checkbox" id="email" name="email" checked class="hidden">
+              <div class="toggle-switch on" id="email-toggle" onclick="toggleSwitch(this, 'email')"></div>
+            </div>
+            <div>
+              <label class="field-label-sm" for="lang">语言</label>
+              <div class="input-field">
+                <input type="text" id="lang" name="lang" value="" placeholder="自动检测"/>
+              </div>
+            </div>
+            <div>
+              <label class="field-label-sm" for="maxtime">最大运行时间</label>
+              <select id="maxtime" name="maxtime" class="select-field">
+                <option value="3m">3 分钟</option>
+                <option value="10m">10 分钟</option>
+                <option value="30m" selected>30 分钟</option>
+                <option value="60m">1 小时</option>
+                <option value="120m">2 小时</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label-sm" for="depth">滚动深度</label>
+              <select id="depth" name="depth" class="select-field">
+                <option value="5">浅（5 次）</option>
+                <option value="10">标准（10 次）</option>
+                <option value="20" selected>深（20 次）</option>
+                <option value="50">极深（50 次）</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label-sm" for="proxies">代理（可选）</label>
+              <textarea id="proxies" name="proxies" class="custom-textarea" rows="2" placeholder="每行一个代理"></textarea>
+            </div>
+          </div>
+        </div>
+      </form>
 
-          <!-- 搜索记录 -->
+      <div class="map-body">
+      <aside id="sidebar">
+        <div id="sidebar-content">
           <div class="history-block">
             <div class="history-head">
               <span class="history-title"><i data-lucide="history" class="w-4 h-4"></i>搜索记录</span>
-              <button type="button" class="history-clear" onclick="clearHistory()">清空记录</button>
+              <button type="button" class="history-clear" onclick="clearHistory()">清空</button>
             </div>
-            <div id="job-list" hx-get="/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML">
-              <!-- 搜索记录由 HTMX 动态加载 -->
-            </div>
+            <div id="job-list" hx-get="/jobs" hx-trigger="load, every 10s" hx-swap="innerHTML"></div>
             <div id="empty-state" class="hidden">
               <p class="empty-text">暂无搜索记录</p>
             </div>
@@ -271,7 +162,6 @@
         </div>
       </aside>
 
-      <!-- 右侧地图区 -->
       <main id="map-area">
         <div id="map"></div>
 
@@ -315,6 +205,7 @@
         <!-- 地图选点提示 -->
         <div id="pick-tip" class="hidden"></div>
       </main>
+      </div>
     </div>
 
     <div id="map-modal-container"></div>
@@ -390,19 +281,13 @@
       let currentMode = 'grid';
       function selectMode(mode) {
         currentMode = mode;
-        document.querySelectorAll('.mode-card').forEach(function (card) {
-          card.classList.toggle('active', card.dataset.mode === mode);
+        document.querySelectorAll('#mode-chips .plat-chip').forEach(function (chip) {
+          chip.classList.toggle('is-on', chip.dataset.mode === mode);
         });
         document.getElementById('fastmode').value = mode === 'quick' ? 'on' : '';
         document.getElementById('gridmode').value = mode === 'grid' ? 'on' : '';
         document.getElementById('grid-density-section').classList.toggle('hidden', mode !== 'grid');
-        // 快速模式只出必要字段；深度/全域模式展示字段自选区
         document.getElementById('columns-section').classList.toggle('hidden', mode === 'quick');
-        // 选了网格模式时自动展开高级选项，让用户看到密度设置
-        if (mode === 'grid') {
-          document.getElementById('advanced-options').classList.add('open');
-          document.getElementById('advanced-icon').classList.add('open');
-        }
         updateResultModeLabel();
       }
 
@@ -421,7 +306,7 @@
       // 高级选项折叠
       function toggleAdvanced() {
         document.getElementById('advanced-options').classList.toggle('open');
-        document.getElementById('advanced-icon').classList.toggle('open');
+        document.getElementById('advanced-toggle').classList.toggle('is-on');
       }
 
       // 开关切换

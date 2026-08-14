@@ -21,6 +21,28 @@ func newTestServer(t *testing.T, dir string) *Server {
 	return srv
 }
 
+func TestIndexPageHasWaimaoTongRail(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.index(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	for _, want := range []string{"app-rail", "智能引擎", "map-toolbar", "搜索记录", "locations", "keywords"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+
+	if strings.Contains(body, "找到精准客户，从地图开始") {
+		t.Fatal("old marketing sidebar copy should be gone")
+	}
+}
+
 func TestViewJobRendersPlaces(t *testing.T) {
 	dir := t.TempDir()
 	id := "11111111-1111-1111-1111-111111111111"

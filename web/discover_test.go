@@ -20,10 +20,14 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"智能引擎搜索", "discover-form", "app-rail", "Facebook", "LinkedIn"} {
+  for _, want := range []string{"智能引擎搜索", "discover-form", "app-rail", "Facebook", "LinkedIn"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
+	}
+
+	if !strings.Contains(body, "地图搜索") {
+		t.Fatal("rail should include 地图搜索")
 	}
 }
 
