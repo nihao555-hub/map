@@ -20,7 +20,7 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"智能引擎搜索", "TikTok-Api", "discover-form"} {
+	for _, want := range []string{"智能引擎搜索", "TikTok-Api", "discover-form", "公开检索"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
@@ -70,7 +70,7 @@ func TestDiscoverSourcesListsOSS(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "davidteather/TikTok-Api") || !strings.Contains(body, "Johnserf-Seed/f2") {
+	if !strings.Contains(body, "davidteather/TikTok-Api") || !strings.Contains(body, "Johnserf-Seed/f2") || !strings.Contains(body, "public-websearch") {
 		t.Fatalf("body=%s", body)
 	}
 }

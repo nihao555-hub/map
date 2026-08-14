@@ -14,17 +14,21 @@ import (
 
 const (
 	defaultHTTPTimeout = 45 * time.Second
+	sidecarProbeWait   = 800 * time.Millisecond
 	maxBodyBytes       = 2 << 20
 	defaultTikTokURL   = "http://127.0.0.1:8091"
 	defaultF2URL       = "http://127.0.0.1:8092"
+	browserUA          = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 )
 
-// Client talks to cloned high-star OSS sidecars. It does not scrape platforms itself.
+// Client talks to public web indexes and cloned high-star OSS sidecars.
+// It does not sign or scrape Douyin/TikTok APIs itself.
 type Client struct {
-	HTTP        *http.Client
-	TikTokURL   string
-	F2URL       string
-	TikHubToken string
+	HTTP          *http.Client
+	TikTokURL     string
+	F2URL         string
+	TikHubToken   string
+	DisablePublic bool
 }
 
 // OptionsFromEnv wires sidecar base URLs.
@@ -124,6 +128,44 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 	}
 
 	return raw, nil
+}
+
+func (c *Client) sidecarAlive(ctx context.Context, base string) bool {
+	if base == "" {
+		return false
+	}
+
+	probe, cancel := context.WithTimeout(ctx, sidecarProbeWait)
+	defer cancel()
+
+	_, err := c.get(probe, strings.TrimRight(base, "/")+"/healthz", nil)
+
+	return err == nil
+}
+
+func newBrowserRequest(ctx context.Context, method, rawURL, body string) (*http.Request, error) {
+	var rdr *strings.Reader
+	if body != "" {
+		rdr = strings.NewReader(body)
+	}
+
+	var req *http.Request
+	var err error
+	if rdr != nil {
+		req, err = http.NewRequestWithContext(ctx, method, rawURL, rdr)
+	} else {
+		req, err = http.NewRequestWithContext(ctx, method, rawURL, nil)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", browserUA)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+
+	return req, nil
 }
 
 func firstNonEmpty(vals ...string) string {

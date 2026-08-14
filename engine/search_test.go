@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,11 @@ import (
 
 func TestSearchPeopleFromTikTokAPISidecar(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			return
+		}
+
 		if r.URL.Path != "/search/users" {
 			http.NotFound(w, r)
 			return
@@ -28,7 +34,7 @@ func TestSearchPeopleFromTikTokAPISidecar(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := &Client{HTTP: srv.Client(), TikTokURL: srv.URL, F2URL: "http://127.0.0.1:1"}
+	c := &Client{HTTP: srv.Client(), TikTokURL: srv.URL, F2URL: "http://127.0.0.1:1", DisablePublic: true}
 	res, err := c.Search(context.Background(), Query{Keyword: "power tools", Kind: KindPeople, Platforms: []string{PlatformTikTok}})
 	if err != nil {
 		t.Fatal(err)
@@ -49,6 +55,11 @@ func TestSearchPeopleFromTikTokAPISidecar(t *testing.T) {
 
 func TestSearchPeopleFromF2DouyinProfile(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			return
+		}
+
 		_ = json.NewEncoder(w).Encode(sidecarResponse{
 			Source: "f2-douyin",
 			Users: []sidecarUser{{
@@ -62,7 +73,7 @@ func TestSearchPeopleFromF2DouyinProfile(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := &Client{HTTP: srv.Client(), TikTokURL: "http://127.0.0.1:1", F2URL: srv.URL}
+	c := &Client{HTTP: srv.Client(), TikTokURL: "http://127.0.0.1:1", F2URL: srv.URL, DisablePublic: true}
 	res, err := c.Search(context.Background(), Query{
 		Keyword:   "https://www.douyin.com/user/MS4wLjABAAAAtest",
 		Kind:      KindPeople,
@@ -75,6 +86,60 @@ func TestSearchPeopleFromF2DouyinProfile(t *testing.T) {
 	if len(res.Hits) != 1 || res.Hits[0].Platform != PlatformDouyin {
 		t.Fatalf("hits=%+v", res.Hits)
 	}
+}
+
+func TestSearchPeoplePublicWebSearch(t *testing.T) {
+	c := &Client{
+		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(ddgDouyinHTML)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		})},
+		TikTokURL: "",
+		F2URL:     "",
+	}
+
+	res, err := c.Search(context.Background(), Query{
+		Keyword:   "电动工具",
+		Kind:      KindPeople,
+		Platforms: []string{PlatformDouyin, PlatformTikTok},
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(res.Hits) < 2 {
+		t.Fatalf("hits=%+v warnings=%v", res.Hits, res.Warnings)
+	}
+
+	var sawTK, sawDY bool
+	for _, h := range res.Hits {
+		if h.Platform == PlatformTikTok && h.Handle == "boschpowertools" {
+			sawTK = true
+		}
+
+		if h.Platform == PlatformDouyin && strings.Contains(h.HomepageURL, "douyin.com/user/") {
+			sawDY = true
+		}
+
+		if h.MessageURL == "" || !strings.Contains(h.MessageHint, "不会代发") {
+			t.Fatalf("incomplete hit %+v", h)
+		}
+	}
+
+	if !sawTK || !sawDY {
+		t.Fatalf("missing profiles tk=%v dy=%v hits=%+v", sawTK, sawDY, res.Hits)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func TestSearchRequiresKeyword(t *testing.T) {

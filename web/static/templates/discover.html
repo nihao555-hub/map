@@ -28,16 +28,16 @@
 
   <div class="discover-shell">
     <aside class="discover-side">
-      <p class="oss-chip"><i data-lucide="github" class="w-4 h-4"></i>复用高 star 开源，不自研爬虫</p>
+      <p class="oss-chip"><i data-lucide="search" class="w-4 h-4"></i>输入关键词即可找人，打开官方主页私信</p>
       <h1 class="page-title" id="discover-title">智能引擎搜索</h1>
-      <p class="page-subtitle" id="discover-sub">输入关键词，调用 TikTok-Api / f2 找到公开主页。私信请在官方页面手动发送。</p>
+      <p class="page-subtitle" id="discover-sub">搜抖音 / TikTok 公开主页。有 sidecar 时走 TikTok-Api / f2，没有也能用公开检索。</p>
 
       <form id="discover-form">
         <div class="field-group">
           <label class="field-label" for="keyword">关键词</label>
           <div class="input-field">
             <i data-lucide="search" class="w-4 h-4 input-icon"></i>
-            <input type="text" id="keyword" name="keyword" placeholder="例如：power tools importer" required />
+            <input type="text" id="keyword" name="keyword" placeholder="例如：电动工具 / power tools" required />
           </div>
         </div>
 
@@ -66,7 +66,8 @@
       <div class="oss-card">
         <h3>正在用的盘子</h3>
         <ul>
-          <li><b>davidteather/TikTok-Api</b> 6.5k★ MIT · 2026-07 · 关键词搜人</li>
+          <li><b>公开检索</b> DuckDuckGo / Brave / Bing · 默认即可搜到主页</li>
+          <li><b>davidteather/TikTok-Api</b> 6.5k★ MIT · 2026-07 · sidecar 增强搜人</li>
           <li><b>Johnserf-Seed/f2</b> 2.6k★ Apache-2.0 · 2026-04 · TK 作品抽作者 / 抖音主页</li>
         </ul>
         <p class="oss-note">62k★ 的 MediaCrawler 是非商业学习许可，不能进商用产品。海关 / 展会没有可商用高 star 库，先不自研。</p>
@@ -74,7 +75,7 @@
     </aside>
 
     <main class="discover-main">
-      <div id="discover-status" class="discover-status">启动 sidecar 后输入关键词搜索。<code>docker compose -f docker-compose.engine.yaml up -d</code></div>
+      <div id="discover-status" class="discover-status">输入关键词开始搜索。建议：电动工具、power tools、nike</div>
       <div id="discover-warnings" class="discover-warnings hidden"></div>
       <div id="discover-results" class="hit-grid"></div>
     </main>

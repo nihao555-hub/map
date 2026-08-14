@@ -18,8 +18,8 @@
   const copy = {
     people: {
       title: "智能引擎搜索",
-      sub: "输入关键词，调用 TikTok-Api / f2 找到公开主页。私信请在官方页面手动发送。",
-      placeholder: "例如：power tools importer",
+      sub: "搜抖音 / TikTok 公开主页。有 sidecar 时走 TikTok-Api / f2，没有也能用公开检索。",
+      placeholder: "例如：电动工具 / power tools",
     },
     exhibition: {
       title: "展会获客",
@@ -55,7 +55,7 @@
       function (el) { return el.value; }
     );
 
-    status.textContent = "正在调用开源 sidecar…";
+    status.textContent = "正在搜索公开主页…";
     warnings.classList.add("hidden");
     warnings.textContent = "";
     results.innerHTML = "";
@@ -95,7 +95,7 @@
 
   function renderHits(hits) {
     if (!hits.length) {
-      results.innerHTML = '<p class="discover-status">没有命中。确认 sidecar 已启动，或换关键词 / 抖音主页 URL。</p>';
+      results.innerHTML = '<p class="discover-status">没有命中。可换关键词，或启动 sidecar（TikTok-Api / f2）后再试。</p>';
       return;
     }
     results.innerHTML = hits.map(function (h) {

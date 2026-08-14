@@ -30,7 +30,12 @@ export TIKHUB_API_TOKEN=...          # 抖音「关键词搜人」f2 仍为 🔵
 ./google_maps_scraper -web
 ```
 
-打开 `/discover`。Go 服务只做 HTTP 适配和页面，平台协议全部在 sidecar 里跑上游项目。
+打开 `/discover`。**默认会走公开网页检索**（DuckDuckGo / Brave / Bing 抽官方主页），不需要先起 sidecar。直播验证（2026-08-14）：
+
+- 关键词「电动工具」→ 抖音：电动工具小王、盛隆绿巨人、河北喜提工厂、东成旗舰店、大有工具 等，均带 `douyin.com/user/MS4wLjAB…`
+- 关键词「power tools」→ TikTok：`@boschpowertools`、`@mjdtpowertools` 等
+
+sidecar 通了以后再叠加 TikTok-Api / f2；Go 服务不自己签抖音/TikTok 接口。
 
 ## 抖音关键词搜人的缺口
 

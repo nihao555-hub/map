@@ -77,11 +77,18 @@ func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusOK, map[string]any{
 		"people": []map[string]string{
 			{
+				"name":    "public-websearch",
+				"stars":   "",
+				"license": "",
+				"pushed":  "",
+				"use":     "默认：公开网页检索抽抖音 / TikTok 官方主页，无需 sidecar",
+			},
+			{
 				"name":    "davidteather/TikTok-Api",
 				"stars":   "6563",
 				"license": "MIT",
 				"pushed":  "2026-07",
-				"use":     "TikTok 关键词搜人 / 主页",
+				"use":     "TikTok 关键词搜人 / 主页（sidecar 增强）",
 			},
 			{
 				"name":    "Johnserf-Seed/f2",

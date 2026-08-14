@@ -16,7 +16,8 @@ const (
 	messagePolicyNote = "私信只打开官方主页，由您登录后手动发送。系统不会代发或绕过平台私信接口。"
 )
 
-// Search runs customer discovery by calling cloned OSS sidecars (not in-house scrapers).
+// Search runs customer discovery. People search uses public web indexes by default
+// and overlays cloned OSS sidecars (TikTok-Api / f2) when they are healthy.
 func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 	start := time.Now()
 	q.Keyword = strings.TrimSpace(q.Keyword)
@@ -109,14 +110,25 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 
 	g, gctx := errgroup.WithContext(ctx)
 
-	if wanted[PlatformTikTok] {
+	g.Go(func() error {
+		items, warns, srcs := c.searchPublicProfiles(gctx, q.Keyword, wanted, q.Limit)
+		src := strings.Join(srcs, "+")
+		warn := strings.Join(warns, "; ")
+		add(items, src, warn, nil)
+
+		return nil
+	})
+
+	if wanted[PlatformTikTok] && c != nil && c.sidecarAlive(ctx, c.TikTokURL) {
 		g.Go(func() error {
 			items, warn, err := c.searchTikTokAPI(gctx, q.Keyword, q.Limit)
 			add(items, "tiktok-api", warn, err)
 
 			return nil
 		})
+	}
 
+	if wanted[PlatformTikTok] && c != nil && c.sidecarAlive(ctx, c.F2URL) {
 		g.Go(func() error {
 			items, warn, err := c.searchF2(gctx, q.Keyword, PlatformTikTok, q.Limit)
 			add(items, "f2-tiktok", warn, err)
@@ -125,22 +137,22 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 		})
 	}
 
-	if wanted[PlatformDouyin] {
+	if wanted[PlatformDouyin] && c != nil && c.sidecarAlive(ctx, c.F2URL) {
 		g.Go(func() error {
 			items, warn, err := c.searchF2(gctx, q.Keyword, PlatformDouyin, q.Limit)
 			add(items, "f2-douyin", warn, err)
 
 			return nil
 		})
+	}
 
-		if c != nil && c.TikHubToken != "" {
-			g.Go(func() error {
-				items, err := c.searchTikHubDouyin(gctx, q.Keyword, q.Limit)
-				add(items, "tikhub", "", err)
+	if wanted[PlatformDouyin] && c != nil && c.TikHubToken != "" {
+		g.Go(func() error {
+			items, err := c.searchTikHubDouyin(gctx, q.Keyword, q.Limit)
+			add(items, "tikhub", "", err)
 
-				return nil
-			})
-		}
+			return nil
+		})
 	}
 
 	_ = g.Wait()
@@ -148,7 +160,7 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 	merged := mergeHits(hits, q.Keyword, q.Limit)
 	if len(merged) == 0 {
 		warnings = append(warnings,
-			"OSS sidecar 未返回结果。请先启动：docker compose -f docker-compose.engine.yaml up -d。TikTok 依赖 davidteather/TikTok-Api；抖音关键词搜人依赖 f2（主页 URL）或 TIKHUB_API_TOKEN。")
+			"未找到公开主页。可换关键词，或启动 docker compose -f docker-compose.engine.yaml up -d 使用 TikTok-Api / f2。")
 	}
 
 	return Result{
