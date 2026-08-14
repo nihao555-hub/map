@@ -44,12 +44,20 @@
       <section id="landing">
         <div class="wmt-hero">
           <h1 class="wmt-hero-title" id="discover-title">智能引擎搜索</h1>
-          <ul class="wmt-bullets">
+          <div class="wmt-channel" id="mode-group-landing" role="tablist" aria-label="搜索模式">
+            <button type="button" class="is-on" data-mode="homepage">私信模式</button>
+            <button type="button" data-mode="marketing">营销模式</button>
+          </div>
+          <ul class="wmt-bullets" id="mode-bullets">
             <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>不是地图搜店：输入商品或企业关键词</li>
             <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>在抖音、TikTok 等社媒找店主 / 真人主页</li>
             <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>拿到的是可打开的官方主页，不是邮箱</li>
             <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>去私信：打开主页后由你手动发，系统不代发</li>
           </ul>
+          <div class="wmt-channel" id="channel-group-landing" hidden>
+            <button type="button" class="is-on" data-channel="email">邮箱</button>
+            <button type="button" data-channel="whatsapp">WhatsApp</button>
+          </div>
           <form id="landing-form" class="wmt-search-row">
             <div class="wmt-searchbox">
               <svg class="wmt-icon" style="color:#8f959e"><use href="#i-search"/></svg>
@@ -62,21 +70,33 @@
       </section>
 
       <section id="results-view" class="wmt-results hidden">
-        <div class="wmt-crumb">智能引擎 &gt; <b>社媒主页</b></div>
+        <div class="wmt-crumb">智能引擎 &gt; <b id="results-crumb">社媒主页</b></div>
         <form id="discover-form" class="wmt-results-head">
+          <div class="wmt-channel" id="mode-group" role="tablist" aria-label="搜索模式">
+            <button type="button" class="is-on" data-mode="homepage">私信模式</button>
+            <button type="button" data-mode="marketing">营销模式</button>
+          </div>
           <div class="wmt-searchbox">
             <svg class="wmt-icon" style="color:#8f959e"><use href="#i-search"/></svg>
             <input type="text" id="keyword" name="keyword" placeholder="请输入企业或商品名称" required />
             <button type="submit" class="wmt-search-btn" id="discover-btn">搜索</button>
+          </div>
+          <div class="wmt-channel" id="channel-group" hidden>
+            <button type="button" class="is-on" data-channel="email">邮箱</button>
+            <button type="button" data-channel="whatsapp">WhatsApp</button>
           </div>
           <input type="hidden" id="limit" name="limit" value="20">
         </form>
         <div class="wmt-plat-list" id="platform-group"></div>
         <div id="discover-status" class="wmt-status">输入关键词后检索公开社媒主页</div>
         <div id="discover-warnings" class="wmt-warn hidden"></div>
+        <div class="wmt-actions" id="market-actions" hidden>
+          <button type="button" class="btn-ghost" id="select-all">全选</button>
+          <button type="button" class="btn-ghost" id="market-btn">一键营销</button>
+        </div>
         <div class="wmt-table-wrap">
           <table class="wmt-table" id="discover-table">
-            <thead>
+            <thead id="discover-thead">
               <tr>
                 <th>名称</th>
                 <th style="width:130px">平台</th>

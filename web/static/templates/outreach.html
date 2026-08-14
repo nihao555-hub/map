@@ -38,12 +38,36 @@
       <section class="wmt-results">
         <h1 class="wmt-hero-title" style="color:#1f2329;font-size:22px;margin:8px 0 12px">发开发信</h1>
         <p class="wmt-status" style="max-width:640px;line-height:1.7">
-          这里用来给<strong>已经有邮箱的线索</strong>写开发信。邮箱来自「地图获客」抓到的商家资料，不是智能引擎。
-          智能引擎只找社媒主页，方便你去官方页手动私信，不会挖邮箱、也不会代发邮件。
+          这里用来给<strong>已经有邮箱的线索</strong>写开发信。邮箱可以来自「地图获客」抓到的商家资料，或智能引擎「营销模式」抽到的公开邮箱。
+          系统只打开写信窗口，不会代发。私信模式找的是社媒主页，请回智能引擎打开官方页手动发。
         </p>
-        <p class="wmt-empty">写信功能尚未接到本页。请先用地图获客拿到带邮箱的商家，或等写信模块接入。</p>
+        <label for="outreach-emails" style="display:block;margin:16px 0 8px;color:#646a73">收件人邮箱</label>
+        <textarea id="outreach-emails" rows="6" placeholder="多个邮箱用逗号或换行分隔" style="width:100%;max-width:640px;padding:10px 12px;border:1px solid #e6eaf0;border-radius:4px;font:inherit"></textarea>
+        <div class="wmt-actions" style="margin-top:12px">
+          <a id="outreach-mailto" class="btn-ghost" href="mailto:">打开系统邮箱</a>
+        </div>
+        <p class="wmt-empty" id="outreach-empty">可从智能引擎营销模式勾选后点「一键营销」带入邮箱，或手动粘贴。写信模块尚未群发。</p>
       </section>
     </main>
   </div>
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const emails = (params.get("emails") || "").split(/[,;\s]+/).filter(Boolean);
+      const box = document.getElementById("outreach-emails");
+      const link = document.getElementById("outreach-mailto");
+      const empty = document.getElementById("outreach-empty");
+      if (emails.length) {
+        box.value = emails.join("\n");
+        empty.textContent = "已带入 " + emails.length + " 个公开邮箱。打开系统邮箱后由你手动发送，系统不会代发。";
+      }
+      function syncMailto() {
+        const list = box.value.split(/[,;\s]+/).filter(Boolean);
+        link.href = "mailto:" + list.join(",");
+      }
+      box.addEventListener("input", syncMailto);
+      syncMailto();
+    })();
+  </script>
 </body>
 </html>

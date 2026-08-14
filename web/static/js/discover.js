@@ -13,6 +13,22 @@
   const toastEl = document.getElementById("toast");
 
   let catalog = [];
+  let mode = "homepage";
+  let channel = "email";
+  let lastHits = [];
+
+  const HOME_BULLETS = [
+    "不是地图搜店：输入商品或企业关键词",
+    "在抖音、TikTok 等社媒找店主 / 真人主页",
+    "拿到的是可打开的官方主页，不是邮箱",
+    "去私信：打开主页后由你手动发，系统不代发"
+  ];
+  const MARKET_BULLETS = [
+    "营销模式对齐网易外贸通智能引擎：找已公开的联系方式",
+    "从搜索引擎 / 社媒公开页抽取邮箱或 WhatsApp",
+    "结果是账号或邮箱、网页标题、来源链接",
+    "一键营销只打开写信或官方聊天窗口，系统不代发"
+  ];
 
   const PLATFORM_ICONS = {
     facebook: { color: "#1877F2", path: "M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z" },
@@ -92,6 +108,73 @@
     return Array.prototype.map.call(chips, function (el) { return el.getAttribute("data-platform"); });
   }
 
+  function selectedChannel() {
+    const on = document.querySelector("#channel-group button.is-on") ||
+      document.querySelector("#channel-group-landing button.is-on");
+    return on ? on.getAttribute("data-channel") : channel;
+  }
+
+  function bindMode() {
+    document.querySelectorAll("button[data-mode]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setMode(btn.getAttribute("data-mode"));
+      });
+    });
+  }
+
+  function bindChannel() {
+    document.querySelectorAll("button[data-channel]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setChannel(btn.getAttribute("data-channel"));
+      });
+    });
+  }
+
+  function setMode(next) {
+    const prev = mode;
+    mode = next === "marketing" ? "marketing" : "homepage";
+    document.querySelectorAll("button[data-mode]").forEach(function (el) {
+      el.classList.toggle("is-on", el.getAttribute("data-mode") === mode);
+    });
+    const marketing = mode === "marketing";
+    const onLanding = !landing.classList.contains("hidden");
+    ["channel-group", "channel-group-landing"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.hidden = !marketing;
+    });
+    const actions = document.getElementById("market-actions");
+    if (actions) actions.hidden = !marketing || onLanding;
+    const crumb = document.getElementById("results-crumb");
+    if (crumb) crumb.textContent = marketing ? "营销获客" : "社媒主页";
+    const bullets = document.getElementById("mode-bullets");
+    if (bullets) {
+      const items = marketing ? MARKET_BULLETS : HOME_BULLETS;
+      bullets.innerHTML = items.map(function (t) {
+        return '<li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>' + t + "</li>";
+      }).join("");
+    }
+    const thead = document.getElementById("discover-thead");
+    if (thead) {
+      thead.innerHTML = marketing
+        ? "<tr><th style=\"width:36px\"></th><th>账号或邮箱</th><th>网页标题</th><th>来源链接</th><th style=\"width:120px\">操作</th></tr>"
+        : "<tr><th>名称</th><th style=\"width:130px\">平台</th><th style=\"width:180px\">账号</th><th>主页</th><th style=\"width:160px\">操作</th></tr>";
+    }
+    if (prev !== mode && !onLanding && keyword.value) {
+      doSearch(keyword.value);
+      return;
+    }
+    if (lastHits.length) renderHits(lastHits);
+  }
+
+  function setChannel(next) {
+    channel = next === "whatsapp" ? "whatsapp" : "email";
+    document.querySelectorAll("button[data-channel]").forEach(function (el) {
+      el.classList.toggle("is-on", el.getAttribute("data-channel") === channel);
+    });
+    if (!landing.classList.contains("hidden")) return;
+    if (mode === "marketing" && keyword.value) doSearch(keyword.value);
+  }
+
   function loadPlatforms() {
     return fetch("/api/v1/discover/platforms")
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -123,7 +206,7 @@
 
     landing.classList.add("hidden");
     resultsView.classList.remove("hidden");
-    status.textContent = "正在检索公开主页…";
+    status.textContent = mode === "marketing" ? "正在检索公开邮箱 / WhatsApp…" : "正在检索公开主页…";
     warnings.classList.add("hidden");
     warnings.textContent = "";
     results.innerHTML = "";
@@ -136,7 +219,9 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         keyword: kw,
-        kind: "people",
+        kind: mode === "marketing" ? "marketing" : "people",
+        mode: mode,
+        channel: mode === "marketing" ? selectedChannel() : "",
         platforms: selectedPlatforms(),
         limit: Number(document.getElementById("limit").value) || 20,
       }),
@@ -152,13 +237,17 @@
         }
         const data = out.j;
         status.textContent = "来源 " + ((data.sources || []).join("、") || "—") +
-          " · " + (data.hits || []).length + " 条主页 · " + (data.took_ms || 0) + "ms" +
+          " · " + (data.hits || []).length + (mode === "marketing" ? " 条联系方式" : " 条主页") +
+          " · " + (data.took_ms || 0) + "ms" +
           (data.note ? " · " + data.note : "");
         if (data.warnings && data.warnings.length) {
           warnings.classList.remove("hidden");
           warnings.textContent = data.warnings.join("\n");
         }
-        renderHits(data.hits || []);
+        lastHits = data.hits || [];
+        const actions = document.getElementById("market-actions");
+        if (actions) actions.hidden = mode !== "marketing";
+        renderHits(lastHits);
       })
       .catch(function (err) {
         setBusy(false);
@@ -176,6 +265,11 @@
   });
 
   function renderHits(hits) {
+    lastHits = hits || [];
+    if (mode === "marketing") {
+      renderMarketHits(hits);
+      return;
+    }
     if (!hits.length) {
       empty.classList.remove("hidden");
       empty.textContent = "没有命中公开主页。可换关键词或勾选更多平台。";
@@ -209,6 +303,81 @@
     foot.textContent = "共 " + hits.length + " 条公开主页 · 去私信只打开官方页，不代发";
   }
 
+  function renderMarketHits(hits) {
+    const want = selectedChannel();
+    const rows = (hits || []).filter(function (h) {
+      return !want || h.channel === want;
+    });
+    if (!rows.length) {
+      empty.classList.remove("hidden");
+      empty.textContent = "没有命中公开" + (want === "whatsapp" ? " WhatsApp" : "邮箱") + "。可换关键词或改回私信模式。";
+      foot.textContent = "";
+      results.innerHTML = "";
+      return;
+    }
+    empty.classList.add("hidden");
+    results.innerHTML = rows.map(function (h, i) {
+      const plat = (h.platform || "").toLowerCase();
+      const contact = h.contact || h.handle || "";
+      const title = h.title || h.name || "";
+      const home = h.homepage_url || h.message_url || "";
+      const src = home.replace(/^https?:\/\/(www\.)?/, "");
+      return (
+        "<tr>" +
+          '<td><input type="checkbox" class="mkt-pick" data-i="' + i + '" data-channel="' +
+            escapeAttr(h.channel || "") + '" data-contact="' + escapeAttr(contact) +
+            '" data-msg="' + escapeAttr(h.message_url || "") + '"></td>' +
+          '<td class="hit-mail">' + escapeHtml(contact) + "</td>" +
+          '<td class="hit-title">' + escapeHtml(title) + "</td>" +
+          "<td>" + (home
+            ? '<a class="hit-home" target="_blank" rel="noopener" href="' + escapeAttr(home) + '">' +
+                platformSvg(plat) + escapeHtml(src || home) + "</a>"
+            : "—") + "</td>" +
+          '<td class="row-actions">' +
+            '<a class="btn-msg" target="_blank" rel="noopener" href="' + escapeAttr(h.message_url || home || "#") +
+              '">' + (h.channel === "whatsapp" ? "打开 WhatsApp" : "写邮件") + "</a>" +
+          "</td>" +
+        "</tr>"
+      );
+    }).join("");
+    foot.textContent = "共 " + rows.length + " 条公开联系方式 · 一键营销不代发";
+  }
+
+  function pickedRows() {
+    return Array.prototype.map.call(document.querySelectorAll(".mkt-pick:checked"), function (el) {
+      return {
+        channel: el.getAttribute("data-channel"),
+        contact: el.getAttribute("data-contact"),
+        msg: el.getAttribute("data-msg"),
+      };
+    });
+  }
+
+  document.getElementById("select-all").addEventListener("click", function () {
+    const boxes = document.querySelectorAll(".mkt-pick");
+    const allOn = Array.prototype.every.call(boxes, function (b) { return b.checked; });
+    boxes.forEach(function (b) { b.checked = !allOn; });
+  });
+
+  document.getElementById("market-btn").addEventListener("click", function () {
+    const picked = pickedRows();
+    if (!picked.length) {
+      toast("请先勾选要营销的联系方式");
+      return;
+    }
+    const emails = picked.filter(function (p) { return p.channel === "email" && p.contact; });
+    const was = picked.filter(function (p) { return p.channel === "whatsapp" && p.msg; });
+    if (emails.length) {
+      const list = emails.map(function (p) { return p.contact; }).join(",");
+      window.open("mailto:" + encodeURIComponent(list).replace(/%40/g, "@").replace(/%2C/g, ","), "_blank");
+      window.open("/outreach?emails=" + encodeURIComponent(emails.map(function (p) { return p.contact; }).join(",")), "_blank");
+    }
+    was.slice(0, 5).forEach(function (p) {
+      window.open(p.msg, "_blank", "noopener");
+    });
+    toast("已打开写信或官方聊天窗口，系统不会代发");
+  });
+
   function escapeHtml(s) {
     return String(s || "").replace(/[&<>"']/g, function (c) {
       return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
@@ -216,5 +385,8 @@
   }
   function escapeAttr(s) { return escapeHtml(s).replace(/`/g, ""); }
 
+  bindMode();
+  bindChannel();
+  setMode("homepage");
   loadPlatforms();
 })();

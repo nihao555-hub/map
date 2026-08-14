@@ -268,12 +268,12 @@ html, body.wmt {
   background: rgba(16, 34, 70, .6);
 }
 
-.wmt-search-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  position: relative;
-  max-width: 920px;
+.wmt-hero .wmt-channel { margin: 10px 0 14px; }
+.wmt-hero #channel-group-landing { margin-top: 0; margin-bottom: 12px; }
+.wmt-results-head { flex-wrap: wrap; }
+.wmt-channel[hidden],
+.wmt-actions[hidden] {
+  display: none !important;
 }
 
 .wmt-channel {

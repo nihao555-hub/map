@@ -30,7 +30,12 @@ export TIKHUB_API_TOKEN=...          # 抖音「关键词搜人」f2 仍为 🔵
 ./google_maps_scraper -web
 ```
 
-打开 `/discover`。侧栏只放本项目三个模块：地图获客 / 智能引擎 / 发开发信。智能引擎**不是地图搜店**：用关键词在抖音 / TikTok 等社媒找店主或真人公开主页，再打开官方页由你手动私信。不挖邮箱、不挖 WhatsApp、不代发。这和网易外贸通智能引擎（挖邮箱 / WhatsApp 再一键营销）不是同一件事。
+打开 `/discover`。侧栏只放本项目三个模块：地图获客 / 智能引擎 / 发开发信。智能引擎**不是地图搜店**，页面上可选两种模式：
+
+1. **私信模式**（默认）：关键词 → 抖音 / TikTok 等社媒店主或真人公开主页 → 「打开主页 / 去私信」只打开官方页，由你手动发。不代发。
+2. **营销模式**（网易外贸通那套）：从公开网页抽取已公开的 **邮箱 / WhatsApp**，结果表是「账号或邮箱 / 网页标题 / 来源链接」。「一键营销」只打开系统邮箱、`wa.me` 或 `/outreach?emails=` 写信页，**不会代发**。
+
+两种模式共用已支持的社媒勾选；营销模式查询条数有上限，避免一次打满公开检索限流。
 
 已支持公开主页解析（无需 sidecar）：TikTok、抖音、Facebook、Instagram、YouTube、LinkedIn、小红书、快手、微博、B站、X、Pinterest、Threads、Telegram、Reddit、Twitch。默认勾选 TikTok / 抖音 / Facebook / Instagram / YouTube / LinkedIn。
 

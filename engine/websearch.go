@@ -135,6 +135,10 @@ func publicSearchQueries(keyword string, wanted map[string]bool) []string {
 }
 
 func (c *Client) searchOneIndex(ctx context.Context, query string) ([]Hit, string, error) {
+	return c.searchOneIndexExtract(ctx, query, extractProfilesFromHTML)
+}
+
+func (c *Client) searchOneIndexExtract(ctx context.Context, query string, extract func([]byte, string) []Hit) ([]Hit, string, error) {
 	type attempt struct {
 		name string
 		fn   func(context.Context, string) ([]byte, error)
@@ -163,9 +167,9 @@ func (c *Client) searchOneIndex(ctx context.Context, query string) ([]Hit, strin
 			continue
 		}
 
-		hits := extractProfilesFromHTML(raw, a.name)
+		hits := extract(raw, a.name)
 		if len(hits) == 0 {
-			errs = append(errs, a.name+": no profiles")
+			errs = append(errs, a.name+": no hits")
 			continue
 		}
 

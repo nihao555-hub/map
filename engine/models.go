@@ -38,8 +38,15 @@ var DefaultPeoplePlatforms = []string{
 // Kind selects which customer-discovery module to run.
 const (
 	KindPeople     = "people"
+	KindMarketing  = "marketing"
 	KindExhibition = "exhibition"
 	KindCustoms    = "customs"
+
+	ModeHomepage  = "homepage"
+	ModeMarketing = "marketing"
+
+	ChannelEmail    = "email"
+	ChannelWhatsApp = "whatsapp"
 )
 
 // Query is a single customer-discovery search request.
@@ -48,6 +55,8 @@ type Query struct {
 	Kind      string   `json:"kind"`
 	Platforms []string `json:"platforms,omitempty"`
 	Limit     int      `json:"limit,omitempty"`
+	Mode      string   `json:"mode,omitempty"`
+	Channel   string   `json:"channel,omitempty"`
 }
 
 // Hit is one discovered person, homepage, exhibition, or trade record.
@@ -62,6 +71,8 @@ type Hit struct {
 	HomepageURL string            `json:"homepage_url,omitempty"`
 	MessageURL  string            `json:"message_url,omitempty"`
 	MessageHint string            `json:"message_hint,omitempty"`
+	Contact     string            `json:"contact,omitempty"`
+	Channel     string            `json:"channel,omitempty"`
 	Source      string            `json:"source"`
 	Score       int               `json:"score"`
 	Extra       map[string]string `json:"extra,omitempty"`

@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	defaultLimit      = 20
-	maxLimit          = 50
-	messagePolicyNote = "私信只打开官方主页，由您登录后手动发送。系统不会代发或绕过平台私信接口。"
+	defaultLimit        = 20
+	maxLimit            = 50
+	messagePolicyNote   = "私信只打开官方主页，由您登录后手动发送。系统不会代发或绕过平台私信接口。"
+	marketingPolicyNote = "营销模式从公开网页抽取已公开的邮箱 / WhatsApp。一键营销只打开写信或官方聊天窗口，系统不会代发。"
 )
 
 // Search runs customer discovery. People search uses public web indexes by default
@@ -22,13 +23,24 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 	start := time.Now()
 	q.Keyword = strings.TrimSpace(q.Keyword)
 	q.Kind = strings.ToLower(strings.TrimSpace(q.Kind))
+	q.Mode = strings.ToLower(strings.TrimSpace(q.Mode))
+	q.Channel = strings.ToLower(strings.TrimSpace(q.Channel))
 
 	if q.Keyword == "" {
 		return Result{}, fmt.Errorf("keyword is required")
 	}
 
+	if q.Mode == ModeMarketing || q.Kind == KindMarketing {
+		q.Kind = KindMarketing
+		q.Mode = ModeMarketing
+	}
+
 	if q.Kind == "" {
 		q.Kind = KindPeople
+	}
+
+	if q.Mode == "" && q.Kind == KindPeople {
+		q.Mode = ModeHomepage
 	}
 
 	if q.Limit <= 0 {
@@ -47,6 +59,8 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 	switch q.Kind {
 	case KindPeople:
 		res, err = c.searchPeople(ctx, q)
+	case KindMarketing:
+		res, err = c.searchMarketing(ctx, q)
 	case KindExhibition:
 		res = exhibitionUnavailable(q.Keyword)
 	case KindCustoms:
@@ -66,6 +80,9 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 
 	if res.Note == "" && q.Kind == KindPeople {
 		res.Note = messagePolicyNote
+	}
+	if res.Note == "" && q.Kind == KindMarketing {
+		res.Note = marketingPolicyNote
 	}
 
 	return res, nil
