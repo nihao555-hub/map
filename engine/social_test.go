@@ -67,6 +67,10 @@ func TestDisplayNameStripsHandle(t *testing.T) {
 	if got := displayName("河北喜提电动工具工厂的抖音 - 抖音", "id"); got != "河北喜提电动工具工厂" {
 		t.Fatalf("got %q", got)
 	}
+
+	if got := displayName("便宜，耐用，自有工厂#电动工具", "cfhardware"); got != "cfhardware" {
+		t.Fatalf("got %q", got)
+	}
 }
 
 func TestMergeHitsDedupAndScore(t *testing.T) {

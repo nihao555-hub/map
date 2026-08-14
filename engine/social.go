@@ -192,6 +192,10 @@ func displayName(title, fallback string) string {
 		return strings.TrimSpace(title[:i])
 	}
 
+	if len([]rune(title)) > 36 || strings.Contains(title, "#") {
+		return fallback
+	}
+
 	return title
 }
 
