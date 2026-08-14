@@ -61,6 +61,57 @@ func TestParseSocialURLFacebookLinkedInX(t *testing.T) {
 	}
 }
 
+func TestParseSocialURLMoreNetworks(t *testing.T) {
+	xhs, ok := ParseSocialURL("https://www.xiaohongshu.com/user/profile/5c1a2b3c4d5e6f7890ab1234", "某工厂", "")
+	if !ok || xhs.Platform != PlatformXiaohongshu {
+		t.Fatalf("xiaohongshu %+v ok=%v", xhs, ok)
+	}
+
+	ks, ok := ParseSocialURL("https://www.kuaishou.com/profile/3xabcdEF", "快手店主", "")
+	if !ok || ks.Platform != PlatformKuaishou {
+		t.Fatalf("kuaishou %+v ok=%v", ks, ok)
+	}
+
+	wb, ok := ParseSocialURL("https://weibo.com/u/1234567890", "微博店", "")
+	if !ok || wb.Platform != PlatformWeibo || wb.Handle != "1234567890" {
+		t.Fatalf("weibo %+v ok=%v", wb, ok)
+	}
+
+	bl, ok := ParseSocialURL("https://space.bilibili.com/208259", "工具测评", "")
+	if !ok || bl.Platform != PlatformBilibili {
+		t.Fatalf("bilibili %+v ok=%v", bl, ok)
+	}
+
+	tg, ok := ParseSocialURL("https://t.me/bosch_powertools", "Bosch", "")
+	if !ok || tg.Platform != PlatformTelegram || tg.Handle != "bosch_powertools" {
+		t.Fatalf("telegram %+v ok=%v", tg, ok)
+	}
+
+	if _, ok := ParseSocialURL("https://t.me/joinchat/AAAA", "invite", ""); ok {
+		t.Fatal("telegram invite must be rejected")
+	}
+
+	rd, ok := ParseSocialURL("https://www.reddit.com/user/toolguy", "toolguy", "")
+	if !ok || rd.Platform != PlatformReddit {
+		t.Fatalf("reddit %+v ok=%v", rd, ok)
+	}
+
+	tw, ok := ParseSocialURL("https://www.twitch.tv/ninja", "Ninja", "")
+	if !ok || tw.Platform != PlatformTwitch {
+		t.Fatalf("twitch %+v ok=%v", tw, ok)
+	}
+
+	if _, ok := ParseSocialURL("https://www.twitch.tv/directory", "dir", ""); ok {
+		t.Fatal("twitch directory must be rejected")
+	}
+
+	for _, h := range []Hit{xhs, ks, wb, bl, tg, rd, tw} {
+		if h.HomepageURL == "" || !strings.Contains(h.MessageHint, "不会代发") {
+			t.Fatalf("incomplete %+v", h)
+		}
+	}
+}
+
 func TestParseSocialURLDouyin(t *testing.T) {
 	hit, ok := ParseSocialURL("https://www.douyin.com/user/MS4wLjABAAAA1234", "某工厂", "主营电动工具")
 	if !ok {

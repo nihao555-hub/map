@@ -23,8 +23,8 @@ func TestPeoplePlatformCatalogMatchesSearchableSet(t *testing.T) {
 		}
 	}
 
-	if !seen[PlatformFacebook] || !seen[PlatformDouyin] {
-		t.Fatalf("missing facebook/douyin: %+v", cat)
+	if !seen[PlatformFacebook] || !seen[PlatformDouyin] || !seen[PlatformXiaohongshu] || !seen[PlatformTelegram] {
+		t.Fatalf("missing core/extra platforms: %+v", cat)
 	}
 
 	if seen[PlatformExhibition] || seen[PlatformCustoms] {

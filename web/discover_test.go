@@ -20,7 +20,7 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "/static/js/discover.js"} {
+	for _, want := range []string{"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "不是地图搜店", "/static/js/discover.js"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
@@ -75,7 +75,11 @@ func TestDiscoverPlatformsListsSupportedOnly(t *testing.T) {
 		ids[p.ID] = true
 	}
 
-	for _, want := range []string{"facebook", "linkedin", "instagram", "youtube", "tiktok", "x", "pinterest", "threads", "douyin"} {
+	for _, want := range []string{
+		"facebook", "linkedin", "instagram", "youtube", "tiktok", "douyin",
+		"x", "pinterest", "threads", "xiaohongshu", "kuaishou", "weibo",
+		"bilibili", "telegram", "reddit", "twitch",
+	} {
 		if !ids[want] {
 			t.Fatalf("missing supported platform %s in %+v", want, payload.Platforms)
 		}

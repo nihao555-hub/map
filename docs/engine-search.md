@@ -30,7 +30,9 @@ export TIKHUB_API_TOKEN=...          # 抖音「关键词搜人」f2 仍为 🔵
 ./google_maps_scraper -web
 ```
 
-打开 `/discover`。侧栏只放本项目三个模块：地图获客 / 智能引擎 / 发开发信。智能引擎的目标是：**用关键词找到已支持社媒上的店主或真人公开主页**，再打开官方页由你手动私信。不挖邮箱、不挖 WhatsApp、不代发。这和网易外贸通智能引擎（挖邮箱 / WhatsApp 再一键营销）不是同一件事。
+打开 `/discover`。侧栏只放本项目三个模块：地图获客 / 智能引擎 / 发开发信。智能引擎**不是地图搜店**：用关键词在抖音 / TikTok 等社媒找店主或真人公开主页，再打开官方页由你手动私信。不挖邮箱、不挖 WhatsApp、不代发。这和网易外贸通智能引擎（挖邮箱 / WhatsApp 再一键营销）不是同一件事。
+
+已支持公开主页解析（无需 sidecar）：TikTok、抖音、Facebook、Instagram、YouTube、LinkedIn、小红书、快手、微博、B站、X、Pinterest、Threads、Telegram、Reddit、Twitch。默认勾选 TikTok / 抖音 / Facebook / Instagram / YouTube / LinkedIn。
 
 - 关键词「电动工具」→ 抖音：电动工具小王、盛隆绿巨人、河北喜提工厂、东成旗舰店、大有工具 等，均带 `douyin.com/user/MS4wLjAB…`
 - 关键词「power tools」→ TikTok：`@boschpowertools`、`@mjdtpowertools` 等

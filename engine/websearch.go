@@ -29,7 +29,7 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wante
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(4)
+	g.SetLimit(6)
 
 	for _, q := range queries {
 		q := q
@@ -82,6 +82,13 @@ func publicSearchQueries(keyword string, wanted map[string]bool) []string {
 		{PlatformPinterest, "site:pinterest.com " + keyword},
 		{PlatformThreads, "site:threads.net " + keyword},
 		{PlatformDouyin, "site:douyin.com/user " + keyword},
+		{PlatformXiaohongshu, "site:xiaohongshu.com/user/profile " + keyword},
+		{PlatformKuaishou, "site:kuaishou.com/profile " + keyword},
+		{PlatformWeibo, "site:weibo.com/u " + keyword},
+		{PlatformBilibili, "site:space.bilibili.com " + keyword},
+		{PlatformTelegram, "site:t.me " + keyword},
+		{PlatformReddit, "site:reddit.com/user " + keyword},
+		{PlatformTwitch, "site:twitch.tv " + keyword},
 	}
 
 	out := make([]string, 0, len(specs))
@@ -263,6 +270,48 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 	for _, m := range douyinUserRe.FindAllStringSubmatch(blob, 40) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.douyin.com/user/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range xiaohongshuRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.xiaohongshu.com/user/profile/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range kuaishouRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.kuaishou.com/profile/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range weiboUIDRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://weibo.com/u/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range bilibiliRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://space.bilibili.com/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range telegramRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://t.me/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range redditUserRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.reddit.com/user/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range twitchRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.twitch.tv/"+m[1], m[1], ""))
 		}
 	}
 

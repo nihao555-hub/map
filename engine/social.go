@@ -20,6 +20,14 @@ var (
 	xHandleRe      = regexp.MustCompile(`(?i)(?:twitter|x)\.com/([A-Za-z0-9_]+)`)
 	pinterestRe    = regexp.MustCompile(`(?i)pinterest\.(?:com|co\.[a-z]{2})/([A-Za-z0-9_]+)`)
 	threadsRe      = regexp.MustCompile(`(?i)threads\.net/@([A-Za-z0-9._]+)`)
+	xiaohongshuRe  = regexp.MustCompile(`(?i)(?:www\.)?xiaohongshu\.com/user/profile/([A-Za-z0-9]+)`)
+	kuaishouRe     = regexp.MustCompile(`(?i)(?:www\.)?kuaishou\.com/profile/([A-Za-z0-9_\-]+)`)
+	weiboUIDRe     = regexp.MustCompile(`(?i)(?:www\.|m\.)?weibo\.(?:com|cn)/u/(\d+)`)
+	weiboNameRe    = regexp.MustCompile(`(?i)(?:www\.)?weibo\.com/n/([^/?#\s]+)`)
+	bilibiliRe     = regexp.MustCompile(`(?i)space\.bilibili\.com/(\d+)`)
+	telegramRe     = regexp.MustCompile(`(?i)(?:t\.me|telegram\.me)/([A-Za-z][A-Za-z0-9_]{3,31})`)
+	redditUserRe   = regexp.MustCompile(`(?i)(?:www\.)?reddit\.com/(?:user|u)/([A-Za-z0-9_\-]+)`)
+	twitchRe       = regexp.MustCompile(`(?i)(?:www\.)?twitch\.tv/([A-Za-z0-9_]+)`)
 )
 
 var reservedPaths = map[string]struct{}{
@@ -35,9 +43,12 @@ var reservedPaths = map[string]struct{}{
 	"ads": {}, "business": {}, "jobs": {}, "home": {}, "intent": {},
 	"compose": {}, "signup": {}, "download": {}, "pin": {}, "ideas": {},
 	"today": {}, "i": {}, "tos": {}, "help": {}, "recover": {},
+	"joinchat": {}, "addstickers": {}, "addemoji": {}, "addtheme": {},
+	"proxy": {}, "socks": {}, "directory": {}, "clips": {}, "inventory": {},
+	"drops": {}, "turbo": {}, "subscriptions": {}, "wallet": {},
 }
 
-// ParseSocialURL extracts a profile hit from a TikTok / Douyin / Instagram / YouTube URL.
+// ParseSocialURL extracts a profile hit from a supported social homepage URL.
 func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -164,6 +175,68 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 		home := "https://www.threads.net/@" + handle
 		return makeHit(PlatformThreads, handle, handle, home, title, snippet,
 			"打开 Threads 主页后点击 Message（需登录官方账号，系统不会代发私信）", 65), true
+	}
+
+	if m := xiaohongshuRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://www.xiaohongshu.com/user/profile/" + id
+		return makeHit(PlatformXiaohongshu, id, id, home, title, snippet,
+			"打开小红书主页后点击「私信」（需登录官方 App，系统不会代发）", 75), true
+	}
+
+	if m := kuaishouRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://www.kuaishou.com/profile/" + id
+		return makeHit(PlatformKuaishou, id, id, home, title, snippet,
+			"打开快手主页后点击「私信」（需登录官方 App，系统不会代发）", 70), true
+	}
+
+	if m := weiboUIDRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://weibo.com/u/" + id
+		return makeHit(PlatformWeibo, "u:"+id, id, home, title, snippet,
+			"打开微博主页后点击「私信」（需登录官方账号，系统不会代发）", 70), true
+	}
+
+	if m := weiboNameRe.FindStringSubmatch(decoded); len(m) == 2 {
+		handle, _ := url.PathUnescape(m[1])
+		home := "https://weibo.com/n/" + m[1]
+		return makeHit(PlatformWeibo, "n:"+strings.ToLower(handle), handle, home, title, snippet,
+			"打开微博主页后点击「私信」（需登录官方账号，系统不会代发）", 65), true
+	}
+
+	if m := bilibiliRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://space.bilibili.com/" + id
+		return makeHit(PlatformBilibili, id, id, home, title, snippet,
+			"打开 B 站空间后通过「发消息」联系（需登录官方账号，系统不会代发）", 65), true
+	}
+
+	if m := telegramRe.FindStringSubmatch(decoded); len(m) == 2 {
+		handle := m[1]
+		if _, skip := reservedPaths[strings.ToLower(handle)]; skip {
+			return Hit{}, false
+		}
+		home := "https://t.me/" + handle
+		return makeHit(PlatformTelegram, handle, handle, home, title, snippet,
+			"打开 Telegram 主页后点击 Message（需登录官方账号，系统不会代发私信）", 70), true
+	}
+
+	if m := redditUserRe.FindStringSubmatch(decoded); len(m) == 2 {
+		handle := m[1]
+		home := "https://www.reddit.com/user/" + handle
+		return makeHit(PlatformReddit, handle, handle, home, title, snippet,
+			"打开 Reddit 主页后点击 Chat（需登录官方账号，系统不会代发私信）", 55), true
+	}
+
+	if m := twitchRe.FindStringSubmatch(decoded); len(m) == 2 {
+		handle := m[1]
+		if _, skip := reservedPaths[strings.ToLower(handle)]; skip {
+			return Hit{}, false
+		}
+		home := "https://www.twitch.tv/" + handle
+		return makeHit(PlatformTwitch, handle, handle, home, title, snippet,
+			"打开 Twitch 主页后点击 Whisper（需登录官方账号，系统不会代发私信）", 55), true
 	}
 
 	if m := youtubeChanRe.FindStringSubmatch(decoded); len(m) == 2 {

@@ -4,26 +4,35 @@ import "time"
 
 // Platform identifiers used by the intelligent engine search.
 const (
-	PlatformTikTok     = "tiktok"
-	PlatformDouyin     = "douyin"
-	PlatformInstagram  = "instagram"
-	PlatformYouTube    = "youtube"
-	PlatformFacebook   = "facebook"
-	PlatformLinkedIn   = "linkedin"
-	PlatformX          = "x"
-	PlatformPinterest  = "pinterest"
-	PlatformThreads    = "threads"
-	PlatformExhibition = "exhibition"
-	PlatformCustoms    = "customs"
+	PlatformTikTok      = "tiktok"
+	PlatformDouyin      = "douyin"
+	PlatformInstagram   = "instagram"
+	PlatformYouTube     = "youtube"
+	PlatformFacebook    = "facebook"
+	PlatformLinkedIn    = "linkedin"
+	PlatformX           = "x"
+	PlatformPinterest   = "pinterest"
+	PlatformThreads     = "threads"
+	PlatformXiaohongshu = "xiaohongshu"
+	PlatformKuaishou    = "kuaishou"
+	PlatformWeibo       = "weibo"
+	PlatformBilibili    = "bilibili"
+	PlatformTelegram    = "telegram"
+	PlatformReddit      = "reddit"
+	PlatformTwitch      = "twitch"
+	PlatformExhibition  = "exhibition"
+	PlatformCustoms     = "customs"
 )
 
-// DefaultPeoplePlatforms is the overseas-first set used when the UI sends no platforms.
+// DefaultPeoplePlatforms is the set used when the UI sends no platforms.
+// Core job is Douyin / TikTok people pages; major overseas networks are on by default too.
 var DefaultPeoplePlatforms = []string{
+	PlatformTikTok,
+	PlatformDouyin,
 	PlatformFacebook,
-	PlatformLinkedIn,
 	PlatformInstagram,
 	PlatformYouTube,
-	PlatformTikTok,
+	PlatformLinkedIn,
 }
 
 // Kind selects which customer-discovery module to run.

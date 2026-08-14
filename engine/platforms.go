@@ -5,15 +5,22 @@ import "strings"
 // PeoplePlatforms is every social network the engine can parse and search.
 // Exhibition / customs are separate modules and are not listed here.
 var PeoplePlatforms = []string{
+	PlatformTikTok,
+	PlatformDouyin,
 	PlatformFacebook,
-	PlatformLinkedIn,
 	PlatformInstagram,
 	PlatformYouTube,
-	PlatformTikTok,
+	PlatformLinkedIn,
+	PlatformXiaohongshu,
+	PlatformKuaishou,
+	PlatformWeibo,
+	PlatformBilibili,
 	PlatformX,
 	PlatformPinterest,
 	PlatformThreads,
-	PlatformDouyin,
+	PlatformTelegram,
+	PlatformReddit,
+	PlatformTwitch,
 }
 
 // PlatformInfo describes a people-search platform for the Web UI.
@@ -55,14 +62,28 @@ func PeoplePlatformLabel(id string) string {
 		return "YouTube"
 	case PlatformTikTok:
 		return "TikTok"
+	case PlatformDouyin:
+		return "抖音"
+	case PlatformXiaohongshu:
+		return "小红书"
+	case PlatformKuaishou:
+		return "快手"
+	case PlatformWeibo:
+		return "微博"
+	case PlatformBilibili:
+		return "B站"
 	case PlatformX:
 		return "X"
 	case PlatformPinterest:
 		return "Pinterest"
 	case PlatformThreads:
 		return "Threads"
-	case PlatformDouyin:
-		return "抖音"
+	case PlatformTelegram:
+		return "Telegram"
+	case PlatformReddit:
+		return "Reddit"
+	case PlatformTwitch:
+		return "Twitch"
 	default:
 		return id
 	}
