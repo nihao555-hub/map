@@ -1,5 +1,4 @@
 (function () {
-  const tab = document.body.getAttribute("data-tab") || "people";
   const landing = document.getElementById("landing");
   const resultsView = document.getElementById("results-view");
   const form = document.getElementById("discover-form");
@@ -9,18 +8,11 @@
   const results = document.getElementById("discover-results");
   const empty = document.getElementById("discover-empty");
   const foot = document.getElementById("discover-foot");
-  const title = document.getElementById("discover-title");
-  const crumb = document.getElementById("crumb-name");
-  const platformGroup = document.getElementById("platform-group");
-  const platformSelect = document.getElementById("platform-select");
   const keyword = document.getElementById("keyword");
   const keywordLanding = document.getElementById("keyword-landing");
   const toastEl = document.getElementById("toast");
-  const colContact = document.getElementById("col-contact");
 
-  let channel = "whatsapp";
   let catalog = [];
-  let lastHits = [];
 
   const PLATFORM_ICONS = {
     facebook: { color: "#1877F2", path: "M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z" },
@@ -34,72 +26,12 @@
     douyin: { color: "#111111", path: "M19.589 6.686a4.793 4.793 0 0 1-3.77-4.245V2h-3.425v13.672a2.896 2.896 0 0 1-2.888 2.888 2.896 2.896 0 0 1-2.888-2.888 2.896 2.896 0 0 1 2.888-2.888c.28 0 .556.04.813.118v-3.5a6.373 6.373 0 0 0-.813-.052 6.337 6.337 0 0 0-6.326 6.326 6.337 6.337 0 0 0 6.326 6.326 6.337 6.337 0 0 0 6.326-6.326V8.67a8.216 8.216 0 0 0 4.77 1.526V6.79a4.831 4.831 0 0 1-1.033-.104z" },
   };
 
-  const copy = {
-    people: { title: "智能引擎搜索", placeholder: "请输入搜索的企业或产品名称" },
-    exhibition: { title: "展会买家", placeholder: "例如：Canton Fair / CES" },
-    customs: { title: "海关数据", placeholder: "例如：Allbirds / HS 6404" },
-  };
-  const cfg = copy[tab] || copy.people;
-  title.textContent = cfg.title;
-  crumb.textContent = cfg.title;
-  keyword.placeholder = cfg.placeholder;
-  if (keywordLanding) keywordLanding.placeholder = cfg.placeholder;
-
-  document.querySelectorAll(".wmt-item[data-nav]").forEach(function (el) {
-    if (el.getAttribute("data-nav") === tab) {
-      el.classList.add("is-on");
-    }
-  });
-  if (tab === "people") {
-    document.querySelectorAll('.wmt-item[href="/discover"]').forEach(function (el) {
-      el.classList.add("is-on");
-    });
-  }
-
-  if (tab !== "people") {
-    landing.classList.add("hidden");
-    resultsView.classList.remove("hidden");
-    document.getElementById("adv-panel").classList.add("hidden");
-    status.textContent = tab === "exhibition"
-      ? "没有高 star、仍在维护、可商用的开源展会库。按优先级先不自研。"
-      : "没有高 star 开源海关库可克隆。逐票提单已在 PR #12，这里不自研爬虫。";
-  }
-
   function toast(msg) {
     toastEl.textContent = msg;
     toastEl.classList.remove("hidden");
     clearTimeout(toast.t);
     toast.t = setTimeout(function () { toastEl.classList.add("hidden"); }, 2400);
   }
-
-  document.querySelectorAll("[data-soon]").forEach(function (el) {
-    el.addEventListener("click", function (ev) {
-      ev.preventDefault();
-      toast(el.getAttribute("data-soon") + "尚未接入，先用智能引擎搜索");
-    });
-  });
-
-  function setChannel(ch) {
-    channel = ch;
-    document.querySelectorAll("[data-channel] button").forEach(function (btn) {
-      btn.classList.toggle("is-on", btn.getAttribute("data-ch") === ch);
-    });
-    colContact.textContent = ch === "email" ? "邮箱" : "账号";
-    if (lastHits.length) renderHits(lastHits);
-  }
-
-  document.querySelectorAll("[data-channel]").forEach(function (row) {
-    row.addEventListener("click", function (ev) {
-      const btn = ev.target.closest("button[data-ch]");
-      if (!btn) return;
-      setChannel(btn.getAttribute("data-ch"));
-    });
-  });
-
-  document.getElementById("adv-toggle").addEventListener("click", function (ev) {
-    ev.preventDefault();
-    document.getElementById("adv-panel").classList.toggle("hidden");
-  });
 
   function platformSvg(id) {
     const ic = PLATFORM_ICONS[id];
@@ -114,32 +46,43 @@
     return id;
   }
 
+  function bindChips(root) {
+    root.querySelectorAll(".plat-chip").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        btn.classList.toggle("is-on");
+        syncChips(btn);
+      });
+    });
+  }
+
+  function syncChips(src) {
+    const id = src.getAttribute("data-platform");
+    const on = src.classList.contains("is-on");
+    document.querySelectorAll('.plat-chip[data-platform="' + id + '"]').forEach(function (el) {
+      el.classList.toggle("is-on", on);
+    });
+  }
+
   function renderChips(platforms) {
-    platformGroup.innerHTML = platforms.map(function (p) {
+    const html = platforms.map(function (p) {
       const on = p.default ? " is-on" : "";
       return '<button type="button" class="plat-chip' + on + '" data-platform="' + escapeAttr(p.id) + '">' +
         platformSvg(p.id) + "<span>" + escapeHtml(p.label) + "</span></button>";
     }).join("");
-    platformGroup.querySelectorAll(".plat-chip").forEach(function (btn) {
-      btn.addEventListener("click", function () { btn.classList.toggle("is-on"); });
+    ["platform-group", "platform-group-landing"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.innerHTML = html;
+      bindChips(el);
     });
-    platformSelect.innerHTML = '<option value="">默认</option>' + platforms.map(function (p) {
-      return '<option value="' + escapeAttr(p.id) + '">' + escapeHtml(p.label) + "</option>";
-    }).join("");
   }
 
   function selectedPlatforms() {
-    const one = platformSelect.value;
-    if (one) return [one];
-    const chips = document.querySelectorAll(".plat-chip.is-on");
-    if (!chips.length) return catalog.filter(function (p) { return p.default; }).map(function (p) { return p.id; });
+    const chips = document.querySelectorAll("#platform-group .plat-chip.is-on");
+    if (!chips.length) {
+      return catalog.filter(function (p) { return p.default; }).map(function (p) { return p.id; });
+    }
     return Array.prototype.map.call(chips, function (el) { return el.getAttribute("data-platform"); });
-  }
-
-  function extractEmail(h) {
-    const blob = [h.snippet, h.title, h.name, h.handle].join(" ");
-    const m = blob.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-    return m ? m[0] : "";
   }
 
   function loadPlatforms() {
@@ -156,11 +99,6 @@
       .catch(function () { toast("无法连接搜索引擎"); });
   }
 
-  function showResults() {
-    landing.classList.add("hidden");
-    resultsView.classList.remove("hidden");
-  }
-
   function setBusy(on) {
     ["landing-btn", "discover-btn"].forEach(function (id) {
       const b = document.getElementById(id);
@@ -170,29 +108,20 @@
     });
   }
 
-  function preciseOn() {
-    const a = document.getElementById("precise");
-    const b = document.getElementById("precise-landing");
-    return !!(a && a.checked) || !!(b && b.checked);
-  }
-
   function doSearch(kw) {
     kw = (kw || "").trim();
     if (!kw) return;
     keyword.value = kw;
     if (keywordLanding) keywordLanding.value = kw;
-    if (document.getElementById("precise-landing") && document.getElementById("precise-landing").checked) {
-      document.getElementById("precise").checked = true;
-    }
 
-    showResults();
+    landing.classList.add("hidden");
+    resultsView.classList.remove("hidden");
     status.textContent = "正在检索公开主页…";
     warnings.classList.add("hidden");
     warnings.textContent = "";
     results.innerHTML = "";
     empty.classList.add("hidden");
     foot.textContent = "";
-    lastHits = [];
     setBusy(true);
 
     fetch("/api/v1/discover/search", {
@@ -200,8 +129,8 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         keyword: kw,
-        kind: tab,
-        platforms: tab === "people" ? selectedPlatforms() : [],
+        kind: "people",
+        platforms: selectedPlatforms(),
         limit: Number(document.getElementById("limit").value) || 20,
       }),
     })
@@ -215,22 +144,14 @@
           return;
         }
         const data = out.j;
-        let hits = data.hits || [];
-        if (preciseOn()) {
-          const q = kw.toLowerCase();
-          hits = hits.filter(function (h) {
-            return [h.name, h.handle, h.title, h.snippet].join(" ").toLowerCase().indexOf(q) >= 0;
-          });
-        }
         status.textContent = "来源 " + ((data.sources || []).join("、") || "—") +
-          " · " + hits.length + " 条 · " + (data.took_ms || 0) + "ms" +
+          " · " + (data.hits || []).length + " 条主页 · " + (data.took_ms || 0) + "ms" +
           (data.note ? " · " + data.note : "");
         if (data.warnings && data.warnings.length) {
           warnings.classList.remove("hidden");
           warnings.textContent = data.warnings.join("\n");
         }
-        lastHits = hits;
-        renderHits(hits);
+        renderHits(data.hits || []);
       })
       .catch(function (err) {
         setBusy(false);
@@ -250,87 +171,36 @@
   function renderHits(hits) {
     if (!hits.length) {
       empty.classList.remove("hidden");
-      empty.textContent = "没有命中。可换关键词或在高级筛选中勾选更多平台。";
-      foot.textContent = "0 / 0";
+      empty.textContent = "没有命中公开主页。可换关键词或勾选更多平台。";
+      foot.textContent = "";
       return;
     }
     empty.classList.add("hidden");
-    results.innerHTML = hits.map(function (h, i) {
+    results.innerHTML = hits.map(function (h) {
       const plat = (h.platform || "").toLowerCase();
+      const handle = h.handle ? "@" + h.handle : "—";
       const home = h.homepage_url || "";
-      const titleText = h.title || h.name || h.handle || "—";
-      const contact = channel === "email"
-        ? (extractEmail(h) || "—")
-        : (h.handle ? "@" + h.handle : "—");
+      const msg = h.message_url || home;
       const src = home.replace(/^https?:\/\/(www\.)?/, "");
       return (
-        "<tr data-i='" + i + "'>" +
-          '<td><input type="checkbox" class="row-check"></td>' +
-          '<td class="hit-mail">' + escapeHtml(contact) + "</td>" +
-          '<td class="hit-title">' + escapeHtml(titleText) + "</td>" +
+        "<tr>" +
+          '<td class="hit-title">' + escapeHtml(h.name || handle) + "</td>" +
+          '<td><span class="hit-badge">' + platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></span></td>" +
+          "<td>" + escapeHtml(handle) + "</td>" +
           "<td>" + (home
             ? '<a class="hit-home" target="_blank" rel="noopener" href="' + escapeAttr(home) + '">' +
                 platformSvg(plat) + escapeHtml(src) + "</a>"
             : "—") + "</td>" +
+          '<td class="row-actions">' +
+            '<a target="_blank" rel="noopener" href="' + escapeAttr(home || "#") + '">打开主页</a>' +
+            '<a class="btn-msg" target="_blank" rel="noopener" href="' + escapeAttr(msg || "#") +
+              '" title="' + escapeAttr(h.message_hint || "") + '">去私信</a>' +
+          "</td>" +
         "</tr>"
       );
     }).join("");
-    foot.textContent = "1 / 1 · 共 " + hits.length + " 条";
+    foot.textContent = "共 " + hits.length + " 条公开主页 · 去私信只打开官方页，不代发";
   }
-
-  document.getElementById("check-all").addEventListener("change", function () {
-    const on = this.checked;
-    document.querySelectorAll(".row-check").forEach(function (c) { c.checked = on; });
-  });
-
-  function selectedHits() {
-    const out = [];
-    document.querySelectorAll("#discover-results tr").forEach(function (tr) {
-      const c = tr.querySelector(".row-check");
-      if (c && c.checked) out.push(lastHits[Number(tr.getAttribute("data-i"))]);
-    });
-    return out;
-  }
-
-  document.getElementById("btn-market").addEventListener("click", function () {
-    const picked = selectedHits();
-    if (!picked.length) {
-      toast("请先勾选要打开的主页。系统不代发私信或邮件。");
-      return;
-    }
-    picked.slice(0, 5).forEach(function (h) {
-      if (h && h.homepage_url) window.open(h.homepage_url, "_blank", "noopener");
-    });
-    toast("已打开官方主页，请登录后手动联系。系统不会代发。");
-  });
-
-  document.getElementById("btn-book").addEventListener("click", function () {
-    toast("营销地址簿尚未接入。可先导出当前结果。");
-  });
-
-  document.getElementById("btn-export").addEventListener("click", function () {
-    if (!lastHits.length) {
-      toast("没有可导出的结果");
-      return;
-    }
-    const rows = [["联系方式", "网页标题", "平台", "来源链接"]];
-    lastHits.forEach(function (h) {
-      rows.push([
-        channel === "email" ? (extractEmail(h) || "") : (h.handle || ""),
-        h.title || h.name || "",
-        platformLabel(h.platform),
-        h.homepage_url || "",
-      ]);
-    });
-    const csv = rows.map(function (r) {
-      return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(",");
-    }).join("\n");
-    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "engine-search.csv";
-    a.click();
-  });
 
   function escapeHtml(s) {
     return String(s || "").replace(/[&<>"']/g, function (c) {

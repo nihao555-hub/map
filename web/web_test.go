@@ -32,7 +32,7 @@ func TestIndexPageHasWaimaoTongRail(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"app-rail", "智能引擎", "map-toolbar", "搜索记录", "locations", "keywords"} {
+	for _, want := range []string{"app-rail", "地图获客", "智能引擎", "发开发信", "map-toolbar", "搜索记录", "locations", "keywords"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -40,6 +40,12 @@ func TestIndexPageHasWaimaoTongRail(t *testing.T) {
 
 	if strings.Contains(body, "找到精准客户，从地图开始") {
 		t.Fatal("old marketing sidebar copy should be gone")
+	}
+
+	for _, drop := range []string{"展会获客", "海关数据", "工作台", "全球搜索"} {
+		if strings.Contains(body, drop) {
+			t.Fatalf("unshipped module %q should not appear in nav", drop)
+		}
 	}
 }
 

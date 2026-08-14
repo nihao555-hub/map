@@ -31,6 +31,24 @@ func (s *Server) discoverPage(w http.ResponseWriter, r *http.Request) {
 	_ = tmpl.Execute(w, map[string]string{"Tab": tab})
 }
 
+func (s *Server) outreachPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
+		return
+	}
+
+	tmpl, ok := s.tmpl["static/templates/outreach.html"]
+	if !ok {
+		http.Error(w, "missing tpl", http.StatusInternalServerError)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = tmpl.Execute(w, nil)
+}
+
 func (s *Server) apiDiscoverSearch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		renderJSON(w, http.StatusMethodNotAllowed, apiError{

@@ -20,14 +20,14 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"智能引擎搜索", "discover-form", "wmt-top", "数据获客", "WhatsApp", "/static/js/discover.js"} {
+	for _, want := range []string{"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "/static/js/discover.js"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
 	}
 
-	if !strings.Contains(body, "地图搜索") {
-		t.Fatal("side menu should include 地图搜索")
+	if strings.Contains(body, "工作台") || strings.Contains(body, "全球搜索") || strings.Contains(body, "一键营销") || strings.Contains(body, "智能推荐") || strings.Contains(body, "展会买家") || strings.Contains(body, "市场洞察") {
+		t.Fatal("unshipped Waimao Tong modules should not appear")
 	}
 }
 
@@ -130,6 +130,22 @@ func TestDiscoverSourcesListsOSS(t *testing.T) {
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "davidteather/TikTok-Api") || !strings.Contains(body, "Johnserf-Seed/f2") || !strings.Contains(body, "public-websearch") {
+		t.Fatalf("body=%s", body)
+	}
+}
+
+func TestOutreachPageRenders(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/outreach", nil)
+	rec := httptest.NewRecorder()
+	srv.outreachPage(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "发开发信") || !strings.Contains(body, "已经有邮箱") {
 		t.Fatalf("body=%s", body)
 	}
 }

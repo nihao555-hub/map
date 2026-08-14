@@ -30,7 +30,7 @@ export TIKHUB_API_TOKEN=...          # 抖音「关键词搜人」f2 仍为 🔵
 ./google_maps_scraper -web
 ```
 
-打开 `/discover`。智能引擎页按网易外贸通「客户发现 / 智能引擎搜索」复刻：深色顶栏、浅灰宽侧栏、深蓝落地 Banner（WhatsApp / 邮箱 + 搜索框）、结果表为邮箱或账号 / 网页标题 / 来源链接（带来源平台官方图标）。搜索仍走 `POST /api/v1/discover/search`。一键营销只打开已勾选的官方主页，不代发。
+打开 `/discover`。侧栏只放本项目三个模块：地图获客 / 智能引擎 / 发开发信。智能引擎的目标是：**用关键词找到已支持社媒上的店主或真人公开主页**，再打开官方页由你手动私信。不挖邮箱、不挖 WhatsApp、不代发。这和网易外贸通智能引擎（挖邮箱 / WhatsApp 再一键营销）不是同一件事。
 
 - 关键词「电动工具」→ 抖音：电动工具小王、盛隆绿巨人、河北喜提工厂、东成旗舰店、大有工具 等，均带 `douyin.com/user/MS4wLjAB…`
 - 关键词「power tools」→ TikTok：`@boschpowertools`、`@mjdtpowertools` 等

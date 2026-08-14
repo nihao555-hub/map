@@ -75,6 +75,7 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.viewJob(w, r)
 	})
 	mux.HandleFunc("/discover", ans.discoverPage)
+	mux.HandleFunc("/outreach", ans.outreachPage)
 	mux.HandleFunc("/", ans.index)
 
 	// api routes
@@ -156,6 +157,7 @@ func New(svc *Service, addr string) (*Server, error) {
 	tmplsKeys := []string{
 		"static/templates/index.html",
 		"static/templates/discover.html",
+		"static/templates/outreach.html",
 		"static/templates/job_rows.html",
 		"static/templates/job_row.html",
 		"static/templates/job_view.html",

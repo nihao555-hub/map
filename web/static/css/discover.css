@@ -1,4 +1,4 @@
-/* 智能引擎：复刻网易外贸通「客户发现 / 智能引擎搜索」布局 */
+/* 智能引擎：找已支持社媒上的店主 / 真人公开主页（不是外贸通那种挖邮箱） */
 :root {
   --wmt-blue: #3b66f5;
   --wmt-blue-hover: #2f58e0;
@@ -164,8 +164,8 @@ html, body.wmt {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
-  padding: 0 16px 0 32px;
+  height: 40px;
+  padding: 0 16px;
   color: var(--wmt-text);
   text-decoration: none;
   position: relative;
@@ -349,6 +349,37 @@ html, body.wmt {
 }
 .wmt-search-btn:hover { background: var(--wmt-blue-hover); }
 .wmt-search-btn:disabled { opacity: .65; cursor: wait; }
+.wmt-hero-plats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  position: relative;
+  max-width: 920px;
+}
+.wmt-hero-plats .plat-chip {
+  background: rgba(255,255,255,.12);
+  border-color: rgba(255,255,255,.22);
+  color: #fff;
+}
+.wmt-hero-plats .plat-chip.is-on {
+  background: #fff;
+  border-color: #fff;
+  color: var(--wmt-blue);
+}
+
+.hit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.row-actions { display: flex; gap: 12px; }
+.row-actions a {
+  color: var(--wmt-sub);
+  text-decoration: none;
+}
+.row-actions a.btn-msg { color: var(--wmt-blue); }
+.row-actions a:hover { text-decoration: underline; }
 
 .wmt-features {
   padding: 28px 48px 48px;
