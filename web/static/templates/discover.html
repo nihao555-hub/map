@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智能引擎搜索 · 地图获客</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/discover.css">
+</head>
+<body data-tab="{{.Tab}}">
+  <header id="topbar">
+    <a class="brand" href="/">
+      <span class="brand-icon"><i data-lucide="map-pin" class="w-5 h-5"></i></span>
+      <span class="brand-name">地图获客</span>
+      <span class="brand-tag">智能版</span>
+    </a>
+    <nav class="mod-nav" aria-label="功能模块">
+      <a class="mod-nav-item" href="/">地图搜索</a>
+      <a class="mod-nav-item" data-nav="people" href="/discover">智能引擎</a>
+      <a class="mod-nav-item" data-nav="exhibition" href="/discover?tab=exhibition">展会获客</a>
+      <a class="mod-nav-item" data-nav="customs" href="/discover?tab=customs">海关数据</a>
+    </nav>
+    <div class="topbar-right">
+      <a class="help-btn" href="/api/docs" style="text-decoration:none"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</a>
+    </div>
+  </header>
+
+  <div class="discover-shell">
+    <aside class="discover-side">
+      <p class="oss-chip"><i data-lucide="github" class="w-4 h-4"></i>复用高 star 开源，不自研爬虫</p>
+      <h1 class="page-title" id="discover-title">智能引擎搜索</h1>
+      <p class="page-subtitle" id="discover-sub">输入关键词，调用 TikTok-Api / f2 找到公开主页。私信请在官方页面手动发送。</p>
+
+      <form id="discover-form">
+        <div class="field-group">
+          <label class="field-label" for="keyword">关键词</label>
+          <div class="input-field">
+            <i data-lucide="search" class="w-4 h-4 input-icon"></i>
+            <input type="text" id="keyword" name="keyword" placeholder="例如：power tools importer" required />
+          </div>
+        </div>
+
+        <div class="field-group" id="platform-group">
+          <label class="field-label">平台</label>
+          <div class="plat-row">
+            <label class="plat"><input type="checkbox" name="platform" value="tiktok" checked> TikTok</label>
+            <label class="plat"><input type="checkbox" name="platform" value="douyin" checked> 抖音</label>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="limit">数量上限</label>
+          <div class="input-field">
+            <i data-lucide="target" class="w-4 h-4 input-icon"></i>
+            <input type="number" id="limit" name="limit" min="1" max="50" value="20">
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary" id="discover-btn">
+          <i data-lucide="search" class="w-5 h-5"></i>
+          <span>开始搜索</span>
+        </button>
+      </form>
+
+      <div class="oss-card">
+        <h3>正在用的盘子</h3>
+        <ul>
+          <li><b>davidteather/TikTok-Api</b> 6.5k★ MIT · 2026-07 · 关键词搜人</li>
+          <li><b>Johnserf-Seed/f2</b> 2.6k★ Apache-2.0 · 2026-04 · TK 作品抽作者 / 抖音主页</li>
+        </ul>
+        <p class="oss-note">62k★ 的 MediaCrawler 是非商业学习许可，不能进商用产品。海关 / 展会没有可商用高 star 库，先不自研。</p>
+      </div>
+    </aside>
+
+    <main class="discover-main">
+      <div id="discover-status" class="discover-status">启动 sidecar 后输入关键词搜索。<code>docker compose -f docker-compose.engine.yaml up -d</code></div>
+      <div id="discover-warnings" class="discover-warnings hidden"></div>
+      <div id="discover-results" class="hit-grid"></div>
+    </main>
+  </div>
+
+  <script src="/static/js/discover.js"></script>
+</body>
+</html>

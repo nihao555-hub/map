@@ -1,0 +1,84 @@
+package engine
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestParseSocialURLTikTok(t *testing.T) {
+	hit, ok := ParseSocialURL("https://www.tiktok.com/@nike", "Nike (@nike) Official", "Welcome to Nike")
+	if !ok {
+		t.Fatal("expected tiktok hit")
+	}
+
+	if hit.Platform != PlatformTikTok || hit.Handle != "nike" {
+		t.Fatalf("got %+v", hit)
+	}
+
+	if !strings.Contains(hit.HomepageURL, "@nike") {
+		t.Fatalf("homepage %s", hit.HomepageURL)
+	}
+
+	if hit.MessageURL == "" || !strings.Contains(hit.MessageHint, "不会代发") {
+		t.Fatalf("message fields %+v", hit)
+	}
+}
+
+func TestParseSocialURLRejectsTag(t *testing.T) {
+	if _, ok := ParseSocialURL("https://www.tiktok.com/tag/shoes", "shoes", ""); ok {
+		t.Fatal("tag pages must not become profiles")
+	}
+}
+
+func TestParseSocialURLDouyin(t *testing.T) {
+	hit, ok := ParseSocialURL("https://www.douyin.com/user/MS4wLjABAAAA1234", "某工厂", "主营电动工具")
+	if !ok {
+		t.Fatal("expected douyin hit")
+	}
+
+	if hit.Platform != PlatformDouyin || hit.Handle != "MS4wLjABAAAA1234" {
+		t.Fatalf("got %+v", hit)
+	}
+}
+
+func TestUnwrapDuckDuckGoRedirect(t *testing.T) {
+	raw := "https://duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.tiktok.com%2F%40allbirds"
+	hit, ok := ParseSocialURL(raw, "Allbirds (@allbirds)", "")
+	if !ok || hit.Handle != "allbirds" {
+		t.Fatalf("ok=%v hit=%+v", ok, hit)
+	}
+}
+
+func TestLooksLikeHandle(t *testing.T) {
+	if !looksLikeHandle("allbirds") || !looksLikeHandle("@Nike.Official") {
+		t.Fatal("valid handles rejected")
+	}
+
+	if looksLikeHandle("电动工具采购商") || looksLikeHandle("") {
+		t.Fatal("non-handle accepted")
+	}
+}
+
+func TestDisplayNameStripsHandle(t *testing.T) {
+	if got := displayName("Nike (@nike) Official TikTok", "nike"); got != "Nike" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestMergeHitsDedupAndScore(t *testing.T) {
+	hits := []Hit{
+		tiktokHit("nike", "Nike", "shoes", "web"),
+		tiktokHit("nike", "Nike Inc", "keyword nike", "sidecar"),
+		tiktokHit("adidas", "Adidas", "other", "web"),
+	}
+	hits[1].Score = 90
+
+	out := mergeHits(hits, "nike", 10)
+	if len(out) != 2 {
+		t.Fatalf("len=%d", len(out))
+	}
+
+	if out[0].Handle != "nike" {
+		t.Fatalf("expected nike first, got %+v", out[0])
+	}
+}

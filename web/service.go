@@ -29,6 +29,10 @@ func (s *Service) All(ctx context.Context) ([]Job, error) {
 }
 
 func (s *Service) Get(ctx context.Context, id string) (Job, error) {
+	if s.repo == nil {
+		return Job{}, fmt.Errorf("job repository is not configured")
+	}
+
 	return s.repo.Get(ctx, id)
 }
 
