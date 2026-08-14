@@ -368,13 +368,10 @@
     const emails = picked.filter(function (p) { return p.channel === "email" && p.contact; });
     const was = picked.filter(function (p) { return p.channel === "whatsapp" && p.msg; });
     if (emails.length) {
-      const list = emails.map(function (p) { return p.contact; }).join(",");
-      window.open("mailto:" + encodeURIComponent(list).replace(/%40/g, "@").replace(/%2C/g, ","), "_blank");
-      window.open("/outreach?emails=" + encodeURIComponent(emails.map(function (p) { return p.contact; }).join(",")), "_blank");
+      window.open("/outreach?emails=" + encodeURIComponent(emails.map(function (p) { return p.contact; }).join(",")), "_blank", "noopener");
+    } else if (was.length) {
+      window.open(was[0].msg, "_blank", "noopener");
     }
-    was.slice(0, 5).forEach(function (p) {
-      window.open(p.msg, "_blank", "noopener");
-    });
     toast("已打开写信或官方聊天窗口，系统不会代发");
   });
 
