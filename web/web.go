@@ -42,7 +42,7 @@ func New(svc *Service, addr string) (*Server, error) {
 			Addr:              addr,
 			ReadHeaderTimeout: 10 * time.Second,
 			ReadTimeout:       60 * time.Second,
-			WriteTimeout:      60 * time.Second,
+			WriteTimeout:      180 * time.Second,
 			IdleTimeout:       120 * time.Second,
 			MaxHeaderBytes:    1 << 20,
 		},

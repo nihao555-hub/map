@@ -8,13 +8,44 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/sync/errgroup"
 )
 
-var hrefAbsRe = regexp.MustCompile(`https?://[^\s"'<>]+`)
+var (
+	hrefAbsRe = regexp.MustCompile(`https?://[^\s"'<>]+`)
+
+	publicIndexMu   sync.Mutex
+	lastPublicIndex time.Time
+)
+
+const publicIndexGap = 2200 * time.Millisecond
+
+func waitPublicIndex(ctx context.Context) error {
+	if testing.Testing() {
+		return nil
+	}
+	publicIndexMu.Lock()
+	wait := publicIndexGap - time.Since(lastPublicIndex)
+	publicIndexMu.Unlock()
+	if wait > 0 {
+		t := time.NewTimer(wait)
+		defer t.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+		}
+	}
+
+	publicIndexMu.Lock()
+	lastPublicIndex = time.Now()
+	publicIndexMu.Unlock()
+	return nil
+}
 
 func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wanted map[string]bool, limit int) ([]Hit, []string, []string) {
 	if c != nil && c.DisablePublic {
@@ -31,7 +62,7 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wante
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(3)
+	g.SetLimit(1)
 
 	for _, q := range queries {
 		q := q
@@ -113,6 +144,10 @@ func (c *Client) searchOneIndex(ctx context.Context, query string) ([]Hit, strin
 		{"brave", c.fetchBrave},
 		{"duckduckgo", c.fetchDuckDuckGo},
 		{"bing", c.fetchBing},
+	}
+
+	if err := waitPublicIndex(ctx); err != nil {
+		return nil, "", err
 	}
 
 	var errs []string
