@@ -1,0 +1,8 @@
+{{define "data-nav"}}
+<aside id="data-nav" aria-label="数据获客">
+  <div class="data-nav-kicker">数据获客</div>
+  <a class="data-nav-item{{if eq . "discover"}} is-on{{end}}" href="/discover">智能引擎搜索</a>
+  <a class="data-nav-item{{if eq . "customs"}} is-on{{end}}" href="/customs">海关数据</a>
+  <a class="data-nav-item{{if eq . "exhibition"}} is-on{{end}}" href="/exhibition">展会获客</a>
+</aside>
+{{end}}

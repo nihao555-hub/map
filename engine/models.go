@@ -76,6 +76,7 @@ type Query struct {
 	Precise   bool     `json:"precise,omitempty"`
 	Country   string   `json:"country,omitempty"`
 	Role      string   `json:"role,omitempty"`
+	Year      int      `json:"year,omitempty"`
 }
 
 // NormalizeRole maps UI input onto buyer (default) or seller search.

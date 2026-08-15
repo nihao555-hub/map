@@ -155,17 +155,16 @@ func TestSearchRequiresKeyword(t *testing.T) {
 }
 
 func TestExhibitionDoesNotSelfCrawl(t *testing.T) {
-	res, err := (&Client{}).Search(context.Background(), Query{Keyword: "Canton Fair", Kind: KindExhibition})
+	res, err := (&Client{DisablePublic: true}).Search(context.Background(), Query{Keyword: "Canton Fair", Kind: KindExhibition})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if len(res.Hits) != 0 {
-		t.Fatalf("expected no self-built hits, got %+v", res.Hits)
+		t.Fatalf("expected no hits when public indexes are off, got %+v", res.Hits)
 	}
-
-	if len(res.Warnings) == 0 || !strings.Contains(strings.Join(res.Warnings, " "), "没有高 star") {
-		t.Fatalf("warnings=%v", res.Warnings)
+	if !strings.Contains(res.Note, "公开知识库") {
+		t.Fatalf("note=%s", res.Note)
 	}
 }
 

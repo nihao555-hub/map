@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gosom/google-maps-scraper/engine"
@@ -29,6 +30,42 @@ func (s *Server) discoverPage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = tmpl.Execute(w, map[string]string{"Tab": tab})
+}
+
+func (s *Server) customsPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
+		return
+	}
+
+	tmpl, ok := s.tmpl["static/templates/customs.html"]
+	if !ok {
+		http.Error(w, "missing tpl", http.StatusInternalServerError)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = tmpl.Execute(w, nil)
+}
+
+func (s *Server) exhibitionPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+
+		return
+	}
+
+	tmpl, ok := s.tmpl["static/templates/exhibition.html"]
+	if !ok {
+		http.Error(w, "missing tpl", http.StatusInternalServerError)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = tmpl.Execute(w, nil)
 }
 
 func (s *Server) outreachPage(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +129,14 @@ func scrubDiscoverResult(res *engine.Result) {
 	res.Sources = []string{}
 	res.Warnings = nil
 	res.TookMS = 0
-	if res.Note != "" {
+	switch res.Kind {
+	case engine.KindCustoms:
+		if res.Note == "" {
+			res.Note = "系统不会代发。逐票企业来自美国海关公开提单，不是全球企业库。"
+		}
+	case engine.KindExhibition:
+		res.Note = "系统不会代发。展会来自公开知识库和公开网页，不是官方全量名录。"
+	default:
 		res.Note = "系统不会代发。公开网页索引按目标国语言展开检索，做不到企业库那种一个国家几千条。"
 	}
 	for i := range res.Hits {
@@ -262,4 +306,42 @@ func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	})
+}
+
+func (s *Server) apiCustomsProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	if name == "" {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "请输入企业名称",
+		})
+
+		return
+	}
+
+	year, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("year")))
+	prof, err := s.engine.LookupCustomsProfile(r.Context(), name, year)
+	if err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	if strings.Contains(strings.ToLower(prof.Note), "kirchner") {
+		prof.Note = "系统不会代发。逐票企业来自美国海关公开提单，不是全球企业库。"
+	}
+
+	renderJSON(w, http.StatusOK, prof)
 }

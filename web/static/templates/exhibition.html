@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>展会获客 · 地图获客</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/css/shell.css">
+  <link rel="stylesheet" href="/static/css/discover.css">
+  <link rel="stylesheet" href="/static/css/exhibition.css">
+</head>
+<body class="wmt exh">
+  {{template "app-rail" "exhibition"}}
+  <div id="app-body">
+    <header id="topbar">
+      <div class="page-heading">展会获客</div>
+      <div class="topbar-right">
+        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
+        <a class="help-btn" href="/api/docs"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</a>
+        <div class="user-box">
+          <span class="avatar"><i data-lucide="user" class="w-4 h-4"></i></span>
+          <span class="user-name">张三</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 chevron"></i>
+        </div>
+      </div>
+    </header>
+    <div class="wmt-shell">
+    {{template "data-nav" "exhibition"}}
+    <main class="exh-main">
+      <header class="exh-head">
+        <p class="exh-kicker">自研展会工作台</p>
+        <h1>按行业找展会，再打开官网</h1>
+        <p class="exh-lead">展会来自公开知识库和公开网页，不是名片扫描，也不是全量官方名录。找到展会后去官网看参展商和联系方式。</p>
+      </header>
+      <form id="exh-form" class="exh-search">
+        <div class="exh-seg" id="role-group">
+          <button type="button" class="is-on" data-role="buyer">找展会</button>
+          <button type="button" data-role="seller">找参展商</button>
+        </div>
+        <input type="text" id="keyword" placeholder="行业或展会名，例如 furniture / 广交会" maxlength="64" autocomplete="off" />
+        <select id="country" aria-label="国家/地区"></select>
+        <button type="submit" id="search-btn">查找</button>
+      </form>
+      <p class="wmt-kw-err" id="keyword-error" hidden></p>
+      <div class="exh-meta">
+        <span id="status">输入行业后查找</span>
+        <span id="hit-count"></span>
+      </div>
+      <div id="board" class="exh-board">
+        <div id="empty" class="exh-empty">
+          <strong>从一条行业词开始</strong>
+          <p>例如 lighting、furniture、广交会。结果是展会或参展商卡片，点开官网自行联系。</p>
+          <div class="exh-examples">
+            <button type="button" data-q="furniture">furniture</button>
+            <button type="button" data-q="LED灯">LED灯</button>
+            <button type="button" data-q="广交会">广交会</button>
+          </div>
+        </div>
+      </div>
+    </main>
+    </div>
+  </div>
+  <aside id="exh-drawer" class="exh-drawer hidden" aria-label="展会详情">
+    <button type="button" class="exh-drawer-close" id="drawer-close">关闭</button>
+    <p class="exh-kicker" id="drawer-kicker">展会</p>
+    <h2 id="drawer-name">—</h2>
+    <p id="drawer-where"></p>
+    <p id="drawer-when"></p>
+    <p id="drawer-snip"></p>
+    <a id="drawer-link" class="exh-open" href="#" target="_blank" rel="noopener">打开官网</a>
+    <p class="exh-note">系统不代发，也不从展会网页批量抽邮箱。</p>
+  </aside>
+  <div id="toast" class="wmt-toast hidden"></div>
+  <script src="/static/js/exhibition.js"></script>
+  <script>lucide.createIcons();</script>
+</body>
+</html>

@@ -196,3 +196,37 @@ svg.lucide, #app-rail svg { flex-shrink: 0; }
 
 .user-name { font-size: 14px; color: var(--text-primary); }
 .user-box .chevron { color: var(--text-aux); }
+
+#data-nav {
+  width: 200px;
+  flex-shrink: 0;
+  height: 100%;
+  background: #fff;
+  border-right: 1px solid var(--border-light);
+  padding: 16px 8px;
+  overflow-y: auto;
+}
+
+.data-nav-kicker {
+  font-size: 12px;
+  color: var(--text-aux);
+  padding: 0 12px 10px;
+}
+
+.data-nav-item {
+  display: block;
+  padding: 9px 12px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.data-nav-item:hover { background: #f5f8ff; color: var(--brand-primary); }
+
+.data-nav-item.is-on {
+  background: #e8f0ff;
+  color: var(--brand-primary);
+  font-weight: 500;
+}

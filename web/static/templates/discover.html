@@ -8,14 +8,15 @@
   <link rel="stylesheet" href="/static/css/shell.css">
   <link rel="stylesheet" href="/static/css/discover.css">
 </head>
-<body class="wmt" data-tab="people">
+<body class="wmt is-landing" data-tab="people">
   <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
     <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 6 9 17l-5-5"/></symbol>
   </svg>
   {{template "app-rail" "discover"}}
   <div id="app-body">
     <header id="topbar">
-      <div class="page-heading">智能引擎</div>
+      <div class="page-heading">智能引擎搜索</div>
       <div class="topbar-right">
         <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
         <a class="help-btn" href="/api/docs"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</a>
@@ -27,37 +28,94 @@
       </div>
     </header>
     <div class="wmt-shell">
+    {{template "data-nav" "discover"}}
     <main class="wmt-main">
-      <section id="results-view" class="wmt-results">
+      <section id="landing-view" class="eng-landing">
+        <div class="eng-hero">
+          <div class="eng-hero-copy">
+            <h1>智能引擎搜索</h1>
+            <ul class="eng-points">
+              <li><svg class="wmt-icon"><use href="#i-check"/></svg>对接公开网页索引，按商品或企业名检索</li>
+              <li><svg class="wmt-icon"><use href="#i-check"/></svg>覆盖 Facebook、LinkedIn 等已支持的公开社媒主页</li>
+              <li><svg class="wmt-icon"><use href="#i-check"/></svg>自动清洗整理页面上已公开的联系方式</li>
+              <li><svg class="wmt-icon"><use href="#i-check"/></svg>一键打开营销窗口，系统不代发</li>
+            </ul>
+            <div class="wmt-seg eng-hero-seg" id="landing-channel" role="tablist" aria-label="联系方式">
+              <button type="button" data-channel="whatsapp">WhatsApp</button>
+              <button type="button" class="is-on" data-channel="email">邮箱</button>
+            </div>
+            <form id="landing-form" class="eng-hero-search">
+              <svg class="wmt-icon" style="color:#8f959e"><use href="#i-search"/></svg>
+              <input type="text" id="landing-keyword" placeholder="请输入企业或商品名称进行搜索" maxlength="64" autocomplete="off" />
+              <label class="wmt-precise"><input type="checkbox" id="landing-precise"> 精准搜索</label>
+              <button type="submit" class="wmt-search-btn">搜索</button>
+            </form>
+          </div>
+          <div class="eng-hero-art" aria-hidden="true">
+            <span class="eng-orb">AI</span>
+            <span class="eng-chip eng-chip-a">@</span>
+            <span class="eng-chip eng-chip-b"></span>
+          </div>
+        </div>
+        <div class="eng-features">
+          <h2>产品特性</h2>
+          <div class="eng-feature-grid">
+            <article>
+              <div class="eng-feature-ico">in</div>
+              <h3>主流社媒覆盖</h3>
+              <p>从已支持的公开主页抽取 WhatsApp 和邮箱，方便快速跟进。不是 20+ 平台的企业库。</p>
+            </article>
+            <article>
+              <div class="eng-feature-ico">▣</div>
+              <h3>多维挖掘</h3>
+              <p>按关键词、国家和平台收窄范围。公开索引做不到一个国家几千条。</p>
+            </article>
+            <article>
+              <div class="eng-feature-ico">↗</div>
+              <h3>打开就写</h3>
+              <p>一键打开系统邮箱或 WhatsApp 官方窗口。系统只给草稿，不会代发。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="results-view" class="wmt-results" hidden>
+        <div class="wmt-crumb">数据获客 &gt; 智能引擎搜索</div>
         <form id="discover-form" class="wmt-query">
           <div class="wmt-query-row">
-            <div class="wmt-seg" id="mode-group" role="tablist" aria-label="搜索模式">
-              <button type="button" class="is-on" data-mode="homepage">私信模式</button>
-              <button type="button" data-mode="marketing">营销模式</button>
+            <div class="wmt-seg" id="channel-group" role="tablist" aria-label="联系方式">
+              <button type="button" data-channel="whatsapp">WhatsApp</button>
+              <button type="button" class="is-on" data-channel="email">邮箱</button>
             </div>
-            <div class="wmt-seg" id="role-group" role="tablist" aria-label="买家或卖家">
+            <div class="wmt-seg" id="mode-group" hidden>
+              <button type="button" data-mode="homepage">私信模式</button>
+              <button type="button" class="is-on" data-mode="marketing">营销模式</button>
+            </div>
+            <div class="wmt-seg" id="role-group" hidden>
               <button type="button" class="is-on" data-role="buyer">找买家</button>
               <button type="button" data-role="seller">找卖家</button>
             </div>
-            <div class="wmt-seg" id="channel-group" hidden>
-              <button type="button" class="is-on" data-channel="email">邮箱</button>
-              <button type="button" data-channel="whatsapp">WhatsApp</button>
-            </div>
-            <label class="wmt-field">
-              <span>国家</span>
-              <select id="country" class="wmt-country" aria-label="国家/地区"></select>
-            </label>
           </div>
           <div class="wmt-query-row">
             <div class="wmt-searchbox">
               <svg class="wmt-icon" style="color:#8f959e"><use href="#i-search"/></svg>
-              <input type="text" id="keyword" name="keyword" placeholder="请输入商品名称，例如 LED灯" maxlength="64" autocomplete="off" />
-              <label class="wmt-precise"><input type="checkbox" id="precise"> 精确</label>
+              <input type="text" id="keyword" name="keyword" placeholder="请输入企业或商品名称进行搜索" maxlength="64" autocomplete="off" />
+              <label class="wmt-precise"><input type="checkbox" id="precise"> 精准搜索</label>
               <button type="submit" class="wmt-search-btn" id="discover-btn">搜索</button>
             </div>
+          </div>
+          <div class="wmt-filter-row">
+            <span class="wmt-filter-label">筛选条件</span>
             <button type="button" class="wmt-plat-toggle" id="plat-toggle" aria-expanded="false">
-              平台 <b id="plat-count">16</b>
+              搜索平台 <b id="plat-count">16</b>
             </button>
+            <label class="wmt-field">
+              <span>搜索引擎</span>
+              <select id="engine-select" class="wmt-country" aria-label="搜索引擎">
+                <option value="public">公开索引</option>
+              </select>
+            </label>
+            <button type="button" class="wmt-link" id="adv-toggle">高级筛选</button>
           </div>
           <input type="hidden" id="limit" name="limit" value="0">
         </form>
@@ -65,12 +123,24 @@
         <div class="wmt-plat-panel hidden" id="plat-panel">
           <div class="wmt-plat-list" id="platform-group"></div>
         </div>
+        <div class="wmt-adv hidden" id="adv-panel">
+          <label class="wmt-field">
+            <span>国家</span>
+            <select id="country" class="wmt-country" aria-label="国家/地区"></select>
+          </label>
+          <label class="wmt-precise" id="home-mode-wrap">
+            <input type="checkbox" id="home-mode"> 搜社媒主页（私信模式）
+          </label>
+          <span class="wmt-adv-note">找买家 / 找卖家只在搜主页时生效。</span>
+        </div>
         <div class="wmt-meta" id="result-toolbar">
-          <div id="discover-status" class="wmt-status">输入商品名称后搜索</div>
-          <div class="wmt-actions" id="market-actions" hidden>
+          <div class="wmt-actions" id="market-actions">
             <button type="button" class="btn-ghost" id="select-all">全选</button>
             <button type="button" class="btn-ghost" id="market-btn">一键营销</button>
+            <button type="button" class="btn-ghost" id="book-btn">加入营销地址簿</button>
+            <button type="button" class="btn-ghost" id="export-btn">全部导出</button>
           </div>
+          <div id="discover-status" class="wmt-status">输入企业或商品名称后搜索</div>
           <div class="wmt-pager" id="pager" hidden>
             <span id="hit-count">共 0 条</span>
             <button type="button" id="page-prev" aria-label="上一页">&lt;</button>
@@ -86,19 +156,17 @@
             <table class="wmt-table" id="discover-table">
               <thead id="discover-thead">
                 <tr>
-                  <th>名称</th>
-                  <th style="width:72px">类型</th>
-                  <th style="width:88px">国家</th>
-                  <th style="width:130px">平台</th>
-                  <th>主页</th>
-                  <th>简介</th>
-                  <th style="width:160px">操作</th>
+                  <th style="width:36px"></th>
+                  <th>邮箱</th>
+                  <th>网页标题</th>
+                  <th>来源链接</th>
+                  <th style="width:120px">操作</th>
                 </tr>
               </thead>
               <tbody id="discover-results"></tbody>
             </table>
             <div id="discover-empty" class="wmt-empty">
-              输入商品名称后搜索。默认找买家，国家可选。
+              输入企业或商品名称后搜索。默认抽取公开邮箱。
               <div class="wmt-examples">试试
                 <button type="button" class="wmt-ex" data-q="LED灯">LED灯</button>
                 <button type="button" class="wmt-ex" data-q="电动工具">电动工具</button>
@@ -107,7 +175,7 @@
             </div>
           </div>
           <aside id="preview-pane" class="wmt-preview" aria-label="主页预览">
-            <div id="preview-empty" class="wmt-preview-empty">点「打开主页」或「去私信」在这里看预览。系统不代发。</div>
+            <div id="preview-empty" class="wmt-preview-empty">勾选后点「一键营销」，或点来源链接在这里写草稿。系统不代发。</div>
             <div id="preview-card" class="hidden">
               <header class="wmt-preview-head">
                 <div>

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>海关数据 · 地图获客</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/css/shell.css">
+  <link rel="stylesheet" href="/static/css/discover.css">
+  <link rel="stylesheet" href="/static/css/customs.css">
+</head>
+<body class="wmt is-landing">
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  </svg>
+  {{template "app-rail" "customs"}}
+  <div id="app-body">
+    <header id="topbar">
+      <div class="page-heading">海关数据</div>
+      <div class="topbar-right">
+        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
+        <a class="help-btn" href="/api/docs"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</a>
+        <div class="user-box">
+          <span class="avatar"><i data-lucide="user" class="w-4 h-4"></i></span>
+          <span class="user-name">张三</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 chevron"></i>
+        </div>
+      </div>
+    </header>
+    <div class="wmt-shell">
+    {{template "data-nav" "customs"}}
+    <main class="wmt-main">
+      <section id="landing-view" class="cus-landing">
+        <h1>海关数据</h1>
+        <p class="cus-fresh">逐票企业来自美国海关公开提单，不是全球企业库。</p>
+        <div class="cus-tabs" id="landing-tabs">
+          <button type="button" class="is-on" data-role="buyer">搜采购商</button>
+          <button type="button" data-role="seller">搜供应商</button>
+        </div>
+        <form id="landing-form" class="cus-search">
+          <select id="landing-field" aria-label="搜索类型">
+            <option value="product">产品</option>
+            <option value="hs">HScode</option>
+          </select>
+          <input type="text" id="landing-keyword" placeholder="请输入产品，例如 shoes" maxlength="64" autocomplete="off" />
+          <label class="wmt-precise"><input type="checkbox" id="landing-precise"> 精确</label>
+          <button type="submit" class="wmt-search-btn">搜索</button>
+        </form>
+        <div class="cus-proof">
+          <article>覆盖美国海运公开提单，可按产品词或 HS 找进口商。</article>
+          <article>搜供应商时，从美国进口提单里的海外发货人汇总。</article>
+          <article>公开数据不含完整金额和联系人库，详情里会如实留空。</article>
+          <article>点公司名打开居中弹层，查看供应商和近期提单。</article>
+        </div>
+      </section>
+
+      <section id="results-view" class="wmt-results" hidden>
+        <div class="wmt-crumb">海关数据 &gt; 数据搜索</div>
+        <div class="cus-tabs" id="role-tabs">
+          <button type="button" class="is-on" data-role="buyer">搜采购商</button>
+          <button type="button" data-role="seller">搜供应商</button>
+        </div>
+        <form id="customs-form" class="wmt-query">
+          <div class="wmt-query-row">
+            <div class="wmt-searchbox">
+              <select id="search-field" class="cus-field" aria-label="搜索类型">
+                <option value="product">产品</option>
+                <option value="hs">HScode</option>
+              </select>
+              <input type="text" id="keyword" placeholder="请输入产品，例如 shoes" maxlength="64" autocomplete="off" />
+              <label class="wmt-precise"><input type="checkbox" id="precise"> 精确</label>
+              <button type="submit" class="wmt-search-btn" id="search-btn">搜索</button>
+            </div>
+          </div>
+          <div class="cus-filters" id="filter-box">
+            <label class="wmt-field">国家/地区
+              <select id="country" class="wmt-country" aria-label="国家/地区"></select>
+            </label>
+            <label class="wmt-field">时间范围
+              <select id="year" class="wmt-country" aria-label="时间范围"></select>
+            </label>
+            <label class="wmt-field">HS Code
+              <input type="text" id="hs" class="cus-hs" placeholder="可选" maxlength="12">
+            </label>
+            <label class="wmt-precise"><input type="checkbox" id="exclude-logistics" checked> 排除物流公司</label>
+            <button type="button" class="btn-ghost" id="reset-btn">重置</button>
+            <button type="submit" class="wmt-search-btn">查询</button>
+          </div>
+        </form>
+        <p class="wmt-kw-err" id="keyword-error" hidden></p>
+        <div class="wmt-meta">
+          <div class="wmt-actions">
+            <button type="button" class="btn-ghost" id="select-all">全选</button>
+            <button type="button" class="btn-ghost" id="market-btn">一键营销</button>
+            <button type="button" class="btn-ghost" id="book-btn">加入营销地址簿</button>
+          </div>
+          <div id="status" class="wmt-status">输入产品后搜索</div>
+          <div class="wmt-pager" id="pager" hidden>
+            <span id="hit-count">共 0 条</span>
+            <button type="button" id="page-prev">&lt;</button>
+            <span id="page-cur">1</span>
+            <span class="wmt-pager-sep">/</span>
+            <span id="page-total">1</span>
+            <button type="button" id="page-next">&gt;</button>
+          </div>
+        </div>
+        <div class="wmt-table-wrap">
+          <table class="wmt-table" id="customs-table">
+            <thead>
+              <tr>
+                <th style="width:36px"></th>
+                <th>公司名称</th>
+                <th style="width:140px">匹配提单数</th>
+                <th style="width:160px">匹配金额 USD</th>
+                <th style="width:140px">匹配交易时间</th>
+              </tr>
+            </thead>
+            <tbody id="results"></tbody>
+          </table>
+          <div id="empty" class="wmt-empty">输入产品名称后搜索采购商。逐票买家目前来自美国海关公开提单。</div>
+        </div>
+      </section>
+    </main>
+    </div>
+  </div>
+
+  <div id="cus-modal" class="cus-modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-name">
+    <div class="cus-modal-card">
+      <header class="cus-modal-head">
+        <div>
+          <h2 id="modal-name">—</h2>
+          <span class="cus-tag" id="modal-role">采购商</span>
+        </div>
+        <div class="cus-modal-actions">
+          <button type="button" class="btn-ghost" id="modal-open">查看详情</button>
+          <button type="button" class="wmt-search-btn" id="modal-save">录入客户</button>
+          <button type="button" class="btn-ghost" id="modal-close">关闭</button>
+        </div>
+      </header>
+      <nav class="cus-modal-tabs" id="modal-tabs">
+        <button type="button" class="is-on" data-tab="basic">基本信息</button>
+        <button type="button" data-tab="contacts">联系人</button>
+        <button type="button" data-tab="records">采购记录</button>
+        <button type="button" data-tab="suppliers">供应商</button>
+        <button type="button" data-tab="ship">货运信息</button>
+        <button type="button" data-tab="chain">采供链穿透</button>
+      </nav>
+      <div class="cus-stat-row">
+        <article><span>最大供应商</span><b id="stat-supplier">—</b></article>
+        <article><span>进口额</span><b id="stat-amount">公开提单未提供</b></article>
+        <article><span>进口次数</span><b id="stat-count">—</b></article>
+        <article><span>最近进口时间</span><b id="stat-time">—</b></article>
+      </div>
+      <div id="tab-basic" class="cus-tab-body">
+        <dl class="cus-dl">
+          <div><dt>国家/地区</dt><dd id="info-country">—</dd></div>
+          <div><dt>地址</dt><dd id="info-address">—</dd></div>
+          <div><dt>海关记录</dt><dd id="info-shipments">—</dd></div>
+          <div><dt>年份</dt><dd id="info-year">—</dd></div>
+        </dl>
+      </div>
+      <div id="tab-contacts" class="cus-tab-body hidden">公开提单没有联系人库。可用智能引擎按公司名抽公开邮箱。</div>
+      <div id="tab-records" class="cus-tab-body hidden"></div>
+      <div id="tab-suppliers" class="cus-tab-body hidden"></div>
+      <div id="tab-ship" class="cus-tab-body hidden"></div>
+      <div id="tab-chain" class="cus-tab-body hidden">公开提单做不到采供链穿透。这里只展示本页已汇总的供应商。</div>
+      <div class="cus-modal-foot">公开提单匹配到这家企业的货运摘要。金额、完整联系人需企业库，本页不会编造。</div>
+    </div>
+  </div>
+  <div id="toast" class="wmt-toast hidden"></div>
+  <script src="/static/js/customs.js"></script>
+  <script>lucide.createIcons();</script>
+</body>
+</html>

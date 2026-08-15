@@ -53,6 +53,17 @@ func TestSearchCountriesPutsThailandAfterUnlimited(t *testing.T) {
 	}
 }
 
+func TestInferCountryFromTextChinaNotIndia(t *testing.T) {
+	code, label := inferCountryFromText("China", "")
+	if code != "CN" || label != "中国" {
+		t.Fatalf("China -> %s %s", code, label)
+	}
+	code, _ = inferCountryFromText("India", "")
+	if code != "IN" {
+		t.Fatalf("India -> %s", code)
+	}
+}
+
 func TestInferHitCountry(t *testing.T) {
 	code, label := inferHitCountry(Hit{
 		Platform: PlatformFacebook,

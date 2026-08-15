@@ -17,6 +17,11 @@ func newTestServer(t *testing.T, dir string) *Server {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	if srv.engine != nil {
+		srv.engine.DisablePublic = true
+		srv.engine.CustomsBaseURL = ""
+		srv.engine.WikidataURL = ""
+	}
 
 	return srv
 }

@@ -1,0 +1,193 @@
+body.exh { background: #efe8dc; }
+body.exh #app-body { background: #f4efe6; }
+
+.exh-main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 28px 32px 40px;
+}
+
+.exh-head { max-width: 720px; margin-bottom: 22px; }
+.exh-kicker {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: #0f766e;
+  font-weight: 600;
+}
+.exh-head h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 650;
+  color: #1c1917;
+  letter-spacing: -.02em;
+}
+.exh-lead {
+  margin: 0;
+  color: #57534e;
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.exh-search {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid #e7e0d4;
+  border-radius: 18px;
+  padding: 10px;
+  box-shadow: 0 8px 24px rgba(28, 25, 23, .04);
+}
+.exh-seg {
+  display: inline-flex;
+  background: #f5f0e8;
+  border-radius: 12px;
+  padding: 3px;
+}
+.exh-seg button {
+  border: 0;
+  background: transparent;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: #57534e;
+  cursor: pointer;
+}
+.exh-seg button.is-on { background: #0f766e; color: #fff; }
+.exh-search input {
+  flex: 1;
+  min-width: 220px;
+  height: 36px;
+  border: 0;
+  outline: none;
+  font-size: 14px;
+  background: transparent;
+}
+.exh-search select {
+  height: 36px;
+  border: 0;
+  background: #f5f0e8;
+  border-radius: 10px;
+  padding: 0 10px;
+  color: #44403c;
+}
+.exh-search button[type="submit"] {
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: #0f766e;
+  color: #fff;
+  font-size: 14px;
+}
+.exh-search button[type="submit"]:disabled { opacity: .65; cursor: wait; }
+
+.exh-meta {
+  display: flex;
+  justify-content: space-between;
+  margin: 14px 2px;
+  color: #78716c;
+  font-size: 12px;
+}
+
+.exh-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.exh-empty {
+  grid-column: 1 / -1;
+  background: #fff;
+  border: 1px dashed #d6cbb8;
+  border-radius: 16px;
+  padding: 36px 20px;
+  text-align: center;
+  color: #78716c;
+}
+.exh-empty strong { display: block; color: #1c1917; font-size: 16px; margin-bottom: 8px; }
+.exh-examples { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+.exh-examples button {
+  border: 1px solid #d6cbb8;
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 12px;
+  color: #44403c;
+  cursor: pointer;
+}
+
+.exh-card {
+  background: #fffaf3;
+  border: 1px solid #e7e0d4;
+  border-radius: 16px;
+  padding: 16px 16px 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 168px;
+  box-shadow: 0 1px 0 rgba(28,25,23,.04);
+}
+.exh-card:hover { border-color: #0f766e; }
+.exh-when {
+  align-self: flex-start;
+  font-size: 11px;
+  letter-spacing: .04em;
+  color: #0f766e;
+  background: #ecfdf8;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.exh-card h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #1c1917;
+  line-height: 1.35;
+}
+.exh-where { margin: 0; color: #78716c; font-size: 12px; }
+.exh-snip {
+  margin: 0;
+  color: #57534e;
+  font-size: 13px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.exh-card-foot { margin-top: auto; color: #0f766e; font-size: 12px; }
+
+.exh-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(380px, 92vw);
+  height: 100%;
+  background: #fffaf3;
+  border-left: 1px solid #e7e0d4;
+  z-index: 30;
+  padding: 24px 22px;
+  overflow: auto;
+  box-shadow: -12px 0 32px rgba(28,25,23,.08);
+}
+.exh-drawer h2 { margin: 8px 0 10px; font-size: 22px; }
+.exh-drawer-close {
+  float: right;
+  border: 0;
+  background: none;
+  color: #78716c;
+  cursor: pointer;
+}
+.exh-open {
+  display: inline-flex;
+  margin-top: 16px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: #0f766e;
+  color: #fff;
+  text-decoration: none;
+}
+.exh-note { color: #78716c; font-size: 12px; line-height: 1.6; margin-top: 16px; }

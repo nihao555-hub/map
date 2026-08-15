@@ -17,12 +17,14 @@ import (
 )
 
 const (
-	defaultHTTPTimeout = 45 * time.Second
-	sidecarProbeWait   = 800 * time.Millisecond
-	maxBodyBytes       = 2 << 20
-	defaultTikTokURL   = "http://127.0.0.1:8091"
-	defaultF2URL       = "http://127.0.0.1:8092"
-	browserUA          = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+	defaultHTTPTimeout    = 45 * time.Second
+	sidecarProbeWait      = 800 * time.Millisecond
+	maxBodyBytes          = 2 << 20
+	defaultTikTokURL      = "http://127.0.0.1:8091"
+	defaultF2URL          = "http://127.0.0.1:8092"
+	defaultKirchnerURL    = "https://www.kirchnerdata.com"
+	defaultWikidataSPARQL = "https://query.wikidata.org/sparql"
+	browserUA             = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
 	ddgCooldown   = 2 * time.Minute
 	bingCooldown  = 2 * time.Minute
@@ -41,11 +43,15 @@ type Client struct {
 	// SkipExpand turns off sister-profile expansion (unit tests with shared mock HTML).
 	SkipExpand bool
 	// AIBaseURL is an OpenAI-compatible local endpoint (Ollama default :11434/v1).
-	AIBaseURL  string
-	AIModel    string
-	braveUntil atomic.Int64
-	ddgUntil   atomic.Int64
-	bingUntil  atomic.Int64
+	AIBaseURL string
+	AIModel   string
+	// CustomsBaseURL is Kirchner's public US bill-of-lading API (no key).
+	CustomsBaseURL string
+	// WikidataURL is the SPARQL endpoint used by 展会获客.
+	WikidataURL string
+	braveUntil  atomic.Int64
+	ddgUntil    atomic.Int64
+	bingUntil   atomic.Int64
 }
 
 // OptionsFromEnv wires sidecar base URLs.
@@ -54,6 +60,8 @@ type Client struct {
 //	ENGINE_F2_SIDECAR_URL      Johnserf-Seed/f2        (default http://127.0.0.1:8092)
 //	ENGINE_AI_BASE_URL         optional OpenAI-compatible local LLM (default http://127.0.0.1:11434/v1)
 //	ENGINE_AI_MODEL            optional model name (default qwen2.5:7b)
+//	ENGINE_KIRCHNER_URL        Kirchner public US BOL API (default https://www.kirchnerdata.com)
+//	ENGINE_WIKIDATA_SPARQL     Wikidata SPARQL (default https://query.wikidata.org/sparql)
 //	TIKHUB_API_TOKEN           optional paid API when Douyin keyword search is needed
 func OptionsFromEnv() *Client {
 	timeout := defaultHTTPTimeout
@@ -73,13 +81,25 @@ func OptionsFromEnv() *Client {
 		f2 = defaultF2URL
 	}
 
+	kirchner := strings.TrimRight(strings.TrimSpace(os.Getenv("ENGINE_KIRCHNER_URL")), "/")
+	if kirchner == "" {
+		kirchner = defaultKirchnerURL
+	}
+
+	wikidata := strings.TrimRight(strings.TrimSpace(os.Getenv("ENGINE_WIKIDATA_SPARQL")), "/")
+	if wikidata == "" {
+		wikidata = defaultWikidataSPARQL
+	}
+
 	return &Client{
-		HTTP:        newBrowserHTTPClient(timeout),
-		TikTokURL:   tiktok,
-		F2URL:       f2,
-		TikHubToken: strings.TrimSpace(firstNonEmpty(os.Getenv("TIKHUB_API_TOKEN"), os.Getenv("TIKHUB_API_KEY"))),
-		AIBaseURL:   strings.TrimSpace(os.Getenv("ENGINE_AI_BASE_URL")),
-		AIModel:     strings.TrimSpace(os.Getenv("ENGINE_AI_MODEL")),
+		HTTP:           newBrowserHTTPClient(timeout),
+		TikTokURL:      tiktok,
+		F2URL:          f2,
+		TikHubToken:    strings.TrimSpace(firstNonEmpty(os.Getenv("TIKHUB_API_TOKEN"), os.Getenv("TIKHUB_API_KEY"))),
+		AIBaseURL:      strings.TrimSpace(os.Getenv("ENGINE_AI_BASE_URL")),
+		AIModel:        strings.TrimSpace(os.Getenv("ENGINE_AI_MODEL")),
+		CustomsBaseURL: kirchner,
+		WikidataURL:    wikidata,
 	}
 }
 

@@ -75,6 +75,8 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.viewJob(w, r)
 	})
 	mux.HandleFunc("/discover", ans.discoverPage)
+	mux.HandleFunc("/customs", ans.customsPage)
+	mux.HandleFunc("/exhibition", ans.exhibitionPage)
 	mux.HandleFunc("/outreach", ans.outreachPage)
 	mux.HandleFunc("/", ans.index)
 
@@ -137,6 +139,7 @@ func New(svc *Service, addr string) (*Server, error) {
 	mux.HandleFunc("/api/v1/discover/platforms", ans.apiDiscoverPlatforms)
 	mux.HandleFunc("/api/v1/discover/countries", ans.apiDiscoverCountries)
 	mux.HandleFunc("/api/v1/discover/sources", ans.apiDiscoverSources)
+	mux.HandleFunc("/api/v1/discover/customs/profile", ans.apiCustomsProfile)
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 
@@ -160,6 +163,8 @@ func New(svc *Service, addr string) (*Server, error) {
 	tmplsKeys := []string{
 		"static/templates/index.html",
 		"static/templates/discover.html",
+		"static/templates/customs.html",
+		"static/templates/exhibition.html",
 		"static/templates/outreach.html",
 		"static/templates/job_rows.html",
 		"static/templates/job_row.html",
@@ -168,15 +173,25 @@ func New(svc *Service, addr string) (*Server, error) {
 	}
 
 	pagesWithRail := map[string]struct{}{
-		"static/templates/index.html":    {},
-		"static/templates/discover.html": {},
-		"static/templates/outreach.html": {},
+		"static/templates/index.html":      {},
+		"static/templates/discover.html":   {},
+		"static/templates/customs.html":    {},
+		"static/templates/exhibition.html": {},
+		"static/templates/outreach.html":   {},
+	}
+	pagesWithDataNav := map[string]struct{}{
+		"static/templates/discover.html":   {},
+		"static/templates/customs.html":    {},
+		"static/templates/exhibition.html": {},
 	}
 
 	for _, key := range tmplsKeys {
 		files := []string{key}
 		if _, ok := pagesWithRail[key]; ok {
 			files = append(files, "static/templates/app_rail.html")
+		}
+		if _, ok := pagesWithDataNav[key]; ok {
+			files = append(files, "static/templates/data_nav.html")
 		}
 
 		tmp, err := template.ParseFS(static, files...)

@@ -9,7 +9,7 @@
   const toastEl = document.getElementById("toast");
 
   let catalog = [];
-  let mode = "homepage";
+  let mode = "marketing";
   let channel = "email";
   let role = "buyer";
   let lastHits = [];
@@ -146,9 +146,56 @@
     keyword.addEventListener("blur", liveValidate);
   }
 
+  function showResultsWorkbench() {
+    const landing = document.getElementById("landing-view");
+    const results = document.getElementById("results-view");
+    if (landing) landing.hidden = true;
+    if (results) results.hidden = false;
+    document.body.classList.remove("is-landing");
+  }
+
+  function bindLanding() {
+    const lf = document.getElementById("landing-form");
+    if (!lf) return;
+    lf.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      const lk = document.getElementById("landing-keyword");
+      const lp = document.getElementById("landing-precise");
+      if (lk) keyword.value = lk.value;
+      if (lp) {
+        const p = document.getElementById("precise");
+        if (p) p.checked = lp.checked;
+      }
+      showResultsWorkbench();
+      doSearch(keyword.value);
+    });
+    document.querySelectorAll("#landing-channel button[data-channel]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setChannel(btn.getAttribute("data-channel"));
+      });
+    });
+  }
+
+  function bindAdv() {
+    const btn = document.getElementById("adv-toggle");
+    const panel = document.getElementById("adv-panel");
+    if (btn && panel) {
+      btn.addEventListener("click", function () {
+        panel.classList.toggle("hidden");
+      });
+    }
+    const home = document.getElementById("home-mode");
+    if (home) {
+      home.addEventListener("change", function () {
+        setMode(home.checked ? "homepage" : "marketing");
+      });
+    }
+  }
+
   function bindExamples() {
     document.querySelectorAll(".wmt-ex").forEach(function (btn) {
       btn.addEventListener("click", function () {
+        showResultsWorkbench();
         doSearch(btn.getAttribute("data-q") || "");
       });
     });
@@ -275,10 +322,13 @@
     if (roleEl) roleEl.hidden = marketing;
     const actions = document.getElementById("market-actions");
     if (actions) actions.hidden = !marketing;
+    const home = document.getElementById("home-mode");
+    if (home) home.checked = !marketing;
     const thead = document.getElementById("discover-thead");
     if (thead) {
       thead.innerHTML = marketing
-        ? "<tr><th style=\"width:36px\"></th><th>账号或邮箱</th><th>网页标题</th><th>来源链接</th><th style=\"width:120px\">操作</th></tr>"
+        ? "<tr><th style=\"width:36px\"></th><th>" + (channel === "whatsapp" ? "WhatsApp" : "邮箱") +
+          "</th><th>网页标题</th><th>来源链接</th><th style=\"width:120px\">操作</th></tr>"
         : "<tr><th>名称</th><th style=\"width:72px\">类型</th><th style=\"width:88px\">国家</th><th style=\"width:130px\">平台</th><th>主页</th><th>简介</th><th style=\"width:160px\">操作</th></tr>";
     }
     if (prev !== mode && keyword.value) {
@@ -293,7 +343,15 @@
     document.querySelectorAll("button[data-channel]").forEach(function (el) {
       el.classList.toggle("is-on", el.getAttribute("data-channel") === channel);
     });
-    if (mode === "marketing" && keyword.value) doSearch(keyword.value);
+    const thead = document.getElementById("discover-thead");
+    if (thead && mode === "marketing") {
+      thead.innerHTML = "<tr><th style=\"width:36px\"></th><th>" +
+        (channel === "whatsapp" ? "WhatsApp" : "邮箱") +
+        "</th><th>网页标题</th><th>来源链接</th><th style=\"width:120px\">操作</th></tr>";
+    }
+    if (mode === "marketing" && keyword.value && !document.getElementById("results-view").hidden) {
+      doSearch(keyword.value);
+    }
   }
 
   function loadPlatforms() {
@@ -341,6 +399,7 @@
     }
     showKeywordError("");
     keyword.value = kw;
+    showResultsWorkbench();
     const nPlat = selectedPlatforms().length;
     status.textContent = mode === "marketing"
       ? "正在检索公开邮箱 / WhatsApp…"
@@ -639,6 +698,54 @@
     boxes.forEach(function (b) { b.checked = !allOn; });
   });
 
+  function selectedContacts() {
+    const picked = pickedRows();
+    if (picked.length) return picked;
+    return lastHits.map(function (h) {
+      return { channel: h.channel || "", contact: h.contact || "", msg: h.message_url || "" };
+    });
+  }
+
+  document.getElementById("book-btn").addEventListener("click", function () {
+    const picked = pickedRows();
+    if (!picked.length) {
+      toast("请先勾选要加入地址簿的联系方式");
+      return;
+    }
+    const lines = picked.map(function (p) { return p.contact; }).filter(Boolean);
+    if (!lines.length) {
+      toast("勾选的行没有公开联系方式");
+      return;
+    }
+    const text = lines.join("\n");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        toast("已复制 " + lines.length + " 条到剪贴板，当作本机地址簿");
+      });
+      return;
+    }
+    toast("请手动复制联系方式");
+  });
+
+  document.getElementById("export-btn").addEventListener("click", function () {
+    const rows = selectedContacts();
+    if (!rows.length) {
+      toast("没有可导出的联系方式");
+      return;
+    }
+    const lines = ["channel,contact,url"].concat(rows.map(function (p) {
+      return [p.channel, p.contact, p.msg].map(function (v) {
+        return '"' + String(v || "").replace(/"/g, '""') + '"';
+      }).join(",");
+    }));
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "engine-contacts.csv";
+    a.click();
+    toast("已导出 " + rows.length + " 条");
+  });
+
   document.getElementById("market-btn").addEventListener("click", function () {
     const picked = pickedRows();
     if (!picked.length) {
@@ -775,6 +882,8 @@
   }
   function escapeAttr(s) { return escapeHtml(s).replace(/`/g, ""); }
 
+  bindLanding();
+  bindAdv();
   bindMode();
   bindChannel();
   bindRole();
@@ -783,8 +892,9 @@
   bindKeywordFields();
   bindExamples();
   bindPlatToggle();
-  setMode("homepage");
+  setMode("marketing");
   setRole("buyer");
+  setChannel("email");
   loadPlatforms();
   loadCountries();
 })();

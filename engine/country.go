@@ -49,7 +49,7 @@ var SearchCountries = []CountryInfo{
 	{Code: "EG", Label: "埃及", Query: "Egypt", DDGKL: "eg-en", BingCC: "EG"},
 	{Code: "TW", Label: "台湾", Query: "Taiwan", DDGKL: "tw-zh", BingCC: "TW"},
 	{Code: "HK", Label: "香港", Query: "Hong Kong", DDGKL: "hk-en", BingCC: "HK"},
-	{Code: "CN", Label: "中国", Query: "", DDGKL: "cn-zh", BingCC: "CN"},
+	{Code: "CN", Label: "中国", Query: "China", DDGKL: "cn-zh", BingCC: "CN"},
 }
 
 type regionCtxKey struct{}

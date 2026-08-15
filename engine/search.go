@@ -11,9 +11,11 @@ import (
 )
 
 const (
-	maxLimit            = 500
-	messagePolicyNote   = "系统不会代发。公开索引按目标国语言展开检索词；做不到企业库那种一个国家几千条。"
-	marketingPolicyNote = "系统不会代发。"
+	maxLimit             = 500
+	messagePolicyNote    = "系统不会代发。公开索引按目标国语言展开检索词；做不到企业库那种一个国家几千条。"
+	marketingPolicyNote  = "系统不会代发。"
+	customsPolicyNote    = "系统不会代发。逐票企业来自美国海关公开提单，不是全球企业库。"
+	exhibitionPolicyNote = "系统不会代发。展会来自公开知识库和公开网页，不是官方全量名录。"
 )
 
 // Search runs customer discovery. People search uses public web indexes by default
@@ -67,9 +69,9 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 	case KindMarketing:
 		res, err = c.searchMarketing(ctx, q)
 	case KindExhibition:
-		res = exhibitionUnavailable(q.Keyword)
+		res, err = c.searchExhibition(ctx, q)
 	case KindCustoms:
-		res = customsUnavailable(q.Keyword)
+		res, err = c.searchCustoms(ctx, q)
 	default:
 		return Result{}, fmt.Errorf("unknown kind %q", q.Kind)
 	}
@@ -78,7 +80,7 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 		return Result{}, err
 	}
 
-	if q.Precise {
+	if q.Precise && q.Kind != KindCustoms && q.Kind != KindExhibition {
 		res.Hits = filterPreciseHits(res.Hits, q.Keyword)
 	}
 
@@ -92,6 +94,12 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 	}
 	if res.Note == "" && q.Kind == KindMarketing {
 		res.Note = marketingPolicyNote
+	}
+	if res.Note == "" && q.Kind == KindCustoms {
+		res.Note = customsPolicyNote
+	}
+	if res.Note == "" && q.Kind == KindExhibition {
+		res.Note = exhibitionPolicyNote
 	}
 
 	return res, nil
@@ -199,30 +207,6 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 		Note:     messagePolicyNote,
 		Expanded: expanded,
 	}, nil
-}
-
-func exhibitionUnavailable(keyword string) Result {
-	return Result{
-		Hits: nil,
-		Warnings: []string{
-			"展会获客没有高 star、仍在维护、许可证可商用的开源项目可复用（10times 相关仓库均为 0–1★ 且停更）。",
-			"下一步按原优先级走第三方 API（例如 Apify 10times actor），而不是自研爬虫。",
-		},
-		Sources: []string{},
-		Note:    "关键词「" + keyword + "」暂未检索。圈选模块「展会获客」待接入第三方展会 API。",
-	}
-}
-
-func customsUnavailable(keyword string) Result {
-	return Result{
-		Hits: nil,
-		Warnings: []string{
-			"海关数据没有高 star 开源库可克隆（Customs-Crawler ~12★ 且依赖 Cookie 绕 Cloudflare，不嵌入）。",
-			"已有 PR #12 复用 Kirchner / ImportYeti 第三方提单 API，本需求按「先 OSS、没有再第三方」先不自研。",
-		},
-		Sources: []string{},
-		Note:    "关键词「" + keyword + "」请在海关 PR 合并后使用逐票提单；此处不自研爬虫。",
-	}
 }
 
 func mergeHits(items []Hit, keyword string, limit int, role, country string) []Hit {

@@ -11,8 +11,8 @@
 | 模块 | 能不能做 | 采用的盘子 | 不采用 |
 |---|---|---|---|
 | **智能引擎搜索**（抖音 / TikTok 找人、主页） | **能**，本 PR 已接入 | [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api)（6563★ MIT，2026-07 仍在推）关键词搜人；[Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2)（2603★ Apache-2.0，2026-04）TikTok 作品搜索抽作者、抖音主页 URL→资料 | [NanmiCoder/MediaCrawler](https://github.com/NanmiCoder/MediaCrawler) 62389★、当天仍在推，但是 **非商业学习许可**，不能进商用产品。[Evil0ctal/Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) 19352★，主分支 2025-10 后再无推送，且没有关键词搜人接口 |
-| **展会获客** | **暂缓** | 无 | 10times 相关仓库均为 0–1★ 且停更，没有可复用盘子。下一步走第三方（Apify 等），不自研 |
-| **海关数据** | **已有另一条 PR** | 无高 star OSS | `hughie21/Customs-Crawler` ~12★。PR #12 已接 Kirchner / ImportYeti 第三方提单 API |
+| **展会获客** | **能（公开知识库 + 公开网页）** | Wikidata SPARQL（trade fair）+ 现有 DuckDuckGo / Bing / Brave 公开检索 | 不自研名片 OCR，不链 GPL 爬虫。前端是自研卡片工作台，不复刻外贸通（他们没有独立展会列表页） |
+| **海关数据** | **能（美国公开提单）** | [Kirchner 公开 API](https://www.kirchnerdata.com/llms.txt) 无 key，约 500 次/IP/天 | `hughie21/Customs-Crawler` ~12★。没有全球企业库和金额字段。UI 复刻外贸通：搜采购商/供应商 + 居中弹层 |
 
 ## 私信
 
@@ -30,12 +30,11 @@ export TIKHUB_API_TOKEN=...          # 抖音「关键词搜人」f2 仍为 🔵
 ./google_maps_scraper -web
 ```
 
-打开 `/discover`。智能引擎和发开发信用深色窄栏；地图获客回退到加窄侧栏之前最新一版（`8126d0e`：顶栏模块导航 + 左侧表单 + 右侧地图）。智能引擎**不是地图搜店**，页面上可选两种模式：
+打开 `/discover`。智能引擎、海关数据、展会获客共用深色窄栏 + 白底「数据获客」子菜单；地图获客仍是顶栏模块导航，不加窄侧栏、不加海关/展会入口。
 
-1. **私信模式**（默认）：输入商品关键词，并选择**找买家**（默认，采购商 / 进口商）或**找卖家**（厂家 / 批发），**输入时选国家**。结果表：名称、类型、国家、平台、主页、简介、打开主页。国家优先从主页标题/简介识别，识别不到时用所选市场；抖音/小红书等默认中国。点击「打开主页 / 去私信」在**右侧预览栏**写草稿。系统不代发。
-2. **营销模式**（对齐网易外贸通智能引擎的用法，数据走公开页）：按 [s0md3v/Photon](https://github.com/s0md3v/Photon)（约 1.3 万★）的 intel 流程——先检索定位页面，再抓取页面里已公开的 **邮箱 / WhatsApp**。结果表「账号或邮箱 / 网页标题 / 来源链接」。「一键营销」在右侧写信，**不会代发**。Photon 为 GPL，不链进 Go 二进制。
+智能引擎按网易外贸通复刻：空搜是深蓝落地页（WhatsApp / 邮箱 + 精准搜索），搜完后是「邮箱 / 网页标题 / 来源链接」结果表。数据走公开网页索引，不是他们的企业库。营销模式按 [s0md3v/Photon](https://github.com/s0md3v/Photon)（GPL，不链进 Go）的 intel 流程抽公开邮箱 / WhatsApp。「一键营销」只打开系统窗口，**不会代发**。
 
-网易外贸通结果页是**相关企业列表**：点公司名看官网、社交主页、联系人邮箱/电话。他们有约 3000 万企业库，公开网页索引做不到同等条数，也没有海关/联系人库。本页用公开社媒主页把同一套列表列出来。
+高级筛选里仍可切到「搜社媒主页」（原私信模式）：找买家/卖家、国家、16 个社媒。点击「打开主页 / 去私信」在右侧预览栏写草稿。系统不代发。
 
 两种模式共用已支持的社媒勾选；营销模式查询条数有上限，避免一次打满公开检索限流。
 

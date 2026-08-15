@@ -24,30 +24,23 @@ func TestDiscoverPageRenders(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"智能引擎搜索", "discover-form", "发开发信", "地图获客",
-		"私信模式", "营销模式", "一键营销", "preview-pane", "共 0 条", "/static/js/discover.js",
-		`id="app-rail"`, "/static/css/shell.css", "rail-item is-active",
-		"精确", "试试", "请输入商品名称，例如 LED灯", "找买家", "找卖家", "国家/地区",
-		`id="country"`, `id="platform-group"`, `id="plat-toggle"`, "wmt-query",
+		"WhatsApp", "邮箱", "一键营销", "加入营销地址簿", "全部导出",
+		"preview-pane", "共 0 条", "/static/js/discover.js",
+		`id="app-rail"`, `id="data-nav"`, "/static/css/shell.css", "rail-item is-active",
+		"精准搜索", "产品特性", "海关数据", "展会获客",
+		`id="platform-group"`, `id="plat-toggle"`, "wmt-query", "筛选条件",
+		"私信模式", "找买家", "找卖家", "国家/地区", `id="country"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
 	}
 
-	for _, forbid := range []string{
-		"wmt-hero", "wmt-ai-orb", "wmt-features", "landing-form", "platform-group-landing",
-		"智能引擎能为你做什么", "不是地图搜店", "开发信跟进",
-	} {
-		if strings.Contains(body, forbid) {
-			t.Fatalf("landing chrome %q should not appear", forbid)
-		}
+	if !strings.Contains(body, "eng-hero") || !strings.Contains(body, "landing-form") {
+		t.Fatal("discover should show the Waimao-style landing")
 	}
 
-	if strings.Contains(body, "wmt-side") || strings.Contains(body, "wmt-tabs") {
-		t.Fatal("discover should use the map app-rail, not a second sidebar")
-	}
-
-	if strings.Contains(body, "工作台") || strings.Contains(body, "全球搜索") || strings.Contains(body, "智能推荐") || strings.Contains(body, "展会买家") || strings.Contains(body, "市场洞察") {
+	if strings.Contains(body, "全球搜索") || strings.Contains(body, "智能推荐") || strings.Contains(body, "市场洞察") {
 		t.Fatal("unshipped Waimao Tong modules should not appear")
 	}
 }
@@ -210,6 +203,10 @@ func TestDiscoverExhibitionDoesNotCrawl(t *testing.T) {
 	if len(hits) != 0 {
 		t.Fatalf("hits=%v", hits)
 	}
+	note, _ := payload["note"].(string)
+	if !strings.Contains(note, "公开知识库") {
+		t.Fatalf("note=%v", payload["note"])
+	}
 	if warns, ok := payload["warnings"].([]any); ok && len(warns) > 0 {
 		t.Fatalf("warnings leaked to UI: %v", warns)
 	}
@@ -268,7 +265,55 @@ func TestOutreachPageRenders(t *testing.T) {
 	if !strings.Contains(body, `id="app-rail"`) || !strings.Contains(body, "/static/css/shell.css") {
 		t.Fatal("outreach should share the map app-rail")
 	}
-	if strings.Contains(body, "wmt-side") || strings.Contains(body, "wmt-tabs") {
-		t.Fatal("outreach should use the map app-rail, not a second sidebar")
+	if strings.Contains(body, `id="data-nav"`) || strings.Contains(body, "海关数据") || strings.Contains(body, "展会获客") {
+		t.Fatal("outreach should not include data-acquisition submenu")
+	}
+}
+
+func TestCustomsPageRenders(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/customs", nil)
+	rec := httptest.NewRecorder()
+	srv.customsPage(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"海关数据", "搜采购商", "搜供应商", "匹配金额 USD", "cus-modal",
+		`id="data-nav"`, "/static/js/customs.js", "排除物流公司",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
+func TestExhibitionPageRenders(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/exhibition", nil)
+	rec := httptest.NewRecorder()
+	srv.exhibitionPage(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"展会获客", "自研展会工作台", "找展会", "找参展商",
+		`id="data-nav"`, "/static/js/exhibition.js", "exh-board",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
+func TestCustomsProfileRequiresName(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/customs/profile", nil)
+	rec := httptest.NewRecorder()
+	srv.apiCustomsProfile(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
