@@ -106,30 +106,6 @@ svg.lucide { flex-shrink: 0; }
   gap: 20px;
 }
 
-.mod-nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: 1;
-  justify-content: center;
-}
-
-.mod-nav-item {
-  text-decoration: none;
-  color: var(--text-secondary);
-  font-size: 13px;
-  padding: 6px 12px;
-  border-radius: 16px;
-  font-weight: 500;
-}
-
-.mod-nav-item:hover { color: var(--brand-primary); background: var(--bg-light-blue); }
-
-.mod-nav-item.is-active {
-  color: #fff;
-  background: var(--brand-primary);
-}
-
 .vip-btn {
   display: inline-flex;
   align-items: center;
