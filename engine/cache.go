@@ -72,6 +72,11 @@ func storeSearchCache(q Query, res Result) {
 	if testing.Testing() {
 		return
 	}
+	// Empty people results are often a transient index challenge.
+	// Do not lock the UI on a 90s miss.
+	if len(res.Hits) == 0 && firstNonEmpty(q.Kind, res.Kind) == KindPeople {
+		return
+	}
 	storeSearchCacheAlways(q, res)
 }
 
