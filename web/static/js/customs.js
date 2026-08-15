@@ -153,10 +153,12 @@
       const hs = extra(h, "hs") || "—";
       const when = extra(h, "last_date") || extra(h, "year") || "—";
       const weight = extra(h, "weight_kg");
+      const amt = extra(h, "amount_usd");
+      const via = extra(h, "via");
       const geo = h.country_label || h.country || "";
       const sub = [geo, product].filter(Boolean).join(" · ");
       return (
-        "<tr data-name=\"" + escapeAttr(h.name) + "\">" +
+        "<tr data-name=\"" + escapeAttr(h.name) + "\" data-via=\"" + escapeAttr(via) + "\">" +
           '<td class="col-check"><input type="checkbox" class="mkt-pick" data-i="' + i + '" data-name="' + escapeAttr(h.name) + '"></td>' +
           "<td><div class=\"cus-co\">" +
             '<span class="cus-flag">' + flagFor(h.country) + "</span>" +
@@ -165,7 +167,8 @@
           "<td>" + escapeHtml(hs) + "</td>" +
           "<td>" + escapeHtml(match) + (focus ? "<small style=\"display:block;color:#8c8c8c\">专注 " + escapeHtml(focus) + "%</small>" : "") +
             (total !== "—" && total !== match ? "<small style=\"display:block;color:#8c8c8c\">全部 " + escapeHtml(total) + "</small>" : "") + "</td>" +
-          "<td class=\"cus-amt-miss\" title=\"公开提单未提供金额\">—" +
+          "<td class=\"" + (amt ? "" : "cus-amt-miss") + "\"" + (amt ? "" : " title=\"公开提单未提供金额\"") + ">" +
+            (amt ? escapeHtml(amt) : "—") +
             (weight ? "<small style=\"display:block\">重量 " + escapeHtml(weight) + " kg</small>" : "") + "</td>" +
           "<td>" + escapeHtml(when) + "</td>" +
         "</tr>"
@@ -295,6 +298,10 @@
     if (ev.target.closest("input")) return;
     const tr = ev.target.closest("tr[data-name]");
     if (!tr) return;
+    if (tr.getAttribute("data-via") === "comtrade") {
+      toast("这是联合国 Comtrade 国家口径，没有逐票企业档案。");
+      return;
+    }
     openProfile(tr.getAttribute("data-name"));
   });
 

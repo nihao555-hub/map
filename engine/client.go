@@ -24,6 +24,10 @@ const (
 	defaultF2URL          = "http://127.0.0.1:8092"
 	defaultKirchnerURL    = "https://www.kirchnerdata.com"
 	defaultWikidataSPARQL = "https://query.wikidata.org/sparql"
+	defaultComtradeURL    = "https://comtradeapi.un.org/public/v1/preview"
+	defaultUSITCURL       = "https://hts.usitc.gov/reststop/search"
+	defaultFairCalendar   = "https://raw.githubusercontent.com/LensmorOfficial/trade-show-calendar/main/data/trade_shows.json"
+	defaultFairMap        = "https://raw.githubusercontent.com/LensmorOfficial/trade-show-world-map/main/data/b2b_shows.json"
 	browserUA             = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
 	ddgCooldown   = 2 * time.Minute
@@ -49,9 +53,17 @@ type Client struct {
 	CustomsBaseURL string
 	// WikidataURL is the SPARQL endpoint used by 展会获客.
 	WikidataURL string
-	braveUntil  atomic.Int64
-	ddgUntil    atomic.Int64
-	bingUntil   atomic.Int64
+	// ComtradeURL is UN Comtrade public preview (uncomtrade/comtradeapicall, no key).
+	ComtradeURL string
+	// USITCURL is the USITC HTS keyword search (product → HS, no key).
+	USITCURL string
+	// FairCalendarURL is LensmorOfficial/trade-show-calendar MIT JSON.
+	FairCalendarURL string
+	// FairMapURL is LensmorOfficial/trade-show-world-map MIT JSON.
+	FairMapURL string
+	braveUntil atomic.Int64
+	ddgUntil   atomic.Int64
+	bingUntil  atomic.Int64
 }
 
 // OptionsFromEnv wires sidecar base URLs.
@@ -62,6 +74,10 @@ type Client struct {
 //	ENGINE_AI_MODEL            optional model name (default qwen2.5:7b)
 //	ENGINE_KIRCHNER_URL        Kirchner public US BOL API (default https://www.kirchnerdata.com)
 //	ENGINE_WIKIDATA_SPARQL     Wikidata SPARQL (default https://query.wikidata.org/sparql)
+//	ENGINE_COMTRADE_URL        UN Comtrade public preview (default https://comtradeapi.un.org/public/v1/preview)
+//	ENGINE_USITC_URL           USITC HTS search (default https://hts.usitc.gov/reststop/search)
+//	ENGINE_FAIR_CALENDAR_URL   Lensmor trade-show-calendar JSON
+//	ENGINE_FAIR_MAP_URL        Lensmor trade-show-world-map JSON
 //	TIKHUB_API_TOKEN           optional paid API when Douyin keyword search is needed
 func OptionsFromEnv() *Client {
 	timeout := defaultHTTPTimeout
@@ -92,15 +108,30 @@ func OptionsFromEnv() *Client {
 	}
 
 	return &Client{
-		HTTP:           newBrowserHTTPClient(timeout),
-		TikTokURL:      tiktok,
-		F2URL:          f2,
-		TikHubToken:    strings.TrimSpace(firstNonEmpty(os.Getenv("TIKHUB_API_TOKEN"), os.Getenv("TIKHUB_API_KEY"))),
-		AIBaseURL:      strings.TrimSpace(os.Getenv("ENGINE_AI_BASE_URL")),
-		AIModel:        strings.TrimSpace(os.Getenv("ENGINE_AI_MODEL")),
-		CustomsBaseURL: kirchner,
-		WikidataURL:    wikidata,
+		HTTP:            newBrowserHTTPClient(timeout),
+		TikTokURL:       tiktok,
+		F2URL:           f2,
+		TikHubToken:     strings.TrimSpace(firstNonEmpty(os.Getenv("TIKHUB_API_TOKEN"), os.Getenv("TIKHUB_API_KEY"))),
+		AIBaseURL:       strings.TrimSpace(os.Getenv("ENGINE_AI_BASE_URL")),
+		AIModel:         strings.TrimSpace(os.Getenv("ENGINE_AI_MODEL")),
+		CustomsBaseURL:  kirchner,
+		WikidataURL:     wikidata,
+		ComtradeURL:     envServiceURL("ENGINE_COMTRADE_URL", defaultComtradeURL),
+		USITCURL:        envServiceURL("ENGINE_USITC_URL", defaultUSITCURL),
+		FairCalendarURL: envServiceURL("ENGINE_FAIR_CALENDAR_URL", defaultFairCalendar),
+		FairMapURL:      envServiceURL("ENGINE_FAIR_MAP_URL", defaultFairMap),
 	}
+}
+
+func envServiceURL(key, fallback string) string {
+	v := strings.TrimSpace(os.Getenv(key))
+	if strings.EqualFold(v, "off") || v == "-" {
+		return ""
+	}
+	if v == "" {
+		v = fallback
+	}
+	return strings.TrimRight(v, "/")
 }
 
 func newBrowserHTTPClient(timeout time.Duration) *http.Client {

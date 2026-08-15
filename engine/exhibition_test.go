@@ -110,6 +110,39 @@ func TestWikidataFairLabelSPARQLContainsProduct(t *testing.T) {
 	}
 }
 
+func TestSearchExhibitionFromOpenDataset(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"name": "Canton Fair", "website": "https://www.cantonfair.org.cn/", "city": "Guangzhou", "country": "China", "start_date": "2026-04-15", "end_date": "2026-05-05", "industry": "General Merchandise"},
+			{"name": "Maison&Objet", "website": "https://www.maison-objet.com/", "city": "Paris", "country": "France", "start_date": "2026-01-15", "industry": "Consumer Goods"},
+			{"name": "CES", "website": "https://www.ces.tech/", "city": "Las Vegas", "country": "United States", "start_date": "2026-01-06", "industry": "Technology & Electronics"},
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{HTTP: srv.Client(), FairCalendarURL: srv.URL, DisablePublic: true}
+	res, err := c.Search(context.Background(), Query{Keyword: "furniture", Kind: KindExhibition})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Hits) < 2 {
+		t.Fatalf("hits=%+v", res.Hits)
+	}
+	foundCanton := false
+	foundMaison := false
+	for _, h := range res.Hits {
+		if strings.Contains(h.Name, "Canton") && h.Extra["city"] == "Guangzhou" && h.Extra["start"] != "" {
+			foundCanton = true
+		}
+		if strings.Contains(h.Name, "Maison") {
+			foundMaison = true
+		}
+	}
+	if !foundCanton || !foundMaison {
+		t.Fatalf("canton/maison missing: %+v", res.Hits)
+	}
+}
+
 func TestSearchExhibitionSkipsWhenUnconfigured(t *testing.T) {
 	c := &Client{DisablePublic: true}
 	res, err := c.Search(context.Background(), Query{Keyword: "CES", Kind: KindExhibition})

@@ -21,6 +21,10 @@ func newTestServer(t *testing.T, dir string) *Server {
 		srv.engine.DisablePublic = true
 		srv.engine.CustomsBaseURL = ""
 		srv.engine.WikidataURL = ""
+		srv.engine.ComtradeURL = ""
+		srv.engine.USITCURL = ""
+		srv.engine.FairCalendarURL = ""
+		srv.engine.FairMapURL = ""
 	}
 
 	return srv

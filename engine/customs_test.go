@@ -273,6 +273,65 @@ func TestLooksLikeCompanyName(t *testing.T) {
 	}
 }
 
+func TestPickHS4PrefersMatchingChapter(t *testing.T) {
+	hs := pickHS4("shoes", []usitcRow{
+		{Htsno: "4417.00", Description: "boot or shoe lasts of wood"},
+		{Htsno: "6403.91", Description: "Tennis shoes, basketball shoes"},
+		{Htsno: "6403.19", Description: "Golf shoes"},
+		{Htsno: "6402.99", Description: "Tennis shoes"},
+	})
+	if hs != "6403" && hs != "6402" {
+		t.Fatalf("hs=%s", hs)
+	}
+}
+
+func TestSearchCustomsComtradeSellerFallback(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/lead-finder", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "", http.StatusInternalServerError)
+	})
+	mux.HandleFunc("/C/A/HS", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("cmdCode") == "" {
+			t.Errorf("missing cmdCode")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"count": 2,
+			"data": []map[string]any{
+				{"partnerCode": 156, "partnerISO": "CHN", "partnerDesc": "China", "cmdCode": "6403", "cmdDesc": "Footwear", "period": "2024", "primaryValue": 9000000000.0},
+				{"partnerCode": 704, "partnerISO": "VNM", "partnerDesc": "Viet Nam", "cmdCode": "6403", "cmdDesc": "Footwear", "period": "2024", "primaryValue": 1000000000.0},
+			},
+		})
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.RawQuery, "keyword=") {
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"htsno": "6403.91", "description": "Tennis shoes"},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	c := &Client{
+		HTTP: srv.Client(), CustomsBaseURL: srv.URL, ComtradeURL: srv.URL,
+		USITCURL: srv.URL, DisablePublic: true,
+	}
+	res, err := c.Search(context.Background(), Query{
+		Keyword: "shoes", Kind: KindCustoms, Role: RoleSeller, Year: 2024,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Hits) == 0 || !strings.Contains(res.Hits[0].Name, "货源国") {
+		t.Fatalf("hits=%+v", res.Hits)
+	}
+	if res.Hits[0].Extra["amount_usd"] == "" || !strings.Contains(res.Note, "Comtrade") {
+		t.Fatalf("usd/note extra=%+v note=%s", res.Hits[0].Extra, res.Note)
+	}
+}
+
 func TestSearchCustomsSkipsWhenUnconfigured(t *testing.T) {
 	c := &Client{DisablePublic: true}
 	res, err := c.Search(context.Background(), Query{Keyword: "coffee", Kind: KindCustoms})

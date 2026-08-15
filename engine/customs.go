@@ -16,10 +16,10 @@ const (
 	customsMinYear      = 2015
 )
 
-// searchCustoms finds US importers (buyers) or their overseas suppliers (sellers)
-// from Kirchner's public US ocean bill-of-lading API. No key; 500 req/IP/day.
+// searchCustoms finds US importers from public bills of lading, and supplements
+// with UN Comtrade official trade values plus USITC HS lookup (no API key).
 func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
-	if c == nil || strings.TrimSpace(c.CustomsBaseURL) == "" {
+	if c == nil {
 		return Result{Note: customsPolicyNote}, nil
 	}
 
@@ -40,53 +40,75 @@ func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
 		limit = customsMaxLimit
 	}
 
-	// List first without bulk profiles. include_profiles=1 is heavier and has
-	// been returning HTTP 500; hydrate the first page with company-profile instead.
-	payload, err := c.fetchLeadFinder(ctx, term, match, year, limit, false)
-	if err != nil && year == time.Now().UTC().Year() {
-		payload, err = c.fetchLeadFinder(ctx, term, match, year-1, limit, false)
-		year = year - 1
+	hs4 := hs4Digits(term)
+	if hs4 == "" {
+		hs4 = c.lookupHS4(ctx, term)
 	}
-	if err != nil {
-		if role != RoleSeller {
-			if hits := c.customsProfileFallback(ctx, q.Keyword, term, year); len(hits) > 0 {
-				return Result{
-					Hits:     hits,
-					Sources:  []string{"kirchner"},
-					Note:     customsPolicyNote,
-					Expanded: []string{term, strconv.Itoa(year)},
-				}, nil
+	if looksLikeHS(term) {
+		match = "hs_code"
+	}
+
+	var (
+		hits    []Hit
+		sources []string
+		notes   []string
+	)
+
+	if strings.TrimSpace(c.CustomsBaseURL) != "" {
+		payload, err := c.fetchLeadFinder(ctx, term, match, year, limit, false)
+		if err != nil && year == time.Now().UTC().Year() {
+			payload, err = c.fetchLeadFinder(ctx, term, match, year-1, limit, false)
+			year = year - 1
+		}
+		if err != nil {
+			if role != RoleSeller {
+				hits = c.customsProfileFallback(ctx, q.Keyword, term, year)
+				if len(hits) > 0 {
+					sources = append(sources, "kirchner")
+				}
+			}
+			if len(hits) == 0 {
+				notes = append(notes, "公开提单企业名单接口暂时不可用。逐票企业来自美国海关公开提单，不是全球企业库。")
+			}
+		} else {
+			if len(payload.Profiles) == 0 && len(payload.Importers) > 0 {
+				payload.Profiles = c.fetchImporterProfiles(ctx, payload.Importers, year, 12)
+			}
+			if role == RoleSeller {
+				hits = customsSellerHits(payload, q.Country, year)
+			} else {
+				hits = customsBuyerHits(payload, q.Country, year)
+			}
+			if len(hits) > 0 {
+				sources = append(sources, "kirchner")
 			}
 		}
-		return Result{
-			Note:     "公开提单接口暂时不可用。逐票企业来自美国海关公开提单，不是全球企业库。",
-			Expanded: []string{term},
-		}, nil
-	}
-	if len(payload.Profiles) == 0 && len(payload.Importers) > 0 {
-		payload.Profiles = c.fetchImporterProfiles(ctx, payload.Importers, year, 12)
 	}
 
-	var hits []Hit
-	if role == RoleSeller {
-		hits = customsSellerHits(payload, q.Country, year)
-	} else {
-		hits = customsBuyerHits(payload, q.Country, year)
-	}
-
-	note := customsPolicyNote
-	if role == RoleBuyer && !customsCountryIsUS(q.Country) && q.Country != "" {
-		note = "逐票买家目前来自美国海关公开提单。其他国家没有同等公开企业名录。"
-		if len(hits) == 0 {
-			return Result{Hits: nil, Note: note, Expanded: []string{term}}, nil
+	if partners, err := c.searchComtradeOrigins(ctx, hs4, year, q.Country); err == nil && len(partners) > 0 {
+		if n := comtradeNote(partners, hs4); n != "" {
+			notes = append(notes, n)
 		}
+		sources = append(sources, "comtrade")
+		if role == RoleSeller && len(hits) == 0 {
+			hits = comtradeSellerHits(partners, hs4, year)
+		}
+	}
+
+	note := strings.Join(notes, " ")
+	if note == "" {
+		note = customsPolicyNote
+	}
+	expanded := []string{term, strconv.Itoa(year)}
+	if hs4 != "" {
+		expanded = append(expanded, "HS"+hs4)
 	}
 
 	return Result{
 		Hits:     clipHits(hits, limit),
-		Sources:  []string{"kirchner"},
+		Sources:  uniqueStrings(sources),
 		Note:     note,
-		Expanded: []string{term, strconv.Itoa(year)},
+		Expanded: expanded,
 	}, nil
 }
 

@@ -54,6 +54,14 @@ func (c *Client) searchExhibition(ctx context.Context, q Query) (Result, error) 
 
 	g, gctx := errgroup.WithContext(ctx)
 
+	if !wantExhibitors && c != nil {
+		g.Go(func() error {
+			items, src := c.searchOpenFairs(gctx, q.Keyword, term, q.Country, limit)
+			add(items, src, "")
+			return nil
+		})
+	}
+
 	if !wantExhibitors && c != nil && strings.TrimSpace(c.WikidataURL) != "" {
 		g.Go(func() error {
 			items, err := c.searchWikidataFairs(gctx, q.Keyword, term, q.Country, limit)

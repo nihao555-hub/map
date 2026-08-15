@@ -15,7 +15,7 @@ const (
 	messagePolicyNote    = "系统不会代发。公开索引按目标国语言展开检索词；做不到企业库那种一个国家几千条。"
 	marketingPolicyNote  = "系统不会代发。"
 	customsPolicyNote    = "系统不会代发。逐票企业来自美国海关公开提单，不是全球企业库。"
-	exhibitionPolicyNote = "系统不会代发。展会来自公开知识库和公开网页，不是官方全量名录。"
+	exhibitionPolicyNote = "系统不会代发。展会优先来自 GitHub 公开数据集和 Wikidata，不是官方全量名录。"
 )
 
 // Search runs customer discovery. People search uses public web indexes by default
