@@ -20,7 +20,7 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "不是地图搜店", "私信模式", "营销模式", "一键营销", "preview-pane", "/static/js/discover.js"} {
+	for _, want := range []string{"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "不是地图搜店", "私信模式", "营销模式", "一键营销", "preview-pane", "共 0 条", "/static/js/discover.js"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
@@ -42,9 +42,14 @@ func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "plat-logo", "showPreview"} {
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
+		}
+	}
+	for _, forbid := range []string{"data.sources", "data.warnings", "took_ms", "duckduckgo"} {
+		if strings.Contains(body, forbid) {
+			t.Fatalf("technical field %q leaked in JS", forbid)
 		}
 	}
 }
@@ -119,6 +124,9 @@ func TestDiscoverExhibitionDoesNotCrawl(t *testing.T) {
 	hits, _ := payload["hits"].([]any)
 	if len(hits) != 0 {
 		t.Fatalf("hits=%v", hits)
+	}
+	if warns, ok := payload["warnings"].([]any); ok && len(warns) > 0 {
+		t.Fatalf("warnings leaked to UI: %v", warns)
 	}
 }
 

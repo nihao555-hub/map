@@ -37,7 +37,7 @@ func (c *Client) searchMarketing(ctx context.Context, q Query) (Result, error) {
 	}
 
 	if len(merged) == 0 {
-		warns = append(warns, "未找到公开邮箱或 WhatsApp。可换关键词，或改回私信模式找社媒主页。")
+		warns = append(warns, "未找到公开邮箱或 WhatsApp，请换关键词。")
 	}
 
 	return Result{

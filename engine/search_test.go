@@ -180,3 +180,14 @@ func TestParseSidecarUsersError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestMergeHitsUnlimitedWhenLimitZero(t *testing.T) {
+	items := make([]Hit, 0, 35)
+	for i := 0; i < 35; i++ {
+		items = append(items, Hit{ID: "id-" + strings.Repeat("a", i+1), Name: "n", Score: 1})
+	}
+	out := mergeHits(items, "", 0)
+	if len(out) != 35 {
+		t.Fatalf("got %d want 35", len(out))
+	}
+}

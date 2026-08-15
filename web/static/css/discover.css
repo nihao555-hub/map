@@ -527,6 +527,31 @@ html, body.wmt {
 }
 
 .wmt-status { color: var(--wmt-aux); font-size: 12px; margin-bottom: 8px; }
+#result-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+#result-toolbar .wmt-actions { margin-bottom: 0; }
+.wmt-pager {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--wmt-aux);
+  font-size: 13px;
+}
+.wmt-pager button {
+  border: 0;
+  background: transparent;
+  color: var(--wmt-aux);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+}
+.wmt-pager button:disabled { opacity: .35; cursor: default; }
+.wmt-pager-sep { color: var(--wmt-aux); }
 .wmt-warn {
   background: #fff7e6;
   border: 1px solid #ffd591;

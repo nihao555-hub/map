@@ -11,10 +11,9 @@ import (
 )
 
 const (
-	defaultLimit        = 20
-	maxLimit            = 50
-	messagePolicyNote   = "私信在右侧打开主页预览。请到官方页手动发送，系统不会代发或绕过平台私信接口。"
-	marketingPolicyNote = "营销模式对齐 Photon 公开页 intel：检索结果页后再抓取页面中的邮箱 / WhatsApp。一键营销在右侧写信，系统不会代发。"
+	maxLimit            = 200
+	messagePolicyNote   = "系统不会代发。"
+	marketingPolicyNote = "系统不会代发。"
 )
 
 // Search runs customer discovery. People search uses public web indexes by default
@@ -43,10 +42,9 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 		q.Mode = ModeHomepage
 	}
 
-	if q.Limit <= 0 {
-		q.Limit = defaultLimit
+	if q.Limit < 0 {
+		q.Limit = 0
 	}
-
 	if q.Limit > maxLimit {
 		q.Limit = maxLimit
 	}
@@ -168,8 +166,7 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 
 	merged := mergeHits(hits, q.Keyword, q.Limit)
 	if len(merged) == 0 {
-		warnings = append(warnings,
-			"未找到公开主页。可换关键词，或启动 docker compose -f docker-compose.engine.yaml up -d 使用 TikTok-Api / f2。")
+		warnings = append(warnings, "未找到公开主页，请换关键词。")
 	}
 
 	return Result{

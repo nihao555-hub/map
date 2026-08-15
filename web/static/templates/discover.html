@@ -85,14 +85,24 @@
             <button type="button" class="is-on" data-channel="email">邮箱</button>
             <button type="button" data-channel="whatsapp">WhatsApp</button>
           </div>
-          <input type="hidden" id="limit" name="limit" value="20">
+          <input type="hidden" id="limit" name="limit" value="0">
         </form>
         <div class="wmt-plat-list" id="platform-group"></div>
         <div id="discover-status" class="wmt-status">输入关键词后检索公开社媒主页</div>
         <div id="discover-warnings" class="wmt-warn hidden"></div>
-        <div class="wmt-actions" id="market-actions" hidden>
-          <button type="button" class="btn-ghost" id="select-all">全选</button>
-          <button type="button" class="btn-ghost" id="market-btn">一键营销</button>
+        <div class="wmt-actions" id="result-toolbar">
+          <div class="wmt-actions" id="market-actions" hidden>
+            <button type="button" class="btn-ghost" id="select-all">全选</button>
+            <button type="button" class="btn-ghost" id="market-btn">一键营销</button>
+          </div>
+          <div class="wmt-pager" id="pager" hidden>
+            <span id="hit-count">共 0 条</span>
+            <button type="button" id="page-prev" aria-label="上一页">&lt;</button>
+            <span id="page-cur">1</span>
+            <span class="wmt-pager-sep">/</span>
+            <span id="page-total">1</span>
+            <button type="button" id="page-next" aria-label="下一页">&gt;</button>
+          </div>
         </div>
         <div class="wmt-workbench">
           <div class="wmt-table-wrap">

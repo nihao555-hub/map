@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,6 +31,7 @@ type Client struct {
 	F2URL         string
 	TikHubToken   string
 	DisablePublic bool
+	braveLimited  atomic.Bool
 }
 
 // OptionsFromEnv wires sidecar base URLs.
@@ -73,6 +75,16 @@ func browserTransport() *http.Transport {
 	}
 	t.TLSClientConfig.NextProtos = []string{"http/1.1"}
 	return t
+}
+
+func (c *Client) markBraveLimited() {
+	if c != nil {
+		c.braveLimited.Store(true)
+	}
+}
+
+func (c *Client) braveSkipped() bool {
+	return c != nil && c.braveLimited.Load()
 }
 
 func (c *Client) httpClient() *http.Client {
@@ -133,6 +145,9 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 
 	if resp.StatusCode >= 400 {
 		if resp.StatusCode == http.StatusTooManyRequests {
+			if strings.Contains(strings.ToLower(req.URL.Host), "brave") {
+				c.markBraveLimited()
+			}
 			return raw, fmt.Errorf("%s: status 429 rate limited", req.URL.Host)
 		}
 

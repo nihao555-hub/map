@@ -184,9 +184,18 @@ type indexAttempt struct {
 
 func indexAttempts(c *Client, names []string) []indexAttempt {
 	all := []indexAttempt{
-		{"brave", c.fetchBrave},
 		{"duckduckgo", c.fetchDuckDuckGo},
 		{"bing", c.fetchBing},
+		{"brave", c.fetchBrave},
+	}
+	if c.braveSkipped() {
+		filtered := make([]indexAttempt, 0, len(all))
+		for _, a := range all {
+			if a.name != "brave" {
+				filtered = append(filtered, a)
+			}
+		}
+		all = filtered
 	}
 	if len(names) == 0 {
 		return all
@@ -274,29 +283,11 @@ func (c *Client) postFormHTML(ctx context.Context, rawURL, body string) ([]byte,
 }
 
 func (c *Client) doHTML(ctx context.Context, makeReq func() (*http.Request, error)) ([]byte, error) {
-	var last error
-	for i := 0; i < 3; i++ {
-		req, err := makeReq()
-		if err != nil {
-			return nil, err
-		}
-
-		raw, err := c.do(req)
-		if err != nil && strings.Contains(err.Error(), "status 429") {
-			last = err
-			wait := time.Duration(1200*(1<<i)) * time.Millisecond
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(wait):
-			}
-			continue
-		}
-
-		return raw, err
+	req, err := makeReq()
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, last
+	return c.do(req)
 }
 
 func extractProfilesFromHTML(raw []byte, source string) []Hit {

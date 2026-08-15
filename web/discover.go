@@ -79,6 +79,13 @@ func (s *Server) apiDiscoverSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	res.Sources = []string{}
+	res.Warnings = nil
+	res.TookMS = 0
+	if res.Note != "" {
+		res.Note = "系统不会代发。"
+	}
+
 	renderJSON(w, http.StatusOK, res)
 }
 

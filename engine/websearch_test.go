@@ -49,3 +49,13 @@ func TestLooksLikeChallenge(t *testing.T) {
 		t.Fatal("false positive")
 	}
 }
+
+func TestIndexAttemptsSkipsBraveAfter429(t *testing.T) {
+	c := &Client{}
+	c.markBraveLimited()
+	for _, a := range indexAttempts(c, nil) {
+		if a.name == "brave" {
+			t.Fatal("brave still attempted after 429")
+		}
+	}
+}

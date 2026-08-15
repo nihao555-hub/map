@@ -16,6 +16,8 @@
   let mode = "homepage";
   let channel = "email";
   let lastHits = [];
+  let page = 1;
+  const PAGE_SIZE = 20;
 
   const HOME_BULLETS = [
     "不是地图搜店：输入商品或企业关键词",
@@ -25,7 +27,7 @@
   ];
   const MARKET_BULLETS = [
     "营销模式对齐网易外贸通智能引擎：找已公开的联系方式",
-    "从公开检索定位页面，再抽取邮箱或 WhatsApp（Photon 式 intel）",
+    "从公开网页抽取邮箱或 WhatsApp",
     "结果是账号或邮箱、网页标题、来源链接",
     "一键营销在右侧写信，系统不代发"
   ];
@@ -212,6 +214,10 @@
     results.innerHTML = "";
     empty.classList.add("hidden");
     foot.textContent = "";
+    page = 1;
+    lastHits = [];
+    const pager = document.getElementById("pager");
+    if (pager) pager.hidden = true;
     setBusy(true);
 
     fetch("/api/v1/discover/search", {
@@ -223,7 +229,7 @@
         mode: mode,
         channel: mode === "marketing" ? selectedChannel() : "",
         platforms: selectedPlatforms(),
-        limit: Number(document.getElementById("limit").value) || 20,
+        limit: 0,
       }),
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -236,22 +242,22 @@
           return;
         }
         const data = out.j;
-        status.textContent = "来源 " + ((data.sources || []).join("、") || "—") +
-          " · " + (data.hits || []).length + (mode === "marketing" ? " 条联系方式" : " 条主页") +
-          " · " + (data.took_ms || 0) + "ms" +
-          (data.note ? " · " + data.note : "");
-        if (data.warnings && data.warnings.length) {
-          warnings.classList.remove("hidden");
-          warnings.textContent = data.warnings.join("\n");
-        }
         lastHits = data.hits || [];
+        if (mode === "marketing") {
+          const want = selectedChannel();
+          lastHits = lastHits.filter(function (h) { return !want || h.channel === want; });
+        }
+        page = 1;
+        status.textContent = lastHits.length
+          ? ("已找到 " + lastHits.length + (mode === "marketing" ? " 条联系方式" : " 条主页"))
+          : "";
         const actions = document.getElementById("market-actions");
         if (actions) actions.hidden = mode !== "marketing";
         renderHits(lastHits);
       })
       .catch(function (err) {
         setBusy(false);
-        status.textContent = "请求失败：" + err.message;
+        status.textContent = "搜索失败，请稍后重试。";
       });
   }
 
@@ -264,20 +270,55 @@
     doSearch(keyword.value);
   });
 
+  function pageCount() {
+    return Math.max(1, Math.ceil(lastHits.length / PAGE_SIZE));
+  }
+
+  function pagedHits() {
+    const total = pageCount();
+    if (page > total) page = total;
+    if (page < 1) page = 1;
+    const start = (page - 1) * PAGE_SIZE;
+    return lastHits.slice(start, start + PAGE_SIZE);
+  }
+
+  function updatePager() {
+    const pager = document.getElementById("pager");
+    const countEl = document.getElementById("hit-count");
+    if (!pager) return;
+    if (!lastHits.length) {
+      pager.hidden = true;
+      return;
+    }
+    pager.hidden = false;
+    if (countEl) countEl.textContent = "共 " + lastHits.length + " 条";
+    const cur = document.getElementById("page-cur");
+    const tot = document.getElementById("page-total");
+    if (cur) cur.textContent = String(page);
+    if (tot) tot.textContent = String(pageCount());
+    const prev = document.getElementById("page-prev");
+    const next = document.getElementById("page-next");
+    if (prev) prev.disabled = page <= 1;
+    if (next) next.disabled = page >= pageCount();
+  }
+
   function renderHits(hits) {
     lastHits = hits || [];
     if (mode === "marketing") {
-      renderMarketHits(hits);
+      renderMarketHits(lastHits);
       return;
     }
-    if (!hits.length) {
+    if (!lastHits.length) {
       empty.classList.remove("hidden");
       empty.textContent = "没有命中公开主页。可换关键词或勾选更多平台。";
       foot.textContent = "";
+      updatePager();
+      results.innerHTML = "";
       return;
     }
     empty.classList.add("hidden");
-    results.innerHTML = hits.map(function (h) {
+    const rows = pagedHits();
+    results.innerHTML = rows.map(function (h) {
       const plat = (h.platform || "").toLowerCase();
       const handle = h.handle ? "@" + h.handle : "—";
       const home = h.homepage_url || "";
@@ -305,22 +346,22 @@
         "</tr>"
       );
     }).join("");
-    foot.textContent = "共 " + hits.length + " 条公开主页 · 点击后在右侧打开，不代发";
+    foot.textContent = "";
+    updatePager();
   }
 
   function renderMarketHits(hits) {
-    const want = selectedChannel();
-    const rows = (hits || []).filter(function (h) {
-      return !want || h.channel === want;
-    });
-    if (!rows.length) {
+    lastHits = hits || [];
+    if (!lastHits.length) {
       empty.classList.remove("hidden");
-      empty.textContent = "没有命中公开" + (want === "whatsapp" ? " WhatsApp" : "邮箱") + "。可换关键词或改回私信模式。";
+      empty.textContent = "没有命中公开" + (selectedChannel() === "whatsapp" ? " WhatsApp" : "邮箱") + "。可换关键词或改回私信模式。";
       foot.textContent = "";
       results.innerHTML = "";
+      updatePager();
       return;
     }
     empty.classList.add("hidden");
+    const rows = pagedHits();
     results.innerHTML = rows.map(function (h, i) {
       const plat = (h.platform || "").toLowerCase();
       const contact = h.contact || h.handle || "";
@@ -351,7 +392,8 @@
         "</tr>"
       );
     }).join("");
-    foot.textContent = "共 " + rows.length + " 条公开联系方式 · 一键营销在右侧写信，不代发";
+    foot.textContent = "";
+    updatePager();
   }
 
   function pickedRows() {
@@ -363,6 +405,19 @@
       };
     });
   }
+
+  document.getElementById("page-prev").addEventListener("click", function () {
+    if (page > 1) {
+      page -= 1;
+      renderHits(lastHits);
+    }
+  });
+  document.getElementById("page-next").addEventListener("click", function () {
+    if (page < pageCount()) {
+      page += 1;
+      renderHits(lastHits);
+    }
+  });
 
   document.getElementById("select-all").addEventListener("click", function () {
     const boxes = document.querySelectorAll(".mkt-pick");
