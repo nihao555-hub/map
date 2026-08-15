@@ -29,6 +29,9 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 		return Result{}, err
 	}
 
+	q.Country = strings.ToUpper(strings.TrimSpace(q.Country))
+	ctx = WithSearchCountry(ctx, q.Country)
+
 	if q.Mode == ModeMarketing || q.Kind == KindMarketing {
 		q.Kind = KindMarketing
 		q.Mode = ModeMarketing
@@ -122,7 +125,7 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		items, warns, srcs := c.searchPublicProfiles(gctx, q.Keyword, wanted, q.Limit)
+		items, warns, srcs := c.searchPublicProfiles(gctx, q.Keyword, q.Country, wanted, q.Limit)
 		src := strings.Join(srcs, "+")
 		warn := strings.Join(warns, "; ")
 		add(items, src, warn, nil)
@@ -214,12 +217,14 @@ func mergeHits(items []Hit, keyword string, limit int) []Hit {
 		if hit.ID == "" {
 			hit.ID = hit.Platform + ":" + hit.HomepageURL
 		}
+		if hit.Kind != KindMarketing {
+			if !isSocialHomepage(hit) || isNoiseHit(hit, kw) {
+				continue
+			}
+		}
 
 		hit.Score += keywordBonus(hit, kw)
 		hit.Score += merchantBonus(hit, kw)
-		if dropNonMerchantContent(hit, kw) {
-			continue
-		}
 		if prev, ok := seen[hit.ID]; ok {
 			if hit.Score > prev.Score {
 				seen[hit.ID] = hit
@@ -312,24 +317,41 @@ func merchantBonus(hit Hit, kw string) int {
 	return score
 }
 
-func dropNonMerchantContent(hit Hit, kw string) bool {
-	if !isContentURL(hit.HomepageURL) {
-		return false
-	}
-	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Title, hit.Snippet}, " "))
-	if hasMerchantToken(blob) {
-		return false
+func isNoiseHit(hit Hit, kw string) bool {
+	if !isSocialHomepage(hit) {
+		return true
 	}
 
-	return looksLikeTutorial(blob) || (kw != "" && !strings.Contains(blob, foldSearchText(kw)))
+	name := strings.ToLower(strings.TrimSpace(hit.Name))
+	for _, n := range []string{"facebook", "youtube", "tiktok", "instagram", "linkedin", "douyin", "抖音", "小红书", "twitter", "x"} {
+		if name == n {
+			return true
+		}
+	}
+
+	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.HomepageURL}, " "))
+	if looksLikeTutorial(blob) {
+		return true
+	}
+	if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasMerchantToken(blob) {
+		return true
+	}
+
+	return false
 }
 
 func isContentURL(raw string) bool {
 	u := strings.ToLower(raw)
-	for _, p := range []string{"/video/", "/watch", "/shorts/", "/explore/", "/note/", "/collection/", "/short-video/"} {
+	if strings.Contains(u, "v.douyin.com/") || strings.Contains(u, "youtu.be/") {
+		return true
+	}
+	for _, p := range []string{"/video/", "/watch?", "/watch/", "/shorts/", "/explore/", "/note/", "/collection/", "/short-video/"} {
 		if strings.Contains(u, p) {
 			return true
 		}
+	}
+	if strings.HasSuffix(strings.Split(u, "?")[0], "/watch") {
+		return true
 	}
 
 	return false

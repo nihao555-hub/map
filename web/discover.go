@@ -148,6 +148,21 @@ func (s *Server) apiDiscoverPlatforms(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) apiDiscoverCountries(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, map[string]any{
+		"countries": engine.SearchCountries,
+	})
+}
+
 func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		renderJSON(w, http.StatusMethodNotAllowed, apiError{

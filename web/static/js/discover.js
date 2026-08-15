@@ -22,7 +22,7 @@
   const HOME_BULLETS = [
     "不是地图搜店：输入商品或企业关键词",
     "在抖音、TikTok、Facebook 等找批发 / 店铺等目标商家",
-    "拿到的是可打开的官方主页，不是邮箱",
+    "拿到的是社媒主页，不是视频或笔记",
     "去私信：在右侧打开主页预览，系统不代发"
   ];
   const MARKET_BULLETS = [
@@ -124,6 +124,49 @@
         liveValidate();
       });
     });
+  }
+
+  function selectedCountry() {
+    const a = document.getElementById("country-landing");
+    const b = document.getElementById("country");
+    const v = (a && a.value) || (b && b.value) || "";
+    return String(v || "").toUpperCase();
+  }
+
+  function bindCountry() {
+    ["country-landing", "country"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("change", function () {
+        const v = el.value;
+        ["country-landing", "country"].forEach(function (other) {
+          const n = document.getElementById(other);
+          if (n) n.value = v;
+        });
+      });
+    });
+  }
+
+  function fillCountrySelect(list) {
+    const html = (list || []).map(function (c) {
+      const code = c.code || "";
+      const label = c.label || code || "不限";
+      return '<option value="' + escapeAttr(code) + '">' + escapeHtml(label) + "</option>";
+    }).join("");
+    ["country-landing", "country"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    });
+  }
+
+  function loadCountries() {
+    return fetch("/api/v1/discover/countries")
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (out) {
+        if (!out.ok || !out.j.countries) return;
+        fillCountrySelect(out.j.countries);
+      })
+      .catch(function () {});
   }
 
   function liveValidate() {
@@ -352,6 +395,7 @@
         platforms: selectedPlatforms(),
         limit: 0,
         precise: isPrecise(),
+        country: selectedCountry(),
       }),
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -367,7 +411,7 @@
           return;
         }
         const data = out.j;
-        lastHits = data.hits || [];
+        lastHits = (data.hits || []).filter(isHomepageHit);
         if (mode === "marketing") {
           const want = selectedChannel();
           lastHits = lastHits.filter(function (h) { return !want || h.channel === want; });
@@ -401,6 +445,15 @@
     ev.preventDefault();
     doSearch(keyword.value);
   });
+
+  function isHomepageHit(h) {
+    const u = String((h && h.homepage_url) || "").toLowerCase();
+    if (!u) return false;
+    if (/\/video\/|\/watch|\/shorts\/|\/explore\/|\/note\/|\/collection\/|\/short-video\/|v\.douyin\.com/.test(u)) {
+      return false;
+    }
+    return true;
+  }
 
   function pageCount() {
     return Math.max(1, Math.ceil(lastHits.length / PAGE_SIZE));
@@ -717,8 +770,10 @@
   bindMode();
   bindChannel();
   bindPrecise();
+  bindCountry();
   bindKeywordFields();
   bindExamples();
   setMode("homepage");
   loadPlatforms();
+  loadCountries();
 })();

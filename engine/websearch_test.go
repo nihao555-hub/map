@@ -148,29 +148,40 @@ func TestIndexAttemptsSkipsDDGAfterChallenge(t *testing.T) {
 
 func TestPublicSearchQueriesCJKUsesPlatformLabel(t *testing.T) {
 	wanted := map[string]bool{PlatformDouyin: true, PlatformFacebook: true}
-	qs := publicSearchQueries("配电", wanted)
+	qs := publicSearchQueries("配电", wanted, "")
 	if len(qs) != 4 {
 		t.Fatalf("queries=%+v", qs)
 	}
 	if qs[0].platform != PlatformDouyin || qs[0].query != "配电 批发 抖音" {
 		t.Fatalf("douyin first %+v", qs[0])
 	}
-	if qs[1].platform != PlatformDouyin || qs[1].query != "site:douyin.com 配电 批发" {
+	if qs[1].platform != PlatformDouyin || qs[1].query != "site:douyin.com/user 配电 批发" {
 		t.Fatalf("douyin site %+v", qs[1])
 	}
 	if qs[2].platform != PlatformFacebook || qs[2].query != "配电 批发 Facebook" {
 		t.Fatalf("facebook %+v", qs[2])
 	}
-	if qs[3].query != "site:facebook.com 配电" {
+	if qs[3].query != "site:facebook.com 配电 批发" {
 		t.Fatalf("facebook site %+v", qs[3])
 	}
 }
 
 func TestPublicSearchQueriesEnglishUsesSite(t *testing.T) {
 	wanted := map[string]bool{PlatformTikTok: true}
-	qs := publicSearchQueries("power tools", wanted)
-	if len(qs) != 1 || qs[0].query != "site:tiktok.com power tools wholesaler" {
+	qs := publicSearchQueries("power tools", wanted, "")
+	if len(qs) != 1 || qs[0].query != "site:tiktok.com/@ power tools wholesaler" {
 		t.Fatalf("%+v", qs)
+	}
+}
+
+func TestPublicSearchQueriesAppendsCountry(t *testing.T) {
+	wanted := map[string]bool{PlatformFacebook: true}
+	qs := publicSearchQueries("LED灯", wanted, "MY")
+	if len(qs) != 2 {
+		t.Fatalf("%+v", qs)
+	}
+	if !strings.Contains(qs[0].query, "马来西亚") || !strings.Contains(qs[1].query, "马来西亚") {
+		t.Fatalf("country missing %+v", qs)
 	}
 }
 
@@ -188,18 +199,15 @@ func TestExtractProfilesFromBingVideoCards(t *testing.T) {
 	hits := extractProfilesFromHTML(html, "bing")
 	var sawVideo bool
 	for _, h := range hits {
-		if h.Platform == PlatformDouyin && strings.Contains(h.HomepageURL, "/video/") {
+		if strings.Contains(h.HomepageURL, "/video/") || strings.Contains(h.HomepageURL, "/watch") {
 			sawVideo = true
-			if h.Name != "知了电力" {
-				t.Fatalf("name=%q hit=%+v", h.Name, h)
-			}
 		}
 		if h.Platform == PlatformFacebook {
 			t.Fatalf("chrome facebook leaked %+v", h)
 		}
 	}
-	if !sawVideo {
-		t.Fatalf("missing video hits=%+v", hits)
+	if sawVideo {
+		t.Fatalf("videos must not be extracted hits=%+v", hits)
 	}
 }
 

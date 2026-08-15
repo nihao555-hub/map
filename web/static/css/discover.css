@@ -256,6 +256,17 @@ body.wmt {
 }
 .wmt-precise input { accent-color: var(--wmt-blue); }
 .wmt-hero .wmt-precise { color: var(--wmt-sub); }
+.wmt-country {
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--wmt-sub);
+  font-size: 13px;
+  max-width: 108px;
+  cursor: pointer;
+  outline: none;
+}
+.wmt-hero .wmt-country { color: var(--wmt-sub); }
 .wmt-kw-err {
   color: #ffccc7;
   font-size: 12px;

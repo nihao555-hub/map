@@ -203,9 +203,15 @@ func TestSidecarCount(t *testing.T) {
 func TestMergeHitsUnlimitedWhenLimitZero(t *testing.T) {
 	items := make([]Hit, 0, 35)
 	for i := 0; i < 35; i++ {
-		items = append(items, Hit{ID: "id-" + strings.Repeat("a", i+1), Name: "n", Score: 1})
+		items = append(items, Hit{
+			ID:          "id-" + strings.Repeat("a", i+1),
+			Name:        "factory shop",
+			Platform:    PlatformFacebook,
+			HomepageURL: "https://www.facebook.com/shop" + strings.Repeat("x", i+1),
+			Score:       1,
+		})
 	}
-	out := mergeHits(items, "", 0)
+	out := mergeHits(items, "factory", 0)
 	if len(out) != 35 {
 		t.Fatalf("got %d want 35", len(out))
 	}
@@ -216,16 +222,20 @@ func TestMergeHitsPrefersMerchantOverTutorial(t *testing.T) {
 		{ID: "yt1", Platform: PlatformYouTube, Name: "LED灯带安装图解", Title: "LED灯带安装图解", HomepageURL: "https://www.youtube.com/watch?v=abc1234"},
 		{ID: "fb1", Platform: PlatformFacebook, Name: "全成照明 Led燈飾專賣店", Title: "全成照明 Led燈飾專賣店 | Taichung", HomepageURL: "https://www.facebook.com/led0955478666"},
 		{ID: "fb2", Platform: PlatformFacebook, Name: "PlayFunDeal", HomepageURL: "https://www.facebook.com/PlayFunDeal"},
+		{ID: "yt2", Platform: PlatformYouTube, Name: "老灯官方", Handle: "laodeng", HomepageURL: "https://www.youtube.com/@laodeng"},
 	}, "LED灯", 0)
 	if len(out) == 0 || out[0].ID != "fb1" {
 		t.Fatalf("want lighting shop first, got %+v", out)
 	}
 	for _, h := range out {
 		if h.ID == "yt1" {
-			t.Fatal("tutorial video should be dropped")
+			t.Fatal("video must not appear")
 		}
-	}
-	if out[len(out)-1].ID != "fb2" {
-		t.Fatalf("unrelated page should rank last %+v", out)
+		if h.ID == "fb2" {
+			t.Fatal("unrelated page must be cleaned out")
+		}
+		if !isSocialHomepage(h) {
+			t.Fatalf("non-homepage leaked %+v", h)
+		}
 	}
 }

@@ -59,6 +59,7 @@ type Query struct {
 	Mode      string   `json:"mode,omitempty"`
 	Channel   string   `json:"channel,omitempty"`
 	Precise   bool     `json:"precise,omitempty"`
+	Country   string   `json:"country,omitempty"`
 }
 
 // Hit is one discovered person, homepage, exhibition, or trade record.

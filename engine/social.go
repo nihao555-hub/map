@@ -7,35 +7,27 @@ import (
 )
 
 var (
-	tiktokHandleRe     = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.|m\.)?tiktok\.com/@([A-Za-z0-9._]+)`)
-	douyinUserRe       = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.|m\.)?douyin\.com/user/([A-Za-z0-9_\-]+)`)
-	douyinVideoRe      = regexp.MustCompile(`(?i)(?:www\.|m\.)?douyin\.com/video/(\d+)`)
-	douyinNoteRe       = regexp.MustCompile(`(?i)(?:www\.|m\.)?douyin\.com/note/(\d+)`)
-	douyinCollectionRe = regexp.MustCompile(`(?i)(?:www\.|m\.)?douyin\.com/collection/(\d+)`)
-	douyinShortRe      = regexp.MustCompile(`(?i)(?:^|https?://)?v\.douyin\.com/([A-Za-z0-9]+)`)
-	instagramRe        = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9._]+)`)
-	youtubeAtRe        = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?youtube\.com/@([A-Za-z0-9._\-]+)`)
-	youtubeChanRe      = regexp.MustCompile(`(?i)youtube\.com/channel/([A-Za-z0-9_\-]+)`)
-	youtubeWatchRe     = regexp.MustCompile(`(?i)(?:youtube\.com/watch\?(?:[^#]*&)?v=|youtu\.be/)([A-Za-z0-9_\-]{6,})`)
-	youtubeShortsRe    = regexp.MustCompile(`(?i)youtube\.com/shorts/([A-Za-z0-9_\-]{6,})`)
-	facebookIDRe       = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/profile\.php\?id=(\d+)`)
-	facebookPeopleRe   = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/people/([^/?#]+)/(\d+)`)
-	facebookUserRe     = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/([A-Za-z0-9.]+)`)
-	linkedinInRe       = regexp.MustCompile(`(?i)linkedin\.com/in/([A-Za-z0-9_\-%]+)`)
-	linkedinCoRe       = regexp.MustCompile(`(?i)linkedin\.com/company/([A-Za-z0-9_\-%]+)`)
-	xHandleRe          = regexp.MustCompile(`(?i)(?:twitter|x)\.com/([A-Za-z0-9_]+)`)
-	pinterestRe        = regexp.MustCompile(`(?i)pinterest\.(?:com|co\.[a-z]{2})/([A-Za-z0-9_]+)`)
-	threadsRe          = regexp.MustCompile(`(?i)threads\.net/@([A-Za-z0-9._]+)`)
-	xiaohongshuRe      = regexp.MustCompile(`(?i)(?:www\.)?xiaohongshu\.com/user/profile/([A-Za-z0-9]+)`)
-	xiaohongshuNoteRe  = regexp.MustCompile(`(?i)(?:www\.)?xiaohongshu\.com/(?:explore|discovery/item)/([0-9a-f]{16,})`)
-	kuaishouRe         = regexp.MustCompile(`(?i)(?:www\.)?kuaishou\.com/profile/([A-Za-z0-9_\-]+)`)
-	kuaishouVideoRe    = regexp.MustCompile(`(?i)(?:www\.)?kuaishou\.com/short-video/(\d+)`)
-	weiboUIDRe         = regexp.MustCompile(`(?i)(?:www\.|m\.)?weibo\.(?:com|cn)/u/(\d+)`)
-	weiboNameRe        = regexp.MustCompile(`(?i)(?:www\.)?weibo\.com/n/([^/?#\s]+)`)
-	bilibiliRe         = regexp.MustCompile(`(?i)space\.bilibili\.com/(\d+)`)
-	telegramRe         = regexp.MustCompile(`(?i)(?:t\.me|telegram\.me)/([A-Za-z][A-Za-z0-9_]{3,31})`)
-	redditUserRe       = regexp.MustCompile(`(?i)(?:www\.)?reddit\.com/(?:user|u)/([A-Za-z0-9_\-]+)`)
-	twitchRe           = regexp.MustCompile(`(?i)(?:www\.)?twitch\.tv/([A-Za-z0-9_]+)`)
+	tiktokHandleRe   = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.|m\.)?tiktok\.com/@([A-Za-z0-9._]+)`)
+	douyinUserRe     = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.|m\.)?douyin\.com/user/([A-Za-z0-9_\-]+)`)
+	instagramRe      = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9._]+)`)
+	youtubeAtRe      = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?youtube\.com/@([A-Za-z0-9._\-]+)`)
+	youtubeChanRe    = regexp.MustCompile(`(?i)youtube\.com/channel/([A-Za-z0-9_\-]+)`)
+	facebookIDRe     = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/profile\.php\?id=(\d+)`)
+	facebookPeopleRe = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/people/([^/?#]+)/(\d+)`)
+	facebookUserRe   = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/([A-Za-z0-9.]+)`)
+	linkedinInRe     = regexp.MustCompile(`(?i)linkedin\.com/in/([A-Za-z0-9_\-%]+)`)
+	linkedinCoRe     = regexp.MustCompile(`(?i)linkedin\.com/company/([A-Za-z0-9_\-%]+)`)
+	xHandleRe        = regexp.MustCompile(`(?i)(?:twitter|x)\.com/([A-Za-z0-9_]+)`)
+	pinterestRe      = regexp.MustCompile(`(?i)pinterest\.(?:com|co\.[a-z]{2})/([A-Za-z0-9_]+)`)
+	threadsRe        = regexp.MustCompile(`(?i)threads\.net/@([A-Za-z0-9._]+)`)
+	xiaohongshuRe    = regexp.MustCompile(`(?i)(?:www\.)?xiaohongshu\.com/user/profile/([A-Za-z0-9]+)`)
+	kuaishouRe       = regexp.MustCompile(`(?i)(?:www\.)?kuaishou\.com/profile/([A-Za-z0-9_\-]+)`)
+	weiboUIDRe       = regexp.MustCompile(`(?i)(?:www\.|m\.)?weibo\.(?:com|cn)/u/(\d+)`)
+	weiboNameRe      = regexp.MustCompile(`(?i)(?:www\.)?weibo\.com/n/([^/?#\s]+)`)
+	bilibiliRe       = regexp.MustCompile(`(?i)space\.bilibili\.com/(\d+)`)
+	telegramRe       = regexp.MustCompile(`(?i)(?:t\.me|telegram\.me)/([A-Za-z][A-Za-z0-9_]{3,31})`)
+	redditUserRe     = regexp.MustCompile(`(?i)(?:www\.)?reddit\.com/(?:user|u)/([A-Za-z0-9_\-]+)`)
+	twitchRe         = regexp.MustCompile(`(?i)(?:www\.)?twitch\.tv/([A-Za-z0-9_]+)`)
 )
 
 var reservedPaths = map[string]struct{}{
@@ -51,6 +43,9 @@ var reservedPaths = map[string]struct{}{
 	"ads": {}, "business": {}, "jobs": {}, "home": {}, "intent": {},
 	"compose": {}, "signup": {}, "download": {}, "pin": {}, "ideas": {},
 	"today": {}, "i": {}, "tos": {}, "help": {}, "recover": {},
+	"facebook": {}, "youtube": {}, "instagram": {}, "twitter": {}, "linkedin": {},
+	"tiktok": {}, "douyin": {}, "tv": {}, "story": {}, "story.php": {},
+	"photo.php": {}, "video.php": {}, "watch.php": {},
 	"joinchat": {}, "addstickers": {}, "addemoji": {}, "addtheme": {},
 	"proxy": {}, "socks": {}, "directory": {}, "clips": {}, "inventory": {},
 	"drops": {}, "turbo": {}, "subscriptions": {}, "wallet": {},
@@ -78,27 +73,6 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 
 	if m := douyinUserRe.FindStringSubmatch(decoded); len(m) == 2 {
 		return douyinHit(m[1], title, snippet, decoded, "websearch"), true
-	}
-
-	if m := douyinVideoRe.FindStringSubmatch(decoded); len(m) == 2 {
-		id := m[1]
-		home := "https://www.douyin.com/video/" + id
-		return makeHit(PlatformDouyin, "video:"+id, id, home, title, snippet,
-			"打开抖音作品后进入作者主页再点「私信」（需登录官方 App，系统不会代发）", 62), true
-	}
-
-	if m := douyinNoteRe.FindStringSubmatch(decoded); len(m) == 2 {
-		id := m[1]
-		home := "https://www.douyin.com/note/" + id
-		return makeHit(PlatformDouyin, "note:"+id, id, home, title, snippet,
-			"打开抖音图文后进入作者主页再点「私信」（需登录官方 App，系统不会代发）", 60), true
-	}
-
-	if m := douyinCollectionRe.FindStringSubmatch(decoded); len(m) == 2 {
-		id := m[1]
-		home := "https://www.douyin.com/collection/" + id
-		return makeHit(PlatformDouyin, "collection:"+id, id, home, title, snippet,
-			"打开抖音合集后进入作者主页再点「私信」（需登录官方 App，系统不会代发）", 58), true
 	}
 
 	if m := instagramRe.FindStringSubmatch(decoded); len(m) == 2 {
@@ -143,20 +117,6 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 			Source:      "websearch",
 			Score:       60,
 		}, true
-	}
-
-	if m := youtubeWatchRe.FindStringSubmatch(decoded); len(m) == 2 {
-		id := m[1]
-		home := "https://www.youtube.com/watch?v=" + id
-		return makeHit(PlatformYouTube, "watch:"+id, id, home, title, snippet,
-			"打开 YouTube 视频后进入频道主页联系（系统不会代发）", 52), true
-	}
-
-	if m := youtubeShortsRe.FindStringSubmatch(decoded); len(m) == 2 {
-		id := m[1]
-		home := "https://www.youtube.com/shorts/" + id
-		return makeHit(PlatformYouTube, "shorts:"+id, id, home, title, snippet,
-			"打开 YouTube Shorts 后进入频道主页联系（系统不会代发）", 52), true
 	}
 
 	if m := facebookIDRe.FindStringSubmatch(decoded); len(m) == 2 {
@@ -236,25 +196,11 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 			"打开小红书主页后点击「私信」（需登录官方 App，系统不会代发）", 75), true
 	}
 
-	if m := xiaohongshuNoteRe.FindStringSubmatch(decoded); len(m) == 2 {
-		id := m[1]
-		home := "https://www.xiaohongshu.com/explore/" + id
-		return makeHit(PlatformXiaohongshu, "note:"+id, id, home, title, snippet,
-			"打开小红书笔记后进入作者主页再点「私信」（需登录官方 App，系统不会代发）", 60), true
-	}
-
 	if m := kuaishouRe.FindStringSubmatch(decoded); len(m) == 2 {
 		id := m[1]
 		home := "https://www.kuaishou.com/profile/" + id
 		return makeHit(PlatformKuaishou, id, id, home, title, snippet,
 			"打开快手主页后点击「私信」（需登录官方 App，系统不会代发）", 70), true
-	}
-
-	if m := kuaishouVideoRe.FindStringSubmatch(decoded); len(m) == 2 {
-		id := m[1]
-		home := "https://www.kuaishou.com/short-video/" + id
-		return makeHit(PlatformKuaishou, "video:"+id, id, home, title, snippet,
-			"打开快手作品后进入作者主页再点「私信」（需登录官方 App，系统不会代发）", 58), true
 	}
 
 	if m := weiboUIDRe.FindStringSubmatch(decoded); len(m) == 2 {
@@ -321,29 +267,6 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 			MessageHint: "YouTube 无统一私信；请通过主页「关于」里的邮箱/社媒联系（系统不会代发）",
 			Source:      "websearch",
 			Score:       55,
-		}, true
-	}
-
-	if m := douyinShortRe.FindStringSubmatch(decoded); len(m) == 2 {
-		id := m[1]
-		if _, skip := reservedPaths[strings.ToLower(id)]; skip {
-			return Hit{}, false
-		}
-		home := "https://v.douyin.com/" + id
-
-		return Hit{
-			ID:          "douyin:short:" + id,
-			Kind:        KindPeople,
-			Platform:    PlatformDouyin,
-			Name:        displayName(title, id),
-			Handle:      id,
-			Title:       title,
-			Snippet:     snippet,
-			HomepageURL: home,
-			MessageURL:  home,
-			MessageHint: "打开抖音主页后点击「私信」（需登录官方 App，系统不会代发）",
-			Source:      "websearch",
-			Score:       50,
 		}, true
 	}
 
@@ -508,4 +431,36 @@ func looksLikeHandle(s string) bool {
 	}
 
 	return true
+}
+
+// isSocialHomepage reports whether the hit is a profile/page, not a video or note.
+func isSocialHomepage(hit Hit) bool {
+	u := strings.ToLower(strings.TrimSpace(hit.HomepageURL))
+	if u == "" || isContentURL(u) {
+		return false
+	}
+
+	switch hit.Platform {
+	case PlatformDouyin:
+		return strings.Contains(u, "/user/")
+	case PlatformTikTok:
+		return strings.Contains(u, "/@")
+	case PlatformYouTube:
+		return strings.Contains(u, "/@") || strings.Contains(u, "/channel/")
+	case PlatformXiaohongshu:
+		return strings.Contains(u, "/user/profile/")
+	case PlatformKuaishou:
+		return strings.Contains(u, "/profile/")
+	case PlatformBilibili:
+		return strings.Contains(u, "space.bilibili.com/")
+	case PlatformWeibo:
+		return strings.Contains(u, "weibo.com/u/") || strings.Contains(u, "weibo.com/n/")
+	case PlatformLinkedIn:
+		return strings.Contains(u, "/in/") || strings.Contains(u, "/company/")
+	case PlatformInstagram, PlatformFacebook, PlatformX, PlatformTelegram,
+		PlatformThreads, PlatformPinterest, PlatformReddit, PlatformTwitch:
+		return true
+	default:
+		return false
+	}
 }

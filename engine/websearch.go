@@ -28,8 +28,9 @@ var (
 const (
 	publicIndexGap     = 2800 * time.Millisecond
 	braveIndexGap      = 4000 * time.Millisecond
-	indexExtraPages    = 3
-	enoughHitsPerQuery = 80
+	indexExtraPages    = 6
+	enoughHitsPerQuery = 150
+	blobExtractCap     = 200
 )
 
 func waitPublicIndex(ctx context.Context) error {
@@ -78,12 +79,12 @@ func waitNamedIndex(ctx context.Context, name string) error {
 	return nil
 }
 
-func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wanted map[string]bool, limit int) ([]Hit, []string, []string) {
+func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country string, wanted map[string]bool, limit int) ([]Hit, []string, []string) {
 	if c != nil && c.DisablePublic {
 		return nil, nil, nil
 	}
 
-	queries := publicSearchQueries(keyword, wanted)
+	queries := publicSearchQueries(keyword, wanted, country)
 
 	var (
 		mu       sync.Mutex
@@ -93,7 +94,7 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wante
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(1)
+	g.SetLimit(2)
 
 	for _, q := range queries {
 		q := q
@@ -166,28 +167,49 @@ var publicSearchOrder = []string{
 	PlatformX, PlatformPinterest, PlatformThreads, PlatformTelegram, PlatformReddit, PlatformTwitch,
 }
 
-func publicSearchQueries(keyword string, wanted map[string]bool) []publicQuery {
+var platformProfileSite = map[string]string{
+	PlatformFacebook:    "facebook.com",
+	PlatformLinkedIn:    "linkedin.com",
+	PlatformInstagram:   "instagram.com",
+	PlatformYouTube:     "youtube.com/@",
+	PlatformTikTok:      "tiktok.com/@",
+	PlatformX:           "x.com",
+	PlatformPinterest:   "pinterest.com",
+	PlatformThreads:     "threads.net/@",
+	PlatformDouyin:      "douyin.com/user",
+	PlatformXiaohongshu: "xiaohongshu.com/user",
+	PlatformKuaishou:    "kuaishou.com/profile",
+	PlatformWeibo:       "weibo.com/u",
+	PlatformBilibili:    "space.bilibili.com",
+	PlatformTelegram:    "t.me",
+	PlatformReddit:      "reddit.com/user",
+	PlatformTwitch:      "twitch.tv",
+}
+
+func publicSearchQueries(keyword string, wanted map[string]bool, country string) []publicQuery {
 	out := make([]publicQuery, 0, len(wanted)*2)
 	cjk := hasCJK(keyword)
+	geo := CountryQueryToken(country, cjk)
 	intent := merchantIntentKeyword(keyword)
+	if geo != "" {
+		intent = strings.TrimSpace(intent + " " + geo)
+	}
 	for _, platform := range publicSearchOrder {
 		if !wanted[platform] {
 			continue
 		}
-		domain := platformSearchDomain[platform]
-		if domain == "" {
+		site := platformProfileSite[platform]
+		if site == "" {
+			site = platformSearchDomain[platform]
+		}
+		if site == "" {
 			continue
 		}
 
 		if cjk {
-			// Natural queries survive HTML indexes better than site:path filters.
 			out = append(out, publicQuery{platform: platform, query: intent + " " + PeoplePlatformLabel(platform)})
 		}
-		siteKW := keyword
-		if contentHeavyPlatform(platform) {
-			siteKW = intent
-		}
-		out = append(out, publicQuery{platform: platform, query: "site:" + domain + " " + siteKW})
+		out = append(out, publicQuery{platform: platform, query: "site:" + site + " " + intent})
 	}
 
 	return out
@@ -200,16 +222,6 @@ func merchantIntentKeyword(keyword string) string {
 	}
 
 	return keyword + " wholesaler"
-}
-
-func contentHeavyPlatform(platform string) bool {
-	switch platform {
-	case PlatformYouTube, PlatformDouyin, PlatformTikTok, PlatformXiaohongshu,
-		PlatformKuaishou, PlatformBilibili, PlatformTwitch, PlatformReddit:
-		return true
-	default:
-		return false
-	}
 }
 
 func hasCJK(s string) bool {
@@ -273,6 +285,7 @@ func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, e
 		if uniqueHitCount(merged) >= enoughHitsPerQuery {
 			break
 		}
+		emptyStreak := 0
 		for page := 1; page <= indexExtraPages; page++ {
 			if ctx.Err() != nil || uniqueHitCount(merged) >= enoughHitsPerQuery {
 				break
@@ -289,12 +302,20 @@ func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, e
 			}
 			hits := filterHitsPlatform(extract(raw, name), platform)
 			if len(hits) == 0 {
-				break
+				emptyStreak++
+				if emptyStreak >= 2 {
+					break
+				}
+				continue
 			}
+			emptyStreak = 0
 			before := uniqueHitCount(merged)
 			merged = append(merged, hits...)
 			if uniqueHitCount(merged) == before {
-				break
+				emptyStreak++
+				if emptyStreak >= 2 {
+					break
+				}
 			}
 		}
 	}
@@ -414,7 +435,9 @@ func (c *Client) fetchDuckDuckGo(ctx context.Context, query string) ([]byte, err
 
 func (c *Client) fetchDuckDuckGoPage(ctx context.Context, query string, page int) ([]byte, error) {
 	kl := "wt-wt"
-	if hasCJK(query) {
+	if r := searchCountry(ctx); r.DDGKL != "" {
+		kl = r.DDGKL
+	} else if hasCJK(query) {
 		kl = "cn-zh"
 	}
 	form := "q=" + url.QueryEscape(query) + "&kl=" + kl
@@ -464,7 +487,13 @@ func (c *Client) fetchBing(ctx context.Context, query string) ([]byte, error) {
 
 func (c *Client) fetchBingPage(ctx context.Context, query string, page int) ([]byte, error) {
 	rawURL := "https://www.bing.com/search?q=" + url.QueryEscape(query)
-	if hasCJK(query) {
+	if r := searchCountry(ctx); r.BingCC != "" {
+		lang := "en"
+		if r.BingCC == "CN" || hasCJK(query) {
+			lang = "zh-Hans"
+		}
+		rawURL += "&setlang=" + lang + "&cc=" + r.BingCC
+	} else if hasCJK(query) {
 		rawURL += "&setlang=zh-Hans&cc=CN"
 	} else {
 		rawURL += "&setlang=en"
@@ -561,133 +590,37 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 	}
 
 	blob := html + "\n" + decoded
-	for _, m := range tiktokHandleRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.tiktok.com/@"+m[1], m[1], ""))
+	addBlob := func(re *regexp.Regexp, home func(string) string) {
+		for _, m := range re.FindAllStringSubmatch(blob, blobExtractCap) {
+			if len(m) >= 2 {
+				add(ParseSocialURL(home(m[1]), m[1], ""))
+			}
+		}
+	}
+	addBlob(tiktokHandleRe, func(id string) string { return "https://www.tiktok.com/@" + id })
+	addBlob(instagramRe, func(id string) string { return "https://www.instagram.com/" + id })
+	addBlob(youtubeAtRe, func(id string) string { return "https://www.youtube.com/@" + id })
+	addBlob(youtubeChanRe, func(id string) string { return "https://www.youtube.com/channel/" + id })
+	addBlob(facebookUserRe, func(id string) string { return "https://www.facebook.com/" + id })
+	addBlob(linkedinInRe, func(id string) string { return "https://www.linkedin.com/in/" + id })
+	addBlob(linkedinCoRe, func(id string) string { return "https://www.linkedin.com/company/" + id })
+	addBlob(xHandleRe, func(id string) string { return "https://x.com/" + id })
+	addBlob(threadsRe, func(id string) string { return "https://www.threads.net/@" + id })
+	addBlob(douyinUserRe, func(id string) string { return "https://www.douyin.com/user/" + id })
+	addBlob(xiaohongshuRe, func(id string) string { return "https://www.xiaohongshu.com/user/profile/" + id })
+	addBlob(kuaishouRe, func(id string) string { return "https://www.kuaishou.com/profile/" + id })
+	addBlob(weiboUIDRe, func(id string) string { return "https://weibo.com/u/" + id })
+	addBlob(bilibiliRe, func(id string) string { return "https://space.bilibili.com/" + id })
+	addBlob(telegramRe, func(id string) string { return "https://t.me/" + id })
+	addBlob(redditUserRe, func(id string) string { return "https://www.reddit.com/user/" + id })
+	addBlob(twitchRe, func(id string) string { return "https://www.twitch.tv/" + id })
+	for _, m := range facebookPeopleRe.FindAllStringSubmatch(blob, blobExtractCap) {
+		if len(m) == 3 {
+			add(ParseSocialURL("https://www.facebook.com/people/"+m[1]+"/"+m[2], m[1], ""))
 		}
 	}
 
-	for _, m := range instagramRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.instagram.com/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range youtubeAtRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.youtube.com/@"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range facebookUserRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.facebook.com/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range linkedinInRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.linkedin.com/in/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range linkedinCoRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.linkedin.com/company/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range xHandleRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://x.com/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range threadsRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.threads.net/@"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range douyinUserRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.douyin.com/user/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range douyinVideoRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.douyin.com/video/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range douyinNoteRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.douyin.com/note/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range douyinCollectionRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.douyin.com/collection/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range xiaohongshuRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.xiaohongshu.com/user/profile/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range xiaohongshuNoteRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.xiaohongshu.com/explore/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range kuaishouRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.kuaishou.com/profile/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range kuaishouVideoRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.kuaishou.com/short-video/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range weiboUIDRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://weibo.com/u/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range bilibiliRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://space.bilibili.com/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range telegramRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://t.me/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range redditUserRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.reddit.com/user/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, m := range twitchRe.FindAllStringSubmatch(blob, 80) {
-		if len(m) == 2 {
-			add(ParseSocialURL("https://www.twitch.tv/"+m[1], m[1], ""))
-		}
-	}
-
-	for _, href := range hrefAbsRe.FindAllString(decoded, 200) {
+	for _, href := range hrefAbsRe.FindAllString(decoded, 400) {
 		add(ParseSocialURL(href, "", ""))
 	}
 

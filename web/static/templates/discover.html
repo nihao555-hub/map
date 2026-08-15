@@ -41,7 +41,7 @@
               <ul class="wmt-bullets" id="mode-bullets">
                 <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>不是地图搜店：输入商品或企业关键词</li>
                 <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>在抖音、TikTok、Facebook 等找批发 / 店铺等目标商家</li>
-                <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>拿到的是可打开的官方主页，不是邮箱</li>
+                <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>拿到的是社媒主页，不是视频或笔记</li>
                 <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>去私信：在右侧打开主页预览，系统不代发</li>
               </ul>
               <div class="wmt-channel" id="channel-group-landing" hidden>
@@ -52,6 +52,7 @@
                 <div class="wmt-searchbox">
                   <svg class="wmt-icon" style="color:#8f959e"><use href="#i-search"/></svg>
                   <input type="text" id="keyword-landing" placeholder="请输入企业或商品名称" maxlength="64" autocomplete="off" />
+                  <select id="country-landing" class="wmt-country" aria-label="国家/地区"></select>
                   <label class="wmt-precise"><input type="checkbox" id="precise-landing"> 精确</label>
                   <button type="submit" class="wmt-search-btn" id="landing-btn">搜索</button>
                 </div>
@@ -63,7 +64,7 @@
                 <button type="button" class="wmt-ex" data-q="配电柜厂家">配电柜厂家</button>
                 <button type="button" class="wmt-ex" data-q="furniture">furniture</button>
               </div>
-              <p class="wmt-cover">默认找批发、店铺、经销商等可跟进的商家主页；勾选「精确」后只保留名称或标题含该词的结果</p>
+              <p class="wmt-cover">只返回可打开的社媒主页，不含视频；可选国家缩小市场。公开索引会尽量收回能解析的主页，做不到全网不漏。</p>
             </div>
             <div class="wmt-ai-orb" aria-hidden="true">
               <span class="wmt-ai-ring wmt-ai-ring-1"></span>
@@ -110,6 +111,7 @@
           <div class="wmt-searchbox">
             <svg class="wmt-icon" style="color:#8f959e"><use href="#i-search"/></svg>
             <input type="text" id="keyword" name="keyword" placeholder="请输入企业或商品名称" maxlength="64" autocomplete="off" />
+            <select id="country" class="wmt-country" aria-label="国家/地区"></select>
             <label class="wmt-precise"><input type="checkbox" id="precise"> 精确</label>
             <button type="submit" class="wmt-search-btn" id="discover-btn">搜索</button>
           </div>

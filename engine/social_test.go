@@ -19,6 +19,11 @@ func TestParseSocialURLTikTok(t *testing.T) {
 		t.Fatalf("homepage %s", hit.HomepageURL)
 	}
 
+	video, ok := ParseSocialURL("https://www.tiktok.com/@nike/video/7123456789012345678", "Nike video", "")
+	if !ok || video.Handle != "nike" || strings.Contains(video.HomepageURL, "/video/") {
+		t.Fatalf("tiktok video should collapse to profile %+v ok=%v", video, ok)
+	}
+
 	if hit.MessageURL == "" || !strings.Contains(hit.MessageHint, "不会代发") {
 		t.Fatalf("message fields %+v", hit)
 	}
@@ -69,9 +74,8 @@ func TestParseSocialURLFacebookLinkedInX(t *testing.T) {
 		t.Fatalf("facebook people %+v ok=%v", people, ok)
 	}
 
-	ytw, ok := ParseSocialURL("https://www.youtube.com/watch?v=dQw4w9wgGcQ", "Power tools demo", "")
-	if !ok || ytw.Platform != PlatformYouTube || !strings.Contains(ytw.HomepageURL, "watch?v=") {
-		t.Fatalf("youtube watch %+v ok=%v", ytw, ok)
+	if _, ok := ParseSocialURL("https://www.youtube.com/watch?v=dQw4w9wgGcQ", "Power tools demo", ""); ok {
+		t.Fatal("youtube watch must be rejected")
 	}
 }
 
@@ -137,39 +141,24 @@ func TestParseSocialURLDouyin(t *testing.T) {
 	}
 }
 
-func TestParseSocialURLDouyinVideoNotShortLink(t *testing.T) {
-	hit, ok := ParseSocialURL("https://www.douyin.com/video/7642369989815868323", "配电设备图解（基础篇） - 知了电力 - 抖音", "")
-	if !ok || hit.Platform != PlatformDouyin {
-		t.Fatalf("ok=%v hit=%+v", ok, hit)
+func TestParseSocialURLRejectsVideosAndNotes(t *testing.T) {
+	if _, ok := ParseSocialURL("https://www.douyin.com/video/7642369989815868323", "配电设备图解（基础篇） - 知了电力 - 抖音", ""); ok {
+		t.Fatal("douyin video must be rejected")
 	}
-	if !strings.Contains(hit.HomepageURL, "/video/7642369989815868323") {
-		t.Fatalf("home %s", hit.HomepageURL)
+	if _, ok := ParseSocialURL("https://www.xiaohongshu.com/explore/64f0ab12cd34ef567890abcd", "配电箱现场", ""); ok {
+		t.Fatal("xiaohongshu note must be rejected")
 	}
-	if strings.Contains(hit.HomepageURL, "v.douyin.com") {
-		t.Fatal("www video must not become short link")
+	if _, ok := ParseSocialURL("https://www.xiaohongshu.com/explore?language=zh-CN", "小红书", ""); ok {
+		t.Fatal("bare explore must be rejected")
 	}
-	if hit.Name != "知了电力" {
-		t.Fatalf("name=%q", hit.Name)
+	if _, ok := ParseSocialURL("https://v.douyin.com/AbCdEf", "short", ""); ok {
+		t.Fatal("douyin short link must be rejected")
 	}
 }
 
 func TestDisplayNameFromAtAuthor(t *testing.T) {
-	hit, ok := ParseSocialURL("https://www.douyin.com/video/7342493376194809098", "看户内配电箱内部配线方法是怎样的？@机电安装鸷鹏", "")
-	if !ok {
-		t.Fatal("expected hit")
-	}
-	if hit.Name != "机电安装鸷鹏" {
-		t.Fatalf("name=%q", hit.Name)
-	}
-}
-
-func TestParseSocialURLXiaohongshuNote(t *testing.T) {
-	hit, ok := ParseSocialURL("https://www.xiaohongshu.com/explore/64f0ab12cd34ef567890abcd", "配电箱现场", "")
-	if !ok || hit.Platform != PlatformXiaohongshu || !strings.Contains(hit.HomepageURL, "/explore/") {
-		t.Fatalf("ok=%v hit=%+v", ok, hit)
-	}
-	if _, ok := ParseSocialURL("https://www.xiaohongshu.com/explore?language=zh-CN", "小红书", ""); ok {
-		t.Fatal("bare explore must be rejected")
+	if got := displayName("看户内配电箱内部配线方法是怎样的？@机电安装鸷鹏", "id"); got != "机电安装鸷鹏" {
+		t.Fatalf("name=%q", got)
 	}
 }
 
@@ -222,11 +211,11 @@ func TestMergeHitsDedupAndScore(t *testing.T) {
 	hits[1].Score = 90
 
 	out := mergeHits(hits, "nike", 10)
-	if len(out) != 2 {
+	if len(out) != 1 {
 		t.Fatalf("len=%d", len(out))
 	}
 
-	if out[0].Handle != "nike" {
+	if out[0].Handle != "nike" || out[0].Score < 90 {
 		t.Fatalf("expected nike first, got %+v", out[0])
 	}
 }
