@@ -58,6 +58,106 @@
     toast.t = setTimeout(function () { toastEl.classList.add("hidden"); }, 2400);
   }
 
+  const WEAK_KEYWORDS = {
+    "的": 1, "了": 1, "吗": 1, "呢": 1, "啊": 1, "吧": 1, "是": 1,
+    "a": 1, "an": 1, "the": 1, "and": 1, "or": 1, "i": 1, "to": 1,
+    "搜索": 1, "客户": 1, "获客": 1, "test": 1, "aaa": 1,
+    "你好": 1, "hello": 1, "hi": 1, "ok": 1
+  };
+
+  function normalizeKeyword(s) {
+    return String(s || "").replace(/\s+/g, " ").trim();
+  }
+
+  function validateKeyword(s, precise) {
+    s = normalizeKeyword(s);
+    if (!s) return "请输入商品或企业名称";
+    const chars = Array.from(s);
+    const n = chars.length;
+    if (n < (precise ? 3 : 2)) {
+      return precise ? "精确搜索请输入至少 3 个字，例如「配电柜」" : "关键词至少 2 个字，例如「配电柜」";
+    }
+    if (n > 64) return "关键词过长，请缩短到 64 个字以内";
+    if (!/[A-Za-z\u4e00-\u9fff]/.test(s)) return "请输入商品或企业名称，不要只填符号";
+    if (/^[0-9\s]+$/.test(s)) return "请输入商品或企业名称，不要只填数字";
+    const compact = s.replace(/\s+/g, "");
+    if (compact.length >= 2 && compact.split("").every(function (c) { return c === compact[0]; })) {
+      return "请输入更具体的商品或企业名称，例如「电动工具」";
+    }
+    if (WEAK_KEYWORDS[s.toLowerCase()]) return "请输入更具体的商品或企业名称，例如「电动工具」";
+    const low = s.toLowerCase();
+    if (s.indexOf("<") >= 0 || s.indexOf(">") >= 0 ||
+        low.indexOf("javascript:") >= 0 || low.indexOf("data:text") >= 0 ||
+        low.indexOf("<script") >= 0 || low.indexOf("127.0.0.1") >= 0 ||
+        low.indexOf("localhost") >= 0) {
+      return "不支持该关键词";
+    }
+    return "";
+  }
+
+  function showKeywordError(msg, toastOnResults) {
+    ["keyword-error-landing", "keyword-error"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.hidden = !msg;
+      el.textContent = msg || "";
+    });
+    if (msg && toastOnResults && landing.classList.contains("hidden")) toast(msg);
+  }
+
+  function isPrecise() {
+    const a = document.getElementById("precise-landing");
+    const b = document.getElementById("precise");
+    return !!(a && a.checked) || !!(b && b.checked);
+  }
+
+  function bindPrecise() {
+    ["precise-landing", "precise"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("change", function () {
+        const on = el.checked;
+        ["precise-landing", "precise"].forEach(function (other) {
+          const n = document.getElementById(other);
+          if (n) n.checked = on;
+        });
+        liveValidate();
+      });
+    });
+  }
+
+  function liveValidate() {
+    const el = landing.classList.contains("hidden") ? keyword : keywordLanding;
+    const val = el ? el.value : "";
+    if (!normalizeKeyword(val)) {
+      showKeywordError("");
+      return;
+    }
+    showKeywordError(validateKeyword(val, isPrecise()));
+  }
+
+  function bindKeywordFields() {
+    [keyword, keywordLanding].forEach(function (el) {
+      if (!el) return;
+      el.addEventListener("input", function () {
+        if (keyword && keywordLanding) {
+          if (el === keywordLanding) keyword.value = el.value;
+          else keywordLanding.value = el.value;
+        }
+        liveValidate();
+      });
+      el.addEventListener("blur", liveValidate);
+    });
+  }
+
+  function bindExamples() {
+    document.querySelectorAll(".wmt-ex").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        doSearch(btn.getAttribute("data-q") || "");
+      });
+    });
+  }
+
   function platformSvg(id) {
     const ic = PLATFORM_ICONS[id];
     if (!ic) return "";
@@ -94,20 +194,21 @@
       return '<button type="button" class="plat-chip' + on + '" data-platform="' + escapeAttr(p.id) + '">' +
         platformSvg(p.id) + "<span>" + escapeHtml(p.label) + "</span></button>";
     }).join("");
-    ["platform-group", "platform-group-landing"].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.innerHTML = html;
-      bindChips(el);
-    });
+    const el = document.getElementById("platform-group");
+    if (!el) return;
+    el.innerHTML = html;
+    bindChips(el);
   }
 
   function selectedPlatforms() {
-    const chips = document.querySelectorAll("#platform-group .plat-chip.is-on");
-    if (!chips.length) {
-      return catalog.filter(function (p) { return p.default; }).map(function (p) { return p.id; });
+    const chips = document.querySelectorAll("#platform-group .plat-chip");
+    if (chips.length) {
+      return Array.prototype.map.call(
+        document.querySelectorAll("#platform-group .plat-chip.is-on"),
+        function (el) { return el.getAttribute("data-platform"); }
+      );
     }
-    return Array.prototype.map.call(chips, function (el) { return el.getAttribute("data-platform"); });
+    return catalog.filter(function (p) { return p.default; }).map(function (p) { return p.id; });
   }
 
   function selectedChannel() {
@@ -201,8 +302,28 @@
   }
 
   function doSearch(kw) {
-    kw = (kw || "").trim();
-    if (!kw) return;
+    kw = normalizeKeyword(kw);
+    const err = validateKeyword(kw, isPrecise());
+    if (err) {
+      showKeywordError(err, true);
+      return;
+    }
+    if (!catalog.length && !document.querySelectorAll("#platform-group .plat-chip").length) {
+      showKeywordError("平台列表加载中，请稍候再搜");
+      loadPlatforms().then(function () {
+        if (!catalog.length) {
+          showKeywordError("无法加载已支持平台", true);
+          return;
+        }
+        doSearch(kw);
+      });
+      return;
+    }
+    if (!selectedPlatforms().length) {
+      showKeywordError("请至少勾选一个平台", true);
+      return;
+    }
+    showKeywordError("");
     keyword.value = kw;
     if (keywordLanding) keywordLanding.value = kw;
 
@@ -230,13 +351,17 @@
         channel: mode === "marketing" ? selectedChannel() : "",
         platforms: selectedPlatforms(),
         limit: 0,
+        precise: isPrecise(),
       }),
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (out) {
         setBusy(false);
         if (!out.ok) {
-          status.textContent = "搜索繁忙，请稍后再试。";
+          const msg = (out.j && out.j.message) || "";
+          const friendly = /^请|^不支持|^关键词/.test(msg);
+          status.textContent = friendly ? msg : "搜索繁忙，请稍后再试。";
+          if (friendly) showKeywordError(msg, true);
           empty.classList.remove("hidden");
           empty.textContent = status.textContent;
           return;
@@ -246,6 +371,13 @@
         if (mode === "marketing") {
           const want = selectedChannel();
           lastHits = lastHits.filter(function (h) { return !want || h.channel === want; });
+        }
+        if (isPrecise()) {
+          const needle = kw.toLowerCase();
+          lastHits = lastHits.filter(function (h) {
+            const blob = [h.name, h.handle, h.title, h.snippet, h.contact, h.homepage_url].join(" ").toLowerCase();
+            return blob.indexOf(needle) !== -1;
+          });
         }
         page = 1;
         status.textContent = lastHits.length
@@ -316,6 +448,8 @@
     return '<td class="' + (cls || "") + '" title="' + escapeAttr(text) + '"><span class="cell-clip">' +
       escapeHtml(text) + "</span></td>";
   }
+
+  function renderHits(hits) {
     lastHits = hits || [];
     if (mode === "marketing") {
       renderMarketHits(lastHits);
@@ -323,7 +457,9 @@
     }
     if (!lastHits.length) {
       empty.classList.remove("hidden");
-      empty.textContent = "没有命中公开主页。可换更具体的词（例如「配电柜厂家」），或勾选抖音、小红书后再搜。";
+      empty.textContent = isPrecise()
+        ? "精确模式下没有命中，可关掉「精确」或换更具体的词再搜。"
+        : "没有命中公开主页。可换更具体的词（例如「配电柜厂家」），或勾选抖音、小红书后再搜。";
       foot.textContent = "";
       updatePager();
       results.innerHTML = "";
@@ -580,6 +716,9 @@
 
   bindMode();
   bindChannel();
+  bindPrecise();
+  bindKeywordFields();
+  bindExamples();
   setMode("homepage");
   loadPlatforms();
 })();

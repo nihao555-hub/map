@@ -22,7 +22,13 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "不是地图搜店", "私信模式", "营销模式", "一键营销", "preview-pane", "共 0 条", "/static/js/discover.js", "id=\"app-rail\"", "/static/css/shell.css", "rail-item is-active"} {
+	for _, want := range []string{
+		"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "不是地图搜店",
+		"私信模式", "营销模式", "一键营销", "preview-pane", "共 0 条", "/static/js/discover.js",
+		`id="app-rail"`, "/static/css/shell.css", "rail-item is-active",
+		"智能引擎能为你做什么", "精确", "试试", "wmt-features", "wmt-ai-orb", "开发信跟进",
+		"请输入企业或商品名称",
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
@@ -48,7 +54,7 @@ func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle"} {
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -140,6 +146,23 @@ func TestDiscoverSearchRequiresKeyword(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDiscoverSearchRejectsWeakKeyword(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	for _, body := range []string{
+		`{"keyword":"的","kind":"people"}`,
+		`{"keyword":"搜索","kind":"people"}`,
+		`{"keyword":"啊","kind":"people"}`,
+		`{"keyword":"配电","kind":"people","precise":true}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/discover/search", bytes.NewBufferString(body))
+		rec := httptest.NewRecorder()
+		srv.apiDiscoverSearch(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("code=%d body=%s for %s", rec.Code, rec.Body.String(), body)
+		}
 	}
 }
 

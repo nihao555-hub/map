@@ -54,6 +54,8 @@ body.wmt {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 #results-view {
@@ -62,31 +64,46 @@ body.wmt {
   min-width: 0;
 }
 
-/* ===== 落地 Banner ===== */
+/* ===== 落地 Banner（对齐网易外贸通智能引擎：深蓝英雄区 + 大搜索框 + AI 球） ===== */
 .wmt-hero {
   background:
-    radial-gradient(circle at 88% 30%, rgba(59,102,245,.35), transparent 42%),
-    linear-gradient(180deg, #0c1730 0%, #102246 55%, #0d1b33 100%);
+    radial-gradient(circle at 86% 38%, rgba(59,102,245,.42), transparent 36%),
+    radial-gradient(circle at 12% 80%, rgba(32,70,160,.28), transparent 40%),
+    linear-gradient(180deg, #0b162c 0%, #102246 52%, #0d1b33 100%);
   color: #fff;
-  padding: 36px 48px 28px;
+  padding: 56px 64px 48px;
   position: relative;
   overflow: hidden;
+  flex: 1;
+  min-height: 420px;
+  display: flex;
+  align-items: center;
 }
-.wmt-hero::before {
+.wmt-hero::after {
   content: "";
   position: absolute;
-  right: 8%;
-  top: 18%;
-  width: 220px;
-  height: 220px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(59,102,245,.55), rgba(12,23,48,0) 70%);
+  inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+  opacity: .45;
   pointer-events: none;
 }
+.wmt-hero-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 48px;
+  width: 100%;
+  max-width: 1120px;
+  position: relative;
+  z-index: 1;
+}
+.wmt-hero-copy { flex: 1; min-width: 0; max-width: 760px; }
 .wmt-hero-title {
-  font-size: 28px;
+  font-size: 36px;
   font-weight: 650;
-  margin: 0 0 16px;
+  margin: 0 0 18px;
+  letter-spacing: .5px;
   position: relative;
 }
 .wmt-bullets {
@@ -118,20 +135,50 @@ body.wmt {
 }
 
 .wmt-ai-orb {
-  position: absolute;
-  right: 10%;
-  top: 28px;
-  width: 88px;
-  height: 88px;
-  border-radius: 50%;
-  border: 6px solid rgba(59,102,245,.55);
-  box-shadow: 0 0 0 10px rgba(59,102,245,.12), 0 0 40px rgba(59,102,245,.45);
+  position: relative;
+  flex-shrink: 0;
+  width: 220px;
+  height: 220px;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 0 12px 0 0;
+}
+.wmt-ai-core {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, #9bb8ff, #3b66f5 46%, #16357a);
+  color: #fff;
   font-weight: 700;
-  letter-spacing: 1px;
-  background: rgba(16, 34, 70, .6);
+  font-size: 22px;
+  letter-spacing: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 36px rgba(59,102,245,.7), inset 0 -10px 18px rgba(0,0,0,.22);
+  z-index: 2;
+}
+.wmt-ai-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid rgba(122,162,255,.38);
+  pointer-events: none;
+  animation: wmt-spin 14s linear infinite;
+}
+.wmt-ai-ring-1 {
+  inset: 28px;
+  border-top-color: rgba(255,255,255,.55);
+}
+.wmt-ai-ring-2 {
+  inset: 4px;
+  border-color: rgba(59,102,245,.22);
+  border-bottom-color: rgba(180,205,255,.5);
+  animation-duration: 22s;
+  animation-direction: reverse;
+}
+@keyframes wmt-spin {
+  to { transform: rotate(360deg); }
 }
 
 .wmt-hero .wmt-channel { margin: 10px 0 14px; }
@@ -175,24 +222,27 @@ body.wmt {
   color: #fff;
 }
 
+.wmt-search-row { max-width: 680px; }
 .wmt-searchbox {
   flex: 1;
-  height: 44px;
+  height: 52px;
   background: #fff;
   border-radius: 4px;
   display: flex;
   align-items: center;
-  padding: 0 8px 0 14px;
+  padding: 0 6px 0 16px;
   gap: 10px;
   min-width: 0;
+  box-shadow: 0 10px 28px rgba(8, 18, 40, .22);
 }
 .wmt-searchbox input {
   flex: 1;
   border: 0;
   outline: none;
-  font-size: 14px;
+  font-size: 15px;
   min-width: 0;
   background: transparent;
+  color: var(--wmt-text);
 }
 .wmt-precise {
   display: inline-flex;
@@ -201,16 +251,52 @@ body.wmt {
   color: var(--wmt-sub);
   font-size: 13px;
   white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
 }
+.wmt-precise input { accent-color: var(--wmt-blue); }
 .wmt-hero .wmt-precise { color: var(--wmt-sub); }
+.wmt-kw-err {
+  color: #ffccc7;
+  font-size: 12px;
+  margin: 8px 0 0;
+  min-height: 18px;
+}
+.wmt-results .wmt-kw-err { color: #cf1322; margin: 0 0 8px; }
+.wmt-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: rgba(255,255,255,.72);
+}
+.wmt-ex {
+  border: 1px solid rgba(255,255,255,.28);
+  background: rgba(255,255,255,.1);
+  color: #fff;
+  border-radius: 14px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wmt-ex:hover { background: #fff; color: var(--wmt-blue); }
+.wmt-cover {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: rgba(255,255,255,.58);
+  line-height: 1.6;
+  max-width: 640px;
+}
 .wmt-search-btn {
-  height: 32px;
-  padding: 0 18px;
+  height: 40px;
+  padding: 0 22px;
   border: 0;
   border-radius: 4px;
   background: var(--wmt-blue);
   color: #fff;
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
 }
 .wmt-search-btn:hover { background: var(--wmt-blue-hover); }
@@ -251,28 +337,43 @@ body.wmt {
 .row-actions .linkish:hover { text-decoration: underline; }
 
 .wmt-features {
-  padding: 28px 48px 48px;
+  padding: 36px 64px 48px;
+  background: #fff;
+  flex-shrink: 0;
 }
 .wmt-features h2 {
-  font-size: 16px;
-  margin: 0 0 20px;
+  font-size: 18px;
+  margin: 0 0 24px;
   font-weight: 600;
+  color: var(--wmt-text);
 }
 .wmt-feat-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 28px;
+  gap: 20px;
+  max-width: 1120px;
 }
 .wmt-feat {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   align-items: flex-start;
+  background: #f6f8fc;
+  border-radius: 8px;
+  padding: 22px 18px;
+  min-height: 132px;
+}
+.wmt-feat h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wmt-text);
 }
 .wmt-feat-ico {
   width: 40px;
   height: 40px;
   border-radius: 50%;
   background: #eef3ff;
+  color: var(--wmt-blue);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -310,6 +411,7 @@ body.wmt {
 .wmt-results-head .wmt-searchbox {
   height: 36px;
   border: 1px solid var(--wmt-line);
+  box-shadow: none;
 }
 .wmt-results-head .wmt-search-btn { height: 36px; }
 
@@ -649,4 +751,8 @@ body.wmt {
 
 @media (max-width: 1100px) {
   .wmt-feat-grid { grid-template-columns: 1fr; }
+  .wmt-hero { padding: 32px 20px 28px; min-height: 0; }
+  .wmt-features { padding: 24px 20px 36px; }
+  .wmt-ai-orb { display: none; }
+  .wmt-hero-title { font-size: 28px; }
 }

@@ -20,13 +20,13 @@ const (
 // and overlays cloned OSS sidecars (TikTok-Api / f2) when they are healthy.
 func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 	start := time.Now()
-	q.Keyword = strings.TrimSpace(q.Keyword)
+	q.Keyword = NormalizeKeyword(q.Keyword)
 	q.Kind = strings.ToLower(strings.TrimSpace(q.Kind))
 	q.Mode = strings.ToLower(strings.TrimSpace(q.Mode))
 	q.Channel = strings.ToLower(strings.TrimSpace(q.Channel))
 
-	if q.Keyword == "" {
-		return Result{}, fmt.Errorf("keyword is required")
+	if err := ValidateKeyword(q.Keyword, q.Precise); err != nil {
+		return Result{}, err
 	}
 
 	if q.Mode == ModeMarketing || q.Kind == KindMarketing {
@@ -69,6 +69,10 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 
 	if err != nil {
 		return Result{}, err
+	}
+
+	if q.Precise {
+		res.Hits = filterPreciseHits(res.Hits, q.Keyword)
 	}
 
 	res.Keyword = q.Keyword
@@ -242,6 +246,30 @@ func mergeHits(items []Hit, keyword string, limit int) []Hit {
 	}
 
 	return out
+}
+
+func filterPreciseHits(hits []Hit, keyword string) []Hit {
+	kw := strings.ToLower(strings.TrimSpace(keyword))
+	if kw == "" || len(hits) == 0 {
+		return hits
+	}
+
+	out := make([]Hit, 0, len(hits))
+	for _, hit := range hits {
+		if hitMatchesKeyword(hit, kw) {
+			out = append(out, hit)
+		}
+	}
+
+	return out
+}
+
+func hitMatchesKeyword(hit Hit, kw string) bool {
+	blob := strings.ToLower(strings.Join([]string{
+		hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.Contact, hit.HomepageURL,
+	}, " "))
+
+	return strings.Contains(blob, kw)
 }
 
 func keywordBonus(hit Hit, kw string) int {
