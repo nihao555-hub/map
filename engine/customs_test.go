@@ -22,12 +22,28 @@ func TestSearchCustomsBuyersFromLeadFinder(t *testing.T) {
 			"year": 2025,
 			"importers": []map[string]any{
 				{
-					"name":               "ACME TOOLS INC",
-					"total_shipments":    12,
-					"matching_shipments": 8,
-					"focus_pct":          67,
-					"profile_url":        "/importer-profile?name=ACME",
-					"api_profile_url":    "https://www.kirchnerdata.com/api/company-profile/ACME/2025/2025",
+					"name":                  "ACME TOOLS INC",
+					"total_shipments":       12,
+					"matching_shipments":    8,
+					"focus_pct":             67,
+					"match_weight_total_kg": 1200,
+					"profile_url":           "/importer-profile?name=ACME",
+					"api_profile_url":       "/api/company-profile/ACME/2025/2025",
+				},
+			},
+			"profiles": []map[string]any{
+				{
+					"name":    "ACME TOOLS INC",
+					"address": "1 Main St",
+					"top_products": []map[string]any{
+						{"hs_code": "846721", "count": 8},
+					},
+					"top_product_terms": []map[string]any{
+						{"term": "POWER DRILLS", "count": 8},
+					},
+					"latest_shipments": []map[string]any{
+						{"actual_arrival_date": "20250301", "product_desc": "DRILLS<br/>DRILLS", "shipper_name": "FACTORY A", "hs_code": "846721"},
+					},
 				},
 			},
 		})
@@ -49,6 +65,12 @@ func TestSearchCustomsBuyersFromLeadFinder(t *testing.T) {
 	}
 	if res.Hits[0].Extra["matching"] != "8" {
 		t.Fatalf("extra %+v", res.Hits[0].Extra)
+	}
+	if res.Hits[0].Extra["product"] != "POWER DRILLS" || res.Hits[0].Extra["hs"] != "846721" {
+		t.Fatalf("product extra %+v", res.Hits[0].Extra)
+	}
+	if res.Hits[0].Extra["last_date"] != "2025-03-01" || res.Hits[0].Extra["weight_kg"] != "1200" {
+		t.Fatalf("date/weight extra %+v", res.Hits[0].Extra)
 	}
 	if !strings.Contains(res.Note, "美国海关") {
 		t.Fatalf("note=%s", res.Note)
@@ -127,15 +149,24 @@ func TestLookupCustomsProfile(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"name":             "ACME TOOLS INC",
-			"country":          "United States",
-			"total_shipments":  12,
-			"unique_suppliers": 3,
-			"from_year":        2025,
-			"to_year":          2025,
-			"profile_url":      "/importer-profile?name=ACME",
-			"top_suppliers":    []map[string]any{{"name": "FACTORY A", "country": "China", "count": 5}},
-			"latest_shipments": []map[string]any{{"date": "2025-03-01", "shipper": "FACTORY A", "consignee": "ACME TOOLS INC", "product": "drills"}},
+			"name":              "ACME TOOLS INC",
+			"country":           "United States",
+			"total_shipments":   12,
+			"unique_suppliers":  3,
+			"from_year":         2025,
+			"to_year":           2025,
+			"profile_url":       "/importer-profile?name=ACME",
+			"top_suppliers":     []map[string]any{{"name": "FACTORY A", "country": "China", "count": 5}},
+			"top_carriers":      []map[string]any{{"name": "ONE LINE", "count": 3}},
+			"top_products":      []map[string]any{{"hs_code": "846721", "count": 8}},
+			"top_product_terms": []map[string]any{{"term": "POWER DRILLS", "count": 8}},
+			"latest_shipments": []map[string]any{{
+				"actual_arrival_date": "20250301",
+				"shipper_name":        "FACTORY A",
+				"consignee_name":      "ACME TOOLS INC",
+				"product_desc":        "drills<br/>drills",
+				"vessel_name":         "ONE SINGAPORE",
+			}},
 		})
 	}))
 	defer srv.Close()
@@ -147,6 +178,61 @@ func TestLookupCustomsProfile(t *testing.T) {
 	}
 	if prof.Name != "ACME TOOLS INC" || prof.TotalShipments != 12 || len(prof.Suppliers) != 1 {
 		t.Fatalf("%+v", prof)
+	}
+	if len(prof.Shipments) != 1 || prof.Shipments[0].Date != "2025-03-01" || prof.Shipments[0].Shipper != "FACTORY A" {
+		t.Fatalf("shipments %+v", prof.Shipments)
+	}
+	if !strings.Contains(strings.ToLower(prof.Shipments[0].Product), "drill") {
+		t.Fatalf("product %q", prof.Shipments[0].Product)
+	}
+	if len(prof.Products) < 2 || len(prof.Carriers) != 1 {
+		t.Fatalf("products/carriers %+v", prof)
+	}
+}
+
+func TestSearchCustomsFallsBackToCompanyProfile(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "lead-finder") {
+			http.Error(w, "", http.StatusInternalServerError)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/api/company-profile" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"name":              "SIDEWALK DISTRIBUTION",
+			"total_shipments":   5,
+			"unique_suppliers":  1,
+			"from_year":         2025,
+			"to_year":           2025,
+			"address":           "LOS ALAMITOS CA",
+			"top_products":      []map[string]any{{"hs_code": "950670", "count": 6}},
+			"top_product_terms": []map[string]any{{"term": "SKATEBOARD DECKS", "count": 3}},
+			"latest_shipments": []map[string]any{{
+				"actual_arrival_date": "20251017",
+				"shipper_name":        "HUIZHOU CHOPCHOP WOODSHOP CO LTD",
+				"product_desc":        "SKATEBOARD DECKS AND COMPLETES",
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{HTTP: srv.Client(), CustomsBaseURL: srv.URL, DisablePublic: true}
+	res, err := c.Search(context.Background(), Query{
+		Keyword: "SIDEWALK DISTRIBUTION", Kind: KindCustoms, Role: RoleBuyer, Year: 2025,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Hits) != 1 || res.Hits[0].Name != "SIDEWALK DISTRIBUTION" {
+		t.Fatalf("hits=%+v", res.Hits)
+	}
+	if res.Hits[0].Extra["hs"] != "950670" || res.Hits[0].Extra["product"] != "SKATEBOARD DECKS" {
+		t.Fatalf("extra %+v", res.Hits[0].Extra)
+	}
+	if res.Hits[0].Extra["last_date"] != "2025-10-17" {
+		t.Fatalf("last_date %+v", res.Hits[0].Extra)
 	}
 }
 

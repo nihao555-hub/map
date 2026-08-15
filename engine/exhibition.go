@@ -18,7 +18,7 @@ const (
 	exhibitionMaxLimit     = 80
 )
 
-var fairTokenRe = regexp.MustCompile(`(?i)(trade fair|trade show|exhibition|expo|messe|salon|展会|博览会|展览会)`)
+var fairTokenRe = regexp.MustCompile(`(?i)(trade fair|trade show|exhibition|expo|messe|salon|\bfairs?\b|展会|博览会|展览会)`)
 
 // searchExhibition finds trade fairs (default) or exhibitors (role=seller)
 // from Wikidata (public SPARQL) plus the same public web indexes 智能引擎 already uses.
@@ -106,7 +106,24 @@ func (c *Client) searchWikidataFairs(ctx context.Context, keyword, term, country
 	if limit <= 0 {
 		limit = 20
 	}
-	query := wikidataFairSPARQL(keyword, term, country, limit)
+	var lastErr error
+	for _, query := range []string{
+		wikidataFairEntitySPARQL(keyword, term, country, limit),
+		wikidataFairLabelSPARQL(keyword, term, country, limit),
+	} {
+		hits, err := c.runWikidataSPARQL(ctx, query, country)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(hits) > 0 {
+			return hits, nil
+		}
+	}
+	return nil, lastErr
+}
+
+func (c *Client) runWikidataSPARQL(ctx context.Context, query, country string) ([]Hit, error) {
 	u, err := url.Parse(c.WikidataURL)
 	if err != nil {
 		return nil, err
@@ -127,15 +144,29 @@ func (c *Client) searchWikidataFairs(ctx context.Context, keyword, term, country
 }
 
 func wikidataFairSPARQL(keyword, term, country string, limit int) string {
-	search := firstNonEmpty(term, keyword)
+	return wikidataFairEntitySPARQL(keyword, term, country, limit)
+}
+
+func wikidataFairSearchTerm(keyword, term string) string {
+	return firstNonEmpty(term, keyword)
+}
+
+func wikidataCountryFilter(country string) string {
+	if info := LookupCountry(country); info.Query != "" {
+		return fmt.Sprintf(`OPTIONAL { ?item wdt:P17 ?country. }
+  OPTIONAL { ?country rdfs:label ?countryEn FILTER(LANG(?countryEn)="en"). }
+  FILTER(!BOUND(?countryEn) || CONTAINS(LCASE(?countryEn), LCASE(%q)))`, info.Query)
+	}
+	return `OPTIONAL { ?item wdt:P17 ?country. }`
+}
+
+func wikidataFairEntitySPARQL(keyword, term, country string, limit int) string {
+	search := wikidataFairSearchTerm(keyword, term)
 	if limit > 30 {
 		limit = 30
 	}
-	countryFilter := ""
-	if info := LookupCountry(country); info.Query != "" {
-		countryFilter = fmt.Sprintf(`OPTIONAL { ?item wdt:P17 ?country. }
-  OPTIONAL { ?country rdfs:label ?countryEn FILTER(LANG(?countryEn)="en"). }
-  FILTER(!BOUND(?countryEn) || CONTAINS(LCASE(?countryEn), LCASE(%q)))`, info.Query)
+	if !fairTokenRe.MatchString(search) {
+		search = strings.TrimSpace(search + " trade fair")
 	}
 	return fmt.Sprintf(`SELECT ?item ?itemLabel ?start ?end ?countryLabel ?cityLabel ?website WHERE {
   SERVICE wikibase:mwapi {
@@ -148,13 +179,32 @@ func wikidataFairSPARQL(keyword, term, country string, limit int) string {
   ?item wdt:P31/wdt:P279* wd:Q57305 .
   OPTIONAL { ?item wdt:P580 ?start. }
   OPTIONAL { ?item wdt:P582 ?end. }
-  OPTIONAL { ?item wdt:P17 ?country. }
   OPTIONAL { ?item wdt:P276 ?city. }
   OPTIONAL { ?item wdt:P856 ?website. }
   %s
   SERVICE wikibase:label { bd:serviceParam wikibase:language "zh,en". }
 }
-LIMIT %d`, search+" trade fair", countryFilter, limit)
+LIMIT %d`, search, wikidataCountryFilter(country), limit)
+}
+
+func wikidataFairLabelSPARQL(keyword, term, country string, limit int) string {
+	search := wikidataFairSearchTerm(keyword, term)
+	if limit > 30 {
+		limit = 30
+	}
+	return fmt.Sprintf(`SELECT ?item ?itemLabel ?start ?end ?countryLabel ?cityLabel ?website WHERE {
+  ?item wdt:P31/wdt:P279* wd:Q57305 .
+  ?item rdfs:label ?lab .
+  FILTER(LANG(?lab) = "en")
+  FILTER(CONTAINS(LCASE(?lab), LCASE(%q)))
+  OPTIONAL { ?item wdt:P580 ?start. }
+  OPTIONAL { ?item wdt:P582 ?end. }
+  OPTIONAL { ?item wdt:P276 ?city. }
+  OPTIONAL { ?item wdt:P856 ?website. }
+  %s
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "zh,en". }
+}
+LIMIT %d`, search, wikidataCountryFilter(country), limit)
 }
 
 func parseWikidataFairs(raw []byte, selected string) ([]Hit, error) {
@@ -281,19 +331,28 @@ func keepExhibitionHit(h Hit, exhibitors bool) bool {
 	for _, bad := range []string{
 		"duckduckgo.com", "bing.com", "google.com", "brave.com",
 		"facebook.com", "instagram.com", "tiktok.com", "youtube.com/watch",
-		"x.com/", "twitter.com",
+		"x.com/", "twitter.com", "wikipedia.org", "wikidata.org",
+		"kraken.com", "binance.com", "coinbase.com",
+		"10times.com", "tradefest.io", "expoassist.com", "eventseye.com",
 	} {
 		if strings.Contains(home, bad) {
 			return false
 		}
 	}
 	blob := strings.ToLower(h.Name + " " + h.Title + " " + h.Snippet + " " + home)
-	if exhibitors {
-		return true
+	if strings.Contains(blob, "crypto") || strings.Contains(blob, "margin trading") ||
+		strings.Contains(blob, "forex") || strings.Contains(blob, "bitcoin") {
+		return false
 	}
-	return fairTokenRe.MatchString(blob) || strings.Contains(home, "wikipedia.org") ||
-		strings.Contains(home, "wikidata.org") || strings.Contains(home, "10times.com") ||
-		strings.Contains(home, "auma.de") || strings.Contains(home, "ufi.org")
+	if exhibitors {
+		hasExhibitor := strings.Contains(blob, "exhibitor") ||
+			strings.Contains(blob, "exhibitors") ||
+			strings.Contains(blob, "参展") ||
+			strings.Contains(blob, "booth")
+		hasFair := fairTokenRe.MatchString(blob)
+		return hasExhibitor && hasFair
+	}
+	return fairTokenRe.MatchString(blob)
 }
 
 func extractOrganicResults(raw []byte, source string) []Hit {
@@ -339,7 +398,7 @@ func extractOrganicResults(raw []byte, source string) []Hit {
 			Extra:       map[string]string{"via": source},
 		})
 	}
-	doc.Find("a.result__a, li.b_algo h2 a, #b_results h2 a, a[href]").Each(func(_ int, s *goquery.Selection) {
+	doc.Find("a.result__a, li.b_algo h2 a, #b_results h2 a, a[data-testid='result-title-a']").Each(func(_ int, s *goquery.Selection) {
 		href, _ := s.Attr("href")
 		title := strings.TrimSpace(s.Text())
 		snippet := strings.TrimSpace(s.Parent().Text())

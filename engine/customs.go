@@ -40,18 +40,31 @@ func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
 		limit = customsMaxLimit
 	}
 
-	wantProfiles := role == RoleSeller
-	payload, err := c.fetchLeadFinder(ctx, term, match, year, limit, wantProfiles)
+	// List first without bulk profiles. include_profiles=1 is heavier and has
+	// been returning HTTP 500; hydrate the first page with company-profile instead.
+	payload, err := c.fetchLeadFinder(ctx, term, match, year, limit, false)
 	if err != nil && year == time.Now().UTC().Year() {
-		payload, err = c.fetchLeadFinder(ctx, term, match, year-1, limit, wantProfiles)
+		payload, err = c.fetchLeadFinder(ctx, term, match, year-1, limit, false)
 		year = year - 1
 	}
 	if err != nil {
+		if role != RoleSeller {
+			if hits := c.customsProfileFallback(ctx, q.Keyword, term, year); len(hits) > 0 {
+				return Result{
+					Hits:     hits,
+					Sources:  []string{"kirchner"},
+					Note:     customsPolicyNote,
+					Expanded: []string{term, strconv.Itoa(year)},
+				}, nil
+			}
+		}
 		return Result{
-			Note:     customsPolicyNote,
-			Warnings: []string{err.Error()},
+			Note:     "公开提单接口暂时不可用。逐票企业来自美国海关公开提单，不是全球企业库。",
 			Expanded: []string{term},
 		}, nil
+	}
+	if len(payload.Profiles) == 0 && len(payload.Importers) > 0 {
+		payload.Profiles = c.fetchImporterProfiles(ctx, payload.Importers, year, 12)
 	}
 
 	var hits []Hit
@@ -89,6 +102,7 @@ type CustomsProfile struct {
 	UniqueSuppliers int               `json:"unique_suppliers,omitempty"`
 	HomepageURL     string            `json:"homepage_url,omitempty"`
 	Suppliers       []CustomsPartner  `json:"suppliers,omitempty"`
+	Carriers        []CustomsPartner  `json:"carriers,omitempty"`
 	Origins         []CustomsPartner  `json:"origins,omitempty"`
 	Products        []CustomsProduct  `json:"products,omitempty"`
 	Shipments       []CustomsShipment `json:"shipments,omitempty"`
@@ -131,7 +145,7 @@ func (c *Client) LookupCustomsProfile(ctx context.Context, name string, year int
 	year = customsYear(year)
 	raw, err := c.postJSON(ctx, strings.TrimRight(c.CustomsBaseURL, "/")+"/api/company-profile", map[string]any{
 		"name": name, "yr_from": year, "yr_to": year,
-	}, nil)
+	}, kirchnerHeaders())
 	if err != nil {
 		return CustomsProfile{}, err
 	}
@@ -150,8 +164,9 @@ func (c *Client) LookupCustomsProfile(ctx context.Context, name string, year int
 		UniqueSuppliers: jsonInt(parsed["unique_suppliers"]),
 		HomepageURL:     absoluteKirchnerURL(c, asString(parsed["profile_url"])),
 		Suppliers:       mapCustomsPartners(parsed["top_suppliers"], 12),
+		Carriers:        mapCustomsPartners(parsed["top_carriers"], 8),
 		Origins:         mapCustomsOrigins(parsed["top_origin_countries"], 8),
-		Products:        mapCustomsProducts(parsed["top_products"], 8),
+		Products:        append(mapCustomsProducts(parsed["top_products"], 8), mapCustomsProducts(parsed["top_product_terms"], 8)...),
 		Shipments:       mapCustomsShipments(parsed["latest_shipments"], 8),
 		Note:            customsPolicyNote,
 	}
@@ -175,6 +190,7 @@ type leadFinderRow struct {
 	TotalShipments    int     `json:"total_shipments"`
 	MatchingShipments int     `json:"matching_shipments"`
 	FocusPct          float64 `json:"focus_pct"`
+	MatchWeightKg     float64 `json:"match_weight_total_kg"`
 	ProfileURL        string  `json:"profile_url"`
 	APIProfileURL     string  `json:"api_profile_url"`
 }
@@ -195,7 +211,7 @@ func (c *Client) fetchLeadFinder(ctx context.Context, term, match string, year, 
 	}
 	u.RawQuery = q.Encode()
 
-	raw, err := c.get(ctx, u.String(), nil)
+	raw, err := c.get(ctx, u.String(), kirchnerHeaders())
 	if err != nil {
 		return leadFinderPayload{}, err
 	}
@@ -213,6 +229,7 @@ func customsBuyerHits(payload leadFinderPayload, country string, year int) []Hit
 	if !customsCountryIsUS(country) && strings.TrimSpace(country) != "" {
 		return nil
 	}
+	profiles := indexCustomsProfiles(payload.Profiles)
 	out := make([]Hit, 0, len(payload.Importers))
 	for _, row := range payload.Importers {
 		name := strings.TrimSpace(row.Name)
@@ -220,6 +237,40 @@ func customsBuyerHits(payload leadFinderPayload, country string, year int) []Hit
 			continue
 		}
 		home := strings.TrimSpace(row.ProfileURL)
+		extra := map[string]string{
+			"shipments": strconv.Itoa(row.TotalShipments),
+			"matching":  strconv.Itoa(row.MatchingShipments),
+			"focus":     strconv.FormatFloat(row.FocusPct, 'f', 0, 64),
+			"year":      strconv.Itoa(year),
+		}
+		if row.MatchWeightKg > 0 {
+			extra["weight_kg"] = strconv.FormatFloat(row.MatchWeightKg, 'f', 0, 64)
+		}
+		if p := profiles[strings.ToLower(name)]; p != nil {
+			product, hs := topProductExtra(p["top_products"])
+			if term, _ := topProductExtra(p["top_product_terms"]); term != "" {
+				product = term
+			}
+			if product != "" {
+				extra["product"] = product
+			}
+			if hs != "" {
+				extra["hs"] = hs
+			}
+			if extra["address"] == "" {
+				extra["address"] = asString(p["address"])
+			}
+			ships := mapCustomsShipments(p["latest_shipments"], 1)
+			if len(ships) > 0 && ships[0].Date != "" {
+				extra["last_date"] = ships[0].Date
+				if extra["product"] == "" {
+					extra["product"] = ships[0].Product
+				}
+				if extra["hs"] == "" {
+					extra["hs"] = ships[0].HSCode
+				}
+			}
+		}
 		hit := Hit{
 			ID:           "customs:" + strings.ToLower(name),
 			Kind:         KindCustoms,
@@ -233,16 +284,40 @@ func customsBuyerHits(payload leadFinderPayload, country string, year int) []Hit
 			MessageURL:   home,
 			Score:        80 + row.MatchingShipments,
 			Snippet:      fmt.Sprintf("匹配提单 %d · 全部 %d · 专注度 %.0f%%", row.MatchingShipments, row.TotalShipments, row.FocusPct),
-			Extra: map[string]string{
-				"shipments": strconv.Itoa(row.TotalShipments),
-				"matching":  strconv.Itoa(row.MatchingShipments),
-				"focus":     strconv.FormatFloat(row.FocusPct, 'f', 0, 64),
-				"year":      strconv.Itoa(year),
-			},
+			Extra:        extra,
 		}
 		out = append(out, hit)
 	}
 	return out
+}
+
+func indexCustomsProfiles(profiles []map[string]any) map[string]map[string]any {
+	out := make(map[string]map[string]any, len(profiles))
+	for _, p := range profiles {
+		name := strings.ToLower(strings.TrimSpace(asString(p["name"])))
+		if name == "" {
+			continue
+		}
+		out[name] = p
+	}
+	return out
+}
+
+func topProductExtra(raw any) (product, hs string) {
+	arr, _ := raw.([]any)
+	if len(arr) == 0 {
+		return "", ""
+	}
+	m, _ := arr[0].(map[string]any)
+	if m == nil {
+		return "", ""
+	}
+	product = firstNonEmpty(asString(m["term"]), asString(m["product"]), asString(m["description"]))
+	hs = firstNonEmpty(asString(m["hs_code"]), asString(m["code"]))
+	if product == "" {
+		product = hs
+	}
+	return product, hs
 }
 
 func customsSellerHits(payload leadFinderPayload, country string, year int) []Hit {
@@ -518,17 +593,159 @@ func mapCustomsShipments(raw any, limit int) []CustomsShipment {
 			continue
 		}
 		out = append(out, CustomsShipment{
-			Date:      asString(m["date"]),
-			Shipper:   firstNonEmpty(asString(m["shipper"]), asString(m["exporter"])),
-			Consignee: firstNonEmpty(asString(m["consignee"]), asString(m["importer"])),
-			Product:   firstNonEmpty(asString(m["product"]), asString(m["description"])),
+			Date:      formatKirchnerDate(firstNonEmpty(asString(m["date"]), asString(m["actual_arrival_date"]))),
+			Shipper:   firstNonEmpty(asString(m["shipper"]), asString(m["shipper_name"]), asString(m["exporter"])),
+			Consignee: firstNonEmpty(asString(m["consignee"]), asString(m["consignee_name"]), asString(m["importer"])),
+			Product:   stripMarkup(firstNonEmpty(asString(m["product"]), asString(m["product_desc"]), asString(m["description"]))),
 			HSCode:    firstNonEmpty(asString(m["hs_code"]), asString(m["hs"])),
 			Country:   firstNonEmpty(asString(m["country"]), asString(m["origin"])),
-			Vessel:    asString(m["vessel"]),
+			Vessel:    firstNonEmpty(asString(m["vessel"]), asString(m["vessel_name"])),
 		})
 		if len(out) >= limit {
 			break
 		}
+	}
+	return out
+}
+
+func kirchnerHeaders() map[string]string {
+	return map[string]string{
+		"User-Agent": browserUA,
+		"Accept":     "application/json",
+	}
+}
+
+func formatKirchnerDate(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) == 8 {
+		ok := true
+		for _, r := range s {
+			if r < '0' || r > '9' {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return s[:4] + "-" + s[4:6] + "-" + s[6:8]
+		}
+	}
+	if len(s) >= 10 && s[4] == '-' {
+		return s[:10]
+	}
+	return s
+}
+
+func stripMarkup(s string) string {
+	s = strings.ReplaceAll(s, "<br/>", " ")
+	s = strings.ReplaceAll(s, "<br />", " ")
+	s = strings.ReplaceAll(s, "<br>", " ")
+	var b strings.Builder
+	inTag := false
+	for _, r := range s {
+		switch {
+		case r == '<':
+			inTag = true
+		case r == '>':
+			inTag = false
+		case !inTag:
+			b.WriteRune(r)
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+func (c *Client) customsProfileFallback(ctx context.Context, keyword, term string, year int) []Hit {
+	for _, name := range uniqueFoldedStrings([]string{strings.TrimSpace(keyword), strings.TrimSpace(term)}) {
+		if name == "" || looksLikeHS(name) {
+			continue
+		}
+		prof, err := c.LookupCustomsProfile(ctx, name, year)
+		if err != nil || strings.TrimSpace(prof.Name) == "" || prof.TotalShipments == 0 {
+			continue
+		}
+		return []Hit{hitFromCustomsProfile(prof, year)}
+	}
+	return nil
+}
+
+func hitFromCustomsProfile(prof CustomsProfile, year int) Hit {
+	extra := map[string]string{
+		"shipments": strconv.Itoa(prof.TotalShipments),
+		"matching":  strconv.Itoa(prof.TotalShipments),
+		"year":      strconv.Itoa(year),
+		"address":   prof.Address,
+	}
+	for _, p := range prof.Products {
+		if extra["hs"] == "" && looksLikeHS(p.Code) {
+			extra["hs"] = p.Code
+		}
+		if extra["product"] == "" && p.Code != "" && !looksLikeHS(p.Code) {
+			extra["product"] = p.Code
+		}
+	}
+	if extra["product"] == "" && len(prof.Products) > 0 {
+		extra["product"] = prof.Products[0].Code
+	}
+	if len(prof.Shipments) > 0 {
+		if prof.Shipments[0].Date != "" {
+			extra["last_date"] = prof.Shipments[0].Date
+		}
+		if extra["product"] == "" {
+			extra["product"] = prof.Shipments[0].Product
+		}
+		if extra["hs"] == "" {
+			extra["hs"] = prof.Shipments[0].HSCode
+		}
+	}
+	return Hit{
+		ID:           "customs:" + strings.ToLower(prof.Name),
+		Kind:         KindCustoms,
+		Platform:     PlatformCustoms,
+		Name:         prof.Name,
+		Title:        prof.Name,
+		Role:         RoleBuyer,
+		Country:      "US",
+		CountryLabel: "美国",
+		HomepageURL:  prof.HomepageURL,
+		MessageURL:   prof.HomepageURL,
+		Score:        80 + prof.TotalShipments,
+		Snippet:      fmt.Sprintf("公开提单 %d · 供应商 %d", prof.TotalShipments, prof.UniqueSuppliers),
+		Extra:        extra,
+	}
+}
+
+func (c *Client) fetchImporterProfiles(ctx context.Context, rows []leadFinderRow, year, max int) []map[string]any {
+	if max <= 0 || max > 12 {
+		max = 12
+	}
+	if len(rows) < max {
+		max = len(rows)
+	}
+	out := make([]map[string]any, 0, max)
+	for i := 0; i < max; i++ {
+		if ctx.Err() != nil {
+			break
+		}
+		row := rows[i]
+		u := absoluteKirchnerURL(c, row.APIProfileURL)
+		if parsed, err := url.Parse(u); err != nil || parsed.Host == "" || (c != nil && !sameHTTPHost(c.CustomsBaseURL, u)) {
+			u = ""
+		}
+		if u == "" && c != nil && row.Name != "" {
+			u = strings.TrimRight(c.CustomsBaseURL, "/") + "/api/company-profile/" + url.PathEscape(row.Name) + "/" + strconv.Itoa(year) + "/" + strconv.Itoa(year)
+		}
+		if u == "" {
+			continue
+		}
+		raw, err := c.get(ctx, u, kirchnerHeaders())
+		if err != nil {
+			continue
+		}
+		var m map[string]any
+		if json.Unmarshal(raw, &m) != nil || asString(m["name"]) == "" {
+			continue
+		}
+		out = append(out, m)
 	}
 	return out
 }
@@ -549,4 +766,13 @@ func absoluteKirchnerURL(c *Client, u string) string {
 		return base + u
 	}
 	return base + "/" + u
+}
+
+func sameHTTPHost(base, raw string) bool {
+	a, err1 := url.Parse(base)
+	b, err2 := url.Parse(raw)
+	if err1 != nil || err2 != nil || a.Host == "" || b.Host == "" {
+		return false
+	}
+	return strings.EqualFold(a.Host, b.Host)
 }

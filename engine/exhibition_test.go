@@ -68,6 +68,44 @@ func TestExtractOrganicFairResults(t *testing.T) {
 	}
 }
 
+func TestExtractOrganicResultsIgnoresLooseAnchors(t *testing.T) {
+	html := `<html><body>
+	<a href="https://www.kraken.com/features/margin-trading">Kraken Margin Trading</a>
+	<li class="b_algo"><h2><a href="https://www.auma.de/en/furniture-fair">Cologne Furniture Fair</a></h2></li>
+	</body></html>`
+	hits := extractOrganicResults([]byte(html), "bing")
+	for _, h := range hits {
+		if strings.Contains(strings.ToLower(h.HomepageURL), "kraken") {
+			t.Fatalf("loose anchor leaked: %+v", hits)
+		}
+	}
+	if len(hits) != 1 || !strings.Contains(hits[0].Name, "Furniture") {
+		t.Fatalf("hits=%+v", hits)
+	}
+}
+
+func TestKeepExhibitionHitDropsExhibitorNoise(t *testing.T) {
+	junk := Hit{Name: "Kraken Margin Trading", HomepageURL: "https://www.kraken.com/features/margin-trading", Snippet: "trade"}
+	if keepExhibitionHit(junk, true) || keepExhibitionHit(junk, false) {
+		t.Fatal("kraken should be dropped")
+	}
+	fair := Hit{Name: "Cologne Furniture Fair exhibitors", HomepageURL: "https://www.auma.de/en/exhibitors", Snippet: "exhibitor list"}
+	if !keepExhibitionHit(fair, true) {
+		t.Fatal("named exhibitor page should stay")
+	}
+	dir := Hit{Name: "Furniture exhibitions", HomepageURL: "https://10times.com/furniture", Snippet: "trade fair calendar"}
+	if keepExhibitionHit(dir, false) {
+		t.Fatal("directory calendar should be dropped")
+	}
+}
+
+func TestWikidataFairLabelSPARQLContainsProduct(t *testing.T) {
+	q := wikidataFairLabelSPARQL("furniture", "furniture", "", 8)
+	if !strings.Contains(q, "CONTAINS") || !strings.Contains(q, "furniture") {
+		t.Fatalf("sparql=%s", q)
+	}
+}
+
 func TestSearchExhibitionSkipsWhenUnconfigured(t *testing.T) {
 	c := &Client{DisablePublic: true}
 	res, err := c.Search(context.Background(), Query{Keyword: "CES", Kind: KindExhibition})

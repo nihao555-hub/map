@@ -133,13 +133,13 @@
     if (next) next.disabled = page >= pageCount();
   }
 
-  function renderHits(hits) {
+  function renderHits(hits, note) {
     lastHits = hits || [];
     if (!lastHits.length) {
       empty.classList.remove("hidden");
-      empty.textContent = role === "seller"
+      empty.textContent = note || (role === "seller"
         ? "没有命中公开发货人。可换产品词，或把国家改成不限。"
-        : "没有命中公开进口商。逐票买家目前来自美国海关公开提单。";
+        : "没有命中公开进口商。逐票买家目前来自美国海关公开提单。");
       results.innerHTML = "";
       updatePager();
       return;
@@ -149,19 +149,25 @@
       const match = extra(h, "matching") || extra(h, "shipments") || "—";
       const total = extra(h, "shipments") || "—";
       const focus = extra(h, "focus");
-      const year = extra(h, "year") || "—";
-      const snip = h.snippet || "";
+      const product = extra(h, "product");
+      const hs = extra(h, "hs") || "—";
+      const when = extra(h, "last_date") || extra(h, "year") || "—";
+      const weight = extra(h, "weight_kg");
       const geo = h.country_label || h.country || "";
+      const sub = [geo, product].filter(Boolean).join(" · ");
       return (
         "<tr data-name=\"" + escapeAttr(h.name) + "\">" +
           '<td class="col-check"><input type="checkbox" class="mkt-pick" data-i="' + i + '" data-name="' + escapeAttr(h.name) + '"></td>' +
           "<td><div class=\"cus-co\">" +
             '<span class="cus-flag">' + flagFor(h.country) + "</span>" +
-            "<div><b>" + escapeHtml(h.name) + "</b><small>" + escapeHtml(geo + (snip ? " · " + snip : "")) + "</small></div>" +
+            "<div><b>" + escapeHtml(h.name) + "</b><small>" + escapeHtml(sub) + "</small></div>" +
           "</div></td>" +
-          "<td>" + escapeHtml(match) + (focus ? "<small style=\"display:block;color:#8c8c8c\">专注 " + escapeHtml(focus) + "%</small>" : "") + "</td>" +
-          "<td class=\"cus-amt-miss\" title=\"公开提单未提供金额\">—</td>" +
-          "<td>" + escapeHtml(year) + (total !== "—" ? "<small style=\"display:block;color:#8c8c8c\">全部 " + escapeHtml(total) + "</small>" : "") + "</td>" +
+          "<td>" + escapeHtml(hs) + "</td>" +
+          "<td>" + escapeHtml(match) + (focus ? "<small style=\"display:block;color:#8c8c8c\">专注 " + escapeHtml(focus) + "%</small>" : "") +
+            (total !== "—" && total !== match ? "<small style=\"display:block;color:#8c8c8c\">全部 " + escapeHtml(total) + "</small>" : "") + "</td>" +
+          "<td class=\"cus-amt-miss\" title=\"公开提单未提供金额\">—" +
+            (weight ? "<small style=\"display:block\">重量 " + escapeHtml(weight) + " kg</small>" : "") + "</td>" +
+          "<td>" + escapeHtml(when) + "</td>" +
         "</tr>"
       );
     }).join("");
@@ -226,7 +232,7 @@
         status.textContent = hits.length
           ? ("已找到 " + hits.length + " 家企业")
           : (out.j.note || "没有命中");
-        renderHits(hits);
+        renderHits(hits, out.j.note);
       })
       .catch(function () {
         if (btn) { btn.disabled = false; btn.textContent = "搜索"; }
@@ -324,9 +330,12 @@
         document.getElementById("info-address").textContent = p.address || "—";
         document.getElementById("info-shipments").textContent = p.total_shipments || "—";
         document.getElementById("info-year").textContent = (p.year_from || "") + (p.year_to ? " – " + p.year_to : "");
+        const prod = firstProduct(p);
+        document.getElementById("info-product").textContent = prod.product || "—";
+        document.getElementById("info-hs").textContent = prod.hs || "—";
         document.getElementById("tab-suppliers").innerHTML = renderPartners(p.suppliers, "供应商");
-        document.getElementById("tab-ship").innerHTML = renderShipments(p.shipments);
-        document.getElementById("tab-records").innerHTML = renderShipments(p.shipments);
+        document.getElementById("tab-ship").innerHTML = renderShipTab(p);
+        document.getElementById("tab-records").innerHTML = renderRecords(p);
         document.getElementById("modal-open").onclick = function () {
           if (p.homepage_url) window.open(p.homepage_url, "_blank", "noopener");
           else toast("没有可打开的详情页");
@@ -339,6 +348,21 @@
     return String(selectedYear() || "—");
   }
 
+  function firstProduct(p) {
+    const list = (p && p.products) || [];
+    let hs = "";
+    let product = "";
+    list.forEach(function (item) {
+      const code = (item && item.code) || "";
+      if (!hs && /^\d/.test(code)) hs = code;
+      if (!product && code && !/^\d/.test(code)) product = code;
+    });
+    if (!product && list.length) product = list[0].code || "";
+    if (!product && p && p.shipments && p.shipments[0]) product = p.shipments[0].product || "";
+    if (!hs && p && p.shipments && p.shipments[0]) hs = p.shipments[0].hs_code || "";
+    return { product: product, hs: hs };
+  }
+
   function renderPartners(list, title) {
     if (!list || !list.length) return "暂无" + title + "汇总。";
     return "<table><thead><tr><th>名称</th><th>国家</th><th>提单</th></tr></thead><tbody>" +
@@ -348,13 +372,32 @@
       }).join("") + "</tbody></table>";
   }
 
+  function renderProducts(list) {
+    if (!list || !list.length) return "";
+    return "<h4>Top 产品 / HS</h4><table><thead><tr><th>编码或描述</th><th>提单</th></tr></thead><tbody>" +
+      list.map(function (p) {
+        return "<tr><td>" + escapeHtml(p.code || "—") + "</td><td>" + escapeHtml(String(p.shipments || "—")) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  }
+
   function renderShipments(list) {
     if (!list || !list.length) return "暂无近期提单。";
-    return "<table><thead><tr><th>日期</th><th>发货人</th><th>产品</th><th>HS</th></tr></thead><tbody>" +
+    return "<table><thead><tr><th>日期</th><th>发货人</th><th>产品</th><th>HS</th><th>船名</th></tr></thead><tbody>" +
       list.map(function (s) {
         return "<tr><td>" + escapeHtml(s.date || "—") + "</td><td>" + escapeHtml(s.shipper || "—") +
-          "</td><td>" + escapeHtml(s.product || "—") + "</td><td>" + escapeHtml(s.hs_code || "—") + "</td></tr>";
+          "</td><td>" + escapeHtml(s.product || "—") + "</td><td>" + escapeHtml(s.hs_code || "—") +
+          "</td><td>" + escapeHtml(s.vessel || "—") + "</td></tr>";
       }).join("") + "</tbody></table>";
+  }
+
+  function renderRecords(p) {
+    return renderProducts(p.products) + renderShipments(p.shipments);
+  }
+
+  function renderShipTab(p) {
+    const ships = renderShipments(p.shipments);
+    const carriers = renderPartners(p.carriers, "承运人");
+    return ships + (p.carriers && p.carriers.length ? "<h4>承运人</h4>" + carriers : "");
   }
 
   document.getElementById("modal-close").addEventListener("click", function () {
