@@ -51,6 +51,9 @@ func pickHS4(keyword string, rows []usitcRow) string {
 			continue
 		}
 		hs4 := digits[:4]
+		if strings.HasPrefix(hs4, "98") || strings.HasPrefix(hs4, "99") {
+			continue
+		}
 		n := 1
 		if kw != "" && strings.Contains(strings.ToLower(row.Description), kw) {
 			n += 4

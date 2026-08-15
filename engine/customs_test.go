@@ -276,6 +276,7 @@ func TestLooksLikeCompanyName(t *testing.T) {
 func TestPickHS4PrefersMatchingChapter(t *testing.T) {
 	hs := pickHS4("shoes", []usitcRow{
 		{Htsno: "4417.00", Description: "boot or shoe lasts of wood"},
+		{Htsno: "9902.00", Description: "Footwear with outer soles and uppers of rubber"},
 		{Htsno: "6403.91", Description: "Tennis shoes, basketball shoes"},
 		{Htsno: "6403.19", Description: "Golf shoes"},
 		{Htsno: "6402.99", Description: "Tennis shoes"},
