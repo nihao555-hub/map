@@ -3,12 +3,14 @@ package engine
 import (
 	"context"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -155,6 +157,91 @@ func (c *Client) Preview(ctx context.Context, rawURL string) (Preview, error) {
 		Note:        note,
 		Platform:    platformFromURL(doc.FinalURL),
 	}, nil
+}
+
+// PreviewFrameHTML is a same-origin document for the right-hand iframe.
+// Official sites send X-Frame-Options / CSP that blank an external iframe;
+// this snapshot is served from our origin so the pane can actually render.
+func (c *Client) PreviewFrameHTML(ctx context.Context, rawURL string) (string, error) {
+	if err := assertPublicHTTPURL(rawURL); err != nil {
+		return "", err
+	}
+
+	doc, err := c.fetchDocument(ctx, rawURL)
+	if err != nil {
+		return previewCardHTML(rawURL, hostOf(rawURL), "无法抓取该页（可能需登录或被拦截）。可点「在官方页打开」。系统不会代发。", "", hostOf(rawURL)), nil
+	}
+
+	title, desc, image := ogMeta(doc.Body)
+	title = firstNonEmpty(title, hostOf(doc.FinalURL))
+	sanitized, textLen := sanitizePreviewHTML(doc.Body, doc.FinalURL)
+	if sanitized != "" && textLen >= 80 {
+		return sanitized, nil
+	}
+
+	return previewCardHTML(doc.FinalURL, title, firstNonEmpty(desc, "右侧显示公开主页摘要。系统不会代发。"), image, hostOf(doc.FinalURL)), nil
+}
+
+func sanitizePreviewHTML(raw []byte, finalURL string) (string, int) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(raw)))
+	if err != nil {
+		return "", 0
+	}
+
+	doc.Find("script, noscript, iframe, object, embed, form, link[rel='import']").Remove()
+	doc.Find("*").Each(func(_ int, s *goquery.Selection) {
+		if s.Length() == 0 || s.Get(0) == nil {
+			return
+		}
+		keys := make([]string, 0, len(s.Get(0).Attr))
+		for _, attr := range s.Get(0).Attr {
+			k := strings.ToLower(attr.Key)
+			if strings.HasPrefix(k, "on") || k == "srcdoc" {
+				keys = append(keys, attr.Key)
+			}
+		}
+		for _, k := range keys {
+			s.RemoveAttr(k)
+		}
+	})
+
+	if doc.Find("head").Length() == 0 {
+		doc.Find("html").PrependHtml("<head></head>")
+	}
+	doc.Find("base").Remove()
+	base := html.EscapeString(strings.TrimSpace(finalURL))
+	doc.Find("head").First().PrependHtml(`<meta charset="utf-8"><base href="` + base + `">`)
+
+	out, err := doc.Html()
+	if err != nil {
+		return "", 0
+	}
+	text := strings.Join(strings.Fields(doc.Find("body").Text()), " ")
+
+	return out, utf8.RuneCountInString(text)
+}
+
+func previewCardHTML(pageURL, title, desc, image, site string) string {
+	title = html.EscapeString(strings.TrimSpace(title))
+	desc = html.EscapeString(strings.TrimSpace(desc))
+	site = html.EscapeString(strings.TrimSpace(site))
+	pageURL = html.EscapeString(strings.TrimSpace(pageURL))
+	img := ""
+	if image != "" && assertPublicHTTPURL(image) == nil {
+		img = `<div class="hero"><img src="` + html.EscapeString(image) + `" alt=""></div>`
+	}
+
+	return `<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>` + title + `</title>
+<style>
+html,body{margin:0;background:#f5f7fa;color:#1f2329;font:13px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+.hero img{display:block;width:100%;max-height:180px;object-fit:cover;background:#e6eaf0}
+.pad{padding:12px 14px}
+.site{color:#3b66f5;font-size:12px;margin-bottom:6px;word-break:break-all;text-decoration:none}
+h1{font-size:16px;margin:0 0 8px;font-weight:650}
+p{margin:0;color:#646a73}
+</style></head><body>` + img + `<div class="pad"><a class="site" href="` + pageURL + `">` + site + `</a><h1>` + title + `</h1><p>` + desc + `</p></div></body></html>`
 }
 
 type fetchedDoc struct {

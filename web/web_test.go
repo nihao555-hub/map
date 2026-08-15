@@ -114,7 +114,7 @@ func TestSecurityHeadersAllowMapResources(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	csp := rec.Header().Get("Content-Security-Policy")
-	for _, want := range []string{"tile.openstreetmap.org", "cdnjs.cloudflare.com"} {
+	for _, want := range []string{"tile.openstreetmap.org", "cdnjs.cloudflare.com", "frame-src 'self'", "img-src 'self' data: https:"} {
 		if !strings.Contains(csp, want) {
 			t.Fatalf("CSP missing %q: %s", want, csp)
 		}

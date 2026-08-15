@@ -17,7 +17,12 @@
   var osmFallback = false;
 
   function initMap() {
-    if (map || typeof L === 'undefined') return;
+    if (map) return;
+    if (typeof L === 'undefined') {
+      var el = document.getElementById('map');
+      if (el) el.innerHTML = '<div class="map-error">地图脚本未加载，请刷新重试</div>';
+      return;
+    }
 
     map = L.map('map', {
       center: DEFAULT_CENTER,
@@ -44,6 +49,10 @@
     });
 
     amap.addTo(map);
+
+    setTimeout(function () {
+      if (map) map.invalidateSize();
+    }, 200);
 
     markerLayer = L.layerGroup().addTo(map);
     heatLayer = L.layerGroup();

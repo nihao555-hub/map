@@ -55,7 +55,7 @@ func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel"} {
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/preview/frame", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -230,6 +230,13 @@ func TestDiscoverPreviewRejectsLocalhost(t *testing.T) {
 	srv.apiDiscoverPreview(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/discover/preview/frame?url=http://127.0.0.1/", nil)
+	rec = httptest.NewRecorder()
+	srv.apiDiscoverPreviewFrame(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("frame code=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

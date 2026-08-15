@@ -764,14 +764,16 @@
     document.getElementById("preview-note").textContent = "正在载入公开页摘要…";
     document.getElementById("preview-image").classList.add("hidden");
     const frame = document.getElementById("preview-frame");
-    frame.classList.add("hidden");
     frame.removeAttribute("src");
     previewOfficial = hit.url || "";
     const pageURL = (hit.url || "").indexOf("mailto:") === 0 ? "" : hit.url;
     if (!pageURL) {
+      frame.classList.add("hidden");
       document.getElementById("preview-note").textContent = hit.snippet || "系统不会代发。";
       return;
     }
+    frame.src = "/api/v1/discover/preview/frame?url=" + encodeURIComponent(pageURL);
+    frame.classList.remove("hidden");
     fetch("/api/v1/discover/preview?url=" + encodeURIComponent(pageURL))
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (out) {
@@ -783,17 +785,8 @@
         const p = out.j;
         if (p.title && !hit.name) document.getElementById("preview-name").textContent = p.title;
         if (p.description) document.getElementById("preview-desc").textContent = p.description;
-        document.getElementById("preview-note").textContent = p.note || "";
+        document.getElementById("preview-note").textContent = p.note || "右侧已渲染公开页快照。系统不会代发。";
         if (p.final_url) previewOfficial = p.final_url;
-        const img = document.getElementById("preview-image");
-        if (p.image) {
-          img.src = p.image;
-          img.classList.remove("hidden");
-        }
-        if (p.embeddable && previewOfficial) {
-          frame.src = previewOfficial;
-          frame.classList.remove("hidden");
-        }
         if (p.contacts && p.contacts.length && !hit.contact) {
           document.getElementById("preview-to").value = p.contacts[0].contact || "";
         }

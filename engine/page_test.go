@@ -75,6 +75,42 @@ func TestPreviewExtractsMetaAndBlocksFrame(t *testing.T) {
 	}
 }
 
+func TestSanitizePreviewHTMLStripsScript(t *testing.T) {
+	html, n := sanitizePreviewHTML([]byte(`<html><head></head><body>
+<script>alert(1)</script>
+<p onclick="steal()">Acme Power Tools importer in Bangkok sells drills and saws to contractors across Thailand.</p>
+</body></html>`), "https://acme-powertools.com/")
+	if strings.Contains(html, "<script") || strings.Contains(html, "onclick") {
+		t.Fatalf("unsafe html=%s", html)
+	}
+	if !strings.Contains(html, `base href="https://acme-powertools.com/"`) {
+		t.Fatalf("missing base %s", html)
+	}
+	if n < 80 {
+		t.Fatalf("textLen=%d", n)
+	}
+}
+
+func TestPreviewFrameFallsBackToCard(t *testing.T) {
+	c := &Client{
+		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`<html><body><div id="app"></div></body></html>`)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		})},
+	}
+	html, err := c.PreviewFrameHTML(context.Background(), "https://acme-powertools.com/in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "acme-powertools.com") || strings.Contains(html, "<script") {
+		t.Fatalf("%s", html)
+	}
+}
+
 func TestCandidatePagesFromHTML(t *testing.T) {
 	html := []byte(`<a href="https://html.duckduckgo.com/l/?uddg=https%3A%2F%2Ffactory-tools.com%2Fabout">Factory</a>
 <a href="https://r.bing.com/rp/foo">junk</a>

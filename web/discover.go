@@ -133,6 +133,44 @@ func (s *Server) apiDiscoverPreview(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusOK, prev)
 }
 
+func (s *Server) apiDiscoverPreviewFrame(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	raw := strings.TrimSpace(r.URL.Query().Get("url"))
+	if raw == "" {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "url is required",
+		})
+
+		return
+	}
+
+	html, err := s.engine.PreviewFrameHTML(r.Context(), raw)
+	if err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	w.Header().Del("X-Frame-Options")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https:; font-src https: data:; frame-ancestors 'self'")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(html))
+}
+
 func (s *Server) apiDiscoverPlatforms(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		renderJSON(w, http.StatusMethodNotAllowed, apiError{

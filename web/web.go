@@ -132,6 +132,7 @@ func New(svc *Service, addr string) (*Server, error) {
 	})
 
 	mux.HandleFunc("/api/v1/discover/search", ans.apiDiscoverSearch)
+	mux.HandleFunc("/api/v1/discover/preview/frame", ans.apiDiscoverPreviewFrame)
 	mux.HandleFunc("/api/v1/discover/preview", ans.apiDiscoverPreview)
 	mux.HandleFunc("/api/v1/discover/platforms", ans.apiDiscoverPlatforms)
 	mux.HandleFunc("/api/v1/discover/countries", ans.apiDiscoverCountries)
@@ -842,8 +843,9 @@ func securityHeaders(next http.Handler) http.Handler {
 				"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
 				"worker-src 'self' blob:; "+
 				"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
-				"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org *.is.autonavi.com; "+
+				"img-src 'self' data: https: blob: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org *.is.autonavi.com; "+
 				"font-src 'self' fonts.gstatic.com; "+
+				"frame-src 'self'; "+
 				"connect-src 'self'")
 
 		next.ServeHTTP(w, r)

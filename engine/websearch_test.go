@@ -437,19 +437,13 @@ func TestSearchOneIndexPaginatesBing(t *testing.T) {
 	if uniqueHitCount(hits) != 1+indexExtraPages {
 		t.Fatalf("hits=%d firsts=%v", uniqueHitCount(hits), firsts)
 	}
-	sawPage2, sawPage3, sawPage4 := false, false, false
+	sawPage2 := false
 	for _, f := range firsts {
 		if f == "11" {
 			sawPage2 = true
 		}
-		if f == "21" {
-			sawPage3 = true
-		}
-		if f == "31" {
-			sawPage4 = true
-		}
 	}
-	if !sawPage2 || !sawPage3 || !sawPage4 {
+	if !sawPage2 {
 		t.Fatalf("missing bing pagination firsts=%v", firsts)
 	}
 }

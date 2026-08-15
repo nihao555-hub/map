@@ -28,8 +28,8 @@ var (
 const (
 	publicIndexGap     = 2800 * time.Millisecond
 	braveIndexGap      = 4000 * time.Millisecond
-	indexExtraPages    = 6
-	enoughHitsPerQuery = 150
+	indexExtraPages    = 1
+	enoughHitsPerQuery = 24
 	blobExtractCap     = 200
 )
 
