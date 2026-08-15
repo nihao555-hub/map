@@ -2,9 +2,9 @@
    地图获客 · 智能版 — 高德风格设计稿复刻
    ======================================== */
 :root {
-  --brand-primary: #3370ff;
-  --brand-primary-hover: #4c83ff;
-  --brand-primary-active: #2458d4;
+  --brand-primary: #1677FF;
+  --brand-primary-hover: #4096FF;
+  --brand-primary-active: #0958D9;
   --brand-success: #52C41A;
   --brand-warning: #FAAD14;
   --brand-error: #FF4D4F;
@@ -13,15 +13,14 @@
   --text-aux: #8C8C8C;
   --border-color: #D9D9D9;
   --border-light: #F0F0F0;
-  --bg-light-blue: #F0F5FF;
+  --bg-light-blue: #E6F2FF;
   --bg-page: #F5F5F5;
   --bg-card: #FFFFFF;
-  --radius-card: 4px;
-  --radius-ctrl: 4px;
-  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --radius-card: 12px;
+  --radius-ctrl: 8px;
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08);
   --shadow-float: 0 4px 16px rgba(0, 0, 0, 0.12);
-  --topbar-h: 48px;
-  --rail-w: 80px;
+  --topbar-h: 56px;
 }
 
 * { box-sizing: border-box; }
@@ -50,139 +49,156 @@ button { font-family: inherit; cursor: pointer; }
 .h-3 { height: 12px; }
 .h-4 { height: 16px; }
 .h-5 { height: 20px; }
-svg.lucide, #app-rail svg { flex-shrink: 0; }
+svg.lucide { flex-shrink: 0; }
+
+/* ========================================
+   顶部导航栏
+   ======================================== */
+#topbar {
+  height: var(--topbar-h);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: relative;
+  z-index: 1000;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--text-primary);
+  min-width: 180px;
+}
+
+.brand-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--brand-primary);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-name {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.brand-tag {
+  font-size: 12px;
+  color: var(--brand-primary);
+  background: var(--bg-light-blue);
+  border-radius: 4px;
+  padding: 1px 6px;
+  line-height: 18px;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.mod-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+}
+
+.mod-nav-item {
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-weight: 500;
+}
+
+.mod-nav-item:hover { color: var(--brand-primary); background: var(--bg-light-blue); }
+
+.mod-nav-item.is-active {
+  color: #fff;
+  background: var(--brand-primary);
+}
+
+.vip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: linear-gradient(135deg, #FAAD14, #FA8C16);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 16px;
+  padding: 6px 14px;
+  transition: opacity 0.2s;
+}
+
+.vip-btn:hover { opacity: 0.9; }
+
+.help-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.help-btn:hover { color: var(--brand-primary); }
+
+.user-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-light-blue);
+  color: var(--brand-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.user-name { font-size: 14px; color: var(--text-primary); }
+.user-box .chevron { color: var(--text-aux); }
 
 /* ========================================
    整体布局：左面板 + 右地图
    ======================================== */
 #app-shell {
   display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-#app-shell.map-shell {
-  flex-direction: column;
-}
-
-.map-body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
+  height: calc(100vh - var(--topbar-h));
 }
 
 #sidebar {
-  width: 240px;
+  width: 400px;
   flex-shrink: 0;
   background: var(--bg-card);
   border-right: 1px solid var(--border-light);
   overflow-y: auto;
   position: relative;
   z-index: 900;
-  display: flex;
-  flex-direction: column;
 }
 
-#sidebar-content {
-  padding: 12px 12px 16px;
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-}
-
-/* 外贸通式顶栏搜索 */
-.workspace-toolbar,
-.discover-toolbar,
-.map-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border-light);
-  background: #fff;
-  flex-shrink: 0;
-}
-
-.toolbar-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 240px;
-  max-width: 100%;
-  height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: #fff;
-}
-
-.toolbar-search.wide { width: 280px; }
-
-.toolbar-search:focus-within {
-  border-color: var(--brand-primary);
-  box-shadow: 0 0 0 2px rgba(51, 112, 255, 0.12);
-}
-
-.toolbar-search input {
-  flex: 1;
-  border: none;
-  outline: none;
-  font-size: 13px;
-  background: transparent;
-  min-width: 0;
-}
-
-.toolbar-submit {
-  height: 36px;
-  padding: 0 20px;
-  border-radius: 4px;
-  width: auto;
-}
-
-.toolbar-hint {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--text-aux);
-}
-
-.plat-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.plat-chip {
-  border: 1px solid var(--border-color);
-  background: #fff;
-  color: var(--text-secondary);
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.plat-chip.is-on,
-.plat-chip.active {
-  border-color: var(--brand-primary);
-  color: var(--brand-primary);
-  background: var(--bg-light-blue);
-}
-
-.map-advanced {
-  display: none;
-  padding: 12px 16px 16px;
-  border-bottom: 1px solid var(--border-light);
-  background: #fafafa;
-}
-
-.map-advanced.open { display: block; }
-
-.map-advanced .adv-inner {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px 16px;
-}
+#sidebar-content { padding: 24px; }
 
 #sidebar::-webkit-scrollbar { width: 6px; }
 #sidebar::-webkit-scrollbar-thumb { background: #d9d9d9; border-radius: 3px; }
@@ -384,13 +400,6 @@ svg.lucide, #app-rail svg { flex-shrink: 0; }
 .btn-primary:active { background: var(--brand-primary-active); }
 .btn-primary:disabled { background: #91CAFF; cursor: not-allowed; }
 
-.btn-primary.toolbar-submit {
-  width: auto;
-  height: 36px;
-  font-size: 14px;
-  padding: 0 20px;
-}
-
 /* 加载指示 */
 .spinner {
   display: none;
@@ -544,10 +553,9 @@ svg.lucide, #app-rail svg { flex-shrink: 0; }
    搜索记录
    ======================================== */
 .history-block {
-  margin-top: 0;
-  border-top: none;
-  padding-top: 0;
-  flex: 1;
+  margin-top: 24px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 16px;
 }
 
 .history-head {
@@ -1011,7 +1019,7 @@ svg.lucide, #app-rail svg { flex-shrink: 0; }
    响应式
    ======================================== */
 @media (max-width: 1199px) {
-  #sidebar { width: 220px; }
+  #sidebar { width: 360px; }
 }
 
 @media (max-width: 767px) {

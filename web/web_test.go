@@ -21,7 +21,7 @@ func newTestServer(t *testing.T, dir string) *Server {
 	return srv
 }
 
-func TestIndexPageHasWaimaoTongRail(t *testing.T) {
+func TestIndexPageHasClassicMapLayout(t *testing.T) {
 	srv := newTestServer(t, t.TempDir())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -32,19 +32,29 @@ func TestIndexPageHasWaimaoTongRail(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"app-rail", "地图获客", "智能引擎", "发开发信", "map-toolbar", "搜索记录", "locations", "keywords", "/static/css/shell.css"} {
+	for _, want := range []string{
+		"找到精准客户，从地图开始",
+		"在哪里",
+		"找什么",
+		"开始搜索",
+		"地图获客",
+		"智能引擎",
+		"发开发信",
+		"locations",
+		"keywords",
+		"/static/css/main.css",
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}
 	}
 
-	if strings.Contains(body, "找到精准客户，从地图开始") {
-		t.Fatal("old marketing sidebar copy should be gone")
-	}
-
-	for _, drop := range []string{"展会获客", "海关数据", "工作台", "全球搜索"} {
+	for _, drop := range []string{
+		"id=\"app-rail\"", "/static/css/shell.css", "map-toolbar",
+		"展会获客", "海关数据", "工作台", "全球搜索",
+	} {
 		if strings.Contains(body, drop) {
-			t.Fatalf("unshipped module %q should not appear in nav", drop)
+			t.Fatalf("unwanted %q still on map page", drop)
 		}
 	}
 }
