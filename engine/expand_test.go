@@ -26,6 +26,18 @@ func TestProbeableHandle(t *testing.T) {
 	}
 }
 
+func TestPickExpandSeedsPrefersLatinHandles(t *testing.T) {
+	hits := []Hit{
+		{Name: "灯具批发", Handle: "MS4wLjABAAAAFactory", Platform: PlatformDouyin, HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAFactory"},
+		{Name: "Osdin Lighting", Handle: "osdinlighting", Platform: PlatformFacebook, HomepageURL: "https://www.facebook.com/osdinlighting"},
+		{Name: "另一家工厂", Handle: "MS4wLjABAAAAOther", Platform: PlatformDouyin, HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAOther"},
+	}
+	got := pickExpandSeeds(hits, 2)
+	if len(got) != 2 || got[0].Handle != "osdinlighting" {
+		t.Fatalf("%+v", got)
+	}
+}
+
 func TestSameHandleURLs(t *testing.T) {
 	urls := sameHandleURLs("osdinlighting")
 	joined := strings.Join(urls, " ")

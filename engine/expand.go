@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	maxExpandSeeds     = 8
-	maxExpandFetches   = 16
+	maxExpandSeeds     = 10
+	maxExpandFetches   = 20
 	maxHandleProbePlat = 6
 	expandBudget       = 18 * time.Second
 )
@@ -31,6 +31,7 @@ func (c *Client) expandMerchantSocials(ctx context.Context, seeds []Hit, wanted 
 	if len(seeds) < n {
 		n = len(seeds)
 	}
+	seeds = pickExpandSeeds(seeds, n)
 
 	expandCtx, cancel := context.WithTimeout(ctx, expandBudget)
 	defer cancel()
@@ -109,6 +110,35 @@ func (c *Client) expandOneMerchant(ctx context.Context, seed Hit, wanted map[str
 		seenPlat[h.Platform] = true
 	}
 
+	handle := probeableHandle(seed.Handle)
+	if handle == "" {
+		handle = probeableHandle(seed.Name)
+	}
+	// Latin handles: probe sister networks first. Facebook/Instagram public HTML
+	// is often a login wall, so page extract is a bonus on leftover budget.
+	if handle != "" {
+		probed := 0
+		for _, raw := range sameHandleURLs(handle) {
+			if probed >= maxHandleProbePlat || ctx.Err() != nil {
+				break
+			}
+			h, ok := ParseSocialURL(raw, seed.Name, seed.Snippet)
+			if !ok || seenPlat[h.Platform] {
+				continue
+			}
+			if len(wanted) > 0 && !wanted[h.Platform] {
+				continue
+			}
+			if !takeFetch() {
+				break
+			}
+			probed++
+			if c.probeProfileExists(ctx, h.HomepageURL) {
+				addHit(h)
+			}
+		}
+	}
+
 	if seed.HomepageURL != "" && takeFetch() {
 		doc, err := c.fetchDocument(ctx, seed.HomepageURL)
 		if err == nil && doc != nil {
@@ -130,35 +160,39 @@ func (c *Client) expandOneMerchant(ctx context.Context, seed Hit, wanted map[str
 		}
 	}
 
-	handle := probeableHandle(seed.Handle)
-	if handle == "" {
-		handle = probeableHandle(seed.Name)
-	}
-	if handle == "" {
-		return out
-	}
+	return out
+}
 
-	probed := 0
-	for _, raw := range sameHandleURLs(handle) {
-		if probed >= maxHandleProbePlat || ctx.Err() != nil {
-			break
+// pickExpandSeeds prefers Latin handles that can be probed on other networks,
+// so Douyin sec_uid shops do not consume the whole expand budget.
+func pickExpandSeeds(hits []Hit, n int) []Hit {
+	if n <= 0 || len(hits) == 0 {
+		return nil
+	}
+	out := make([]Hit, 0, n)
+	seen := map[string]struct{}{}
+	add := func(h Hit) {
+		if len(out) >= n {
+			return
 		}
-		h, ok := ParseSocialURL(raw, seed.Name, seed.Snippet)
-		if !ok || seenPlat[h.Platform] {
-			continue
+		key := strings.ToLower(strings.TrimSpace(h.HomepageURL))
+		if key == "" {
+			key = h.Platform + ":" + strings.ToLower(h.Handle)
 		}
-		if len(wanted) > 0 && !wanted[h.Platform] {
-			continue
+		if _, ok := seen[key]; ok {
+			return
 		}
-		if !takeFetch() {
-			break
-		}
-		probed++
-		if c.probeProfileExists(ctx, h.HomepageURL) {
-			addHit(h)
+		seen[key] = struct{}{}
+		out = append(out, h)
+	}
+	for _, h := range hits {
+		if probeableHandle(h.Handle) != "" || probeableHandle(h.Name) != "" {
+			add(h)
 		}
 	}
-
+	for _, h := range hits {
+		add(h)
+	}
 	return out
 }
 
