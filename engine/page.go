@@ -174,12 +174,28 @@ func (c *Client) PreviewFrameHTML(ctx context.Context, rawURL string) (string, e
 
 	title, desc, image := ogMeta(doc.Body)
 	title = firstNonEmpty(title, hostOf(doc.FinalURL))
+	if looksLikeChallengePage(title, desc, doc.Body) {
+		return previewCardHTML(doc.FinalURL, firstNonEmpty(title, hostOf(doc.FinalURL)),
+			"该主页需要验证或登录，无法在右侧嵌出完整官方页。请点「在官方页打开」。系统不会代发。",
+			image, hostOf(doc.FinalURL)), nil
+	}
 	sanitized, textLen := sanitizePreviewHTML(doc.Body, doc.FinalURL)
 	if sanitized != "" && textLen >= 80 {
 		return sanitized, nil
 	}
 
 	return previewCardHTML(doc.FinalURL, title, firstNonEmpty(desc, "右侧显示公开主页摘要。系统不会代发。"), image, hostOf(doc.FinalURL)), nil
+}
+
+func looksLikeChallengePage(title, desc string, raw []byte) bool {
+	head := foldSearchText(title + " " + desc)
+	blob := foldSearchText(string(raw))
+	for _, tok := range []string{"验证码", "captcha", "unusual traffic"} {
+		if strings.Contains(head, tok) || strings.Contains(blob, tok) {
+			return true
+		}
+	}
+	return strings.Contains(head, "请登录")
 }
 
 func sanitizePreviewHTML(raw []byte, finalURL string) (string, int) {

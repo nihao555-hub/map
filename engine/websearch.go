@@ -236,9 +236,19 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country, role s
 		PlatformYouTube:   true,
 		PlatformX:         true,
 	}
+	chineseHomePlatforms := map[string]bool{
+		PlatformDouyin:      true,
+		PlatformXiaohongshu: true,
+		PlatformKuaishou:    true,
+		PlatformWeibo:       true,
+		PlatformBilibili:    true,
+	}
 
 	for _, platform := range publicSearchOrder {
 		if !wanted[platform] {
+			continue
+		}
+		if LookupCountry(country).Code != "" && LookupCountry(country).Code != "CN" && chineseHomePlatforms[platform] {
 			continue
 		}
 		site := platformProfileSite[platform]

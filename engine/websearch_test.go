@@ -245,8 +245,8 @@ func TestPublicSearchQueriesCJKThailandUsesPowerTools(t *testing.T) {
 		}
 	}
 	for _, q := range qs {
-		if q.platform == PlatformDouyin && (strings.Contains(q.query, "Thailand") || strings.Contains(q.query, "power tools")) {
-			t.Fatalf("douyin should stay on CJK %+v", q)
+		if q.platform == PlatformDouyin {
+			t.Fatalf("overseas market should skip douyin %+v", q)
 		}
 	}
 }

@@ -243,6 +243,9 @@ func mergeHits(items []Hit, keyword string, limit int, role, country string) []H
 		}
 		hit.Country, hit.CountryLabel = inferHitCountry(hit, country)
 		hit.Score += countryBonus(hit, country)
+		if selected := strings.ToUpper(strings.TrimSpace(country)); selected != "" && hit.Country != "" && hit.Country != selected {
+			continue
+		}
 		if prev, ok := seen[hit.ID]; ok {
 			if hit.Score > prev.Score {
 				seen[hit.ID] = hit

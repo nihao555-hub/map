@@ -269,6 +269,16 @@ func TestMergeHitsBuyerDropsFlagshipAndKeepsThaiImporter(t *testing.T) {
 	}
 }
 
+func TestMergeHitsDropsCountryMismatch(t *testing.T) {
+	out := mergeHits([]Hit{
+		{ID: "cn", Platform: PlatformDouyin, Name: "博世中国电动工具采购", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAcn", Snippet: "电动工具采购"},
+		{ID: "th", Platform: PlatformFacebook, Name: "Thai Power Tools Importer", HomepageURL: "https://www.facebook.com/thaipower", Snippet: "importer of power tools Bangkok Thailand"},
+	}, "电动工具", 0, RoleBuyer, "TH")
+	if len(out) != 1 || out[0].ID != "th" {
+		t.Fatalf("got %+v", out)
+	}
+}
+
 func TestNormalizeRoleDefaultsBuyer(t *testing.T) {
 	if NormalizeRole("") != RoleBuyer || NormalizeRole("卖家") != RoleSeller {
 		t.Fatalf("buyer=%s seller=%s", NormalizeRole(""), NormalizeRole("卖家"))
