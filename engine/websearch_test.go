@@ -152,13 +152,13 @@ func TestPublicSearchQueriesCJKUsesPlatformLabel(t *testing.T) {
 	if len(qs) != 4 {
 		t.Fatalf("queries=%+v", qs)
 	}
-	if qs[0].platform != PlatformDouyin || qs[0].query != "配电 抖音" {
+	if qs[0].platform != PlatformDouyin || qs[0].query != "配电 批发 抖音" {
 		t.Fatalf("douyin first %+v", qs[0])
 	}
-	if qs[1].platform != PlatformDouyin || qs[1].query != "site:douyin.com 配电" {
+	if qs[1].platform != PlatformDouyin || qs[1].query != "site:douyin.com 配电 批发" {
 		t.Fatalf("douyin site %+v", qs[1])
 	}
-	if qs[2].platform != PlatformFacebook || qs[2].query != "配电 Facebook" {
+	if qs[2].platform != PlatformFacebook || qs[2].query != "配电 批发 Facebook" {
 		t.Fatalf("facebook %+v", qs[2])
 	}
 	if qs[3].query != "site:facebook.com 配电" {
@@ -169,7 +169,7 @@ func TestPublicSearchQueriesCJKUsesPlatformLabel(t *testing.T) {
 func TestPublicSearchQueriesEnglishUsesSite(t *testing.T) {
 	wanted := map[string]bool{PlatformTikTok: true}
 	qs := publicSearchQueries("power tools", wanted)
-	if len(qs) != 1 || qs[0].query != "site:tiktok.com power tools" {
+	if len(qs) != 1 || qs[0].query != "site:tiktok.com power tools wholesaler" {
 		t.Fatalf("%+v", qs)
 	}
 }

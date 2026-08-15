@@ -210,3 +210,22 @@ func TestMergeHitsUnlimitedWhenLimitZero(t *testing.T) {
 		t.Fatalf("got %d want 35", len(out))
 	}
 }
+
+func TestMergeHitsPrefersMerchantOverTutorial(t *testing.T) {
+	out := mergeHits([]Hit{
+		{ID: "yt1", Platform: PlatformYouTube, Name: "LED灯带安装图解", Title: "LED灯带安装图解", HomepageURL: "https://www.youtube.com/watch?v=abc1234"},
+		{ID: "fb1", Platform: PlatformFacebook, Name: "全成照明 Led燈飾專賣店", Title: "全成照明 Led燈飾專賣店 | Taichung", HomepageURL: "https://www.facebook.com/led0955478666"},
+		{ID: "fb2", Platform: PlatformFacebook, Name: "PlayFunDeal", HomepageURL: "https://www.facebook.com/PlayFunDeal"},
+	}, "LED灯", 0)
+	if len(out) == 0 || out[0].ID != "fb1" {
+		t.Fatalf("want lighting shop first, got %+v", out)
+	}
+	for _, h := range out {
+		if h.ID == "yt1" {
+			t.Fatal("tutorial video should be dropped")
+		}
+	}
+	if out[len(out)-1].ID != "fb2" {
+		t.Fatalf("unrelated page should rank last %+v", out)
+	}
+}

@@ -216,6 +216,10 @@ func mergeHits(items []Hit, keyword string, limit int) []Hit {
 		}
 
 		hit.Score += keywordBonus(hit, kw)
+		hit.Score += merchantBonus(hit, kw)
+		if dropNonMerchantContent(hit, kw) {
+			continue
+		}
 		if prev, ok := seen[hit.ID]; ok {
 			if hit.Score > prev.Score {
 				seen[hit.ID] = hit
@@ -265,11 +269,11 @@ func filterPreciseHits(hits []Hit, keyword string) []Hit {
 }
 
 func hitMatchesKeyword(hit Hit, kw string) bool {
-	blob := strings.ToLower(strings.Join([]string{
+	blob := foldSearchText(strings.Join([]string{
 		hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.Contact, hit.HomepageURL,
 	}, " "))
 
-	return strings.Contains(blob, kw)
+	return strings.Contains(blob, foldSearchText(kw))
 }
 
 func keywordBonus(hit Hit, kw string) int {
@@ -277,7 +281,8 @@ func keywordBonus(hit Hit, kw string) int {
 		return 0
 	}
 
-	blob := strings.ToLower(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet}, " "))
+	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet}, " "))
+	kw = foldSearchText(kw)
 	switch {
 	case strings.EqualFold(hit.Handle, strings.TrimPrefix(kw, "@")):
 		return 40
@@ -286,6 +291,97 @@ func keywordBonus(hit Hit, kw string) int {
 	default:
 		return 0
 	}
+}
+
+func merchantBonus(hit Hit, kw string) int {
+	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.HomepageURL}, " "))
+	score := 0
+	if isProfileURL(hit.HomepageURL) {
+		score += 12
+	}
+	if isContentURL(hit.HomepageURL) {
+		score -= 18
+	}
+	if hasMerchantToken(blob) {
+		score += 22
+	}
+	if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasMerchantToken(blob) {
+		score -= 28
+	}
+
+	return score
+}
+
+func dropNonMerchantContent(hit Hit, kw string) bool {
+	if !isContentURL(hit.HomepageURL) {
+		return false
+	}
+	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Title, hit.Snippet}, " "))
+	if hasMerchantToken(blob) {
+		return false
+	}
+
+	return looksLikeTutorial(blob) || (kw != "" && !strings.Contains(blob, foldSearchText(kw)))
+}
+
+func isContentURL(raw string) bool {
+	u := strings.ToLower(raw)
+	for _, p := range []string{"/video/", "/watch", "/shorts/", "/explore/", "/note/", "/collection/", "/short-video/"} {
+		if strings.Contains(u, p) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isProfileURL(raw string) bool {
+	u := strings.ToLower(raw)
+	for _, p := range []string{"/user/", "/@", "/in/", "/company/", "/profile", "/people/"} {
+		if strings.Contains(u, p) {
+			return true
+		}
+	}
+	if strings.Contains(u, "facebook.com/") && !isContentURL(u) {
+		return true
+	}
+
+	return false
+}
+
+func hasMerchantToken(blob string) bool {
+	tokens := []string{
+		"厂家", "工厂", "专卖", "批发", "经销", "贸易", "进口", "出口", "采购", "商行",
+		"照明", "灯饰", "店铺", "官方", "供应",
+		"official", "wholesaler", "wholesale", "importer", "distributor",
+		"retailer", "factory", "lighting", "trading", "supplier", "store", "shop",
+	}
+	for _, tok := range tokens {
+		if strings.Contains(blob, tok) {
+			return true
+		}
+	}
+	// 「店」「厂」太短，只在独立词里算商家。
+	for _, r := range []rune(blob) {
+		if r == '店' || r == '厂' {
+			return true
+		}
+	}
+
+	return false
+}
+
+func looksLikeTutorial(blob string) bool {
+	for _, tok := range []string{
+		"安装图解", "工作原理", "亲自动手", "怎么安装", "怎么做", "教程", "教学",
+		"图解", "原理", "diy", "how to", "tutorial", "explained", "演示",
+	} {
+		if strings.Contains(blob, tok) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func uniqueStrings(in []string) []string {

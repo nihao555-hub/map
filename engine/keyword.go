@@ -39,6 +39,22 @@ func NormalizeKeyword(s string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(s)), " ")
 }
 
+func foldSearchText(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	replacer := strings.NewReplacer(
+		"燈", "灯",
+		"專", "专",
+		"賣", "卖",
+		"廠", "厂",
+		"國", "国",
+		"業", "业",
+		"貿", "贸",
+		"經", "经",
+	)
+
+	return replacer.Replace(s)
+}
+
 // ValidateKeyword rejects empty, tiny, symbol-only, or placeholder queries.
 // When precise is true the keyword must be at least 3 runes (外贸通「精确」).
 func ValidateKeyword(s string, precise bool) error {

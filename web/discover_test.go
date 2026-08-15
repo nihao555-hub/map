@@ -27,7 +27,7 @@ func TestDiscoverPageRenders(t *testing.T) {
 		"私信模式", "营销模式", "一键营销", "preview-pane", "共 0 条", "/static/js/discover.js",
 		`id="app-rail"`, "/static/css/shell.css", "rail-item is-active",
 		"智能引擎能为你做什么", "精确", "试试", "wmt-features", "wmt-ai-orb", "开发信跟进",
-		"请输入企业或商品名称",
+		"请输入企业或商品名称", "批发",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)

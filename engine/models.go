@@ -25,10 +25,11 @@ const (
 )
 
 // DefaultPeoplePlatforms is the set used when the UI sends no platforms.
-// Core job is Douyin / TikTok people pages; major overseas networks are on by default too.
+// Core job is Douyin / TikTok / Xiaohongshu shop pages; major overseas networks are on by default too.
 var DefaultPeoplePlatforms = []string{
 	PlatformTikTok,
 	PlatformDouyin,
+	PlatformXiaohongshu,
 	PlatformFacebook,
 	PlatformInstagram,
 	PlatformYouTube,

@@ -167,8 +167,9 @@ var publicSearchOrder = []string{
 }
 
 func publicSearchQueries(keyword string, wanted map[string]bool) []publicQuery {
-	out := make([]publicQuery, 0, len(wanted))
+	out := make([]publicQuery, 0, len(wanted)*2)
 	cjk := hasCJK(keyword)
+	intent := merchantIntentKeyword(keyword)
 	for _, platform := range publicSearchOrder {
 		if !wanted[platform] {
 			continue
@@ -180,12 +181,35 @@ func publicSearchQueries(keyword string, wanted map[string]bool) []publicQuery {
 
 		if cjk {
 			// Natural queries survive HTML indexes better than site:path filters.
-			out = append(out, publicQuery{platform: platform, query: keyword + " " + PeoplePlatformLabel(platform)})
+			out = append(out, publicQuery{platform: platform, query: intent + " " + PeoplePlatformLabel(platform)})
 		}
-		out = append(out, publicQuery{platform: platform, query: "site:" + domain + " " + keyword})
+		siteKW := keyword
+		if contentHeavyPlatform(platform) {
+			siteKW = intent
+		}
+		out = append(out, publicQuery{platform: platform, query: "site:" + domain + " " + siteKW})
 	}
 
 	return out
+}
+
+func merchantIntentKeyword(keyword string) string {
+	keyword = strings.TrimSpace(keyword)
+	if hasCJK(keyword) {
+		return keyword + " 批发"
+	}
+
+	return keyword + " wholesaler"
+}
+
+func contentHeavyPlatform(platform string) bool {
+	switch platform {
+	case PlatformYouTube, PlatformDouyin, PlatformTikTok, PlatformXiaohongshu,
+		PlatformKuaishou, PlatformBilibili, PlatformTwitch, PlatformReddit:
+		return true
+	default:
+		return false
+	}
 }
 
 func hasCJK(s string) bool {
