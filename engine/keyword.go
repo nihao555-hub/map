@@ -24,7 +24,9 @@ var weakKeywords = map[string]struct{}{
 func NormalizeKeyword(s string) string {
 	s = strings.Map(func(r rune) rune {
 		switch r {
-		case '\u200b', '\u200c', '\u200d', '\ufeff', '\u00a0':
+		case '\u200b', '\u200c', '\u200d', '\ufeff':
+			return -1
+		case '\u00a0':
 			return ' '
 		}
 		if unicode.IsControl(r) {
