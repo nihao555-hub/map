@@ -231,14 +231,14 @@ var platformSearchDomain = map[string]string{
 // publicSearchOrder prefers Chinese networks first so a CJK keyword can
 // return Douyin/Xiaohongshu hits before site: queries trip index challenges.
 var publicSearchOrder = []string{
-	PlatformDouyin, PlatformTikTok, PlatformFacebook, PlatformLinkedIn,
-	PlatformInstagram, PlatformYouTube, PlatformXiaohongshu,
+	PlatformFacebook, PlatformLinkedIn, PlatformDouyin, PlatformInstagram,
+	PlatformTikTok, PlatformYouTube, PlatformXiaohongshu,
 	PlatformKuaishou, PlatformWeibo, PlatformBilibili,
 	PlatformX, PlatformPinterest, PlatformThreads, PlatformTelegram, PlatformReddit, PlatformTwitch,
 }
 
 const (
-	maxPublicQueries   = 48
+	maxPublicQueries   = 64
 	publicQueryTermCap = 4
 )
 
@@ -285,7 +285,7 @@ func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]
 	}
 	intents := append([]string{}, localIntentWords(lang, role)...)
 	if role == RoleBuyer && lang != "en" {
-		intents = append(intents, "importer")
+		intents = append(intents, "importer", "sourcing", "dealer")
 	}
 	if role == RoleSeller && lang != "en" {
 		intents = append(intents, "wholesaler")
@@ -349,13 +349,15 @@ func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]
 		}
 
 		for i, term := range terms {
-			add(platform, "site:"+site+" "+term)
 			if i == 0 && hasCJK(term) {
 				add(platform, term+" "+PeoplePlatformLabel(platform))
 			}
-			if i < 2 && intentExtra[platform] && len(intents) > 0 {
-				add(platform, "site:"+site+" "+term+" "+intents[0])
+			if i < 2 && intentExtra[platform] {
+				for _, intent := range pickIntentsForTerm(term, intents) {
+					add(platform, "site:"+site+" "+term+" "+intent)
+				}
 			}
+			add(platform, "site:"+site+" "+term)
 			if overseasMarketPlatforms[platform] && i < 3 {
 				if engGeo != "" {
 					add(platform, "site:"+site+" "+term+" "+engGeo)
@@ -371,6 +373,8 @@ func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]
 			} else {
 				add(platform, "site:linkedin.com/company "+head+" importer")
 				add(platform, "site:linkedin.com/company "+head+" buyer")
+				add(platform, "site:linkedin.com/in "+head+" procurement")
+				add(platform, "site:linkedin.com/in "+head+" purchasing")
 			}
 			if engGeo != "" {
 				add(platform, "site:linkedin.com/company "+head+" importer "+engGeo)
@@ -380,6 +384,21 @@ func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]
 
 	if len(out) > maxPublicQueries {
 		out = out[:maxPublicQueries]
+	}
+	return out
+}
+
+func pickIntentsForTerm(term string, intents []string) []string {
+	wantCJK := hasCJK(term)
+	out := make([]string, 0, 3)
+	for _, intent := range intents {
+		if hasCJK(intent) != wantCJK {
+			continue
+		}
+		out = append(out, intent)
+		if len(out) >= 3 {
+			break
+		}
 	}
 	return out
 }

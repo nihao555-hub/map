@@ -295,10 +295,20 @@ func TestBlobMatchesKeywordHandle(t *testing.T) {
 
 func TestMergeHitsKeepsProductHandle(t *testing.T) {
 	out := mergeHits([]Hit{
-		{ID: "fb", Platform: PlatformFacebook, Name: "Powerbilt Tools", Handle: "PowerbiltTools", HomepageURL: "https://www.facebook.com/PowerbiltTools", Snippet: "tools"},
+		{ID: "fb", Platform: PlatformFacebook, Name: "Powerbilt Tools Importer", Handle: "PowerbiltTools", HomepageURL: "https://www.facebook.com/PowerbiltTools", Snippet: "importer of power tools"},
 	}, "power tools", 0, RoleBuyer, "")
 	if len(out) != 1 {
-		t.Fatalf("dropped product handle %+v", out)
+		t.Fatalf("dropped importer handle %+v", out)
+	}
+}
+
+func TestMergeHitsBuyerDropsBrandWithoutCustomerSignal(t *testing.T) {
+	out := mergeHits([]Hit{
+		{ID: "brand", Platform: PlatformFacebook, Name: "Powerbilt Tools", Handle: "PowerbiltTools", HomepageURL: "https://www.facebook.com/PowerbiltTools", Snippet: "tools"},
+		{ID: "deal", Platform: PlatformFacebook, Name: "PISARN Power Tools", HomepageURL: "https://www.facebook.com/pisarnpowertools", Snippet: "dealer and trading of power tools Thailand"},
+	}, "power tools", 0, RoleBuyer, "")
+	if len(out) != 1 || out[0].ID != "deal" {
+		t.Fatalf("want dealer only, got %+v", out)
 	}
 }
 

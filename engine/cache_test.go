@@ -37,6 +37,27 @@ func TestSearchCacheExpires(t *testing.T) {
 	}
 }
 
+func TestLookupStaleCache(t *testing.T) {
+	q := Query{Keyword: "stale-shoes", Kind: KindCustoms, Role: RoleBuyer}
+	storeSearchCacheAlways(q, Result{
+		Kind: KindCustoms,
+		Hits: []Hit{{ID: "c1", Name: "FOOT LOCKER INC"}},
+	})
+	searchCacheMu.Lock()
+	key := searchCacheKey(q)
+	ent := searchCache[key]
+	ent.at = time.Now().Add(-30 * time.Minute)
+	searchCache[key] = ent
+	searchCacheMu.Unlock()
+	if _, ok := lookupSearchCacheAlways(q); ok {
+		t.Fatal("fresh should miss")
+	}
+	got, ok := lookupCache(q, true)
+	if !ok || len(got.Hits) != 1 || got.Hits[0].Name != "FOOT LOCKER INC" {
+		t.Fatalf("stale miss %+v ok=%v", got, ok)
+	}
+}
+
 func TestCacheTTLFor(t *testing.T) {
 	if cacheTTLFor(KindCustoms, 3) != customsCacheTTL {
 		t.Fatal("customs ttl")

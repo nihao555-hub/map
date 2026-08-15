@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -58,6 +59,10 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 		q.Limit = maxLimit
 	}
 
+	if !testing.Testing() && (q.Kind == KindCustoms || q.Kind == KindExhibition) {
+		return c.searchRealtime(ctx, q, start)
+	}
+
 	if cached, ok := lookupSearchCache(q); ok {
 		cached.TookMS = time.Since(start).Milliseconds()
 		cached.SearchedAt = time.Now().UTC()
@@ -65,37 +70,38 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 		return cached, nil
 	}
 
-	var (
-		res Result
-		err error
-	)
-
-	switch q.Kind {
-	case KindPeople:
-		res, err = c.searchPeople(ctx, q)
-	case KindMarketing:
-		res, err = c.searchMarketing(ctx, q)
-	case KindExhibition:
-		res, err = c.searchExhibition(ctx, q)
-	case KindCustoms:
-		res, err = c.searchCustoms(ctx, q)
-	default:
-		return Result{}, fmt.Errorf("unknown kind %q", q.Kind)
-	}
-
+	res, err := c.runKind(ctx, q)
 	if err != nil {
 		return Result{}, err
 	}
+	res = finalizeResult(q, res, start)
+	storeSearchCache(q, res)
+	return res, nil
+}
 
+func (c *Client) runKind(ctx context.Context, q Query) (Result, error) {
+	switch q.Kind {
+	case KindPeople:
+		return c.searchPeople(ctx, q)
+	case KindMarketing:
+		return c.searchMarketing(ctx, q)
+	case KindExhibition:
+		return c.searchExhibition(ctx, q)
+	case KindCustoms:
+		return c.searchCustoms(ctx, q)
+	default:
+		return Result{}, fmt.Errorf("unknown kind %q", q.Kind)
+	}
+}
+
+func finalizeResult(q Query, res Result, start time.Time) Result {
 	if q.Precise && q.Kind != KindCustoms && q.Kind != KindExhibition {
 		res.Hits = filterPreciseHits(res.Hits, q.Keyword)
 	}
-
 	res.Keyword = q.Keyword
 	res.Kind = q.Kind
 	res.TookMS = time.Since(start).Milliseconds()
 	res.SearchedAt = time.Now().UTC()
-
 	if res.Note == "" && q.Kind == KindPeople {
 		res.Note = messagePolicyNote
 	}
@@ -108,9 +114,65 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 	if res.Note == "" && q.Kind == KindExhibition {
 		res.Note = exhibitionPolicyNote
 	}
+	return res
+}
 
-	storeSearchCache(q, res)
-	return res, nil
+// searchRealtime always returns within about 1s. Fresh cache is instant;
+// expired cache is served immediately while a refresh runs; a cold query
+// waits up to realtimeBudget then returns whatever is ready.
+func (c *Client) searchRealtime(ctx context.Context, q Query, start time.Time) (Result, error) {
+	if fresh, ok := lookupSearchCache(q); ok {
+		fresh.TookMS = time.Since(start).Milliseconds()
+		fresh.SearchedAt = time.Now().UTC()
+		fresh.Cached = true
+		return fresh, nil
+	}
+
+	stale, hasStale := lookupStaleCache(q)
+	job := kickSearchRefresh(c, q)
+	if hasStale {
+		stale.TookMS = time.Since(start).Milliseconds()
+		stale.SearchedAt = time.Now().UTC()
+		stale.Cached = true
+		stale.Refreshing = true
+		return stale, nil
+	}
+
+	timer := time.NewTimer(realtimeBudget)
+	defer timer.Stop()
+	select {
+	case <-job.done:
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+
+	if fresh, ok := lookupSearchCacheAlways(q); ok {
+		fresh.TookMS = time.Since(start).Milliseconds()
+		fresh.SearchedAt = time.Now().UTC()
+		fresh.Refreshing = refreshInFlight(q)
+		return fresh, nil
+	}
+	if stale, ok := lookupCache(q, true); ok {
+		stale.TookMS = time.Since(start).Milliseconds()
+		stale.SearchedAt = time.Now().UTC()
+		stale.Cached = true
+		stale.Refreshing = refreshInFlight(q)
+		return stale, nil
+	}
+
+	note := customsPolicyNote
+	if q.Kind == KindExhibition {
+		note = exhibitionPolicyNote
+	}
+	return Result{
+		Keyword:    q.Keyword,
+		Kind:       q.Kind,
+		Hits:       nil,
+		Note:       note,
+		TookMS:     time.Since(start).Milliseconds(),
+		SearchedAt: time.Now().UTC(),
+		Refreshing: refreshInFlight(q),
+	}, nil
 }
 
 func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
@@ -375,16 +437,19 @@ func merchantBonus(hit Hit, kw, role string) int {
 
 	switch strings.ToLower(strings.TrimSpace(role)) {
 	case RoleBuyer:
-		if hasBuyerToken(roleBlob) {
+		if hasCustomerToken(roleBlob) {
 			score += 24
 		}
 		if hasCompanyToken(roleBlob) {
 			score += 6
 		}
-		if hasSellerToken(roleBlob) && !hasBuyerToken(roleBlob) {
-			score -= 16
+		if hasFactoryToken(roleBlob) && !hasCustomerToken(roleBlob) {
+			score -= 20
 		}
-		if kw != "" && !blobMatchesKeyword(kwBlob, kw) && !hasBuyerToken(roleBlob) {
+		if looksLikeOfficialBrand(roleBlob) {
+			score -= 18
+		}
+		if kw != "" && !blobMatchesKeyword(kwBlob, kw) && !hasCustomerToken(roleBlob) {
 			score -= 28
 		}
 	case RoleSeller:
@@ -408,12 +473,10 @@ func merchantBonus(hit Hit, kw, role string) int {
 
 func inferHitRole(hit Hit, queryRole string) string {
 	blob := hitRoleBlob(hit)
-	buy := hasBuyerToken(blob)
-	sell := hasSellerToken(blob)
 	switch {
-	case buy && !sell:
+	case hasCustomerToken(blob) && !hasFactoryToken(blob):
 		return RoleBuyer
-	case sell && !buy:
+	case hasFactoryToken(blob) && !hasBuyerToken(blob):
 		return RoleSeller
 	default:
 		return NormalizeRole(queryRole)
@@ -457,39 +520,35 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 		return true
 	}
 	role = strings.ToLower(strings.TrimSpace(role))
+	if role == RoleBuyer && looksLikeOfficialBrand(roleBlob) && !hasCustomerToken(roleBlob) {
+		return true
+	}
+	if role == RoleBuyer && hasFactoryToken(roleBlob) && !hasBuyerToken(roleBlob) {
+		if !strings.Contains(kw, "http") {
+			return true
+		}
+	}
 	pageMatch := kw == "" || blobMatchesKeyword(hitPageBlob(hit), kw)
 	if !pageMatch {
 		queryMatch := blobMatchesKeyword(hitKeywordBlob(hit), kw)
 		if queryMatch {
-			// Found via a product query, but the card itself does not mention
-			// the product. Keep only accounts that look like a buyer/company.
 			if role == RoleBuyer {
-				if !hasBuyerToken(roleBlob) && !hasCompanyToken(roleBlob) {
+				if !hasCustomerToken(roleBlob) && !hasCompanyToken(roleBlob) {
 					return true
 				}
 			} else if !hasMerchantToken(roleBlob) && !hasCompanyToken(roleBlob) {
 				return true
 			}
 		} else if role == RoleBuyer {
-			if !hasBuyerToken(roleBlob) {
+			if !hasCustomerToken(roleBlob) && !hasCompanyToken(roleBlob) {
 				return true
 			}
 		} else if !hasMerchantToken(roleBlob) {
 			return true
 		}
-	}
-	if role == RoleBuyer {
-		switch hit.Platform {
-		case PlatformDouyin, PlatformXiaohongshu, PlatformKuaishou, PlatformWeibo, PlatformBilibili:
-			if strings.Contains(kw, "http") || hasSellerToken(foldSearchText(kw)) {
-				break
-			}
-			if !hasBuyerToken(roleBlob) && !hasCompanyToken(roleBlob) {
-				return true
-			}
-			if hasSellerToken(roleBlob) && !hasBuyerToken(roleBlob) {
-				return true
-			}
+	} else if role == RoleBuyer && !strings.Contains(kw, "http") {
+		if !hasCustomerToken(roleBlob) && !hasCompanyToken(roleBlob) {
+			return true
 		}
 	}
 
@@ -544,22 +603,34 @@ func hasMerchantToken(blob string) bool {
 	return hasBuyerToken(blob) || hasSellerToken(blob) || hasShopToken(blob)
 }
 
+func hasCustomerToken(blob string) bool {
+	return hasBuyerToken(blob) || hasResellerToken(blob)
+}
+
 func hasBuyerToken(blob string) bool {
 	tokens := []string{
-		"采购", "进口商", "进口", "采购商", "采购部",
+		"采购", "进口商", "进口", "采购商", "采购部", "求购", "寻找供应商",
 		"importer", "importers", "buyer", "buyers",
-		"procurement", "purchasing", "importing",
+		"procurement", "purchasing", "importing", "sourcing",
 		"นำเข้า", "ผู้นำเข้า", "จัดซื้อ",
 		"nhập khẩu", "pengimport", "importir",
 	}
 	return containsAnyToken(blob, tokens)
 }
 
-func hasSellerToken(blob string) bool {
+func hasResellerToken(blob string) bool {
 	tokens := []string{
-		"厂家", "工厂", "专卖", "批发", "经销", "供应", "制造商", "旗舰", "专营",
-		"wholesaler", "wholesale", "factory", "manufacturer",
-		"supplier", "distributor",
+		"批发", "经销", "贸易", "商行",
+		"wholesaler", "wholesale", "distributor", "dealer",
+		"trading", "retailer",
+	}
+	return containsAnyToken(blob, tokens)
+}
+
+func hasFactoryToken(blob string) bool {
+	tokens := []string{
+		"厂家", "工厂", "制造商", "旗舰", "专卖", "专营",
+		"factory", "manufacturer", "manufacturing",
 	}
 	if containsAnyToken(blob, tokens) {
 		return true
@@ -569,8 +640,15 @@ func hasSellerToken(blob string) bool {
 			return true
 		}
 	}
-
 	return false
+}
+
+func looksLikeOfficialBrand(blob string) bool {
+	return containsAnyToken(blob, []string{"官方", "official page", "official store", "official account", "旗舰店"})
+}
+
+func hasSellerToken(blob string) bool {
+	return hasFactoryToken(blob) || containsAnyToken(blob, []string{"供应", "supplier"})
 }
 
 func hasShopToken(blob string) bool {

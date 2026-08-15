@@ -255,6 +255,21 @@ func TestDuckDuckGoKLKeepsChineseForCJK(t *testing.T) {
 	}
 }
 
+func TestPublicSearchQueriesBuyerAddsSourcing(t *testing.T) {
+	wanted := map[string]bool{PlatformFacebook: true, PlatformDouyin: true}
+	qs := publicSearchQueries("LED灯", wanted, "", RoleBuyer)
+	got := queryStrings(qs)
+	for _, want := range []string{
+		"site:facebook.com LED灯 求购",
+		"site:facebook.com LED light sourcing",
+		"site:douyin.com/user LED灯 采购",
+	} {
+		if !containsString(got, want) {
+			t.Fatalf("missing %q in %+v", want, got)
+		}
+	}
+}
+
 func TestPublicSearchQueriesLinkedInBuyer(t *testing.T) {
 	wanted := map[string]bool{PlatformLinkedIn: true}
 	qs := publicSearchQueries("LED light", wanted, "", RoleBuyer)

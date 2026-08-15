@@ -134,11 +134,12 @@ func TestScrubDiscoverResultStripsEngineNames(t *testing.T) {
 			Source:      "bing",
 			Extra:       map[string]string{"q": "site:facebook.com LED灯 采购", "shipments": "48"},
 		}},
-		Cached:   true,
-		Sources:  []string{"bing", "duckduckgo"},
-		Warnings: []string{"duckduckgo: status 429 rate limited"},
-		TookMS:   12,
-		Note:     "内部诊断",
+		Cached:     true,
+		Refreshing: true,
+		Sources:    []string{"bing", "duckduckgo"},
+		Warnings:   []string{"duckduckgo: status 429 rate limited"},
+		TookMS:     12,
+		Note:       "内部诊断",
 	}
 	scrubDiscoverResult(&res)
 	if res.Hits[0].Source != "" || len(res.Sources) != 0 || res.Warnings != nil || res.TookMS != 0 {
@@ -147,8 +148,8 @@ func TestScrubDiscoverResultStripsEngineNames(t *testing.T) {
 	if res.Hits[0].Extra["q"] != "" || res.Hits[0].Extra["shipments"] != "48" {
 		t.Fatalf("extra not scrubbed %+v", res.Hits[0].Extra)
 	}
-	if !res.Cached {
-		t.Fatal("cached flag stripped")
+	if !res.Cached || !res.Refreshing {
+		t.Fatal("cached/refreshing flag stripped")
 	}
 	if res.Note != "系统不会代发。公开网页索引按目标国语言展开检索，做不到企业库那种一个国家几千条。" {
 		t.Fatalf("note=%s", res.Note)

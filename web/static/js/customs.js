@@ -187,6 +187,8 @@
     return kw;
   }
 
+  let searchGen = 0;
+
   function doSearch(kw) {
     if (kw) keyword.value = kw;
     const term = searchTerm();
@@ -205,7 +207,11 @@
     lastHits = [];
     const btn = document.getElementById("search-btn");
     if (btn) { btn.disabled = true; btn.textContent = "搜索中"; }
+    const gen = ++searchGen;
+    fetchCustoms(term, 0, gen, btn);
+  }
 
+  function fetchCustoms(term, attempt, gen, btn) {
     fetch("/api/v1/discover/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -221,8 +227,9 @@
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (out) {
-        if (btn) { btn.disabled = false; btn.textContent = "搜索"; }
+        if (gen !== searchGen) return;
         if (!out.ok) {
+          if (btn) { btn.disabled = false; btn.textContent = "搜索"; }
           status.textContent = (out.j && out.j.message) || "查询失败";
           empty.classList.remove("hidden");
           empty.textContent = status.textContent;
@@ -233,12 +240,22 @@
           hits = hits.filter(function (h) { return !isLogistics(h.name); });
         }
         lastHits = hits;
+        renderHits(hits, out.j.note);
+        if (out.j.refreshing && attempt < 16) {
+          status.textContent = hits.length
+            ? ("已找到 " + hits.length + " 家企业，正在补全最新数据…")
+            : "正在拉取最新公开数据…";
+          if (btn && attempt === 0) { btn.disabled = false; btn.textContent = "搜索"; }
+          setTimeout(function () { fetchCustoms(term, attempt + 1, gen, btn); }, 850);
+          return;
+        }
+        if (btn) { btn.disabled = false; btn.textContent = "搜索"; }
         status.textContent = hits.length
           ? ("已找到 " + hits.length + " 家企业" + (out.j.cached ? "（即时）" : ""))
           : (out.j.note || "没有命中");
-        renderHits(hits, out.j.note);
       })
       .catch(function () {
+        if (gen !== searchGen) return;
         if (btn) { btn.disabled = false; btn.textContent = "搜索"; }
         status.textContent = "搜索繁忙，请稍后再试。";
       });

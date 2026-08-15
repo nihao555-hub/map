@@ -164,9 +164,9 @@ func localIntentWords(lang, role string) []string {
 	case "id":
 		return []string{"importir"}
 	case "zh":
-		return []string{"采购", "进口商"}
+		return []string{"采购", "进口商", "求购", "经销商"}
 	default:
-		return []string{"importer", "buyer"}
+		return []string{"importer", "buyer", "sourcing", "dealer"}
 	}
 }
 

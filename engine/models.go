@@ -123,4 +123,5 @@ type Result struct {
 	Note       string    `json:"note,omitempty"`
 	Expanded   []string  `json:"expanded,omitempty"`
 	Cached     bool      `json:"cached,omitempty"`
+	Refreshing bool      `json:"refreshing,omitempty"`
 }

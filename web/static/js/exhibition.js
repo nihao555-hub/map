@@ -158,6 +158,8 @@
     document.getElementById("exh-drawer").classList.add("hidden");
   });
 
+  let searchGen = 0;
+
   function doSearch(kw) {
     kw = normalizeKeyword(kw);
     const errEl = document.getElementById("keyword-error");
@@ -171,6 +173,11 @@
     status.textContent = role === "seller" ? "正在拉取公开参展商名单…" : "正在找公开展会…";
     const btn = document.getElementById("search-btn");
     btn.disabled = true;
+    const gen = ++searchGen;
+    fetchExhibition(kw, 0, gen, btn);
+  }
+
+  function fetchExhibition(kw, attempt, gen, btn) {
     fetch("/api/v1/discover/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -184,19 +191,30 @@
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (out) {
-        btn.disabled = false;
+        if (gen !== searchGen) return;
         if (!out.ok) {
+          btn.disabled = false;
           status.textContent = (out.j && out.j.message) || "查找失败";
           renderHits([]);
           return;
         }
         const hits = out.j.hits || [];
+        renderHits(hits);
+        if (out.j.refreshing && attempt < 16) {
+          status.textContent = hits.length
+            ? ("已找到 " + hits.length + (role === "seller" ? " 家参展商" : " 场展会") + "，正在补全最新数据…")
+            : (role === "seller" ? "正在拉取公开参展商名单…" : "正在找公开展会…");
+          if (attempt === 0) btn.disabled = false;
+          setTimeout(function () { fetchExhibition(kw, attempt + 1, gen, btn); }, 850);
+          return;
+        }
+        btn.disabled = false;
         status.textContent = hits.length
           ? ("已找到 " + hits.length + (role === "seller" ? " 家参展商" : " 场展会") + (out.j.cached ? "（即时）" : ""))
           : (out.j.note || "没有命中");
-        renderHits(hits);
       })
       .catch(function () {
+        if (gen !== searchGen) return;
         btn.disabled = false;
         status.textContent = "搜索繁忙，请稍后再试。";
       });

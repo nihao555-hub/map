@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -13,6 +14,9 @@ const (
 	customsCacheTTL    = 20 * time.Minute
 	exhibitionCacheTTL = 25 * time.Minute
 	emptyCacheTTL      = 90 * time.Second
+	staleKeepFor       = 6 * time.Hour
+	realtimeBudget     = 950 * time.Millisecond
+	refreshTimeout     = 45 * time.Second
 )
 
 type cachedSearch struct {
@@ -21,9 +25,16 @@ type cachedSearch struct {
 	res Result
 }
 
+type refreshJob struct {
+	done chan struct{}
+}
+
 var (
 	searchCacheMu sync.Mutex
 	searchCache   = map[string]cachedSearch{}
+
+	refreshJobsMu sync.Mutex
+	refreshJobs   = map[string]*refreshJob{}
 )
 
 func searchCacheKey(q Query) string {
@@ -55,6 +66,17 @@ func lookupSearchCache(q Query) (Result, bool) {
 }
 
 func lookupSearchCacheAlways(q Query) (Result, bool) {
+	return lookupCache(q, false)
+}
+
+func lookupStaleCache(q Query) (Result, bool) {
+	if testing.Testing() {
+		return Result{}, false
+	}
+	return lookupCache(q, true)
+}
+
+func lookupCache(q Query, staleOK bool) (Result, bool) {
 	key := searchCacheKey(q)
 	searchCacheMu.Lock()
 	ent, ok := searchCache[key]
@@ -62,10 +84,14 @@ func lookupSearchCacheAlways(q Query) (Result, bool) {
 	if !ok {
 		return Result{}, false
 	}
-	if time.Since(ent.at) > ent.ttl {
-		return Result{}, false
+	age := time.Since(ent.at)
+	if age <= ent.ttl {
+		return cloneResult(ent.res), true
 	}
-	return cloneResult(ent.res), true
+	if staleOK && age <= staleKeepFor {
+		return cloneResult(ent.res), true
+	}
+	return Result{}, false
 }
 
 func storeSearchCache(q Query, res Result) {
@@ -101,7 +127,7 @@ func storeSearchCacheAlways(q Query, res Result) {
 func pruneSearchCacheLocked() {
 	now := time.Now()
 	for k, ent := range searchCache {
-		if now.Sub(ent.at) > ent.ttl {
+		if now.Sub(ent.at) > staleKeepFor {
 			delete(searchCache, k)
 		}
 	}
@@ -109,6 +135,8 @@ func pruneSearchCacheLocked() {
 
 func cloneResult(res Result) Result {
 	out := res
+	out.Cached = false
+	out.Refreshing = false
 	if res.Hits != nil {
 		out.Hits = make([]Hit, len(res.Hits))
 		copy(out.Hits, res.Hits)
@@ -133,4 +161,42 @@ func cloneResult(res Result) Result {
 		out.Expanded = append([]string(nil), res.Expanded...)
 	}
 	return out
+}
+
+func refreshInFlight(q Query) bool {
+	key := searchCacheKey(q)
+	refreshJobsMu.Lock()
+	_, ok := refreshJobs[key]
+	refreshJobsMu.Unlock()
+	return ok
+}
+
+func kickSearchRefresh(c *Client, q Query) *refreshJob {
+	key := searchCacheKey(q)
+	refreshJobsMu.Lock()
+	if job, ok := refreshJobs[key]; ok {
+		refreshJobsMu.Unlock()
+		return job
+	}
+	job := &refreshJob{done: make(chan struct{})}
+	refreshJobs[key] = job
+	refreshJobsMu.Unlock()
+
+	go func() {
+		defer func() {
+			refreshJobsMu.Lock()
+			delete(refreshJobs, key)
+			refreshJobsMu.Unlock()
+			close(job.done)
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+		defer cancel()
+		res, err := c.runKind(ctx, q)
+		if err != nil {
+			return
+		}
+		res = finalizeResult(q, res, time.Now())
+		storeSearchCacheAlways(q, res)
+	}()
+	return job
 }

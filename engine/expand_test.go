@@ -145,8 +145,8 @@ func TestGroupExpandedHitsKeepsMerchantTogether(t *testing.T) {
 func TestSearchPeopleExpandsSisterSocials(t *testing.T) {
 	indexHTML := `<html><body>
   <div class="result">
-    <a class="result__a" href="https://www.facebook.com/osdinlighting">Osdin Lighting LED shop</a>
-    <a class="result__snippet">LED lighting wholesale factory</a>
+    <a class="result__a" href="https://www.facebook.com/osdinlighting">Osdin Lighting LED importer</a>
+    <a class="result__snippet">LED lighting trading company</a>
   </div>
 </body></html>`
 	fbHTML := `<html><title>Osdin Lighting</title><body>
