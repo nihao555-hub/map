@@ -3,13 +3,14 @@
   const status = document.getElementById("status");
   const results = document.getElementById("results");
   const empty = document.getElementById("empty");
-  const fairBoard = document.getElementById("fair-board");
   const toastEl = document.getElementById("toast");
   const PAGE_SIZE = 20;
 
   let role = "seller";
   let lastHits = [];
   let page = 1;
+  let lastName = "";
+  let lastUrl = "";
   let searchGen = 0;
 
   function toast(msg) {
@@ -26,8 +27,13 @@
   }
   function escapeAttr(s) { return escapeHtml(s).replace(/`/g, ""); }
   function normalizeKeyword(s) { return String(s || "").replace(/\s+/g, " ").trim(); }
-
   function extra(h, key) { return (h && h.extra && h.extra[key]) || ""; }
+
+  function flagFor(code) {
+    const c = String(code || "").toUpperCase();
+    if (!c || c.length !== 2) return "🏳️";
+    return String.fromCodePoint(127397 + c.charCodeAt(0), 127397 + c.charCodeAt(1));
+  }
 
   function showKeywordError(msg) {
     const el = document.getElementById("keyword-error");
@@ -36,14 +42,23 @@
     el.textContent = msg || "";
   }
 
+  function fillYears() {
+    const el = document.getElementById("year");
+    if (!el) return;
+    const now = new Date().getUTCFullYear();
+    const opts = ['<option value="0">不限</option>'];
+    for (let y = now + 1; y >= now - 1; y--) {
+      opts.push('<option value="' + y + '">' + y + "</option>");
+    }
+    el.innerHTML = opts.join("");
+  }
+
   function fillCountrySelect(list) {
     const html = (list || []).map(function (c) {
       return '<option value="' + escapeAttr(c.code || "") + '">' + escapeHtml(c.label || c.code || "不限") + "</option>";
     }).join("");
-    ["country", "landing-country"].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = html;
-    });
+    const el = document.getElementById("country");
+    if (el) el.innerHTML = html;
   }
 
   fetch("/api/v1/discover/countries")
@@ -64,19 +79,24 @@
     document.querySelectorAll("[data-role]").forEach(function (el) {
       el.classList.toggle("is-on", el.getAttribute("data-role") === role);
     });
+    const head = document.getElementById("exh-thead");
+    if (head) {
+      head.innerHTML = role === "buyer"
+        ? "<tr><th style=\"width:36px\"></th><th>展会名称</th><th style=\"width:160px\">举办时间</th><th style=\"width:180px\">国家/城市</th><th style=\"width:120px\">来源</th></tr>"
+        : "<tr><th style=\"width:36px\"></th><th>公司名称</th><th>展会名称</th><th style=\"width:120px\">展位号</th><th style=\"width:140px\">国家/地区</th></tr>";
+    }
   }
 
   function selectedCountry() {
-    const a = document.getElementById("country");
-    const b = document.getElementById("landing-country");
-    return (a && a.value) || (b && b.value) || "";
+    return (document.getElementById("country") || {}).value || "";
   }
 
-  function syncCountry(from) {
-    const a = document.getElementById("country");
-    const b = document.getElementById("landing-country");
-    if (from && a && from !== a) a.value = from.value;
-    if (from && b && from !== b) b.value = from.value;
+  function selectedYear() {
+    return parseInt((document.getElementById("year") || {}).value || "0", 10) || 0;
+  }
+
+  function searchField() {
+    return (document.getElementById("search-field") || {}).value || "product";
   }
 
   document.querySelectorAll("[data-role]").forEach(function (btn) {
@@ -110,67 +130,101 @@
     if (next) next.disabled = page >= pageCount();
   }
 
-  function renderExhibitorTable(hits, target) {
-    if (!hits.length) {
-      target.innerHTML = "";
-      return;
-    }
-    target.innerHTML = hits.map(function (h) {
-      return "<tr>" +
-        "<td><b>" + escapeHtml(h.name || "") + "</b></td>" +
-        "<td>" + escapeHtml(extra(h, "fair") || "") + "</td>" +
-        "<td>" + escapeHtml(extra(h, "booth") || "—") + "</td>" +
-        "<td>" + escapeHtml(h.country_label || extra(h, "country") || "—") + "</td>" +
-      "</tr>";
-    }).join("");
-  }
-
-  function renderFairCards(hits, target) {
-    target.innerHTML = hits.map(function (h, i) {
-      const when = [extra(h, "start"), extra(h, "end")].filter(Boolean).join(" – ") || "日期未公开";
-      const where = [h.country_label || h.country || "", extra(h, "city")].filter(Boolean).join(" · ");
-      return (
-        '<article class="exh-card" data-i="' + i + '">' +
-          '<span class="exh-when">' + escapeHtml(when) + "</span>" +
-          "<h3>" + escapeHtml(h.name || h.title || "未命名") + "</h3>" +
-          '<p class="exh-where">' + escapeHtml(where || "地点未公开") + "</p>" +
-          '<p class="exh-snip">' + escapeHtml(h.snippet || "") + "</p>" +
-          '<span class="exh-card-foot">查看参展商名单</span>' +
-        "</article>"
-      );
-    }).join("");
-  }
-
   function renderHits(hits, note) {
     lastHits = hits || [];
-    const table = document.getElementById("exh-table");
-    const wantFairs = role === "buyer";
-    if (table) table.classList.toggle("hidden", wantFairs || !lastHits.length);
-    if (fairBoard) fairBoard.classList.toggle("hidden", !wantFairs || !lastHits.length);
     if (!lastHits.length) {
       empty.classList.remove("hidden");
-      empty.textContent = note || (wantFairs ? "没有公开展会" : "没有公开参展商名单");
+      empty.textContent = note || (role === "buyer" ? "没有公开展会" : "没有公开参展商名单");
       results.innerHTML = "";
-      if (fairBoard) fairBoard.innerHTML = "";
       updatePager();
       return;
     }
     empty.classList.add("hidden");
-    if (wantFairs) {
-      results.innerHTML = "";
-      renderFairCards(pagedHits(), fairBoard);
-    } else {
-      if (fairBoard) fairBoard.innerHTML = "";
-      renderExhibitorTable(pagedHits(), results);
-    }
+    const wantFairs = role === "buyer";
+    results.innerHTML = pagedHits().map(function (h, i) {
+      const geo = h.country_label || h.country || extra(h, "country") || "—";
+      const city = extra(h, "city");
+      const where = [geo, city].filter(Boolean).join(" · ");
+      const when = [extra(h, "start"), extra(h, "end")].filter(Boolean).join(" – ") || "—";
+      if (wantFairs) {
+        return (
+          "<tr data-i=\"" + i + "\" data-kind=\"fair\">" +
+            '<td class="col-check"><input type="checkbox" class="mkt-pick" data-i="' + i + '" data-name="' + escapeAttr(h.name || h.title || "") + '"></td>' +
+            "<td><div class=\"cus-co\">" +
+              '<span class="cus-flag">' + flagFor(h.country) + "</span>" +
+              "<div><b>" + escapeHtml(h.name || h.title || "") + "</b><small>" + escapeHtml(h.snippet || "") + "</small></div>" +
+            "</div></td>" +
+            "<td>" + escapeHtml(when) + "</td>" +
+            "<td>" + escapeHtml(where) + "</td>" +
+            "<td>" + escapeHtml(extra(h, "via") || h.source || "—") + "</td>" +
+          "</tr>"
+        );
+      }
+      return (
+        "<tr data-i=\"" + i + "\" data-kind=\"exhibitor\">" +
+          '<td class="col-check"><input type="checkbox" class="mkt-pick" data-i="' + i + '" data-name="' + escapeAttr(h.name || "") + '"></td>' +
+          "<td><div class=\"cus-co\">" +
+            '<span class="cus-flag">' + flagFor(h.country) + "</span>" +
+            "<div><b>" + escapeHtml(h.name || "") + "</b></div>" +
+          "</div></td>" +
+          "<td>" + escapeHtml(extra(h, "fair") || "—") + "</td>" +
+          "<td>" + escapeHtml(extra(h, "booth") || "—") + "</td>" +
+          "<td>" + escapeHtml(geo) + "</td>" +
+        "</tr>"
+      );
+    }).join("");
     updatePager();
   }
 
+  function setTab(id) {
+    document.querySelectorAll("#modal-tabs button").forEach(function (b) {
+      b.classList.toggle("is-on", b.getAttribute("data-tab") === id);
+    });
+    ["basic", "contacts", "fair", "list"].forEach(function (t) {
+      const el = document.getElementById("tab-" + t);
+      if (el) el.classList.toggle("hidden", t !== id);
+    });
+  }
+
+  document.querySelectorAll("#modal-tabs button").forEach(function (btn) {
+    btn.addEventListener("click", function () { setTab(btn.getAttribute("data-tab")); });
+  });
+
+  function openModal(h, kind) {
+    lastName = h.name || h.title || "";
+    lastUrl = h.homepage_url || "";
+    const modal = document.getElementById("exh-modal");
+    modal.classList.remove("hidden");
+    document.getElementById("modal-name").textContent = lastName || "—";
+    document.getElementById("modal-role").textContent = kind === "fair" ? "展会" : "参展商";
+    document.getElementById("stat-fair").textContent = extra(h, "fair") || (kind === "fair" ? lastName : "—");
+    document.getElementById("stat-booth").textContent = extra(h, "booth") || "—";
+    document.getElementById("stat-country").textContent = h.country_label || h.country || extra(h, "city") || "—";
+    document.getElementById("stat-when").textContent = [extra(h, "start"), extra(h, "end")].filter(Boolean).join(" – ") || "—";
+    document.getElementById("info-name").textContent = lastName || "—";
+    document.getElementById("info-city").textContent = extra(h, "city") || "—";
+    document.getElementById("info-country").textContent = h.country_label || h.country || "—";
+    document.getElementById("info-booth").textContent = extra(h, "booth") || "—";
+    document.getElementById("info-via").textContent = extra(h, "via") || h.source || "—";
+    document.getElementById("info-snip").textContent = h.snippet || "—";
+    document.getElementById("tab-fair").innerHTML = kind === "fair"
+      ? ("<p>" + escapeHtml(h.snippet || "公开目录中的展会场次。") + "</p>")
+      : ("<table><thead><tr><th>展会</th><th>展位</th><th>国家</th></tr></thead><tbody><tr><td>" +
+        escapeHtml(extra(h, "fair") || "—") + "</td><td>" + escapeHtml(extra(h, "booth") || "—") +
+        "</td><td>" + escapeHtml(h.country_label || "—") + "</td></tr></tbody></table>");
+    document.getElementById("list-status").textContent = kind === "fair" ? "正在拉取公开参展商名单…" : "参展商名单只在搜展会时按场次加载。";
+    document.getElementById("list-body").innerHTML = "";
+    setTab(kind === "fair" ? "list" : "basic");
+    document.getElementById("modal-open").onclick = function () {
+      if (lastUrl) window.open(lastUrl, "_blank", "noopener");
+      else toast("没有可打开的详情页");
+    };
+    if (kind === "fair") loadExhibitors(lastName, lastUrl);
+  }
+
   function loadExhibitors(name, pageUrl) {
-    const box = document.getElementById("drawer-exhibitors");
-    const st = document.getElementById("drawer-exh-status");
-    st.textContent = "正在拉取公开参展商名单…";
-    box.innerHTML = "";
+    const st = document.getElementById("list-status");
+    const box = document.getElementById("list-body");
     const qs = "/api/v1/discover/exhibition/exhibitors?name=" + encodeURIComponent(name || "") +
       (pageUrl ? "&url=" + encodeURIComponent(pageUrl) : "") + "&limit=200";
     fetch(qs)
@@ -184,50 +238,61 @@
           box.innerHTML = "";
           return;
         }
-        box.innerHTML =
-          '<div class="exh-table-wrap"><table class="exh-table"><thead><tr>' +
-            "<th>公司</th><th>展位</th><th>国家/展区</th>" +
-          "</tr></thead><tbody>" +
+        box.innerHTML = "<table><thead><tr><th>公司</th><th>展位</th><th>国家/展区</th></tr></thead><tbody>" +
           hits.map(function (h) {
             return "<tr><td><b>" + escapeHtml(h.name || "") + "</b></td>" +
               "<td>" + escapeHtml(extra(h, "booth") || "—") + "</td>" +
               "<td>" + escapeHtml(h.country_label || extra(h, "country") || "—") + "</td></tr>";
-          }).join("") +
-          "</tbody></table></div>";
+          }).join("") + "</tbody></table>";
       })
       .catch(function () {
         st.textContent = "名单加载失败，可打开官网自行查看。";
       });
   }
 
-  if (fairBoard) {
-    fairBoard.addEventListener("click", function (ev) {
-      const card = ev.target.closest(".exh-card");
-      if (!card) return;
-      const offset = (page - 1) * PAGE_SIZE;
-      const h = lastHits[offset + Number(card.getAttribute("data-i"))];
-      if (!h) return;
-      const drawer = document.getElementById("exh-drawer");
-      drawer.classList.remove("hidden");
-      document.getElementById("drawer-kicker").textContent = "展会";
-      document.getElementById("drawer-name").textContent = h.name || h.title || "—";
-      document.getElementById("drawer-where").textContent = [h.country_label || h.country || "", extra(h, "city")].filter(Boolean).join(" · ");
-      document.getElementById("drawer-when").textContent = [extra(h, "start"), extra(h, "end")].filter(Boolean).join(" – ");
-      document.getElementById("drawer-snip").textContent = h.snippet || "";
-      const link = document.getElementById("drawer-link");
-      if (h.homepage_url) {
-        link.href = h.homepage_url;
-        link.style.display = "";
-      } else {
-        link.removeAttribute("href");
-        link.style.display = "none";
-      }
-      loadExhibitors(h.name || h.title || "", h.homepage_url || "");
-    });
-  }
+  results.addEventListener("click", function (ev) {
+    if (ev.target.closest("input")) return;
+    const tr = ev.target.closest("tr[data-i]");
+    if (!tr) return;
+    const offset = (page - 1) * PAGE_SIZE;
+    const h = lastHits[offset + Number(tr.getAttribute("data-i"))];
+    if (!h) return;
+    openModal(h, tr.getAttribute("data-kind") || (role === "buyer" ? "fair" : "exhibitor"));
+  });
 
-  document.getElementById("drawer-close").addEventListener("click", function () {
-    document.getElementById("exh-drawer").classList.add("hidden");
+  document.getElementById("modal-close").addEventListener("click", function () {
+    document.getElementById("exh-modal").classList.add("hidden");
+  });
+  document.getElementById("exh-modal").addEventListener("click", function (ev) {
+    if (ev.target.id === "exh-modal") ev.currentTarget.classList.add("hidden");
+  });
+  document.getElementById("modal-save").addEventListener("click", function () {
+    if (!lastName) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(lastName).then(function () { toast("已复制名称，可自行录入客户"); });
+    }
+  });
+
+  document.getElementById("select-all").addEventListener("click", function () {
+    const boxes = document.querySelectorAll(".mkt-pick");
+    const allOn = Array.prototype.every.call(boxes, function (b) { return b.checked; });
+    boxes.forEach(function (b) { b.checked = !allOn; });
+  });
+  document.getElementById("market-btn").addEventListener("click", function () {
+    toast("公开名录没有现成邮箱。请到智能引擎按公司名抽取公开联系方式。系统不代发。");
+  });
+  document.getElementById("book-btn").addEventListener("click", function () {
+    const names = Array.prototype.map.call(document.querySelectorAll(".mkt-pick:checked"), function (el) {
+      return el.getAttribute("data-name");
+    }).filter(Boolean);
+    if (!names.length) { toast("请先勾选"); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(names.join("\n")).then(function () {
+        toast("已复制 " + names.length + " 条名称");
+      });
+      return;
+    }
+    toast("请手动复制名称");
   });
 
   document.getElementById("page-prev").addEventListener("click", function () {
@@ -236,17 +301,11 @@
   document.getElementById("page-next").addEventListener("click", function () {
     if (page < pageCount()) { page += 1; renderHits(lastHits); }
   });
-
   document.getElementById("reset-btn").addEventListener("click", function () {
     const country = document.getElementById("country");
-    if (country) country.value = "";
-    syncCountry(country);
-  });
-
-  ["country", "landing-country"].forEach(function (id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener("change", function () { syncCountry(el); });
+    const year = document.getElementById("year");
+    if (country) country.selectedIndex = 0;
+    if (year) year.selectedIndex = 0;
   });
 
   function doSearch(kw) {
@@ -255,15 +314,14 @@
     const landingKw = document.getElementById("landing-keyword");
     if (landingKw && kw) landingKw.value = kw;
     if (!kw || kw.length < 2) {
-      showKeywordError("请输入行业或展会名");
-      toast("请输入行业或展会名");
+      showKeywordError("请输入产品、展会或公司名");
+      toast("请输入产品、展会或公司名");
       return;
     }
     showKeywordError("");
     showResults();
     status.textContent = role === "seller" ? "正在拉取公开参展商名单…" : "正在找公开展会…";
     results.innerHTML = "";
-    if (fairBoard) fairBoard.innerHTML = "";
     empty.classList.add("hidden");
     page = 1;
     lastHits = [];
@@ -282,6 +340,8 @@
         kind: "exhibition",
         role: role,
         country: selectedCountry(),
+        year: selectedYear(),
+        precise: !!(document.getElementById("precise") || {}).checked,
         limit: 0,
       }),
     })
@@ -319,10 +379,23 @@
   document.getElementById("landing-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
     const lk = document.getElementById("landing-keyword");
-    doSearch(lk ? lk.value : keyword.value);
+    const lf = document.getElementById("landing-field");
+    const lp = document.getElementById("landing-precise");
+    if (lk) keyword.value = lk.value;
+    if (lf) {
+      document.getElementById("search-field").value = lf.value;
+      if (lf.value === "fair") setRole("buyer");
+      else setRole("seller");
+    }
+    if (lp) document.getElementById("precise").checked = lp.checked;
+    doSearch(keyword.value);
   });
   document.getElementById("exh-form").addEventListener("submit", function (ev) {
     ev.preventDefault();
+    if (searchField() === "fair") setRole("buyer");
     doSearch(keyword.value);
   });
+
+  fillYears();
+  setRole("seller");
 })();

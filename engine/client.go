@@ -55,6 +55,8 @@ type Client struct {
 	WikidataURL string
 	// ComtradeURL is UN Comtrade public preview (uncomtrade/comtradeapicall, no key).
 	ComtradeURL string
+	// WorldBankURL is the World Bank Indicators API (country merchandise trade, no key).
+	WorldBankURL string
 	// USITCURL is the USITC HTS keyword search (product → HS, no key).
 	USITCURL string
 	// ImportYetiURL is the live ImportYeti search host (US bills of lading).
@@ -87,6 +89,7 @@ type Client struct {
 //	ENGINE_KIRCHNER_URL        Kirchner public US BOL API (default https://www.kirchnerdata.com)
 //	ENGINE_WIKIDATA_SPARQL     Wikidata SPARQL (default https://query.wikidata.org/sparql)
 //	ENGINE_COMTRADE_URL        UN Comtrade public preview (default https://comtradeapi.un.org/public/v1/preview)
+//	ENGINE_WORLDBANK_URL       World Bank indicators (default https://api.worldbank.org/v2)
 //	ENGINE_USITC_URL           USITC HTS search (default https://hts.usitc.gov/reststop/search)
 //	ENGINE_IMPORTYETI_URL      ImportYeti live search (default https://www.importyeti.com)
 //	ENGINE_IMPORTYETI_API_URL  official ImportYeti API (default https://data.importyeti.com)
@@ -134,6 +137,7 @@ func OptionsFromEnv() *Client {
 		CustomsBaseURL:   kirchner,
 		WikidataURL:      wikidata,
 		ComtradeURL:      envServiceURL("ENGINE_COMTRADE_URL", defaultComtradeURL),
+		WorldBankURL:     envServiceURL("ENGINE_WORLDBANK_URL", defaultWorldBankURL),
 		USITCURL:         envServiceURL("ENGINE_USITC_URL", defaultUSITCURL),
 		ImportYetiURL:    envServiceURL("ENGINE_IMPORTYETI_URL", defaultImportYetiURL),
 		ImportYetiAPIURL: envServiceURL("ENGINE_IMPORTYETI_API_URL", defaultImportYetiAPIURL),

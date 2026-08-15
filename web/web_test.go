@@ -22,6 +22,7 @@ func newTestServer(t *testing.T, dir string) *Server {
 		srv.engine.CustomsBaseURL = ""
 		srv.engine.WikidataURL = ""
 		srv.engine.ComtradeURL = ""
+		srv.engine.WorldBankURL = ""
 		srv.engine.USITCURL = ""
 		srv.engine.FairCalendarURL = ""
 		srv.engine.FairMapURL = ""

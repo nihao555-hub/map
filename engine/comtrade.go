@@ -32,7 +32,11 @@ type comtradeRecord struct {
 }
 
 func (c *Client) searchComtradeOrigins(ctx context.Context, hs4 string, year int, country string) ([]comtradeRecord, error) {
-	if c == nil || strings.TrimSpace(c.ComtradeURL) == "" || hs4 == "" {
+	return c.fetchComtrade(ctx, hs4, year, country, comtradeUSAReporter, "M")
+}
+
+func (c *Client) fetchComtrade(ctx context.Context, hs4 string, year int, country, reporter, flow string) ([]comtradeRecord, error) {
+	if c == nil || strings.TrimSpace(c.ComtradeURL) == "" || hs4 == "" || reporter == "" {
 		return nil, nil
 	}
 	period := comtradePeriod(year)
@@ -41,10 +45,10 @@ func (c *Client) searchComtradeOrigins(ctx context.Context, hs4 string, year int
 		return nil, err
 	}
 	q := u.Query()
-	q.Set("reporterCode", comtradeUSAReporter)
+	q.Set("reporterCode", reporter)
 	q.Set("period", strconv.Itoa(period))
 	q.Set("cmdCode", hs4)
-	q.Set("flowCode", "M")
+	q.Set("flowCode", flow)
 	q.Set("maxRecords", "100")
 	q.Set("includeDesc", "true")
 	u.RawQuery = q.Encode()

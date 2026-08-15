@@ -150,6 +150,17 @@ func TestSearchExhibitionFromOpenDataset(t *testing.T) {
 	}
 }
 
+func TestFilterHitsByYearKeepsUndated(t *testing.T) {
+	out := filterHitsByYear([]Hit{
+		{Name: "CIFF", Extra: map[string]string{"start": "2027-03-18"}},
+		{Name: "Old Fair", Extra: map[string]string{"start": "2025-01-01"}},
+		{Name: "No Date", Extra: map[string]string{}},
+	}, 2027)
+	if len(out) != 2 || out[0].Name != "CIFF" || out[1].Name != "No Date" {
+		t.Fatalf("out=%+v", out)
+	}
+}
+
 func TestMergeExhibitionHitsPrefersHigherScore(t *testing.T) {
 	out := mergeExhibitionHits([]Hit{
 		{Name: "Local Home Show", HomepageURL: "https://eventseye.com/fairs/f-home-1.html", Score: 84},

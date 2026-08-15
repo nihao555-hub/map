@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -122,6 +123,7 @@ func (c *Client) searchExhibition(ctx context.Context, q Query) (Result, error) 
 	_ = g.Wait()
 
 	merged := mergeExhibitionHits(hits, q.Country, limit)
+	merged = filterHitsByYear(merged, q.Year)
 	return Result{
 		Hits:     merged,
 		Warnings: uniqueStrings(warnings),
@@ -537,4 +539,22 @@ func sortExhibitionHits(items []Hit) {
 	sort.SliceStable(items, func(i, j int) bool {
 		return items[i].Score > items[j].Score
 	})
+}
+
+func filterHitsByYear(items []Hit, year int) []Hit {
+	if year <= 0 || len(items) == 0 {
+		return items
+	}
+	prefix := strconv.Itoa(year)
+	out := make([]Hit, 0, len(items))
+	for _, hit := range items {
+		start := ""
+		if hit.Extra != nil {
+			start = hit.Extra["start"]
+		}
+		if start == "" || strings.HasPrefix(start, prefix) {
+			out = append(out, hit)
+		}
+	}
+	return out
 }

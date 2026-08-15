@@ -139,6 +139,10 @@ func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
 			}
 			sources = append(sources, "comtrade")
 		}
+		if n := c.worldBankTradeNote(ctx, q.Country, role); n != "" {
+			notes = append(notes, n)
+			sources = append(sources, "worldbank")
+		}
 	}
 
 	note := strings.Join(uniqueStrings(notes), " ")
@@ -165,7 +169,7 @@ func (c *Client) searchKirchnerLeads(ctx context.Context, term, match, role, cou
 	if c == nil || strings.TrimSpace(c.CustomsBaseURL) == "" {
 		return nil, "", nil
 	}
-	payload, err := c.fetchLeadFinder(ctx, term, match, year, limit, false)
+	payload, err := c.fetchLeadFinder(ctx, term, match, year, limit, true)
 	if err != nil && year == time.Now().UTC().Year() {
 		payload, err = c.fetchLeadFinder(ctx, term, match, year-1, limit, true)
 		year = year - 1
