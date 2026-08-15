@@ -219,3 +219,10 @@ func TestMergeHitsDedupAndScore(t *testing.T) {
 		t.Fatalf("expected nike first, got %+v", out[0])
 	}
 }
+
+func TestCleanHitNameStripsChrome(t *testing.T) {
+	h := cleanHitName(Hit{Name: "videos...", Handle: "JiaZhiGuangLightingHouse"})
+	if h.Name != "JiaZhiGuangLightingHouse" {
+		t.Fatalf("name=%q", h.Name)
+	}
+}

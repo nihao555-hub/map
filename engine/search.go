@@ -221,6 +221,7 @@ func mergeHits(items []Hit, keyword string, limit int) []Hit {
 			if !isSocialHomepage(hit) || isNoiseHit(hit, kw) {
 				continue
 			}
+			hit = cleanHitName(hit)
 		}
 
 		hit.Score += keywordBonus(hit, kw)
@@ -338,6 +339,19 @@ func isNoiseHit(hit Hit, kw string) bool {
 	}
 
 	return false
+}
+
+func cleanHitName(hit Hit) Hit {
+	n := strings.ToLower(strings.TrimSpace(hit.Name))
+	n = strings.TrimSuffix(n, "...")
+	switch n {
+	case "videos", "photos", "posts", "about", "home", "more", "see more":
+		if hit.Handle != "" {
+			hit.Name = hit.Handle
+		}
+	}
+
+	return hit
 }
 
 func isContentURL(raw string) bool {
