@@ -38,9 +38,11 @@ type Client struct {
 	F2URL         string
 	TikHubToken   string
 	DisablePublic bool
-	braveUntil    atomic.Int64
-	ddgUntil      atomic.Int64
-	bingUntil     atomic.Int64
+	// SkipExpand turns off sister-profile expansion (unit tests with shared mock HTML).
+	SkipExpand bool
+	braveUntil atomic.Int64
+	ddgUntil   atomic.Int64
+	bingUntil  atomic.Int64
 }
 
 // OptionsFromEnv wires sidecar base URLs.

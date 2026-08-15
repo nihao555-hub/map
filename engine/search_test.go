@@ -102,8 +102,9 @@ func TestSearchPeoplePublicWebSearch(t *testing.T) {
 				Request:    req,
 			}, nil
 		})},
-		TikTokURL: "",
-		F2URL:     "",
+		TikTokURL:  "",
+		F2URL:      "",
+		SkipExpand: true,
 	}
 
 	res, err := c.Search(context.Background(), Query{

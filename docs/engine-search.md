@@ -42,6 +42,11 @@ export TIKHUB_API_TOKEN=...          # 抖音「关键词搜人」f2 仍为 🔵
 - 关键词「电动工具」→ 抖音：电动工具小王、盛隆绿巨人、河北喜提工厂、东成旗舰店、大有工具 等，均带 `douyin.com/user/MS4wLjAB…`
 - 关键词「power tools」→ TikTok：`@boschpowertools`、`@mjdtpowertools` 等
 
+找到一家商家后，会再扩同一家的其他社媒主页（越多越好，但仍是公开页上能看到的）：
+
+1. 打开已找到的主页 / 链出的官网，抽出页面上的 Instagram、TikTok、YouTube 等主页（对齐 Photon 的 intel，GPL 不链进二进制）
+2. 若账号是拉丁用户名（如 `osdinlighting`），在已勾选平台上探测同名主页（Sherlock / Maigret 的思路）。**不**把 Sherlock/Maigret 整站 400–3000 个站点跑一遍：商家中文名、抖音 `MS4wLjAB…` 对不上用户名，误报会把表撑爆。同名探测会跳过 `shop` / 纯数字这类泛账号，扩出的主页在结果里跟原商家排在一起并标「同源」
+
 sidecar 通了以后再叠加 TikTok-Api / f2；Go 服务不自己签抖音/TikTok 接口。
 
 ## 抖音关键词搜人的缺口

@@ -203,6 +203,13 @@ func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 				"pushed":  "2018+",
 				"use":     "营销模式：公开检索定位页面后，抓取页面中的邮箱 / WhatsApp / 社媒链接",
 			},
+			{
+				"name":    "sherlock-project/sherlock + soxoj/maigret",
+				"stars":   "8万+/3.6万",
+				"license": "MIT",
+				"pushed":  "2026",
+				"use":     "思路：同一账号去其他社媒找主页。不整站扫 400+ 站点（商家名不是用户名，误报高）。私信模式会从已找到的主页/官网抽链出社媒，并对拉丁账号探测 Instagram/TikTok/YouTube 等已支持平台",
+			},
 		},
 		"skipped": []map[string]string{
 			{

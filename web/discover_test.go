@@ -54,7 +54,7 @@ func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit"} {
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -217,7 +217,7 @@ func TestDiscoverSourcesListsOSS(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "davidteather/TikTok-Api") || !strings.Contains(body, "Johnserf-Seed/f2") || !strings.Contains(body, "public-websearch") || !strings.Contains(body, "s0md3v/Photon") {
+	if !strings.Contains(body, "davidteather/TikTok-Api") || !strings.Contains(body, "Johnserf-Seed/f2") || !strings.Contains(body, "public-websearch") || !strings.Contains(body, "s0md3v/Photon") || !strings.Contains(body, "sherlock-project/sherlock") {
 		t.Fatalf("body=%s", body)
 	}
 }

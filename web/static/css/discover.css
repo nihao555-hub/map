@@ -694,6 +694,16 @@ body.wmt {
 }
 .hit-home:hover { text-decoration: underline; }
 .hit-title { color: var(--wmt-text); }
+.hit-via {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #7dd3fc;
+  background: rgba(125, 211, 252, 0.12);
+  vertical-align: middle;
+}
 .hit-mail { color: var(--wmt-text); }
 .hit-badge {
   display: inline-flex;

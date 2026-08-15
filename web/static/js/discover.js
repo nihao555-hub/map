@@ -527,9 +527,13 @@
       const msg = h.message_url || home;
       const src = home.replace(/^https?:\/\/(www\.)?/, "");
       const name = h.name || handle || "—";
+      const via = h.extra && h.extra.via
+        ? '<span class="hit-via" title="' + escapeAttr("从已找到的主页扩出") + '">同源</span>'
+        : "";
       return (
         "<tr>" +
-          cell(name, "hit-title") +
+          '<td class="hit-title" title="' + escapeAttr(name) + '"><span class="cell-clip">' +
+            escapeHtml(name) + "</span>" + via + "</td>" +
           '<td class="col-plat"><span class="hit-badge">' + platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></span></td>" +
           cell(shortHandle(handle), "") +
           "<td>" + (home

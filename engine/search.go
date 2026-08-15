@@ -172,6 +172,14 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 	_ = g.Wait()
 
 	merged := mergeHits(hits, q.Keyword, q.Limit)
+	if len(merged) > 0 {
+		extra := c.expandMerchantSocials(ctx, merged, wanted)
+		if len(extra) > 0 {
+			merged = mergeHits(append(merged, extra...), q.Keyword, q.Limit)
+			sources = append(sources, "expand-socials")
+		}
+		merged = groupExpandedHits(merged)
+	}
 	if len(merged) == 0 {
 		warnings = append(warnings, "未找到公开主页，请换关键词。")
 	}
@@ -318,16 +326,25 @@ func merchantBonus(hit Hit, kw string) int {
 	return score
 }
 
+func genericSocialLabel(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	n = strings.TrimSuffix(n, "...")
+	switch n {
+	case "facebook", "youtube", "tiktok", "instagram", "linkedin", "douyin", "抖音",
+		"小红书", "twitter", "x", "threads", "pinterest", "telegram", "reddit",
+		"twitch", "微博", "bilibili", "b站":
+		return true
+	}
+	return false
+}
+
 func isNoiseHit(hit Hit, kw string) bool {
 	if !isSocialHomepage(hit) {
 		return true
 	}
 
-	name := strings.ToLower(strings.TrimSpace(hit.Name))
-	for _, n := range []string{"facebook", "youtube", "tiktok", "instagram", "linkedin", "douyin", "抖音", "小红书", "twitter", "x"} {
-		if name == n {
-			return true
-		}
+	if genericSocialLabel(hit.Name) {
+		return true
 	}
 
 	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.HomepageURL}, " "))
