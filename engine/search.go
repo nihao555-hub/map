@@ -296,7 +296,25 @@ func hitMatchesKeyword(hit Hit, kw string) bool {
 		hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.Contact, hit.HomepageURL,
 	}, " "))
 
-	return strings.Contains(blob, foldSearchText(kw))
+	return blobMatchesKeyword(blob, kw)
+}
+
+func blobMatchesKeyword(blob, kw string) bool {
+	kw = foldSearchText(kw)
+	if kw == "" {
+		return true
+	}
+	blob = foldSearchText(blob)
+	if strings.Contains(blob, kw) {
+		return true
+	}
+	for _, alias := range productSearchAliases(kw) {
+		if alias != "" && strings.Contains(blob, foldSearchText(alias)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func keywordBonus(hit Hit, kw string) int {
@@ -309,7 +327,7 @@ func keywordBonus(hit Hit, kw string) int {
 	switch {
 	case strings.EqualFold(hit.Handle, strings.TrimPrefix(kw, "@")):
 		return 40
-	case strings.Contains(blob, kw):
+	case blobMatchesKeyword(blob, kw):
 		return 15
 	default:
 		return 0
@@ -337,21 +355,21 @@ func merchantBonus(hit Hit, kw, role string) int {
 		if hasSellerToken(blob) && !hasBuyerToken(blob) {
 			score -= 16
 		}
-		if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasBuyerToken(blob) {
+		if kw != "" && !blobMatchesKeyword(blob, kw) && !hasBuyerToken(blob) {
 			score -= 28
 		}
 	case RoleSeller:
 		if hasSellerToken(blob) {
 			score += 22
 		}
-		if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasMerchantToken(blob) {
+		if kw != "" && !blobMatchesKeyword(blob, kw) && !hasMerchantToken(blob) {
 			score -= 28
 		}
 	default:
 		if hasMerchantToken(blob) {
 			score += 22
 		}
-		if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasMerchantToken(blob) {
+		if kw != "" && !blobMatchesKeyword(blob, kw) && !hasMerchantToken(blob) {
 			score -= 28
 		}
 	}
@@ -398,10 +416,17 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 	if looksLikeTutorial(blob) {
 		return true
 	}
-	if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasMerchantToken(blob) {
-		return true
+	role = strings.ToLower(strings.TrimSpace(role))
+	if kw != "" && !blobMatchesKeyword(blob, kw) {
+		if role == RoleBuyer {
+			if !hasBuyerToken(blob) {
+				return true
+			}
+		} else if !hasMerchantToken(blob) {
+			return true
+		}
 	}
-	if strings.ToLower(strings.TrimSpace(role)) == RoleBuyer && hasSellerToken(blob) && !hasBuyerToken(blob) {
+	if role == RoleBuyer && hasSellerToken(blob) && !hasBuyerToken(blob) {
 		switch hit.Platform {
 		case PlatformDouyin, PlatformXiaohongshu, PlatformKuaishou, PlatformWeibo, PlatformBilibili:
 			if !strings.Contains(kw, "http") && !hasSellerToken(foldSearchText(kw)) {
@@ -472,7 +497,7 @@ func hasBuyerToken(blob string) bool {
 
 func hasSellerToken(blob string) bool {
 	tokens := []string{
-		"厂家", "工厂", "专卖", "批发", "经销", "供应", "制造商",
+		"厂家", "工厂", "专卖", "批发", "经销", "供应", "制造商", "旗舰", "专营",
 		"wholesaler", "wholesale", "factory", "manufacturer",
 		"supplier", "distributor",
 	}

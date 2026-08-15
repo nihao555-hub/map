@@ -275,10 +275,36 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country, role s
 			if primary != keyword {
 				add(platform, "site:"+site+" "+withGeo(primary))
 			}
+			engGeo := CountryQueryToken(country, false)
+			for _, alias := range productSearchAliases(keyword) {
+				q := alias
+				if engGeo != "" {
+					q = strings.TrimSpace(alias + " " + engGeo)
+				}
+				add(platform, "site:"+site+" "+q)
+				if role == RoleBuyer {
+					add(platform, "site:"+site+" "+strings.TrimSpace(alias+" importer "+engGeo))
+				} else {
+					add(platform, "site:"+site+" "+strings.TrimSpace(alias+" wholesaler "+engGeo))
+				}
+			}
 		}
 	}
 
 	return out
+}
+
+// productSearchAliases maps common CJK product names onto English index terms.
+// Overseas Facebook / LinkedIn pages rarely contain the original Chinese keyword.
+func productSearchAliases(keyword string) []string {
+	switch foldSearchText(strings.TrimSpace(keyword)) {
+	case "电动工具":
+		return []string{"power tools"}
+	case "led灯", "led 灯":
+		return []string{"LED light"}
+	default:
+		return nil
+	}
 }
 
 func merchantIntentKeywords(keyword, role string) []string {

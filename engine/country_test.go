@@ -44,6 +44,15 @@ func TestMatchCountryCode(t *testing.T) {
 	}
 }
 
+func TestSearchCountriesPutsThailandAfterUnlimited(t *testing.T) {
+	if len(SearchCountries) < 3 {
+		t.Fatalf("%+v", SearchCountries)
+	}
+	if SearchCountries[0].Label != "不限" || SearchCountries[1].Code != "TH" || SearchCountries[1].Label != "泰国" {
+		t.Fatalf("thailand should be first market, got %+v", SearchCountries[:3])
+	}
+}
+
 func TestInferHitCountry(t *testing.T) {
 	code, label := inferHitCountry(Hit{
 		Platform: PlatformFacebook,

@@ -530,6 +530,7 @@
     if (!pager) return;
     if (!lastHits.length) {
       pager.hidden = true;
+      if (countEl) countEl.textContent = "共 0 条";
       return;
     }
     pager.hidden = false;

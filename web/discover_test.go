@@ -117,7 +117,7 @@ func TestDiscoverCountriesListsMarkets(t *testing.T) {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"不限", "马来西亚", "美国", `"code":"MY"`} {
+	for _, want := range []string{"不限", "泰国", "马来西亚", "美国", `"code":"TH"`, `"code":"MY"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}

@@ -216,9 +216,37 @@ func TestPublicSearchQueriesAppendsCountry(t *testing.T) {
 	if !containsString(got, "site:facebook.com LED灯") {
 		t.Fatalf("missing facebook volume %+v", got)
 	}
+	if !containsString(got, "site:facebook.com LED light Malaysia") {
+		t.Fatalf("missing english alias %+v", got)
+	}
+	if !containsString(got, "site:facebook.com LED light importer Malaysia") {
+		t.Fatalf("missing english importer %+v", got)
+	}
 	for _, q := range qs {
 		if q.platform == PlatformDouyin && strings.Contains(q.query, "马来西亚") {
 			t.Fatalf("douyin should not glue foreign market %+v", q)
+		}
+	}
+}
+
+func TestPublicSearchQueriesCJKThailandUsesPowerTools(t *testing.T) {
+	wanted := map[string]bool{PlatformFacebook: true, PlatformLinkedIn: true, PlatformDouyin: true}
+	qs := publicSearchQueries("电动工具", wanted, "TH", RoleBuyer)
+	got := queryStrings(qs)
+	for _, want := range []string{
+		"site:facebook.com 电动工具",
+		"site:facebook.com 电动工具 泰国",
+		"site:facebook.com power tools Thailand",
+		"site:facebook.com power tools importer Thailand",
+		"site:linkedin.com power tools importer Thailand",
+	} {
+		if !containsString(got, want) {
+			t.Fatalf("missing %q in %+v", want, got)
+		}
+	}
+	for _, q := range qs {
+		if q.platform == PlatformDouyin && (strings.Contains(q.query, "Thailand") || strings.Contains(q.query, "power tools")) {
+			t.Fatalf("douyin should stay on CJK %+v", q)
 		}
 	}
 }

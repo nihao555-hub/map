@@ -255,6 +255,20 @@ func TestMergeHitsBuyerPrefersImporter(t *testing.T) {
 	}
 }
 
+func TestMergeHitsBuyerDropsFlagshipAndKeepsThaiImporter(t *testing.T) {
+	out := mergeHits([]Hit{
+		{ID: "dy", Platform: PlatformDouyin, Name: "东成旗舰店", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAADongcheng", Snippet: "电动工具"},
+		{ID: "pet", Platform: PlatformDouyin, Name: "萌宠小店", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAPetShop", Snippet: "宠物用品"},
+		{ID: "th", Platform: PlatformFacebook, Name: "Bangkok Power Tools Importer", HomepageURL: "https://www.facebook.com/bkktools", Snippet: "importer of power tools Thailand"},
+	}, "电动工具", 0, RoleBuyer, "TH")
+	if len(out) != 1 || out[0].ID != "th" {
+		t.Fatalf("want only Thai importer, got %+v", out)
+	}
+	if out[0].Role != RoleBuyer || out[0].Country != "TH" {
+		t.Fatalf("hit %+v", out[0])
+	}
+}
+
 func TestNormalizeRoleDefaultsBuyer(t *testing.T) {
 	if NormalizeRole("") != RoleBuyer || NormalizeRole("卖家") != RoleSeller {
 		t.Fatalf("buyer=%s seller=%s", NormalizeRole(""), NormalizeRole("卖家"))
