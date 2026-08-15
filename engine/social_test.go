@@ -210,7 +210,7 @@ func TestMergeHitsDedupAndScore(t *testing.T) {
 	}
 	hits[1].Score = 90
 
-	out := mergeHits(hits, "nike", 10, "")
+	out := mergeHits(hits, "nike", 10, "", "")
 	if len(out) != 1 {
 		t.Fatalf("len=%d", len(out))
 	}

@@ -23,7 +23,7 @@
   const HOME_BULLETS = [
     "不是地图搜店：输入商品或企业关键词",
     "先选找买家还是找卖家：买家是采购商 / 进口商，卖家是厂家 / 批发",
-    "拿到的是社媒主页，不是视频或笔记",
+    "输入时选国家，结果里每条都会带出所在国家",
     "去私信：在右侧打开主页预览，系统不代发"
   ];
   const MARKET_BULLETS = [
@@ -144,6 +144,8 @@
           const n = document.getElementById(other);
           if (n) n.value = v;
         });
+        if (!landing.classList.contains("hidden")) return;
+        if (keyword.value) doSearch(keyword.value);
       });
     });
   }
@@ -344,7 +346,7 @@
     if (thead) {
       thead.innerHTML = marketing
         ? "<tr><th style=\"width:36px\"></th><th>账号或邮箱</th><th>网页标题</th><th>来源链接</th><th style=\"width:120px\">操作</th></tr>"
-        : "<tr><th>名称</th><th style=\"width:72px\">类型</th><th style=\"width:130px\">平台</th><th>主页</th><th>简介</th><th style=\"width:160px\">操作</th></tr>";
+        : "<tr><th>名称</th><th style=\"width:72px\">类型</th><th style=\"width:88px\">国家</th><th style=\"width:130px\">平台</th><th>主页</th><th>简介</th><th style=\"width:160px\">操作</th></tr>";
     }
     if (prev !== mode && !onLanding && keyword.value) {
       doSearch(keyword.value);
@@ -554,6 +556,11 @@
     return r === "seller" ? "卖家" : "买家";
   }
 
+  function countryLabel(h) {
+    const label = String((h && (h.country_label || h.country)) || "").trim();
+    return label || "—";
+  }
+
   function cell(text, cls) {
     text = text || "—";
     return '<td class="' + (cls || "") + '" title="' + escapeAttr(text) + '"><span class="cell-clip">' +
@@ -589,6 +596,7 @@
       const name = h.name || handle || "—";
       const snip = shortSnippet(h.snippet || h.title || "");
       const kind = roleLabel(h);
+      const geo = countryLabel(h);
       const via = h.extra && h.extra.via
         ? '<span class="hit-via" title="' + escapeAttr("从已找到的主页扩出") + '">同源</span>'
         : "";
@@ -598,6 +606,7 @@
             escapeHtml(name) + "</span>" + via + "</td>" +
           '<td class="col-role"><span class="hit-role ' + (kind === "卖家" ? "is-seller" : "is-buyer") + '">' +
             escapeHtml(kind) + "</span></td>" +
+          cell(geo, "col-country") +
           '<td class="col-plat"><span class="hit-badge">' + platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></span></td>" +
           "<td>" + (home
             ? '<a class="hit-home" target="_blank" rel="noopener" href="' + escapeAttr(home) + '" title="' + escapeAttr(src) + '">' +
@@ -608,10 +617,12 @@
             '<button type="button" class="linkish" data-open="home" data-url="' + escapeAttr(home) +
               '" data-name="' + escapeAttr(name) + '" data-platform="' + escapeAttr(plat) +
               '" data-handle="' + escapeAttr(handle) + '" data-snippet="' + escapeAttr(h.snippet || "") +
+              '" data-country="' + escapeAttr(geo) +
               '">打开主页</button>' +
             '<button type="button" class="linkish btn-msg" data-open="msg" data-url="' + escapeAttr(msg || home) +
               '" data-name="' + escapeAttr(name) + '" data-platform="' + escapeAttr(plat) +
               '" data-handle="' + escapeAttr(handle) + '" data-snippet="' + escapeAttr(h.snippet || h.message_hint || "") +
+              '" data-country="' + escapeAttr(geo) +
               '">去私信</button>' +
           "</td>" +
         "</tr>"
@@ -733,6 +744,9 @@
         document.getElementById("preview-name").textContent = hit.name || hit.contact || "主页预览";
     document.getElementById("preview-kicker").textContent =
       hit.kind === "mail" ? "写开发信" : hit.kind === "wa" ? "WhatsApp" : hit.kind === "msg" ? "去私信" : "打开主页";
+    if (hit.country && hit.country !== "—" && hit.kind !== "mail" && hit.kind !== "wa") {
+      document.getElementById("preview-kicker").textContent += " · " + hit.country;
+    }
     document.getElementById("preview-desc").textContent = hit.snippet || "";
     document.getElementById("preview-to").value = hit.contact || (hit.handle ? "@" + hit.handle : "");
     document.getElementById("preview-to-label").textContent =
@@ -791,6 +805,7 @@
       contact: btn.getAttribute("data-contact"),
       handle: btn.getAttribute("data-handle"),
       snippet: btn.getAttribute("data-snippet"),
+      country: btn.getAttribute("data-country"),
     });
   });
 

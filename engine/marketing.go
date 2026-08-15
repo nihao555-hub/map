@@ -27,7 +27,7 @@ func (c *Client) searchMarketing(ctx context.Context, q Query) (Result, error) {
 	channel := strings.ToLower(strings.TrimSpace(q.Channel))
 
 	items, warns, srcs := c.searchPublicContacts(ctx, q.Keyword, wanted, q.Limit)
-	merged := mergeHits(items, q.Keyword, q.Limit, "")
+	merged := mergeHits(items, q.Keyword, q.Limit, "", q.Country)
 	if channel == ChannelEmail || channel == ChannelWhatsApp {
 		filtered := merged[:0]
 		for _, h := range merged {

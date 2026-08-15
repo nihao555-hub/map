@@ -2,7 +2,9 @@ package engine
 
 import (
 	"context"
+	"sort"
 	"strings"
+	"sync"
 )
 
 // CountryInfo is a target market shown in the intelligent-engine country picker.
@@ -45,6 +47,8 @@ var SearchCountries = []CountryInfo{
 	{Code: "ZA", Label: "南非", Query: "South Africa", DDGKL: "za-en", BingCC: "ZA"},
 	{Code: "NG", Label: "尼日利亚", Query: "Nigeria", DDGKL: "ng-en", BingCC: "NG"},
 	{Code: "EG", Label: "埃及", Query: "Egypt", DDGKL: "eg-en", BingCC: "EG"},
+	{Code: "TW", Label: "台湾", Query: "Taiwan", DDGKL: "tw-zh", BingCC: "TW"},
+	{Code: "HK", Label: "香港", Query: "Hong Kong", DDGKL: "hk-en", BingCC: "HK"},
 	{Code: "CN", Label: "中国", Query: "", DDGKL: "cn-zh", BingCC: "CN"},
 }
 
@@ -95,4 +99,162 @@ func searchCountry(ctx context.Context) CountryInfo {
 	}
 
 	return CountryInfo{}
+}
+
+// countryPlaceAliases maps cities / extra names onto ISO codes already in SearchCountries.
+var countryPlaceAliases = map[string]string{
+	"united states": "US", "usa": "US", "u.s.a": "US", "u.s.": "US",
+	"new york": "US", "california": "US", "texas": "US", "los angeles": "US",
+	"united kingdom": "GB", "britain": "GB", "england": "GB", "london": "GB",
+	"deutschland": "DE", "berlin": "DE",
+	"paris": "FR", "milan": "IT", "milano": "IT", "madrid": "ES",
+	"amsterdam": "NL", "warsaw": "PL", "moscow": "RU", "istanbul": "TR",
+	"dubai": "AE", "abu dhabi": "AE", "riyadh": "SA",
+	"mumbai": "IN", "delhi": "IN", "bangalore": "IN",
+	"jakarta": "ID", "surabaya": "ID", "雅加达": "ID",
+	"hanoi": "VN", "ho chi minh": "VN", "saigon": "VN", "河内": "VN", "胡志明": "VN",
+	"bangkok": "TH", "曼谷": "TH",
+	"kuala lumpur": "MY", "selangor": "MY", "johor": "MY", "penang": "MY",
+	"吉隆坡": "MY", "雪兰莪": "MY", "柔佛": "MY", "malaysian": "MY",
+	"sdn bhd": "MY", "sdn. bhd": "MY", "sibu": "MY", "sarawak": "MY",
+	"sabah": "MY", "kuching": "MY",
+	"manila": "PH", "osaka": "JP", "tokyo": "JP", "seoul": "KR",
+	"sydney": "AU", "melbourne": "AU",
+	"sao paulo": "BR", "são paulo": "BR", "mexico city": "MX",
+	"toronto": "CA", "vancouver": "CA",
+	"johannesburg": "ZA", "lagos": "NG", "cairo": "EG",
+	"taiwan": "TW", "taipei": "TW", "taichung": "TW", "台湾": "TW", "台北": "TW", "台中": "TW",
+	"hong kong": "HK", "香港": "HK",
+	"china": "CN", "guangdong": "CN", "shenzhen": "CN", "guangzhou": "CN",
+	"yiwu": "CN", "dongguan": "CN", "zhejiang": "CN",
+	"广东": "CN", "深圳": "CN", "广州": "CN", "义乌": "CN", "东莞": "CN", "浙江": "CN", "江苏": "CN",
+}
+
+type countryToken struct {
+	token string
+	code  string
+}
+
+var (
+	countryTokensOnce sync.Once
+	countryTokens     []countryToken
+)
+
+func countryTokenList() []countryToken {
+	countryTokensOnce.Do(func() {
+		seen := map[string]string{}
+		add := func(tok, code string) {
+			tok = foldSearchText(tok)
+			if tok == "" || code == "" {
+				return
+			}
+			if prev, ok := seen[tok]; ok && prev != code {
+				return
+			}
+			if _, ok := seen[tok]; ok {
+				return
+			}
+			seen[tok] = code
+			countryTokens = append(countryTokens, countryToken{token: tok, code: code})
+		}
+		for _, c := range SearchCountries {
+			if c.Code == "" {
+				continue
+			}
+			add(c.Label, c.Code)
+			add(c.Query, c.Code)
+		}
+		for tok, code := range countryPlaceAliases {
+			add(tok, code)
+		}
+		sort.Slice(countryTokens, func(i, j int) bool {
+			if len(countryTokens[i].token) == len(countryTokens[j].token) {
+				return countryTokens[i].token < countryTokens[j].token
+			}
+
+			return len(countryTokens[i].token) > len(countryTokens[j].token)
+		})
+	})
+
+	return countryTokens
+}
+
+func matchCountryCode(blob string) string {
+	blob = foldSearchText(blob)
+	if blob == "" {
+		return ""
+	}
+	for _, tok := range countryTokenList() {
+		if countryTokenMatches(blob, tok.token) {
+			return tok.code
+		}
+	}
+
+	return ""
+}
+
+func countryTokenMatches(blob, tok string) bool {
+	if tok == "" || blob == "" {
+		return false
+	}
+	if hasCJK(tok) {
+		return strings.Contains(blob, tok)
+	}
+	idx := 0
+	for {
+		i := strings.Index(blob[idx:], tok)
+		if i < 0 {
+			return false
+		}
+		i += idx
+		beforeOK := i == 0 || !isCountryWordChar(rune(blob[i-1]))
+		after := i + len(tok)
+		afterOK := after == len(blob) || !isCountryWordChar(rune(blob[after]))
+		if beforeOK && afterOK {
+			return true
+		}
+		idx = i + 1
+	}
+}
+
+func isCountryWordChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+}
+
+func inferHitCountry(hit Hit, selected string) (code, label string) {
+	blob := strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.HomepageURL}, " ")
+	if found := matchCountryCode(blob); found != "" {
+		c := LookupCountry(found)
+		if c.Code != "" {
+			return c.Code, c.Label
+		}
+
+		return found, found
+	}
+
+	switch hit.Platform {
+	case PlatformDouyin, PlatformXiaohongshu, PlatformKuaishou, PlatformWeibo, PlatformBilibili:
+		c := LookupCountry("CN")
+
+		return c.Code, c.Label
+	}
+
+	sel := LookupCountry(selected)
+	if sel.Code != "" {
+		return sel.Code, sel.Label
+	}
+
+	return "", ""
+}
+
+func countryBonus(hit Hit, selected string) int {
+	selected = strings.ToUpper(strings.TrimSpace(selected))
+	if selected == "" || hit.Country == "" {
+		return 0
+	}
+	if hit.Country == selected {
+		return 12
+	}
+
+	return -10
 }

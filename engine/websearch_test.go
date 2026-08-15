@@ -120,6 +120,7 @@ func TestSearchPeopleFallsOverQuietly(t *testing.T) {
 	res, err := c.Search(context.Background(), Query{
 		Keyword:   "电动工具",
 		Kind:      KindPeople,
+		Role:      RoleSeller,
 		Platforms: []string{PlatformDouyin, PlatformTikTok},
 		Limit:     10,
 	})
@@ -157,6 +158,7 @@ func TestPublicSearchQueriesCJKUsesPlatformLabel(t *testing.T) {
 		"配电 采购 Facebook",
 		"site:facebook.com 配电 采购",
 		"site:facebook.com 配电 进口商",
+		"site:facebook.com 配电 importer",
 	} {
 		if !containsString(got, want) {
 			t.Fatalf("missing %q in %+v", want, got)
@@ -195,15 +197,29 @@ func TestPublicSearchQueriesEnglishUsesSite(t *testing.T) {
 }
 
 func TestPublicSearchQueriesAppendsCountry(t *testing.T) {
-	wanted := map[string]bool{PlatformFacebook: true}
+	wanted := map[string]bool{PlatformFacebook: true, PlatformDouyin: true}
 	qs := publicSearchQueries("LED灯", wanted, "MY", RoleBuyer)
-	if len(qs) == 0 {
-		t.Fatal("no queries")
+	got := queryStrings(qs)
+	if !containsString(got, "site:facebook.com LED灯 采购 马来西亚") {
+		t.Fatalf("missing facebook geo %+v", got)
+	}
+	if !containsString(got, "site:facebook.com LED灯 采购") {
+		t.Fatalf("missing facebook volume %+v", got)
 	}
 	for _, q := range qs {
-		if !strings.Contains(q.query, "马来西亚") {
-			t.Fatalf("country missing %+v", q)
+		if q.platform == PlatformDouyin && strings.Contains(q.query, "马来西亚") {
+			t.Fatalf("douyin should not glue foreign market %+v", q)
 		}
+	}
+}
+
+func TestDuckDuckGoKLKeepsChineseForCJK(t *testing.T) {
+	ctx := WithSearchCountry(context.Background(), "MY")
+	if kl := duckDuckGoKL(ctx, "LED灯 采购"); kl != "cn-zh" {
+		t.Fatalf("cjk kl=%s", kl)
+	}
+	if kl := duckDuckGoKL(ctx, "LED light importer"); kl != "my-en" {
+		t.Fatalf("en kl=%s", kl)
 	}
 }
 

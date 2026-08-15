@@ -110,6 +110,7 @@ func TestSearchPeoplePublicWebSearch(t *testing.T) {
 	res, err := c.Search(context.Background(), Query{
 		Keyword:   "电动工具",
 		Kind:      KindPeople,
+		Role:      RoleSeller,
 		Platforms: []string{PlatformDouyin, PlatformTikTok},
 		Limit:     10,
 	})
@@ -212,7 +213,7 @@ func TestMergeHitsUnlimitedWhenLimitZero(t *testing.T) {
 			Score:       1,
 		})
 	}
-	out := mergeHits(items, "factory", 0, "")
+	out := mergeHits(items, "factory", 0, "", "")
 	if len(out) != 35 {
 		t.Fatalf("got %d want 35", len(out))
 	}
@@ -224,7 +225,7 @@ func TestMergeHitsPrefersMerchantOverTutorial(t *testing.T) {
 		{ID: "fb1", Platform: PlatformFacebook, Name: "全成照明 Led燈飾專賣店", Title: "全成照明 Led燈飾專賣店 | Taichung", HomepageURL: "https://www.facebook.com/led0955478666"},
 		{ID: "fb2", Platform: PlatformFacebook, Name: "PlayFunDeal", HomepageURL: "https://www.facebook.com/PlayFunDeal"},
 		{ID: "yt2", Platform: PlatformYouTube, Name: "老灯官方", Handle: "laodeng", HomepageURL: "https://www.youtube.com/@laodeng"},
-	}, "LED灯", 0, "")
+	}, "LED灯", 0, "", "")
 	if len(out) == 0 || out[0].ID != "fb1" {
 		t.Fatalf("want lighting shop first, got %+v", out)
 	}
@@ -245,12 +246,12 @@ func TestMergeHitsBuyerPrefersImporter(t *testing.T) {
 	out := mergeHits([]Hit{
 		{ID: "factory", Platform: PlatformDouyin, Name: "LED灯厂家直销", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAFactory", Snippet: "工厂批发"},
 		{ID: "buyer", Platform: PlatformFacebook, Name: "Malaysia LED Importer", HomepageURL: "https://www.facebook.com/ledimporter", Snippet: "procurement buyer of LED lights"},
-	}, "LED", 0, RoleBuyer)
-	if len(out) < 2 || out[0].ID != "buyer" {
-		t.Fatalf("want importer first, got %+v", out)
+	}, "LED", 0, RoleBuyer, "")
+	if len(out) != 1 || out[0].ID != "buyer" {
+		t.Fatalf("want only importer, got %+v", out)
 	}
-	if out[0].Role != RoleBuyer || out[1].Role != RoleSeller {
-		t.Fatalf("roles %+v", out)
+	if out[0].Role != RoleBuyer || out[0].Country != "MY" {
+		t.Fatalf("hit %+v", out[0])
 	}
 }
 

@@ -72,3 +72,50 @@ func TestLivePublicSearchDouyinAndTikTok(t *testing.T) {
 		}
 	}
 }
+
+func TestLiveBuyerLEDMalaysia(t *testing.T) {
+	c := OptionsFromEnv()
+	c.TikTokURL = ""
+	c.F2URL = ""
+	c.SkipExpand = true
+
+	search := func(name, keyword, role, country string) Result {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		res, err := c.Search(ctx, Query{Keyword: keyword, Kind: KindPeople, Role: role, Country: country})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		return res
+	}
+
+	logHits := func(name string, res Result) {
+		buyer, withCountry := 0, 0
+		for i, h := range res.Hits {
+			if h.Role == RoleBuyer {
+				buyer++
+			}
+			if h.CountryLabel != "" {
+				withCountry++
+			}
+			if i < 20 {
+				t.Logf("%s %d [%s/%s] %s | %s | %s", name, i+1, h.CountryLabel, h.Role, h.Platform, h.Name, strings.TrimSpace(h.Snippet))
+			}
+		}
+		t.Logf("%s hits=%d buyer=%d with_country=%d/%d took=%dms", name, len(res.Hits), buyer, withCountry, len(res.Hits), res.TookMS)
+	}
+
+	unlimited := search("buyer-all", "LED灯", RoleBuyer, "")
+	logHits("buyer-all", unlimited)
+	my := search("buyer-my", "LED灯", RoleBuyer, "MY")
+	logHits("buyer-my", my)
+	en := search("buyer-en-my", "LED light", RoleBuyer, "MY")
+	logHits("buyer-en-my", en)
+	seller := search("seller-all", "LED灯", RoleSeller, "")
+	logHits("seller-all", seller)
+
+	if len(unlimited.Hits)+len(my.Hits)+len(en.Hits)+len(seller.Hits) == 0 {
+		t.Fatal("no public homepages for LED")
+	}
+}

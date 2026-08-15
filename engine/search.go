@@ -175,11 +175,11 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 
 	_ = g.Wait()
 
-	merged := mergeHits(hits, q.Keyword, q.Limit, q.Role)
+	merged := mergeHits(hits, q.Keyword, q.Limit, q.Role, q.Country)
 	if len(merged) > 0 {
 		extra := c.expandMerchantSocials(ctx, merged, wanted)
 		if len(extra) > 0 {
-			merged = mergeHits(append(merged, extra...), q.Keyword, q.Limit, q.Role)
+			merged = mergeHits(append(merged, extra...), q.Keyword, q.Limit, q.Role, q.Country)
 			sources = append(sources, "expand-socials")
 		}
 		merged = groupExpandedHits(merged)
@@ -220,7 +220,7 @@ func customsUnavailable(keyword string) Result {
 	}
 }
 
-func mergeHits(items []Hit, keyword string, limit int, role string) []Hit {
+func mergeHits(items []Hit, keyword string, limit int, role, country string) []Hit {
 	seen := make(map[string]Hit, len(items))
 	order := make([]string, 0, len(items))
 	kw := strings.ToLower(strings.TrimSpace(keyword))
@@ -230,7 +230,7 @@ func mergeHits(items []Hit, keyword string, limit int, role string) []Hit {
 			hit.ID = hit.Platform + ":" + hit.HomepageURL
 		}
 		if hit.Kind != KindMarketing {
-			if !isSocialHomepage(hit) || isNoiseHit(hit, kw) {
+			if !isSocialHomepage(hit) || isNoiseHit(hit, kw, role) {
 				continue
 			}
 			hit = cleanHitName(hit)
@@ -241,6 +241,8 @@ func mergeHits(items []Hit, keyword string, limit int, role string) []Hit {
 		if role != "" {
 			hit.Role = inferHitRole(hit, role)
 		}
+		hit.Country, hit.CountryLabel = inferHitCountry(hit, country)
+		hit.Score += countryBonus(hit, country)
 		if prev, ok := seen[hit.ID]; ok {
 			if hit.Score > prev.Score {
 				seen[hit.ID] = hit
@@ -383,7 +385,7 @@ func genericSocialLabel(name string) bool {
 	return false
 }
 
-func isNoiseHit(hit Hit, kw string) bool {
+func isNoiseHit(hit Hit, kw, role string) bool {
 	if !isSocialHomepage(hit) {
 		return true
 	}
@@ -398,6 +400,14 @@ func isNoiseHit(hit Hit, kw string) bool {
 	}
 	if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasMerchantToken(blob) {
 		return true
+	}
+	if strings.ToLower(strings.TrimSpace(role)) == RoleBuyer && hasSellerToken(blob) && !hasBuyerToken(blob) {
+		switch hit.Platform {
+		case PlatformDouyin, PlatformXiaohongshu, PlatformKuaishou, PlatformWeibo, PlatformBilibili:
+			if !strings.Contains(kw, "http") && !hasSellerToken(foldSearchText(kw)) {
+				return true
+			}
+		}
 	}
 
 	return false

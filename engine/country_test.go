@@ -28,3 +28,46 @@ func TestCountryQueryToken(t *testing.T) {
 		t.Fatalf("empty=%q", tok)
 	}
 }
+
+func TestMatchCountryCode(t *testing.T) {
+	if got := matchCountryCode("Malaysia LED Importer in Kuala Lumpur"); got != "MY" {
+		t.Fatalf("my=%q", got)
+	}
+	if got := matchCountryCode("factory in Indiana USA lighting"); got != "US" {
+		t.Fatalf("usa should win over indiana, got %q", got)
+	}
+	if got := matchCountryCode("Indiana lighting shop"); got != "" {
+		t.Fatalf("indiana must not map to India, got %q", got)
+	}
+	if got := matchCountryCode("Hua Yong Trading Sdn. Bhd. | Sibu"); got != "MY" {
+		t.Fatalf("sdn bhd=%q", got)
+	}
+}
+
+func TestInferHitCountry(t *testing.T) {
+	code, label := inferHitCountry(Hit{
+		Platform: PlatformFacebook,
+		Name:     "LED Importer",
+		Snippet:  "Based in Kuala Lumpur",
+	}, "")
+	if code != "MY" || label != "马来西亚" {
+		t.Fatalf("%s %s", code, label)
+	}
+
+	code, label = inferHitCountry(Hit{
+		Platform:    PlatformDouyin,
+		Name:        "灯具店",
+		HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAFactory",
+	}, "")
+	if code != "CN" || label != "中国" {
+		t.Fatalf("douyin default %s %s", code, label)
+	}
+
+	code, label = inferHitCountry(Hit{
+		Platform: PlatformFacebook,
+		Name:     "LED Buyer",
+	}, "MY")
+	if code != "MY" || label != "马来西亚" {
+		t.Fatalf("selected fallback %s %s", code, label)
+	}
+}

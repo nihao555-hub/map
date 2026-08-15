@@ -222,6 +222,14 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country, role s
 		PlatformInstagram: true,
 		PlatformLinkedIn:  true,
 	}
+	overseasMarketPlatforms := map[string]bool{
+		PlatformFacebook:  true,
+		PlatformInstagram: true,
+		PlatformLinkedIn:  true,
+		PlatformTikTok:    true,
+		PlatformYouTube:   true,
+		PlatformX:         true,
+	}
 
 	for _, platform := range publicSearchOrder {
 		if !wanted[platform] {
@@ -235,24 +243,32 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country, role s
 			continue
 		}
 
-		primary := withGeo(intents[0])
+		primary := intents[0]
 		if cjk {
 			add(platform, primary+" "+PeoplePlatformLabel(platform))
 		}
 		add(platform, "site:"+site+" "+primary)
 
-		if buyerExtra[platform] && len(intents) > 1 {
-			add(platform, "site:"+site+" "+withGeo(intents[1]))
+		if buyerExtra[platform] {
+			for _, extra := range intents[1:] {
+				add(platform, "site:"+site+" "+extra)
+			}
 		}
 		if role == RoleSeller && buyerExtra[platform] {
-			add(platform, "site:"+site+" "+withGeo(keyword))
+			add(platform, "site:"+site+" "+keyword)
 		}
 		if platform == PlatformLinkedIn {
 			if role == RoleSeller {
-				add(platform, "site:linkedin.com/company "+withGeo(keyword+" manufacturer"))
+				add(platform, "site:linkedin.com/company "+keyword+" manufacturer")
 			} else {
-				add(platform, "site:linkedin.com/company "+withGeo(keyword+" importer"))
-				add(platform, "site:linkedin.com/company "+withGeo(keyword+" buyer"))
+				add(platform, "site:linkedin.com/company "+keyword+" importer")
+				add(platform, "site:linkedin.com/company "+keyword+" buyer")
+			}
+		}
+		if geo != "" && overseasMarketPlatforms[platform] {
+			add(platform, "site:"+site+" "+withGeo(primary))
+			for _, extra := range intents[1:] {
+				add(platform, "site:"+site+" "+withGeo(extra))
 			}
 		}
 	}
@@ -273,7 +289,7 @@ func merchantIntentKeywords(keyword, role string) []string {
 		return []string{keyword + " wholesaler"}
 	}
 	if hasCJK(keyword) {
-		return []string{keyword + " 采购", keyword + " 进口商"}
+		return []string{keyword + " 采购", keyword + " 进口商", keyword + " importer"}
 	}
 
 	return []string{keyword + " importer", keyword + " buyer"}
@@ -489,12 +505,7 @@ func (c *Client) fetchDuckDuckGo(ctx context.Context, query string) ([]byte, err
 }
 
 func (c *Client) fetchDuckDuckGoPage(ctx context.Context, query string, page int) ([]byte, error) {
-	kl := "wt-wt"
-	if r := searchCountry(ctx); r.DDGKL != "" {
-		kl = r.DDGKL
-	} else if hasCJK(query) {
-		kl = "cn-zh"
-	}
+	kl := duckDuckGoKL(ctx, query)
 	form := "q=" + url.QueryEscape(query) + "&kl=" + kl
 	if page > 0 {
 		form += "&s=" + strconv.Itoa(page*10)
@@ -542,16 +553,12 @@ func (c *Client) fetchBing(ctx context.Context, query string) ([]byte, error) {
 
 func (c *Client) fetchBingPage(ctx context.Context, query string, page int) ([]byte, error) {
 	rawURL := "https://www.bing.com/search?q=" + url.QueryEscape(query)
-	if r := searchCountry(ctx); r.BingCC != "" {
-		lang := "en"
-		if r.BingCC == "CN" || hasCJK(query) {
-			lang = "zh-Hans"
-		}
-		rawURL += "&setlang=" + lang + "&cc=" + r.BingCC
-	} else if hasCJK(query) {
-		rawURL += "&setlang=zh-Hans&cc=CN"
-	} else {
-		rawURL += "&setlang=en"
+	lang, cc := bingLocale(ctx, query)
+	if lang != "" {
+		rawURL += "&setlang=" + lang
+	}
+	if cc != "" {
+		rawURL += "&cc=" + cc
 	}
 	if page > 0 {
 		rawURL += "&first=" + strconv.Itoa(1+page*10)
@@ -685,6 +692,28 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 	}
 
 	return out
+}
+
+func duckDuckGoKL(ctx context.Context, query string) string {
+	if hasCJK(query) {
+		return "cn-zh"
+	}
+	if r := searchCountry(ctx); r.DDGKL != "" {
+		return r.DDGKL
+	}
+
+	return "wt-wt"
+}
+
+func bingLocale(ctx context.Context, query string) (lang, cc string) {
+	if hasCJK(query) {
+		return "zh-Hans", "CN"
+	}
+	if r := searchCountry(ctx); r.BingCC != "" {
+		return "en", r.BingCC
+	}
+
+	return "en", ""
 }
 
 func looksLikeChallenge(raw []byte) bool {

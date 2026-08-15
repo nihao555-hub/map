@@ -81,22 +81,24 @@ func NormalizeRole(role string) string {
 
 // Hit is one discovered person, homepage, exhibition, or trade record.
 type Hit struct {
-	ID          string            `json:"id"`
-	Kind        string            `json:"kind"`
-	Platform    string            `json:"platform"`
-	Name        string            `json:"name"`
-	Handle      string            `json:"handle,omitempty"`
-	Title       string            `json:"title,omitempty"`
-	Snippet     string            `json:"snippet,omitempty"`
-	HomepageURL string            `json:"homepage_url,omitempty"`
-	MessageURL  string            `json:"message_url,omitempty"`
-	MessageHint string            `json:"message_hint,omitempty"`
-	Contact     string            `json:"contact,omitempty"`
-	Channel     string            `json:"channel,omitempty"`
-	Source      string            `json:"source,omitempty"`
-	Score       int               `json:"score"`
-	Role        string            `json:"role,omitempty"`
-	Extra       map[string]string `json:"extra,omitempty"`
+	ID           string            `json:"id"`
+	Kind         string            `json:"kind"`
+	Platform     string            `json:"platform"`
+	Name         string            `json:"name"`
+	Handle       string            `json:"handle,omitempty"`
+	Title        string            `json:"title,omitempty"`
+	Snippet      string            `json:"snippet,omitempty"`
+	HomepageURL  string            `json:"homepage_url,omitempty"`
+	MessageURL   string            `json:"message_url,omitempty"`
+	MessageHint  string            `json:"message_hint,omitempty"`
+	Contact      string            `json:"contact,omitempty"`
+	Channel      string            `json:"channel,omitempty"`
+	Source       string            `json:"source,omitempty"`
+	Score        int               `json:"score"`
+	Role         string            `json:"role,omitempty"`
+	Country      string            `json:"country,omitempty"`
+	CountryLabel string            `json:"country_label,omitempty"`
+	Extra        map[string]string `json:"extra,omitempty"`
 }
 
 // Result is the API payload returned to the Web UI.

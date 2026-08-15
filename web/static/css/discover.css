@@ -229,12 +229,44 @@ body.wmt {
   align-items: center;
   gap: 10px;
   margin: 0 0 10px;
+  flex-wrap: wrap;
 }
 .wmt-role-label {
   font-size: 13px;
   color: rgba(255,255,255,.75);
   white-space: nowrap;
 }
+.wmt-country-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+}
+.wmt-country-field span {
+  font-size: 13px;
+  color: rgba(255,255,255,.75);
+  white-space: nowrap;
+}
+.wmt-country-field .wmt-country {
+  height: 32px;
+  min-width: 128px;
+  max-width: 160px;
+  border: 0;
+  border-radius: 16px;
+  padding: 0 10px;
+  background: #fff;
+  color: var(--wmt-text);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+.wmt-results-head .wmt-country-field span { color: var(--wmt-sub); }
+.wmt-results-head .wmt-country-field .wmt-country {
+  border: 1px solid var(--wmt-line);
+  border-radius: 4px;
+  background: #fff;
+}
+.wmt-table td.col-country { width: 88px; color: var(--wmt-sub); }
 .wmt-role-hint {
   font-size: 12px;
   color: rgba(255,255,255,.65);
