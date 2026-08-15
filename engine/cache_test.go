@@ -58,6 +58,32 @@ func TestLookupStaleCache(t *testing.T) {
 	}
 }
 
+func TestRefreshInFlightSurvivesProgressCache(t *testing.T) {
+	q := Query{Keyword: "progress-led", Kind: KindPeople, Role: RoleBuyer}
+	job := &refreshJob{done: make(chan struct{})}
+	key := searchCacheKey(q)
+	refreshJobsMu.Lock()
+	refreshJobs[key] = job
+	refreshJobsMu.Unlock()
+	t.Cleanup(func() {
+		refreshJobsMu.Lock()
+		delete(refreshJobs, key)
+		refreshJobsMu.Unlock()
+		close(job.done)
+	})
+	if !refreshInFlight(q) {
+		t.Fatal("refresh should be in flight")
+	}
+	storeSearchCacheAlways(q, Result{Kind: KindPeople, Hits: []Hit{{ID: "s1", Name: "LED Lighting Store"}}})
+	got, ok := lookupSearchCacheAlways(q)
+	if !ok || len(got.Hits) != 1 {
+		t.Fatalf("progress cache miss %+v ok=%v", got, ok)
+	}
+	if !refreshInFlight(q) {
+		t.Fatal("progress snapshot must not clear in-flight refresh")
+	}
+}
+
 func TestCacheTTLFor(t *testing.T) {
 	if cacheTTLFor(KindCustoms, 3) != customsCacheTTL {
 		t.Fatal("customs ttl")

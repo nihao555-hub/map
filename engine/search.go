@@ -125,6 +125,7 @@ func (c *Client) searchRealtime(ctx context.Context, q Query, start time.Time) (
 		fresh.TookMS = time.Since(start).Milliseconds()
 		fresh.SearchedAt = time.Now().UTC()
 		fresh.Cached = true
+		fresh.Refreshing = refreshInFlight(q)
 		return fresh, nil
 	}
 

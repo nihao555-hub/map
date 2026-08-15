@@ -450,7 +450,7 @@
         }
         const data = out.j;
         applyDiscoverHits(data, kw);
-        if (mode !== "marketing" && data.refreshing && attempt < 80) {
+        if (mode !== "marketing" && data.refreshing && attempt < 120) {
           setBusy(false);
           status.textContent = lastHits.length
             ? ("已找到 " + lastHits.length + " 条主页，正在继续补全…")
