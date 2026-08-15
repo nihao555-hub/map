@@ -9,7 +9,7 @@
   const toastEl = document.getElementById("toast");
 
   let catalog = [];
-  let mode = "marketing";
+  let mode = "homepage";
   let channel = "email";
   let role = "buyer";
   let lastHits = [];
@@ -169,9 +169,9 @@
       showResultsWorkbench();
       doSearch(keyword.value);
     });
-    document.querySelectorAll("#landing-channel button[data-channel]").forEach(function (btn) {
+    document.querySelectorAll("#landing-role button[data-role]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        setChannel(btn.getAttribute("data-channel"));
+        setRole(btn.getAttribute("data-role"));
       });
     });
   }
@@ -892,7 +892,7 @@
   bindKeywordFields();
   bindExamples();
   bindPlatToggle();
-  setMode("marketing");
+  setMode("homepage");
   setRole("buyer");
   setChannel("email");
   loadPlatforms();

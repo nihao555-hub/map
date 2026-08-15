@@ -24,12 +24,13 @@ func TestDiscoverPageRenders(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"智能引擎搜索", "discover-form", "发开发信", "地图获客",
-		"WhatsApp", "邮箱", "一键营销", "加入营销地址簿", "全部导出",
+		"私信模式", "营销模式", "找买家", "找卖家", "一键营销",
 		"preview-pane", "共 0 条", "/static/js/discover.js",
 		`id="app-rail"`, `id="data-nav"`, "/static/css/shell.css", "rail-item is-active",
-		"精准搜索", "产品特性", "海关数据", "展会获客",
-		`id="platform-group"`, `id="plat-toggle"`, "wmt-query", "筛选条件",
-		"私信模式", "找买家", "找卖家", "国家/地区", `id="country"`,
+		"产品特性", "海关数据", "展会获客", "精确",
+		`id="platform-group"`, `id="plat-toggle"`, "wmt-query",
+		"国家/地区", `id="country"`, "公开社媒主页",
+		"WhatsApp", "邮箱",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
@@ -280,7 +281,7 @@ func TestCustomsPageRenders(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"海关数据", "搜采购商", "搜供应商", "匹配金额 USD", "cus-modal",
+		"海关数据", "搜采购商", "搜供应商", "匹配金额 USD", "Top HSCode", "cus-modal",
 		`id="data-nav"`, "/static/js/customs.js", "排除物流公司",
 	} {
 		if !strings.Contains(body, want) {
