@@ -23,7 +23,7 @@ const (
 var (
 	exhibitorListPathRe = regexp.MustCompile(`(?i)(exhibitor|exhibitors|exhibitor-list|exhibitor-directory|参展商)`)
 	exhibitorJunkNameRe = regexp.MustCompile(`(?i)^(公司名|公司名称|展商公司名称|展位号|所在国家.*|company|exhibitor|name|booth|stand|home page|english|繁体|简体)$`)
-	exhibitorMenuNameRe = regexp.MustCompile(`名录|关于我们|在线订购|网站地图|隐私|版权|免费资源|世界买家|黄页|行业|省区|城市数据|国际名录|特别名录|home page`)
+	exhibitorMenuNameRe = regexp.MustCompile(`名录|名单|数据样本|关于我们|在线订购|网站地图|隐私|版权|免费资源|世界买家|黄页|行业|省区|城市数据|国际名录|特别名录|home page`)
 )
 
 // FairExhibitors is the exhibitor roster for one fair.
@@ -380,13 +380,16 @@ func parseExhibitorTables(raw []byte, listURL, fair string) []Hit {
 	}
 	var best []Hit
 	doc.Find("table").Each(func(_ int, table *goquery.Selection) {
-		rows := table.Find("tr")
+		rows := table.ChildrenFiltered("tbody").ChildrenFiltered("tr")
+		if rows.Length() == 0 {
+			rows = table.ChildrenFiltered("tr")
+		}
 		if rows.Length() < 3 {
 			return
 		}
 		nameIdx, boothIdx, countryIdx := -1, -1, -1
 		header := rows.First()
-		header.Find("th, td").Each(func(i int, cell *goquery.Selection) {
+		header.ChildrenFiltered("th, td").Each(func(i int, cell *goquery.Selection) {
 			label := strings.ToLower(strings.TrimSpace(cell.Text()))
 			switch {
 			case nameIdx < 0 && (strings.Contains(label, "公司") || strings.Contains(label, "展商") || strings.Contains(label, "company") || strings.Contains(label, "exhibitor") || label == "name"):
@@ -408,7 +411,7 @@ func parseExhibitorTables(raw []byte, listURL, fair string) []Hit {
 			if ri == 0 && nameIdx >= 0 {
 				return
 			}
-			cells := row.Find("td, th")
+			cells := row.ChildrenFiltered("td, th")
 			if cells.Length() == 0 {
 				return
 			}
@@ -466,9 +469,12 @@ func parseExhibitorAnchors(raw []byte, listURL, fair string) []Hit {
 func exhibitorHit(name, fair, home, booth, geo, listURL string) Hit {
 	name = strings.Join(strings.Fields(name), " ")
 	fair = strings.TrimSpace(fair)
-	code, label := inferCountryFromText(geo, "")
-	if label == "" {
-		label = strings.TrimSpace(geo)
+	code, label := "", ""
+	if strings.TrimSpace(geo) != "" {
+		code, label = inferCountryFromText(geo, "")
+		if label == "" || label == "不限" {
+			label = strings.TrimSpace(geo)
+		}
 	}
 	snippet := strings.TrimSpace(strings.Join([]string{fair, booth, label}, " · "))
 	extra := map[string]string{
