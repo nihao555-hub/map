@@ -355,10 +355,11 @@ func keepExhibitionHit(h Hit, exhibitors bool) bool {
 	if strings.Contains(title, "calendar") || strings.Contains(title, "directory") ||
 		strings.Contains(title, "complete guide") || strings.Contains(title, "list of") ||
 		strings.Contains(title, "trade shows") || strings.Contains(title, "exhibitions calendar") ||
-		strings.Contains(title, "fairs calendar") || strings.Contains(title, "top furniture fairs") {
+		strings.Contains(title, "fairs calendar") || strings.Contains(title, "top furniture fairs") ||
+		strings.Contains(title, "时间表") || strings.Contains(title, "排期") {
 		return false
 	}
-	for _, host := range []string{"expoassist.", "globalfurniturefairs.com", "worldfurnitureonline.com"} {
+	for _, host := range []string{"expoassist.", "globalfurniturefairs.com", "worldfurnitureonline.com", "jufair.com"} {
 		if strings.Contains(home, host) {
 			return false
 		}
