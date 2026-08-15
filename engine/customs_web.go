@@ -345,7 +345,7 @@ func mergeCustomsHits(items []Hit, limit int) []Hit {
 		if strings.TrimSpace(hit.Name) == "" {
 			continue
 		}
-		key := strings.ToLower(strings.TrimSpace(hit.Name))
+		key := customsCompanyKey(hit.Name)
 		if prev, ok := seen[key]; ok {
 			if jsonInt(hit.Extra["shipments"]) > jsonInt(prev.Extra["shipments"]) || hit.Score > prev.Score {
 				if hit.Extra == nil {
@@ -395,6 +395,13 @@ func mergeCustomsHits(items []Hit, limit int) []Hit {
 		out = filtered
 	}
 	return clipHits(out, limit)
+}
+
+func customsCompanyKey(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	name = strings.ReplaceAll(name, ",", "")
+	name = strings.ReplaceAll(name, ".", "")
+	return strings.Join(strings.Fields(name), " ")
 }
 
 func companyNameTokens(term string) []string {

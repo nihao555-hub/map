@@ -402,6 +402,16 @@ func TestMergeCustomsHitsDropsZeroWhenRealShipmentsExist(t *testing.T) {
 	}
 }
 
+func TestMergeCustomsHitsDedupesCommaInc(t *testing.T) {
+	out := mergeCustomsHits([]Hit{
+		{Name: "FOOT LOCKER, INC", Extra: map[string]string{"shipments": "48"}},
+		{Name: "FOOT LOCKER INC", Extra: map[string]string{"shipments": "48"}},
+	}, 10)
+	if len(out) != 1 {
+		t.Fatalf("%+v", out)
+	}
+}
+
 func TestCompanyTokensMatchFootLocker(t *testing.T) {
 	if !companyTokensMatch("FOOT LOCKER INC", "Foot Locker Inc") {
 		t.Fatal("should match foot locker")
