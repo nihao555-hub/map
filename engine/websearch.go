@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -25,8 +26,10 @@ var (
 )
 
 const (
-	publicIndexGap = 2800 * time.Millisecond
-	braveIndexGap  = 4000 * time.Millisecond
+	publicIndexGap     = 2800 * time.Millisecond
+	braveIndexGap      = 4000 * time.Millisecond
+	indexExtraPages    = 2
+	enoughHitsPerQuery = 80
 )
 
 func waitPublicIndex(ctx context.Context) error {
@@ -99,7 +102,7 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wante
 				return nil
 			}
 
-			batch, src, err := c.searchOneIndex(gctx, q.query)
+			batch, src, err := c.searchOneIndex(gctx, q.query, q.platform)
 			mu.Lock()
 			defer mu.Unlock()
 
@@ -195,20 +198,29 @@ func hasCJK(s string) bool {
 	return false
 }
 
-func (c *Client) searchOneIndex(ctx context.Context, query string) ([]Hit, string, error) {
-	return c.searchOneIndexExtract(ctx, query, extractProfilesFromHTML)
+func (c *Client) searchOneIndex(ctx context.Context, query, platform string) ([]Hit, string, error) {
+	return c.searchOneIndexExtract(ctx, query, extractProfilesFromHTML, platform)
 }
 
-func (c *Client) searchOneIndexExtract(ctx context.Context, query string, extract func([]byte, string) []Hit) ([]Hit, string, error) {
-	return c.searchOneIndexExtractOrder(ctx, query, extract, nil)
+func (c *Client) searchOneIndexExtract(ctx context.Context, query string, extract func([]byte, string) []Hit, platform string) ([]Hit, string, error) {
+	return c.searchOneIndexExtractOrder(ctx, query, extract, nil, platform)
 }
 
-func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, extract func([]byte, string) []Hit, names []string) ([]Hit, string, error) {
+func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, extract func([]byte, string) []Hit, names []string, platform string) ([]Hit, string, error) {
 	attempts := indexAttempts(c, names)
 
+	var (
+		merged []Hit
+		srcs   []string
+		used   []string
+	)
+
 	for _, a := range attempts {
+		if uniqueHitCount(merged) >= enoughHitsPerQuery {
+			break
+		}
 		if err := waitNamedIndex(ctx, a.name); err != nil {
-			return nil, "", err
+			return merged, strings.Join(uniqueStrings(srcs), "+"), err
 		}
 
 		raw, err := a.fn(ctx, query)
@@ -220,15 +232,76 @@ func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, e
 			continue
 		}
 
-		hits := extract(raw, a.name)
+		hits := filterHitsPlatform(extract(raw, a.name), platform)
 		if len(hits) == 0 {
 			continue
 		}
 
-		return hits, a.name, nil
+		before := uniqueHitCount(merged)
+		merged = append(merged, hits...)
+		if uniqueHitCount(merged) == before {
+			continue
+		}
+		srcs = append(srcs, a.name)
+		used = append(used, a.name)
 	}
 
-	return nil, "", nil
+	for _, name := range used {
+		if uniqueHitCount(merged) >= enoughHitsPerQuery {
+			break
+		}
+		for page := 1; page <= indexExtraPages; page++ {
+			if ctx.Err() != nil || uniqueHitCount(merged) >= enoughHitsPerQuery {
+				break
+			}
+			if err := waitNamedIndex(ctx, name); err != nil {
+				break
+			}
+			raw, err := c.fetchIndexPage(ctx, name, query, page)
+			if err != nil || looksLikeChallenge(raw) {
+				if looksLikeChallenge(raw) {
+					c.markIndexLimited(name)
+				}
+				break
+			}
+			hits := filterHitsPlatform(extract(raw, name), platform)
+			if len(hits) == 0 {
+				break
+			}
+			before := uniqueHitCount(merged)
+			merged = append(merged, hits...)
+			if uniqueHitCount(merged) == before {
+				break
+			}
+		}
+	}
+
+	return merged, strings.Join(uniqueStrings(srcs), "+"), nil
+}
+
+func filterHitsPlatform(hits []Hit, platform string) []Hit {
+	if platform == "" {
+		return hits
+	}
+	out := make([]Hit, 0, len(hits))
+	for _, h := range hits {
+		if h.Platform == platform {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+func uniqueHitCount(hits []Hit) int {
+	seen := map[string]struct{}{}
+	for _, h := range hits {
+		id := h.ID
+		if id == "" {
+			id = h.Platform + ":" + h.HomepageURL
+		}
+		seen[id] = struct{}{}
+	}
+	return len(seen)
 }
 
 type indexAttempt struct {
@@ -299,18 +372,41 @@ func (c *Client) fetchIndexHTML(ctx context.Context, query string, names []strin
 	return nil, "", nil
 }
 
+func (c *Client) fetchIndexPage(ctx context.Context, name, query string, page int) ([]byte, error) {
+	switch name {
+	case "duckduckgo":
+		return c.fetchDuckDuckGoPage(ctx, query, page)
+	case "bing":
+		return c.fetchBingPage(ctx, query, page)
+	case "brave":
+		return c.fetchBravePage(ctx, query, page)
+	default:
+		return nil, fmt.Errorf("unknown index")
+	}
+}
+
 func (c *Client) fetchDuckDuckGo(ctx context.Context, query string) ([]byte, error) {
+	return c.fetchDuckDuckGoPage(ctx, query, 0)
+}
+
+func (c *Client) fetchDuckDuckGoPage(ctx context.Context, query string, page int) ([]byte, error) {
 	kl := "wt-wt"
 	if hasCJK(query) {
 		kl = "cn-zh"
 	}
 	form := "q=" + url.QueryEscape(query) + "&kl=" + kl
+	if page > 0 {
+		form += "&s=" + strconv.Itoa(page*10)
+	}
 	raw, err := c.postFormHTML(ctx, "https://html.duckduckgo.com/html/", form, "https://html.duckduckgo.com/")
 	if err == nil && !looksLikeChallenge(raw) && len(raw) > 500 {
 		return raw, nil
 	}
 
 	lite := "https://lite.duckduckgo.com/lite/?q=" + url.QueryEscape(query) + "&kl=" + kl
+	if page > 0 {
+		lite += "&s=" + strconv.Itoa(page*10)
+	}
 	raw2, err2 := c.getHTMLReferer(ctx, lite, "https://lite.duckduckgo.com/")
 	if err2 == nil && !looksLikeChallenge(raw2) && len(raw2) > 400 {
 		return raw2, nil
@@ -328,15 +424,30 @@ func (c *Client) fetchDuckDuckGo(ctx context.Context, query string) ([]byte, err
 }
 
 func (c *Client) fetchBrave(ctx context.Context, query string) ([]byte, error) {
-	return c.getHTMLReferer(ctx, "https://search.brave.com/search?q="+url.QueryEscape(query), "https://search.brave.com/")
+	return c.fetchBravePage(ctx, query, 0)
+}
+
+func (c *Client) fetchBravePage(ctx context.Context, query string, page int) ([]byte, error) {
+	rawURL := "https://search.brave.com/search?q=" + url.QueryEscape(query)
+	if page > 0 {
+		rawURL += "&offset=" + strconv.Itoa(page*10)
+	}
+	return c.getHTMLReferer(ctx, rawURL, "https://search.brave.com/")
 }
 
 func (c *Client) fetchBing(ctx context.Context, query string) ([]byte, error) {
+	return c.fetchBingPage(ctx, query, 0)
+}
+
+func (c *Client) fetchBingPage(ctx context.Context, query string, page int) ([]byte, error) {
 	rawURL := "https://www.bing.com/search?q=" + url.QueryEscape(query)
 	if hasCJK(query) {
 		rawURL += "&setlang=zh-Hans&cc=CN"
 	} else {
 		rawURL += "&setlang=en"
+	}
+	if page > 0 {
+		rawURL += "&first=" + strconv.Itoa(1+page*10)
 	}
 	return c.getHTMLReferer(ctx, rawURL, "https://www.bing.com/")
 }
@@ -423,139 +534,137 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 
 		cards := doc.Find("a.result__a, li.b_algo h2 a, #b_results h2 a")
 		addAnchors(cards)
-		if len(seen) == 0 {
-			addAnchors(doc.Find("a[href]"))
-		}
+		addAnchors(doc.Find("a[href]"))
 	}
 
 	blob := html + "\n" + decoded
-	for _, m := range tiktokHandleRe.FindAllStringSubmatch(blob, 40) {
+	for _, m := range tiktokHandleRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.tiktok.com/@"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range instagramRe.FindAllStringSubmatch(blob, 40) {
+	for _, m := range instagramRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.instagram.com/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range youtubeAtRe.FindAllStringSubmatch(blob, 40) {
+	for _, m := range youtubeAtRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.youtube.com/@"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range facebookUserRe.FindAllStringSubmatch(blob, 40) {
+	for _, m := range facebookUserRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.facebook.com/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range linkedinInRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range linkedinInRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.linkedin.com/in/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range linkedinCoRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range linkedinCoRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.linkedin.com/company/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range xHandleRe.FindAllStringSubmatch(blob, 40) {
+	for _, m := range xHandleRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://x.com/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range threadsRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range threadsRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.threads.net/@"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range douyinUserRe.FindAllStringSubmatch(blob, 40) {
+	for _, m := range douyinUserRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.douyin.com/user/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range douyinVideoRe.FindAllStringSubmatch(blob, 40) {
+	for _, m := range douyinVideoRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.douyin.com/video/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range douyinNoteRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range douyinNoteRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.douyin.com/note/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range douyinCollectionRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range douyinCollectionRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.douyin.com/collection/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range xiaohongshuRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range xiaohongshuRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.xiaohongshu.com/user/profile/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range xiaohongshuNoteRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range xiaohongshuNoteRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.xiaohongshu.com/explore/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range kuaishouRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range kuaishouRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.kuaishou.com/profile/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range kuaishouVideoRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range kuaishouVideoRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.kuaishou.com/short-video/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range weiboUIDRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range weiboUIDRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://weibo.com/u/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range bilibiliRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range bilibiliRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://space.bilibili.com/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range telegramRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range telegramRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://t.me/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range redditUserRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range redditUserRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.reddit.com/user/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, m := range twitchRe.FindAllStringSubmatch(blob, 20) {
+	for _, m := range twitchRe.FindAllStringSubmatch(blob, 80) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.twitch.tv/"+m[1], m[1], ""))
 		}
 	}
 
-	for _, href := range hrefAbsRe.FindAllString(decoded, 80) {
+	for _, href := range hrefAbsRe.FindAllString(decoded, 200) {
 		add(ParseSocialURL(href, "", ""))
 	}
 

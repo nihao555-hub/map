@@ -31,12 +31,31 @@ type sidecarResponse struct {
 	Source   string        `json:"source"`
 }
 
+const (
+	sidecarDefaultCount = 30
+	sidecarMinCount     = 5
+	sidecarMaxCount     = 50
+)
+
+func sidecarCount(limit int) int {
+	if limit <= 0 {
+		return sidecarDefaultCount
+	}
+	if limit < sidecarMinCount {
+		return sidecarMinCount
+	}
+	if limit > sidecarMaxCount {
+		return sidecarMaxCount
+	}
+	return limit
+}
+
 func (c *Client) searchTikTokAPI(ctx context.Context, keyword string, limit int) ([]Hit, string, error) {
 	if c == nil || c.TikTokURL == "" {
 		return nil, "", fmt.Errorf("TikTok-Api sidecar URL is empty")
 	}
 
-	endpoint := c.TikTokURL + "/search/users?q=" + url.QueryEscape(keyword) + "&count=" + strconv.Itoa(limit)
+	endpoint := c.TikTokURL + "/search/users?q=" + url.QueryEscape(keyword) + "&count=" + strconv.Itoa(sidecarCount(limit))
 	raw, err := c.get(ctx, endpoint, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("davidteather/TikTok-Api sidecar: %w", err)
@@ -51,7 +70,7 @@ func (c *Client) searchF2(ctx context.Context, keyword, platform string, limit i
 	}
 
 	endpoint := c.F2URL + "/search/users?platform=" + url.QueryEscape(platform) +
-		"&q=" + url.QueryEscape(keyword) + "&count=" + strconv.Itoa(limit)
+		"&q=" + url.QueryEscape(keyword) + "&count=" + strconv.Itoa(sidecarCount(limit))
 	raw, err := c.get(ctx, endpoint, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("Johnserf-Seed/f2 sidecar: %w", err)
@@ -136,7 +155,7 @@ func (c *Client) searchTikHubDouyin(ctx context.Context, keyword string, limit i
 	}
 
 	endpoint := "https://api.tikhub.io/api/v1/douyin/web/fetch_search_user?keyword=" +
-		url.QueryEscape(keyword) + "&count=" + strconv.Itoa(limit)
+		url.QueryEscape(keyword) + "&count=" + strconv.Itoa(sidecarCount(limit))
 
 	raw, err := c.get(ctx, endpoint, map[string]string{"Authorization": "Bearer " + c.TikHubToken})
 	if err != nil {

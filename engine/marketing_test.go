@@ -67,7 +67,8 @@ func TestMarketingSearchQueriesCapped(t *testing.T) {
 }
 
 func TestValidPublicEmailSkipsPlaceholderHosts(t *testing.T) {
-	if validPublicEmail("support@company.com") || validPublicEmail("sales@domain.com") {
+	if validPublicEmail("support@company.com") || validPublicEmail("sales@domain.com") ||
+		validPublicEmail("demo@mailslurp.dev") || validPublicEmail("x@rapidtables.com") {
 		t.Fatal("placeholder host accepted")
 	}
 	if !validPublicEmail("jane.doe@bosch-tools.com") {

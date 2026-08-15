@@ -22,6 +22,10 @@ func TestSearchPeopleFromTikTokAPISidecar(t *testing.T) {
 			return
 		}
 
+		if r.URL.Query().Get("count") != "30" {
+			t.Errorf("sidecar count=%s want 30", r.URL.Query().Get("count"))
+		}
+
 		_ = json.NewEncoder(w).Encode(sidecarResponse{
 			Source: "tiktok-api",
 			Users: []sidecarUser{{
@@ -178,6 +182,21 @@ func TestParseSidecarUsersError(t *testing.T) {
 	_, _, err := parseSidecarUsers([]byte(`{"error":"down","users":[]}`), PlatformTikTok, "x")
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestSidecarCount(t *testing.T) {
+	if sidecarCount(0) != sidecarDefaultCount || sidecarCount(-1) != sidecarDefaultCount {
+		t.Fatalf("default %d %d", sidecarCount(0), sidecarCount(-1))
+	}
+	if sidecarCount(3) != sidecarMinCount {
+		t.Fatalf("min %d", sidecarCount(3))
+	}
+	if sidecarCount(12) != 12 {
+		t.Fatalf("pass-through %d", sidecarCount(12))
+	}
+	if sidecarCount(99) != sidecarMaxCount {
+		t.Fatalf("max %d", sidecarCount(99))
 	}
 }
 

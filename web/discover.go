@@ -79,14 +79,25 @@ func (s *Server) apiDiscoverSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	scrubDiscoverResult(&res)
+
+	renderJSON(w, http.StatusOK, res)
+}
+
+func scrubDiscoverResult(res *engine.Result) {
+	if res == nil {
+		return
+	}
+
 	res.Sources = []string{}
 	res.Warnings = nil
 	res.TookMS = 0
 	if res.Note != "" {
 		res.Note = "系统不会代发。"
 	}
-
-	renderJSON(w, http.StatusOK, res)
+	for i := range res.Hits {
+		res.Hits[i].Source = ""
+	}
 }
 
 func (s *Server) apiDiscoverPreview(w http.ResponseWriter, r *http.Request) {

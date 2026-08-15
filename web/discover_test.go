@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gosom/google-maps-scraper/engine"
 )
 
 func TestDiscoverPageRenders(t *testing.T) {
@@ -92,6 +94,37 @@ func TestDiscoverPlatformsListsSupportedOnly(t *testing.T) {
 
 	if ids["exhibition"] || ids["customs"] {
 		t.Fatalf("unsupported modules leaked into people platforms: %+v", payload.Platforms)
+	}
+}
+
+func TestScrubDiscoverResultStripsEngineNames(t *testing.T) {
+	res := engine.Result{
+		Hits: []engine.Hit{{
+			Name:        "厂",
+			HomepageURL: "https://www.facebook.com/factory",
+			Source:      "bing",
+		}},
+		Sources:  []string{"bing", "duckduckgo"},
+		Warnings: []string{"duckduckgo: status 429 rate limited"},
+		TookMS:   12,
+		Note:     "内部诊断",
+	}
+	scrubDiscoverResult(&res)
+	if res.Hits[0].Source != "" || len(res.Sources) != 0 || res.Warnings != nil || res.TookMS != 0 {
+		t.Fatalf("not scrubbed %+v", res)
+	}
+	if res.Note != "系统不会代发。" {
+		t.Fatalf("note=%s", res.Note)
+	}
+	raw, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+	for _, forbid := range []string{"bing", "duckduckgo", "429"} {
+		if strings.Contains(body, forbid) {
+			t.Fatalf("leaked %q in %s", forbid, body)
+		}
 	}
 }
 

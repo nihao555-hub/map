@@ -19,6 +19,7 @@ var skipEmailHost = map[string]struct{}{
 	"google.com": {}, "gstatic.com": {}, "github.com": {}, "githubusercontent.com": {},
 	"facebookmail.com": {}, "company.com": {}, "domain.com": {}, "email.com": {},
 	"yourcompany.com": {}, "test.com": {}, "example.org": {}, "example.net": {},
+	"mailslurp.dev": {}, "mailslurp.com": {}, "rapidtables.com": {},
 }
 
 func (c *Client) searchMarketing(ctx context.Context, q Query) (Result, error) {

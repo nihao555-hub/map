@@ -73,7 +73,7 @@ type Hit struct {
 	MessageHint string            `json:"message_hint,omitempty"`
 	Contact     string            `json:"contact,omitempty"`
 	Channel     string            `json:"channel,omitempty"`
-	Source      string            `json:"source"`
+	Source      string            `json:"source,omitempty"`
 	Score       int               `json:"score"`
 	Extra       map[string]string `json:"extra,omitempty"`
 }
