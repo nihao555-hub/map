@@ -7,17 +7,24 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 const (
-	customsDefaultLimit = 50
-	customsMaxLimit     = 80
-	customsMinYear      = 2015
+	customsDefaultLimit    = 50
+	customsMaxLimit        = 80
+	customsMinYear         = 2015
+	customsHydrateMax      = 8
+	customsHydrateParallel = 3
 )
 
-// searchCustoms finds US importers / overseas shippers from live ImportYeti
-// search. Kirchner can fill a named company profile; Comtrade is a country-level note only.
+// searchCustoms fans out across live public sources the same way 外贸通
+// aggregates many feeds: ImportYeti, Kirchner bills of lading, public web
+// company pages, USITC HS, and Comtrade country totals. It does not have a
+// private global enterprise graph or contact database.
 func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
 	if c == nil {
 		return Result{Note: customsPolicyNote}, nil
@@ -27,7 +34,7 @@ func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
 	term, match := customsSearchTerm(q.Keyword, q.Country)
 	if role == RoleBuyer && !customsCountryIsUS(q.Country) && strings.TrimSpace(q.Country) != "" {
 		return Result{
-			Note:     "逐票买家目前来自美国海关公开提单（ImportYeti）。其他国家没有同等公开企业名录。",
+			Note:     "逐票买家目前来自美国海关公开提单。其他国家没有同等公开企业名录。",
 			Expanded: []string{term},
 		}, nil
 	}
@@ -49,51 +56,82 @@ func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
 	}
 
 	var (
+		mu      sync.Mutex
 		hits    []Hit
 		sources []string
 		notes   []string
 	)
-
-	if iyHits, src, err := c.searchImportYeti(ctx, term, role, q.Country, limit); len(iyHits) > 0 {
-		hits = iyHits
-		if src != "" {
+	add := func(items []Hit, src, note string) {
+		mu.Lock()
+		defer mu.Unlock()
+		if note != "" {
+			notes = append(notes, note)
+		}
+		if src != "" && len(items) > 0 {
 			sources = append(sources, src)
 		}
-	} else if err != nil {
-		notes = append(notes, "ImportYeti 实时检索暂时不可用。")
+		hits = append(hits, items...)
 	}
 
-	if len(hits) == 0 && strings.TrimSpace(c.CustomsBaseURL) != "" {
-		payload, err := c.fetchLeadFinder(ctx, term, match, year, limit, false)
-		if err != nil && year == time.Now().UTC().Year() {
-			payload, err = c.fetchLeadFinder(ctx, term, match, year-1, limit, false)
-			year = year - 1
+	g, gctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		items, src, err := c.searchImportYeti(gctx, term, role, q.Country, limit)
+		note := ""
+		if err != nil && len(items) == 0 {
+			note = "ImportYeti 实时检索暂时不可用。"
 		}
-		if err != nil {
-			if role != RoleSeller {
-				hits = c.customsProfileFallback(ctx, q.Keyword, term, year)
-				if len(hits) > 0 {
-					sources = append(sources, "kirchner")
-				}
-			}
-			if len(hits) == 0 {
-				notes = append(notes, "没有返回逐票企业名单。")
-			}
-		} else {
-			if len(payload.Profiles) == 0 && len(payload.Importers) > 0 {
-				payload.Profiles = c.fetchImporterProfiles(ctx, payload.Importers, year, 12)
-			}
-			if role == RoleSeller {
-				hits = customsSellerHits(payload, q.Country, year)
+		add(items, src, note)
+		return nil
+	})
+
+	g.Go(func() error {
+		items, src, err := c.searchKirchnerLeads(gctx, term, match, role, q.Country, year, limit)
+		note := ""
+		if err != nil && len(items) == 0 {
+			note = "Kirchner 名单接口暂时不可用。"
+		}
+		add(items, src, note)
+		return nil
+	})
+
+	g.Go(func() error {
+		if c.DisablePublic {
+			return nil
+		}
+		items, src := c.searchCustomsWeb(gctx, term, role, q.Country, year, limit)
+		add(items, src, "")
+		return nil
+	})
+
+	_ = g.Wait()
+
+	if extra := c.customsProfileFallback(ctx, q.Keyword, term, year); len(extra) > 0 {
+		add(extra, "kirchner", "")
+	}
+
+	merged := mergeCustomsHits(hits, limit)
+	if role == RoleSeller {
+		var buyers []Hit
+		var sellers []Hit
+		for _, h := range merged {
+			if h.Role == RoleSeller {
+				sellers = append(sellers, h)
 			} else {
-				hits = customsBuyerHits(payload, q.Country, year)
-			}
-			if len(hits) > 0 {
-				sources = append(sources, "kirchner")
+				buyers = append(buyers, h)
 			}
 		}
+		if extra := c.sellersFromBuyerHits(ctx, buyers, q.Country, year, limit); len(extra) > 0 {
+			sellers = append(sellers, extra...)
+			sources = append(sources, "kirchner-suppliers")
+		}
+		merged = mergeCustomsHits(sellers, limit)
 	}
 
+	if n := c.productTrendsNote(ctx, term, year); n != "" {
+		notes = append(notes, n)
+		sources = append(sources, "kirchner-trends")
+	}
 	if partners, err := c.searchComtradeOrigins(ctx, hs4, year, q.Country); err == nil && len(partners) > 0 {
 		if n := comtradeNote(partners, hs4); n != "" {
 			notes = append(notes, n)
@@ -101,9 +139,12 @@ func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
 		sources = append(sources, "comtrade")
 	}
 
-	note := strings.Join(notes, " ")
+	note := strings.Join(uniqueStrings(notes), " ")
 	if note == "" {
 		note = customsPolicyNote
+	}
+	if len(merged) == 0 {
+		note = strings.TrimSpace(note + " 没有返回逐票企业名单。")
 	}
 	expanded := []string{term, strconv.Itoa(year)}
 	if hs4 != "" {
@@ -111,11 +152,38 @@ func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
 	}
 
 	return Result{
-		Hits:     clipHits(hits, limit),
+		Hits:     clipHits(merged, limit),
 		Sources:  uniqueStrings(sources),
 		Note:     note,
 		Expanded: expanded,
 	}, nil
+}
+
+func (c *Client) searchKirchnerLeads(ctx context.Context, term, match, role, country string, year, limit int) ([]Hit, string, error) {
+	if c == nil || strings.TrimSpace(c.CustomsBaseURL) == "" {
+		return nil, "", nil
+	}
+	payload, err := c.fetchLeadFinder(ctx, term, match, year, limit, false)
+	if err != nil && year == time.Now().UTC().Year() {
+		payload, err = c.fetchLeadFinder(ctx, term, match, year-1, limit, true)
+		year = year - 1
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	if len(payload.Profiles) == 0 && len(payload.Importers) > 0 {
+		payload.Profiles = c.fetchImporterProfiles(ctx, payload.Importers, year, 12)
+	}
+	var hits []Hit
+	if role == RoleSeller {
+		hits = customsSellerHits(payload, country, year)
+	} else {
+		hits = customsBuyerHits(payload, country, year)
+	}
+	if len(hits) == 0 {
+		return nil, "", nil
+	}
+	return hits, "kirchner", nil
 }
 
 // CustomsProfile is one importer's public bill-of-lading summary for the right pane.
@@ -161,7 +229,7 @@ type CustomsShipment struct {
 	Vessel    string `json:"vessel,omitempty"`
 }
 
-// LookupCustomsProfile loads one company from ImportYeti, then Kirchner.
+// LookupCustomsProfile loads one company from Kirchner, then ImportYeti.
 func (c *Client) LookupCustomsProfile(ctx context.Context, name string, year int) (CustomsProfile, error) {
 	return c.LookupCustomsProfileAt(ctx, name, "", year)
 }
@@ -177,6 +245,18 @@ func (c *Client) LookupCustomsProfileAt(ctx context.Context, name, pageURL strin
 		return CustomsProfile{}, fmt.Errorf("海关数据源未配置")
 	}
 	year = customsYear(year)
+	if name == "" {
+		name = importYetiNameFromURL(pageURL)
+	}
+
+	if strings.TrimSpace(c.CustomsBaseURL) != "" && name != "" {
+		if prof, err := c.lookupKirchnerProfile(ctx, name, year); err == nil && strings.TrimSpace(prof.Name) != "" && prof.TotalShipments > 0 {
+			if pageURL != "" {
+				prof.HomepageURL = firstNonEmpty(pageURL, prof.HomepageURL)
+			}
+			return prof, nil
+		}
+	}
 
 	if c.importYetiBase() != "" || strings.TrimSpace(c.ImportYetiAPIKey) != "" {
 		if prof, err := c.lookupImportYetiProfile(ctx, name, pageURL); err == nil && strings.TrimSpace(prof.Name) != "" {
@@ -193,9 +273,22 @@ func (c *Client) LookupCustomsProfileAt(ctx context.Context, name, pageURL strin
 	if strings.TrimSpace(c.CustomsBaseURL) == "" {
 		return CustomsProfile{}, fmt.Errorf("海关数据源未配置")
 	}
-	if name == "" {
-		name = importYetiNameFromURL(pageURL)
+	prof, err := c.lookupKirchnerProfile(ctx, name, year)
+	if err != nil {
+		return CustomsProfile{}, err
 	}
+	if pageURL != "" {
+		prof.HomepageURL = firstNonEmpty(pageURL, prof.HomepageURL)
+	}
+	return prof, nil
+}
+
+func (c *Client) lookupKirchnerProfile(ctx context.Context, name string, year int) (CustomsProfile, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || c == nil || strings.TrimSpace(c.CustomsBaseURL) == "" {
+		return CustomsProfile{}, fmt.Errorf("海关数据源未配置")
+	}
+	year = customsYear(year)
 	raw, err := c.postJSON(ctx, strings.TrimRight(c.CustomsBaseURL, "/")+"/api/company-profile", map[string]any{
 		"name": name, "yr_from": year, "yr_to": year,
 	}, kirchnerHeaders())
@@ -206,6 +299,9 @@ func (c *Client) LookupCustomsProfileAt(ctx context.Context, name, pageURL strin
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return CustomsProfile{}, err
 	}
+	if strings.TrimSpace(asString(parsed["error"])) != "" && jsonInt(parsed["total_shipments"]) == 0 {
+		return CustomsProfile{}, fmt.Errorf("%s", asString(parsed["error"]))
+	}
 	prof := CustomsProfile{
 		Name:            firstNonEmpty(asString(parsed["name"]), name),
 		Role:            RoleBuyer,
@@ -215,7 +311,7 @@ func (c *Client) LookupCustomsProfileAt(ctx context.Context, name, pageURL strin
 		YearTo:          jsonInt(parsed["to_year"]),
 		TotalShipments:  jsonInt(parsed["total_shipments"]),
 		UniqueSuppliers: jsonInt(parsed["unique_suppliers"]),
-		HomepageURL:     firstNonEmpty(pageURL, absoluteKirchnerURL(c, asString(parsed["profile_url"]))),
+		HomepageURL:     absoluteKirchnerURL(c, asString(parsed["profile_url"])),
 		Suppliers:       mapCustomsPartners(parsed["top_suppliers"], 12),
 		Carriers:        mapCustomsPartners(parsed["top_carriers"], 8),
 		Origins:         mapCustomsOrigins(parsed["top_origin_countries"], 8),

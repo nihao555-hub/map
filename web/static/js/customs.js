@@ -139,7 +139,7 @@
       empty.classList.remove("hidden");
       empty.textContent = note || (role === "seller"
         ? "没有命中公开发货人。可换产品词，或把国家改成不限。"
-        : "没有命中公开进口商。逐票买家来自 ImportYeti 的美国海关公开提单。");
+        : "没有命中公开进口商。可换产品词、公司名或 HS；逐票买家来自美国海关公开提单，不是全球企业库。");
       results.innerHTML = "";
       updatePager();
       return;

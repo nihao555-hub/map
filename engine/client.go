@@ -26,6 +26,7 @@ const (
 	defaultWikidataSPARQL = "https://query.wikidata.org/sparql"
 	defaultComtradeURL    = "https://comtradeapi.un.org/public/v1/preview"
 	defaultUSITCURL       = "https://hts.usitc.gov/reststop/search"
+	defaultAUMAFairURL    = "https://www.auma.de/en/find-your-fair/"
 	browserUA             = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
 	ddgCooldown   = 2 * time.Minute
@@ -67,9 +68,11 @@ type Client struct {
 	FairCalendarURL string
 	// FairMapURL is an optional live JSON fair map (empty by default).
 	FairMapURL string
-	braveUntil atomic.Int64
-	ddgUntil   atomic.Int64
-	bingUntil  atomic.Int64
+	// AUMAFairURL is AUMA FairFinder, a live trade-fair calendar.
+	AUMAFairURL string
+	braveUntil  atomic.Int64
+	ddgUntil    atomic.Int64
+	bingUntil   atomic.Int64
 }
 
 // OptionsFromEnv wires sidecar base URLs.
@@ -87,6 +90,7 @@ type Client struct {
 //	ENGINE_IMPORTYETI_API_KEY  optional official API key
 //	ENGINE_FAIR_CALENDAR_URL   optional JSON calendar, off by default
 //	ENGINE_FAIR_MAP_URL        optional JSON fair map, off by default
+//	ENGINE_AUMA_FAIR_URL       AUMA FairFinder (default https://www.auma.de/en/find-your-fair/)
 //	TIKHUB_API_TOKEN           optional paid API when Douyin keyword search is needed
 func OptionsFromEnv() *Client {
 	timeout := defaultHTTPTimeout
@@ -133,6 +137,7 @@ func OptionsFromEnv() *Client {
 		ImportYetiCookie: strings.TrimSpace(os.Getenv("ENGINE_IMPORTYETI_COOKIE")),
 		FairCalendarURL:  envServiceURL("ENGINE_FAIR_CALENDAR_URL", ""),
 		FairMapURL:       envServiceURL("ENGINE_FAIR_MAP_URL", ""),
+		AUMAFairURL:      envServiceURL("ENGINE_AUMA_FAIR_URL", defaultAUMAFairURL),
 	}
 }
 

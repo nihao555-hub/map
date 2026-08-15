@@ -163,13 +163,13 @@ func TestExhibitionDoesNotSelfCrawl(t *testing.T) {
 	if len(res.Hits) != 0 {
 		t.Fatalf("expected no hits when public indexes are off, got %+v", res.Hits)
 	}
-	if !strings.Contains(res.Note, "GitHub") && !strings.Contains(res.Note, "Wikidata") {
+	if !strings.Contains(res.Note, "AUMA") && !strings.Contains(res.Note, "Wikidata") {
 		t.Fatalf("note=%s", res.Note)
 	}
 }
 
 func TestCustomsDoesNotSelfCrawl(t *testing.T) {
-	res, err := (&Client{}).Search(context.Background(), Query{Keyword: "Allbirds", Kind: KindCustoms})
+	res, err := (&Client{DisablePublic: true}).Search(context.Background(), Query{Keyword: "Allbirds", Kind: KindCustoms})
 	if err != nil {
 		t.Fatal(err)
 	}

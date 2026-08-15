@@ -343,3 +343,50 @@ func TestSearchCustomsSkipsWhenUnconfigured(t *testing.T) {
 		t.Fatalf("hits=%+v", res.Hits)
 	}
 }
+
+func TestSearchCustomsCompanyNameFromProfile(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/lead-finder" {
+			http.Error(w, "", http.StatusInternalServerError)
+			return
+		}
+		if r.URL.Path == "/api/company-profile" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"name":             "FOOT LOCKER INC",
+				"total_shipments":  48,
+				"unique_suppliers": 12,
+				"address":          "330 W 34TH ST",
+				"top_suppliers": []map[string]any{
+					{"name": "FACTORY A", "country": "Vietnam", "count": 9},
+				},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	c := &Client{HTTP: srv.Client(), CustomsBaseURL: srv.URL, DisablePublic: true}
+	res, err := c.Search(context.Background(), Query{
+		Keyword: "FOOT LOCKER INC", Kind: KindCustoms, Role: RoleBuyer, Year: 2025,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Hits) != 1 || res.Hits[0].Name != "FOOT LOCKER INC" {
+		t.Fatalf("hits=%+v", res.Hits)
+	}
+	if res.Hits[0].Extra["shipments"] != "48" {
+		t.Fatalf("extra %+v", res.Hits[0].Extra)
+	}
+
+	sellers, err := c.Search(context.Background(), Query{
+		Keyword: "FOOT LOCKER INC", Kind: KindCustoms, Role: RoleSeller, Year: 2025,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sellers.Hits) == 0 || sellers.Hits[0].Name != "FACTORY A" {
+		t.Fatalf("sellers=%+v", sellers.Hits)
+	}
+}

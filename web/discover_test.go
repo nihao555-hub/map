@@ -282,7 +282,8 @@ func TestCustomsPageRenders(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"海关数据", "搜采购商", "搜供应商", "匹配金额 USD", "Top HSCode", "cus-modal",
-		`id="data-nav"`, "/static/js/customs.js", "排除物流公司",
+		`id="data-nav"`, "/static/js/customs.js", "排除物流公司", "公司名",
+		"多家公开海关源",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
@@ -300,7 +301,7 @@ func TestExhibitionPageRenders(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"展会获客", "自研展会工作台", "找展会", "找参展商", "Wikidata",
+		"展会获客", "自研展会工作台", "找展会", "找参展商", "AUMA",
 		`id="data-nav"`, "/static/js/exhibition.js", "exh-board",
 	} {
 		if !strings.Contains(body, want) {

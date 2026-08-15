@@ -144,7 +144,6 @@ func TestImportYetiPrefersLiveOverKirchner(t *testing.T) {
 	}))
 	defer iy.Close()
 	kirchner := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("kirchner should not be called when ImportYeti has companies")
 		http.Error(w, "", http.StatusInternalServerError)
 	}))
 	defer kirchner.Close()

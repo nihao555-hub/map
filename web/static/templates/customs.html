@@ -32,7 +32,7 @@
     <main class="wmt-main">
       <section id="landing-view" class="cus-landing">
         <h1>海关数据</h1>
-        <p class="cus-fresh">逐票企业来自 ImportYeti 实时检索美国海关公开提单，不是一次性数据包。</p>
+        <p class="cus-fresh">复刻外贸通的搜采购商 / 供应商。数据来自多家公开海关源的实时检索，不是一次性数据包，也不是 60 亿企业库。</p>
         <div class="cus-tabs" id="landing-tabs">
           <button type="button" class="is-on" data-role="buyer">搜采购商</button>
           <button type="button" data-role="seller">搜供应商</button>
@@ -41,16 +41,17 @@
           <select id="landing-field" aria-label="搜索类型">
             <option value="product">产品</option>
             <option value="hs">HScode</option>
+            <option value="company">公司名</option>
           </select>
-          <input type="text" id="landing-keyword" placeholder="请输入产品，例如 shoes" maxlength="64" autocomplete="off" />
+          <input type="text" id="landing-keyword" placeholder="产品、HS 或公司名，例如 shoes / FOOT LOCKER INC" maxlength="64" autocomplete="off" />
           <label class="wmt-precise"><input type="checkbox" id="landing-precise"> 精确</label>
           <button type="submit" class="wmt-search-btn">搜索</button>
         </form>
         <div class="cus-proof">
-          <article>ImportYeti 按产品词或企业名实时搜美国进口商，记录随公开提单更新。</article>
-          <article>搜供应商时，列出美国进口提单里的海外发货人，不是货源国汇总。</article>
-          <article>金额若有联合国 Comtrade 国家口径会写在备注里；逐票提单没有 USD 时留空。</article>
-          <article>点公司名打开弹层，并可跳到 ImportYeti 档案页。</article>
+          <article>按产品词、企业名或 HS 实时搜美国进口商，源包括 Kirchner 公开提单、ImportYeti 等。</article>
+          <article>搜供应商时，从进口商档案里的海外发货人汇总，对齐外贸通的上下游查看。</article>
+          <article>公开提单没有联系人库和采供链穿透；金额若有 Comtrade 国家口径会写在备注里。</article>
+          <article>点公司名打开弹层，看供应商、产品和近期提单，并可跳到源站档案。</article>
         </div>
       </section>
 
@@ -66,8 +67,9 @@
               <select id="search-field" class="cus-field" aria-label="搜索类型">
                 <option value="product">产品</option>
                 <option value="hs">HScode</option>
+                <option value="company">公司名</option>
               </select>
-              <input type="text" id="keyword" placeholder="请输入产品，例如 shoes" maxlength="64" autocomplete="off" />
+              <input type="text" id="keyword" placeholder="产品、HS 或公司名，例如 shoes / FOOT LOCKER INC" maxlength="64" autocomplete="off" />
               <label class="wmt-precise"><input type="checkbox" id="precise"> 精确</label>
               <button type="submit" class="wmt-search-btn" id="search-btn">搜索</button>
             </div>
@@ -118,7 +120,7 @@
             </thead>
             <tbody id="results"></tbody>
           </table>
-          <div id="empty" class="wmt-empty">输入产品名称后搜索采购商。逐票买家来自 ImportYeti 的美国海关公开提单。</div>
+          <div id="empty" class="wmt-empty">输入产品、公司名或 HS 后搜索采购商。逐票企业来自多家公开海关源的实时检索，不是外贸通那种全球企业库。</div>
         </div>
       </section>
     </main>

@@ -54,6 +54,14 @@ func (c *Client) searchExhibition(ctx context.Context, q Query) (Result, error) 
 
 	g, gctx := errgroup.WithContext(ctx)
 
+	if !wantExhibitors && c != nil && strings.TrimSpace(c.AUMAFairURL) != "" {
+		g.Go(func() error {
+			items, src := c.searchAUMAFairs(gctx, q.Keyword, term, q.Country, limit)
+			add(items, src, "")
+			return nil
+		})
+	}
+
 	if !wantExhibitors && c != nil {
 		g.Go(func() error {
 			items, src := c.searchOpenFairs(gctx, q.Keyword, term, q.Country, limit)
@@ -314,6 +322,7 @@ func exhibitionQueries(keyword, term, country string, exhibitors bool) []string 
 			base + " exhibitor list",
 			base + " trade show exhibitor",
 			keyword + " 展会 参展商",
+			"site:10times.com " + base + " exhibitor",
 		}
 		if geo != "" {
 			out = append([]string{base + " exhibitor " + geo}, out...)
@@ -323,6 +332,8 @@ func exhibitionQueries(keyword, term, country string, exhibitors bool) []string 
 			base + " trade fair",
 			base + " trade show 2026",
 			keyword + " 展会",
+			"site:auma.de " + base + " fair",
+			"site:10times.com " + base + " tradeshow",
 		}
 		if geo != "" {
 			out = append([]string{base + " trade fair " + geo}, out...)
@@ -331,9 +342,35 @@ func exhibitionQueries(keyword, term, country string, exhibitors bool) []string 
 	return uniqueFoldedStrings(out)
 }
 
+func isExhibitionDirectory(home, title string) bool {
+	home = strings.ToLower(strings.TrimSpace(home))
+	title = strings.ToLower(title)
+	if u, err := url.Parse(home); err == nil {
+		host := strings.ToLower(u.Host)
+		path := strings.Trim(u.Path, "/")
+		segs := strings.Split(path, "/")
+		if strings.Contains(host, "10times.com") {
+			if path == "" || path == "tradeshows" || path == "top100" || strings.HasPrefix(path, "top100/") {
+				return true
+			}
+			if len(segs) == 1 && (strings.Contains(title, "calendar") || strings.Contains(title, "directory") ||
+				strings.Contains(title, "trade shows") || strings.Contains(title, "exhibitions")) {
+				return true
+			}
+		}
+		if strings.Contains(host, "eventseye.com") && (path == "" || strings.Contains(path, "countries") || strings.Contains(path, "calendar")) {
+			return true
+		}
+	}
+	return false
+}
+
 func keepExhibitionHit(h Hit, exhibitors bool) bool {
 	home := strings.ToLower(h.HomepageURL)
 	if home == "" {
+		return false
+	}
+	if isExhibitionDirectory(home, h.Name+" "+h.Title) {
 		return false
 	}
 	for _, bad := range []string{
@@ -341,7 +378,7 @@ func keepExhibitionHit(h Hit, exhibitors bool) bool {
 		"facebook.com", "instagram.com", "tiktok.com", "youtube.com/watch",
 		"x.com/", "twitter.com", "wikipedia.org", "wikidata.org",
 		"kraken.com", "binance.com", "coinbase.com",
-		"10times.com", "tradefest.io", "expoassist.com", "eventseye.com",
+		"tradefest.io", "expoassist.com",
 	} {
 		if strings.Contains(home, bad) {
 			return false
