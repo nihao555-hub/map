@@ -185,7 +185,9 @@ body.wmt {
 .wmt-hero #channel-group-landing { margin-top: 0; margin-bottom: 12px; }
 .wmt-results-head { flex-wrap: wrap; }
 .wmt-channel[hidden],
-.wmt-actions[hidden] {
+.wmt-actions[hidden],
+.wmt-role-row[hidden],
+.wmt-role-hint[hidden] {
   display: none !important;
 }
 
@@ -221,6 +223,44 @@ body.wmt {
   background: var(--wmt-blue);
   color: #fff;
 }
+
+.wmt-role-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+.wmt-role-label {
+  font-size: 13px;
+  color: rgba(255,255,255,.75);
+  white-space: nowrap;
+}
+.wmt-role-hint {
+  font-size: 12px;
+  color: rgba(255,255,255,.65);
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+.wmt-results-head .wmt-role-label { color: var(--wmt-sub); }
+
+.hit-role {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.hit-role.is-buyer {
+  color: #157347;
+  background: #e8f6ee;
+}
+.hit-role.is-seller {
+  color: #b54708;
+  background: #fff4e5;
+}
+.wmt-table td.col-role { width: 72px; }
+.wmt-table td.col-snip { color: var(--wmt-sub); }
 
 .wmt-search-row { max-width: 680px; }
 .wmt-searchbox {

@@ -79,12 +79,12 @@ func waitNamedIndex(ctx context.Context, name string) error {
 	return nil
 }
 
-func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country string, wanted map[string]bool, limit int) ([]Hit, []string, []string) {
+func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, role string, wanted map[string]bool, limit int) ([]Hit, []string, []string) {
 	if c != nil && c.DisablePublic {
 		return nil, nil, nil
 	}
 
-	queries := publicSearchQueries(keyword, wanted, country)
+	queries := publicSearchQueries(keyword, wanted, country, role)
 
 	var (
 		mu       sync.Mutex
@@ -186,14 +186,43 @@ var platformProfileSite = map[string]string{
 	PlatformTwitch:      "twitch.tv",
 }
 
-func publicSearchQueries(keyword string, wanted map[string]bool, country string) []publicQuery {
-	out := make([]publicQuery, 0, len(wanted)*2)
+func publicSearchQueries(keyword string, wanted map[string]bool, country, role string) []publicQuery {
+	out := make([]publicQuery, 0, len(wanted)*3)
 	cjk := hasCJK(keyword)
 	geo := CountryQueryToken(country, cjk)
-	intent := merchantIntentKeyword(keyword)
-	if geo != "" {
-		intent = strings.TrimSpace(intent + " " + geo)
+	role = NormalizeRole(role)
+	intents := merchantIntentKeywords(keyword, role)
+	if len(intents) == 0 {
+		return out
 	}
+
+	seen := make(map[string]bool, len(wanted)*3)
+	add := func(platform, query string) {
+		query = strings.TrimSpace(query)
+		if platform == "" || query == "" {
+			return
+		}
+		key := platform + "\t" + query
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, publicQuery{platform: platform, query: query})
+	}
+	withGeo := func(q string) string {
+		if geo == "" {
+			return q
+		}
+
+		return strings.TrimSpace(q + " " + geo)
+	}
+
+	buyerExtra := map[string]bool{
+		PlatformFacebook:  true,
+		PlatformInstagram: true,
+		PlatformLinkedIn:  true,
+	}
+
 	for _, platform := range publicSearchOrder {
 		if !wanted[platform] {
 			continue
@@ -206,30 +235,48 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country string)
 			continue
 		}
 
+		primary := withGeo(intents[0])
 		if cjk {
-			out = append(out, publicQuery{platform: platform, query: intent + " " + PeoplePlatformLabel(platform)})
+			add(platform, primary+" "+PeoplePlatformLabel(platform))
 		}
-		siteKW := intent
-		switch platform {
-		case PlatformFacebook, PlatformInstagram, PlatformLinkedIn, PlatformX:
-			siteKW = keyword
-			if geo != "" {
-				siteKW = strings.TrimSpace(keyword + " " + geo)
+		add(platform, "site:"+site+" "+primary)
+
+		if buyerExtra[platform] && len(intents) > 1 {
+			add(platform, "site:"+site+" "+withGeo(intents[1]))
+		}
+		if role == RoleSeller && buyerExtra[platform] {
+			add(platform, "site:"+site+" "+withGeo(keyword))
+		}
+		if platform == PlatformLinkedIn {
+			if role == RoleSeller {
+				add(platform, "site:linkedin.com/company "+withGeo(keyword+" manufacturer"))
+			} else {
+				add(platform, "site:linkedin.com/company "+withGeo(keyword+" importer"))
+				add(platform, "site:linkedin.com/company "+withGeo(keyword+" buyer"))
 			}
 		}
-		out = append(out, publicQuery{platform: platform, query: "site:" + site + " " + siteKW})
 	}
 
 	return out
 }
 
-func merchantIntentKeyword(keyword string) string {
+func merchantIntentKeywords(keyword, role string) []string {
 	keyword = strings.TrimSpace(keyword)
+	if keyword == "" {
+		return nil
+	}
+	if NormalizeRole(role) == RoleSeller {
+		if hasCJK(keyword) {
+			return []string{keyword + " 批发"}
+		}
+
+		return []string{keyword + " wholesaler"}
+	}
 	if hasCJK(keyword) {
-		return keyword + " 批发"
+		return []string{keyword + " 采购", keyword + " 进口商"}
 	}
 
-	return keyword + " wholesaler"
+	return []string{keyword + " importer", keyword + " buyer"}
 }
 
 func hasCJK(s string) bool {

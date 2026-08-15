@@ -40,7 +40,7 @@
               </div>
               <ul class="wmt-bullets" id="mode-bullets">
                 <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>不是地图搜店：输入商品或企业关键词</li>
-                <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>在抖音、TikTok、Facebook 等找批发 / 店铺等目标商家</li>
+                <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>先选找买家还是找卖家：买家是采购商 / 进口商，卖家是厂家 / 批发</li>
                 <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>拿到的是社媒主页，不是视频或笔记</li>
                 <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>去私信：在右侧打开主页预览，系统不代发</li>
               </ul>
@@ -48,10 +48,18 @@
                 <button type="button" class="is-on" data-channel="email">邮箱</button>
                 <button type="button" data-channel="whatsapp">WhatsApp</button>
               </div>
+              <div class="wmt-role-row">
+                <span class="wmt-role-label">找谁</span>
+                <div class="wmt-channel" id="role-group-landing" role="tablist" aria-label="买家或卖家">
+                  <button type="button" class="is-on" data-role="buyer">找买家</button>
+                  <button type="button" data-role="seller">找卖家</button>
+                </div>
+              </div>
+              <p class="wmt-role-hint" id="role-hint-landing">默认找会买这些货的采购商、进口商；可改成找厂家 / 批发商。</p>
               <form id="landing-form" class="wmt-search-row">
                 <div class="wmt-searchbox">
                   <svg class="wmt-icon" style="color:#8f959e"><use href="#i-search"/></svg>
-                  <input type="text" id="keyword-landing" placeholder="请输入企业或商品名称" maxlength="64" autocomplete="off" />
+                  <input type="text" id="keyword-landing" placeholder="请输入商品名称，例如 LED灯" maxlength="64" autocomplete="off" />
                   <select id="country-landing" class="wmt-country" aria-label="国家/地区"></select>
                   <label class="wmt-precise"><input type="checkbox" id="precise-landing"> 精确</label>
                   <button type="submit" class="wmt-search-btn" id="landing-btn">搜索</button>
@@ -59,12 +67,12 @@
               </form>
               <p class="wmt-kw-err" id="keyword-error-landing" hidden></p>
               <div class="wmt-examples">试试：
+                <button type="button" class="wmt-ex" data-q="LED灯">LED灯</button>
                 <button type="button" class="wmt-ex" data-q="电动工具">电动工具</button>
                 <button type="button" class="wmt-ex" data-q="power tools">power tools</button>
-                <button type="button" class="wmt-ex" data-q="配电柜厂家">配电柜厂家</button>
                 <button type="button" class="wmt-ex" data-q="furniture">furniture</button>
               </div>
-              <p class="wmt-cover">只返回可打开的社媒主页，不含视频；可选国家缩小市场。公开索引会尽量收回能解析的主页，做不到全网不漏。</p>
+              <p class="wmt-cover">结果按企业列表展示：名称、买家/卖家、平台、主页、简介。公开索引会尽量收回能解析的主页，做不到全网不漏，也没有海关库。</p>
             </div>
             <div class="wmt-ai-orb" aria-hidden="true">
               <span class="wmt-ai-ring wmt-ai-ring-1"></span>
@@ -80,7 +88,7 @@
               <div class="wmt-feat-ico"><i data-lucide="share-2" class="w-5 h-5"></i></div>
               <div>
                 <h3>社媒获客</h3>
-                <p>输入商品或企业名称，从抖音、TikTok、Facebook、LinkedIn 等找到店主 / 决策人公开主页，在官方页手动私信。系统不代发。</p>
+                <p>输入商品名称，选择找买家或卖家。买家搜采购商 / 进口商，卖家搜厂家 / 批发。结果是可打开的社媒主页，在官方页手动私信。系统不代发。</p>
               </div>
             </article>
             <article class="wmt-feat">
@@ -108,9 +116,13 @@
             <button type="button" class="is-on" data-mode="homepage">私信模式</button>
             <button type="button" data-mode="marketing">营销模式</button>
           </div>
+          <div class="wmt-channel" id="role-group" role="tablist" aria-label="买家或卖家">
+            <button type="button" class="is-on" data-role="buyer">找买家</button>
+            <button type="button" data-role="seller">找卖家</button>
+          </div>
           <div class="wmt-searchbox">
             <svg class="wmt-icon" style="color:#8f959e"><use href="#i-search"/></svg>
-            <input type="text" id="keyword" name="keyword" placeholder="请输入企业或商品名称" maxlength="64" autocomplete="off" />
+            <input type="text" id="keyword" name="keyword" placeholder="请输入商品名称，例如 LED灯" maxlength="64" autocomplete="off" />
             <select id="country" class="wmt-country" aria-label="国家/地区"></select>
             <label class="wmt-precise"><input type="checkbox" id="precise"> 精确</label>
             <button type="submit" class="wmt-search-btn" id="discover-btn">搜索</button>
@@ -145,15 +157,16 @@
               <thead id="discover-thead">
                 <tr>
                   <th>名称</th>
-                  <th>平台</th>
-                  <th>账号</th>
+                  <th style="width:72px">类型</th>
+                  <th style="width:130px">平台</th>
                   <th>主页</th>
-                  <th>操作</th>
+                  <th>简介</th>
+                  <th style="width:160px">操作</th>
                 </tr>
               </thead>
               <tbody id="discover-results"></tbody>
             </table>
-            <div id="discover-empty" class="wmt-empty">暂无结果。请输入企业或商品名称后搜索。</div>
+            <div id="discover-empty" class="wmt-empty">暂无结果。请输入商品名称后搜索。</div>
           </div>
           <aside id="preview-pane" class="wmt-preview" aria-label="主页预览">
             <div id="preview-empty" class="wmt-preview-empty">点击左侧「打开主页」或「去私信」，在这里查看主页并写草稿。系统不会代发。</div>

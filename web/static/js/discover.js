@@ -15,13 +15,14 @@
   let catalog = [];
   let mode = "homepage";
   let channel = "email";
+  let role = "buyer";
   let lastHits = [];
   let page = 1;
   const PAGE_SIZE = 20;
 
   const HOME_BULLETS = [
     "不是地图搜店：输入商品或企业关键词",
-    "在抖音、TikTok、Facebook 等找批发 / 店铺等目标商家",
+    "先选找买家还是找卖家：买家是采购商 / 进口商，卖家是厂家 / 批发",
     "拿到的是社媒主页，不是视频或笔记",
     "去私信：在右侧打开主页预览，系统不代发"
   ];
@@ -260,6 +261,38 @@
     return on ? on.getAttribute("data-channel") : channel;
   }
 
+  function selectedRole() {
+    const on = document.querySelector("#role-group button.is-on") ||
+      document.querySelector("#role-group-landing button.is-on");
+    return on ? on.getAttribute("data-role") : role;
+  }
+
+  function bindRole() {
+    document.querySelectorAll("button[data-role]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setRole(btn.getAttribute("data-role"));
+      });
+    });
+  }
+
+  function setRole(next) {
+    const prev = role;
+    role = next === "seller" ? "seller" : "buyer";
+    document.querySelectorAll("button[data-role]").forEach(function (el) {
+      el.classList.toggle("is-on", el.getAttribute("data-role") === role);
+    });
+    const hint = document.getElementById("role-hint-landing");
+    if (hint) {
+      hint.textContent = role === "seller"
+        ? "找卖家：公开网页里的厂家、批发商、品牌店铺。"
+        : "默认找会买这些货的采购商、进口商；可改成找厂家 / 批发商。";
+    }
+    const onLanding = !landing.classList.contains("hidden");
+    if (prev !== role && !onLanding && keyword.value && mode !== "marketing") {
+      doSearch(keyword.value);
+    }
+  }
+
   function bindMode() {
     document.querySelectorAll("button[data-mode]").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -288,6 +321,14 @@
       const el = document.getElementById(id);
       if (el) el.hidden = !marketing;
     });
+    ["role-group", "role-group-landing"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.hidden = marketing;
+    });
+    const roleRow = document.querySelector(".wmt-role-row");
+    if (roleRow) roleRow.hidden = marketing;
+    const roleHint = document.getElementById("role-hint-landing");
+    if (roleHint) roleHint.hidden = marketing;
     const actions = document.getElementById("market-actions");
     if (actions) actions.hidden = !marketing || onLanding;
     const crumb = document.getElementById("results-crumb");
@@ -303,7 +344,7 @@
     if (thead) {
       thead.innerHTML = marketing
         ? "<tr><th style=\"width:36px\"></th><th>账号或邮箱</th><th>网页标题</th><th>来源链接</th><th style=\"width:120px\">操作</th></tr>"
-        : "<tr><th>名称</th><th style=\"width:130px\">平台</th><th style=\"width:180px\">账号</th><th>主页</th><th style=\"width:160px\">操作</th></tr>";
+        : "<tr><th>名称</th><th style=\"width:72px\">类型</th><th style=\"width:130px\">平台</th><th>主页</th><th>简介</th><th style=\"width:160px\">操作</th></tr>";
     }
     if (prev !== mode && !onLanding && keyword.value) {
       doSearch(keyword.value);
@@ -372,7 +413,9 @@
 
     landing.classList.add("hidden");
     resultsView.classList.remove("hidden");
-    status.textContent = mode === "marketing" ? "正在检索公开邮箱 / WhatsApp…" : "正在检索公开主页…";
+    status.textContent = mode === "marketing"
+      ? "正在检索公开邮箱 / WhatsApp…"
+      : (selectedRole() === "seller" ? "正在检索公开卖家主页…" : "正在检索会买这些货的采购商 / 进口商…");
     warnings.classList.add("hidden");
     warnings.textContent = "";
     results.innerHTML = "";
@@ -396,6 +439,7 @@
         limit: 0,
         precise: isPrecise(),
         country: selectedCountry(),
+        role: mode === "marketing" ? "" : selectedRole(),
       }),
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -425,7 +469,9 @@
         }
         page = 1;
         status.textContent = lastHits.length
-          ? ("已找到 " + lastHits.length + (mode === "marketing" ? " 条联系方式" : " 条主页"))
+          ? ("已找到 " + lastHits.length + (mode === "marketing"
+            ? " 条联系方式"
+            : (selectedRole() === "seller" ? " 条卖家主页" : " 条买家主页")))
           : "";
         const actions = document.getElementById("market-actions");
         if (actions) actions.hidden = mode !== "marketing";
@@ -496,6 +542,18 @@
     return "@" + h;
   }
 
+  function shortSnippet(s) {
+    s = String(s || "").replace(/\s+/g, " ").trim();
+    if (!s) return "—";
+    if (s.length > 80) return s.slice(0, 78) + "…";
+    return s;
+  }
+
+  function roleLabel(h) {
+    const r = String((h && h.role) || selectedRole() || "buyer").toLowerCase();
+    return r === "seller" ? "卖家" : "买家";
+  }
+
   function cell(text, cls) {
     text = text || "—";
     return '<td class="' + (cls || "") + '" title="' + escapeAttr(text) + '"><span class="cell-clip">' +
@@ -512,7 +570,9 @@
       empty.classList.remove("hidden");
       empty.textContent = isPrecise()
         ? "精确模式下没有命中，可关掉「精确」或换更具体的词再搜。"
-        : "没有命中公开主页。可换更具体的词（例如「配电柜厂家」），或勾选抖音、小红书后再搜。";
+        : (selectedRole() === "seller"
+          ? "没有命中公开卖家主页。可换更具体的商品词，或勾选抖音、小红书后再搜。"
+          : "没有命中公开采购商 / 进口商主页。可换英文词（例如 LED light）、勾选 LinkedIn / Facebook，或改成找卖家。");
       foot.textContent = "";
       updatePager();
       results.innerHTML = "";
@@ -527,6 +587,8 @@
       const msg = h.message_url || home;
       const src = home.replace(/^https?:\/\/(www\.)?/, "");
       const name = h.name || handle || "—";
+      const snip = shortSnippet(h.snippet || h.title || "");
+      const kind = roleLabel(h);
       const via = h.extra && h.extra.via
         ? '<span class="hit-via" title="' + escapeAttr("从已找到的主页扩出") + '">同源</span>'
         : "";
@@ -534,12 +596,14 @@
         "<tr>" +
           '<td class="hit-title" title="' + escapeAttr(name) + '"><span class="cell-clip">' +
             escapeHtml(name) + "</span>" + via + "</td>" +
+          '<td class="col-role"><span class="hit-role ' + (kind === "卖家" ? "is-seller" : "is-buyer") + '">' +
+            escapeHtml(kind) + "</span></td>" +
           '<td class="col-plat"><span class="hit-badge">' + platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></span></td>" +
-          cell(shortHandle(handle), "") +
           "<td>" + (home
             ? '<a class="hit-home" target="_blank" rel="noopener" href="' + escapeAttr(home) + '" title="' + escapeAttr(src) + '">' +
                 platformSvg(plat) + "<span>" + escapeHtml(src) + "</span></a>"
             : "—") + "</td>" +
+          cell(snip, "col-snip") +
           '<td class="row-actions">' +
             '<button type="button" class="linkish" data-open="home" data-url="' + escapeAttr(home) +
               '" data-name="' + escapeAttr(name) + '" data-platform="' + escapeAttr(plat) +
@@ -773,11 +837,13 @@
 
   bindMode();
   bindChannel();
+  bindRole();
   bindPrecise();
   bindCountry();
   bindKeywordFields();
   bindExamples();
   setMode("homepage");
+  setRole("buyer");
   loadPlatforms();
   loadCountries();
 })();

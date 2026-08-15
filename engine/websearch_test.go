@@ -149,41 +149,97 @@ func TestIndexAttemptsSkipsDDGAfterChallenge(t *testing.T) {
 
 func TestPublicSearchQueriesCJKUsesPlatformLabel(t *testing.T) {
 	wanted := map[string]bool{PlatformDouyin: true, PlatformFacebook: true}
-	qs := publicSearchQueries("配电", wanted, "")
-	if len(qs) != 4 {
-		t.Fatalf("queries=%+v", qs)
+	qs := publicSearchQueries("配电", wanted, "", RoleBuyer)
+	got := queryStrings(qs)
+	for _, want := range []string{
+		"配电 采购 抖音",
+		"site:douyin.com/user 配电 采购",
+		"配电 采购 Facebook",
+		"site:facebook.com 配电 采购",
+		"site:facebook.com 配电 进口商",
+	} {
+		if !containsString(got, want) {
+			t.Fatalf("missing %q in %+v", want, got)
+		}
 	}
-	if qs[0].platform != PlatformDouyin || qs[0].query != "配电 批发 抖音" {
-		t.Fatalf("douyin first %+v", qs[0])
+	for _, forbid := range got {
+		if strings.Contains(forbid, "批发") {
+			t.Fatalf("buyer query leaked seller intent %+v", qs)
+		}
 	}
-	if qs[1].platform != PlatformDouyin || qs[1].query != "site:douyin.com/user 配电 批发" {
-		t.Fatalf("douyin site %+v", qs[1])
-	}
-	if qs[2].platform != PlatformFacebook || qs[2].query != "配电 批发 Facebook" {
-		t.Fatalf("facebook %+v", qs[2])
-	}
-	if qs[3].query != "site:facebook.com 配电" {
-		t.Fatalf("facebook site %+v", qs[3])
+}
+
+func TestPublicSearchQueriesSellerKeepsWholesale(t *testing.T) {
+	wanted := map[string]bool{PlatformDouyin: true, PlatformFacebook: true}
+	qs := publicSearchQueries("配电", wanted, "", RoleSeller)
+	got := queryStrings(qs)
+	for _, want := range []string{
+		"配电 批发 抖音",
+		"site:douyin.com/user 配电 批发",
+		"配电 批发 Facebook",
+		"site:facebook.com 配电 批发",
+		"site:facebook.com 配电",
+	} {
+		if !containsString(got, want) {
+			t.Fatalf("missing %q in %+v", want, got)
+		}
 	}
 }
 
 func TestPublicSearchQueriesEnglishUsesSite(t *testing.T) {
 	wanted := map[string]bool{PlatformTikTok: true}
-	qs := publicSearchQueries("power tools", wanted, "")
-	if len(qs) != 1 || qs[0].query != "site:tiktok.com/@ power tools wholesaler" {
+	qs := publicSearchQueries("power tools", wanted, "", RoleBuyer)
+	if len(qs) != 1 || qs[0].query != "site:tiktok.com/@ power tools importer" {
 		t.Fatalf("%+v", qs)
 	}
 }
 
 func TestPublicSearchQueriesAppendsCountry(t *testing.T) {
 	wanted := map[string]bool{PlatformFacebook: true}
-	qs := publicSearchQueries("LED灯", wanted, "MY")
-	if len(qs) != 2 {
-		t.Fatalf("%+v", qs)
+	qs := publicSearchQueries("LED灯", wanted, "MY", RoleBuyer)
+	if len(qs) == 0 {
+		t.Fatal("no queries")
 	}
-	if !strings.Contains(qs[0].query, "马来西亚") || !strings.Contains(qs[1].query, "马来西亚") {
-		t.Fatalf("country missing %+v", qs)
+	for _, q := range qs {
+		if !strings.Contains(q.query, "马来西亚") {
+			t.Fatalf("country missing %+v", q)
+		}
 	}
+}
+
+func TestPublicSearchQueriesLinkedInBuyer(t *testing.T) {
+	wanted := map[string]bool{PlatformLinkedIn: true}
+	qs := publicSearchQueries("LED light", wanted, "", RoleBuyer)
+	got := queryStrings(qs)
+	for _, want := range []string{
+		"site:linkedin.com LED light importer",
+		"site:linkedin.com LED light buyer",
+		"site:linkedin.com/company LED light importer",
+		"site:linkedin.com/company LED light buyer",
+	} {
+		if !containsString(got, want) {
+			t.Fatalf("missing %q in %+v", want, got)
+		}
+	}
+}
+
+func queryStrings(qs []publicQuery) []string {
+	out := make([]string, 0, len(qs))
+	for _, q := range qs {
+		out = append(out, q.query)
+	}
+
+	return out
+}
+
+func containsString(items []string, want string) bool {
+	for _, s := range items {
+		if s == want {
+			return true
+		}
+	}
+
+	return false
 }
 
 func TestHasCJK(t *testing.T) {

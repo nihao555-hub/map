@@ -1,6 +1,9 @@
 package engine
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Platform identifiers used by the intelligent engine search.
 const (
@@ -48,6 +51,9 @@ const (
 
 	ChannelEmail    = "email"
 	ChannelWhatsApp = "whatsapp"
+
+	RoleBuyer  = "buyer"
+	RoleSeller = "seller"
 )
 
 // Query is a single customer-discovery search request.
@@ -60,6 +66,17 @@ type Query struct {
 	Channel   string   `json:"channel,omitempty"`
 	Precise   bool     `json:"precise,omitempty"`
 	Country   string   `json:"country,omitempty"`
+	Role      string   `json:"role,omitempty"`
+}
+
+// NormalizeRole maps UI input onto buyer (default) or seller search.
+func NormalizeRole(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case RoleSeller, "sell", "supplier", "factory", "厂家", "卖家", "批发":
+		return RoleSeller
+	default:
+		return RoleBuyer
+	}
 }
 
 // Hit is one discovered person, homepage, exhibition, or trade record.
@@ -78,6 +95,7 @@ type Hit struct {
 	Channel     string            `json:"channel,omitempty"`
 	Source      string            `json:"source,omitempty"`
 	Score       int               `json:"score"`
+	Role        string            `json:"role,omitempty"`
 	Extra       map[string]string `json:"extra,omitempty"`
 }
 

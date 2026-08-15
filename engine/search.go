@@ -45,6 +45,10 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 		q.Mode = ModeHomepage
 	}
 
+	if q.Kind == KindPeople {
+		q.Role = NormalizeRole(q.Role)
+	}
+
 	if q.Limit < 0 {
 		q.Limit = 0
 	}
@@ -125,7 +129,7 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		items, warns, srcs := c.searchPublicProfiles(gctx, q.Keyword, q.Country, wanted, q.Limit)
+		items, warns, srcs := c.searchPublicProfiles(gctx, q.Keyword, q.Country, q.Role, wanted, q.Limit)
 		src := strings.Join(srcs, "+")
 		warn := strings.Join(warns, "; ")
 		add(items, src, warn, nil)
@@ -171,11 +175,11 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 
 	_ = g.Wait()
 
-	merged := mergeHits(hits, q.Keyword, q.Limit)
+	merged := mergeHits(hits, q.Keyword, q.Limit, q.Role)
 	if len(merged) > 0 {
 		extra := c.expandMerchantSocials(ctx, merged, wanted)
 		if len(extra) > 0 {
-			merged = mergeHits(append(merged, extra...), q.Keyword, q.Limit)
+			merged = mergeHits(append(merged, extra...), q.Keyword, q.Limit, q.Role)
 			sources = append(sources, "expand-socials")
 		}
 		merged = groupExpandedHits(merged)
@@ -216,7 +220,7 @@ func customsUnavailable(keyword string) Result {
 	}
 }
 
-func mergeHits(items []Hit, keyword string, limit int) []Hit {
+func mergeHits(items []Hit, keyword string, limit int, role string) []Hit {
 	seen := make(map[string]Hit, len(items))
 	order := make([]string, 0, len(items))
 	kw := strings.ToLower(strings.TrimSpace(keyword))
@@ -233,7 +237,10 @@ func mergeHits(items []Hit, keyword string, limit int) []Hit {
 		}
 
 		hit.Score += keywordBonus(hit, kw)
-		hit.Score += merchantBonus(hit, kw)
+		hit.Score += merchantBonus(hit, kw, role)
+		if role != "" {
+			hit.Role = inferHitRole(hit, role)
+		}
 		if prev, ok := seen[hit.ID]; ok {
 			if hit.Score > prev.Score {
 				seen[hit.ID] = hit
@@ -307,7 +314,7 @@ func keywordBonus(hit Hit, kw string) int {
 	}
 }
 
-func merchantBonus(hit Hit, kw string) int {
+func merchantBonus(hit Hit, kw, role string) int {
 	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.HomepageURL}, " "))
 	score := 0
 	if isProfileURL(hit.HomepageURL) {
@@ -316,14 +323,52 @@ func merchantBonus(hit Hit, kw string) int {
 	if isContentURL(hit.HomepageURL) {
 		score -= 18
 	}
-	if hasMerchantToken(blob) {
-		score += 22
-	}
-	if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasMerchantToken(blob) {
-		score -= 28
+
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case RoleBuyer:
+		if hasBuyerToken(blob) {
+			score += 24
+		}
+		if hasCompanyToken(blob) {
+			score += 6
+		}
+		if hasSellerToken(blob) && !hasBuyerToken(blob) {
+			score -= 16
+		}
+		if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasBuyerToken(blob) {
+			score -= 28
+		}
+	case RoleSeller:
+		if hasSellerToken(blob) {
+			score += 22
+		}
+		if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasMerchantToken(blob) {
+			score -= 28
+		}
+	default:
+		if hasMerchantToken(blob) {
+			score += 22
+		}
+		if kw != "" && !strings.Contains(blob, foldSearchText(kw)) && !hasMerchantToken(blob) {
+			score -= 28
+		}
 	}
 
 	return score
+}
+
+func inferHitRole(hit Hit, queryRole string) string {
+	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet}, " "))
+	buy := hasBuyerToken(blob)
+	sell := hasSellerToken(blob)
+	switch {
+	case buy && !sell:
+		return RoleBuyer
+	case sell && !buy:
+		return RoleSeller
+	default:
+		return NormalizeRole(queryRole)
+	}
 }
 
 func genericSocialLabel(name string) bool {
@@ -403,20 +448,64 @@ func isProfileURL(raw string) bool {
 }
 
 func hasMerchantToken(blob string) bool {
+	return hasBuyerToken(blob) || hasSellerToken(blob) || hasShopToken(blob)
+}
+
+func hasBuyerToken(blob string) bool {
 	tokens := []string{
-		"厂家", "工厂", "专卖", "批发", "经销", "贸易", "进口", "出口", "采购", "商行",
-		"照明", "灯饰", "店铺", "官方", "供应",
-		"official", "wholesaler", "wholesale", "importer", "distributor",
-		"retailer", "factory", "lighting", "trading", "supplier", "store", "shop",
+		"采购", "进口商", "进口", "采购商", "采购部",
+		"importer", "importers", "buyer", "buyers",
+		"procurement", "purchasing", "importing",
 	}
-	for _, tok := range tokens {
-		if strings.Contains(blob, tok) {
+	return containsAnyToken(blob, tokens)
+}
+
+func hasSellerToken(blob string) bool {
+	tokens := []string{
+		"厂家", "工厂", "专卖", "批发", "经销", "供应", "制造商",
+		"wholesaler", "wholesale", "factory", "manufacturer",
+		"supplier", "distributor",
+	}
+	if containsAnyToken(blob, tokens) {
+		return true
+	}
+	for _, r := range []rune(blob) {
+		if r == '厂' {
 			return true
 		}
 	}
-	// 「店」「厂」太短，只在独立词里算商家。
+
+	return false
+}
+
+func hasShopToken(blob string) bool {
+	tokens := []string{
+		"店铺", "官方", "商行", "贸易",
+		"official", "trading", "retailer", "store", "shop",
+	}
+	if containsAnyToken(blob, tokens) {
+		return true
+	}
 	for _, r := range []rune(blob) {
-		if r == '店' || r == '厂' {
+		if r == '店' {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasCompanyToken(blob string) bool {
+	tokens := []string{
+		"有限公司", "有限责任", "集团", " ltd", "llc", "gmbh", "pte",
+		"sdn bhd", " co.", "company", "corp",
+	}
+	return containsAnyToken(blob, tokens)
+}
+
+func containsAnyToken(blob string, tokens []string) bool {
+	for _, tok := range tokens {
+		if strings.Contains(blob, tok) {
 			return true
 		}
 	}
