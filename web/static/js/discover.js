@@ -1,15 +1,11 @@
 (function () {
-  const landing = document.getElementById("landing");
-  const resultsView = document.getElementById("results-view");
   const form = document.getElementById("discover-form");
-  const landingForm = document.getElementById("landing-form");
   const status = document.getElementById("discover-status");
   const warnings = document.getElementById("discover-warnings");
   const results = document.getElementById("discover-results");
   const empty = document.getElementById("discover-empty");
   const foot = document.getElementById("discover-foot");
   const keyword = document.getElementById("keyword");
-  const keywordLanding = document.getElementById("keyword-landing");
   const toastEl = document.getElementById("toast");
 
   let catalog = [];
@@ -19,20 +15,6 @@
   let lastHits = [];
   let page = 1;
   const PAGE_SIZE = 20;
-
-  const HOME_BULLETS = [
-    "不是地图搜店：输入商品或企业关键词",
-    "先选找买家还是找卖家：买家是采购商 / 进口商，卖家是厂家 / 批发",
-    "默认检索全部已支持社媒主页，可在下方取消勾选",
-    "输入时选国家：按地图获客同一套语言表展开当地检索词",
-    "去私信：在右侧打开主页预览，系统不代发"
-  ];
-  const MARKET_BULLETS = [
-    "营销模式对齐网易外贸通智能引擎：找已公开的联系方式",
-    "从公开网页抽取邮箱或 WhatsApp",
-    "结果是账号或邮箱、网页标题、来源链接",
-    "一键营销在右侧写信，系统不代发"
-  ];
 
   const PLATFORM_ICONS = {
     facebook: { color: "#1877F2", path: "M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z" },
@@ -98,56 +80,34 @@
   }
 
   function showKeywordError(msg, toastOnResults) {
-    ["keyword-error-landing", "keyword-error"].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (!el) return;
+    const el = document.getElementById("keyword-error");
+    if (el) {
       el.hidden = !msg;
       el.textContent = msg || "";
-    });
-    if (msg && toastOnResults && landing.classList.contains("hidden")) toast(msg);
+    }
+    if (msg && toastOnResults) toast(msg);
   }
 
   function isPrecise() {
-    const a = document.getElementById("precise-landing");
     const b = document.getElementById("precise");
-    return !!(a && a.checked) || !!(b && b.checked);
+    return !!(b && b.checked);
   }
 
   function bindPrecise() {
-    ["precise-landing", "precise"].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener("change", function () {
-        const on = el.checked;
-        ["precise-landing", "precise"].forEach(function (other) {
-          const n = document.getElementById(other);
-          if (n) n.checked = on;
-        });
-        liveValidate();
-      });
-    });
+    const el = document.getElementById("precise");
+    if (el) el.addEventListener("change", liveValidate);
   }
 
   function selectedCountry() {
-    const a = document.getElementById("country-landing");
     const b = document.getElementById("country");
-    const v = (a && a.value) || (b && b.value) || "";
-    return String(v || "").toUpperCase();
+    return String((b && b.value) || "").toUpperCase();
   }
 
   function bindCountry() {
-    ["country-landing", "country"].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener("change", function () {
-        const v = el.value;
-        ["country-landing", "country"].forEach(function (other) {
-          const n = document.getElementById(other);
-          if (n) n.value = v;
-        });
-        if (!landing.classList.contains("hidden")) return;
-        if (keyword.value) doSearch(keyword.value);
-      });
+    const el = document.getElementById("country");
+    if (!el) return;
+    el.addEventListener("change", function () {
+      if (keyword.value) doSearch(keyword.value);
     });
   }
 
@@ -157,10 +117,8 @@
       const label = c.label || code || "不限";
       return '<option value="' + escapeAttr(code) + '">' + escapeHtml(label) + "</option>";
     }).join("");
-    ["country-landing", "country"].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = html;
-    });
+    const el = document.getElementById("country");
+    if (el) el.innerHTML = html;
   }
 
   function loadCountries() {
@@ -174,8 +132,7 @@
   }
 
   function liveValidate() {
-    const el = landing.classList.contains("hidden") ? keyword : keywordLanding;
-    const val = el ? el.value : "";
+    const val = keyword ? keyword.value : "";
     if (!normalizeKeyword(val)) {
       showKeywordError("");
       return;
@@ -184,17 +141,9 @@
   }
 
   function bindKeywordFields() {
-    [keyword, keywordLanding].forEach(function (el) {
-      if (!el) return;
-      el.addEventListener("input", function () {
-        if (keyword && keywordLanding) {
-          if (el === keywordLanding) keyword.value = el.value;
-          else keywordLanding.value = el.value;
-        }
-        liveValidate();
-      });
-      el.addEventListener("blur", liveValidate);
-    });
+    if (!keyword) return;
+    keyword.addEventListener("input", liveValidate);
+    keyword.addEventListener("blur", liveValidate);
   }
 
   function bindExamples() {
@@ -222,16 +171,25 @@
     root.querySelectorAll(".plat-chip").forEach(function (btn) {
       btn.addEventListener("click", function () {
         btn.classList.toggle("is-on");
-        syncChips(btn);
+        updatePlatCount();
       });
     });
   }
 
-  function syncChips(src) {
-    const id = src.getAttribute("data-platform");
-    const on = src.classList.contains("is-on");
-    document.querySelectorAll('.plat-chip[data-platform="' + id + '"]').forEach(function (el) {
-      el.classList.toggle("is-on", on);
+  function updatePlatCount() {
+    const n = document.querySelectorAll("#platform-group .plat-chip.is-on").length;
+    const el = document.getElementById("plat-count");
+    if (el) el.textContent = String(n);
+  }
+
+  function bindPlatToggle() {
+    const btn = document.getElementById("plat-toggle");
+    const panel = document.getElementById("plat-panel");
+    if (!btn || !panel) return;
+    btn.addEventListener("click", function () {
+      const open = panel.classList.toggle("hidden") === false;
+      btn.classList.toggle("is-on", open);
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
     });
   }
 
@@ -241,12 +199,11 @@
       return '<button type="button" class="plat-chip' + on + '" data-platform="' + escapeAttr(p.id) + '">' +
         platformSvg(p.id) + "<span>" + escapeHtml(p.label) + "</span></button>";
     }).join("");
-    ["platform-group", "platform-group-landing"].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.innerHTML = html;
-      bindChips(el);
-    });
+    const el = document.getElementById("platform-group");
+    if (!el) return;
+    el.innerHTML = html;
+    bindChips(el);
+    updatePlatCount();
   }
 
   function selectedPlatforms() {
@@ -261,14 +218,12 @@
   }
 
   function selectedChannel() {
-    const on = document.querySelector("#channel-group button.is-on") ||
-      document.querySelector("#channel-group-landing button.is-on");
+    const on = document.querySelector("#channel-group button.is-on");
     return on ? on.getAttribute("data-channel") : channel;
   }
 
   function selectedRole() {
-    const on = document.querySelector("#role-group button.is-on") ||
-      document.querySelector("#role-group-landing button.is-on");
+    const on = document.querySelector("#role-group button.is-on");
     return on ? on.getAttribute("data-role") : role;
   }
 
@@ -286,14 +241,7 @@
     document.querySelectorAll("button[data-role]").forEach(function (el) {
       el.classList.toggle("is-on", el.getAttribute("data-role") === role);
     });
-    const hint = document.getElementById("role-hint-landing");
-    if (hint) {
-      hint.textContent = role === "seller"
-        ? "找卖家：公开网页里的厂家、批发商、品牌店铺。"
-        : "默认找会买这些货的采购商、进口商；可改成找厂家 / 批发商。";
-    }
-    const onLanding = !landing.classList.contains("hidden");
-    if (prev !== role && !onLanding && keyword.value && mode !== "marketing") {
+    if (prev !== role && keyword.value && mode !== "marketing") {
       doSearch(keyword.value);
     }
   }
@@ -321,37 +269,19 @@
       el.classList.toggle("is-on", el.getAttribute("data-mode") === mode);
     });
     const marketing = mode === "marketing";
-    const onLanding = !landing.classList.contains("hidden");
-    ["channel-group", "channel-group-landing"].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (el) el.hidden = !marketing;
-    });
-    ["role-group", "role-group-landing"].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (el) el.hidden = marketing;
-    });
-    const roleRow = document.querySelector(".wmt-role-row");
-    if (roleRow) roleRow.hidden = marketing;
-    const roleHint = document.getElementById("role-hint-landing");
-    if (roleHint) roleHint.hidden = marketing;
+    const channelEl = document.getElementById("channel-group");
+    if (channelEl) channelEl.hidden = !marketing;
+    const roleEl = document.getElementById("role-group");
+    if (roleEl) roleEl.hidden = marketing;
     const actions = document.getElementById("market-actions");
-    if (actions) actions.hidden = !marketing || onLanding;
-    const crumb = document.getElementById("results-crumb");
-    if (crumb) crumb.textContent = marketing ? "营销获客" : "社媒主页";
-    const bullets = document.getElementById("mode-bullets");
-    if (bullets) {
-      const items = marketing ? MARKET_BULLETS : HOME_BULLETS;
-      bullets.innerHTML = items.map(function (t) {
-        return '<li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>' + t + "</li>";
-      }).join("");
-    }
+    if (actions) actions.hidden = !marketing;
     const thead = document.getElementById("discover-thead");
     if (thead) {
       thead.innerHTML = marketing
         ? "<tr><th style=\"width:36px\"></th><th>账号或邮箱</th><th>网页标题</th><th>来源链接</th><th style=\"width:120px\">操作</th></tr>"
         : "<tr><th>名称</th><th style=\"width:72px\">类型</th><th style=\"width:88px\">国家</th><th style=\"width:130px\">平台</th><th>主页</th><th>简介</th><th style=\"width:160px\">操作</th></tr>";
     }
-    if (prev !== mode && !onLanding && keyword.value) {
+    if (prev !== mode && keyword.value) {
       doSearch(keyword.value);
       return;
     }
@@ -363,7 +293,6 @@
     document.querySelectorAll("button[data-channel]").forEach(function (el) {
       el.classList.toggle("is-on", el.getAttribute("data-channel") === channel);
     });
-    if (!landing.classList.contains("hidden")) return;
     if (mode === "marketing" && keyword.value) doSearch(keyword.value);
   }
 
@@ -382,12 +311,10 @@
   }
 
   function setBusy(on) {
-    ["landing-btn", "discover-btn"].forEach(function (id) {
-      const b = document.getElementById(id);
-      if (!b) return;
-      b.disabled = on;
-      b.textContent = on ? "搜索中" : "搜索";
-    });
+    const b = document.getElementById("discover-btn");
+    if (!b) return;
+    b.disabled = on;
+    b.textContent = on ? "搜索中" : "搜索";
   }
 
   function doSearch(kw) {
@@ -414,10 +341,6 @@
     }
     showKeywordError("");
     keyword.value = kw;
-    if (keywordLanding) keywordLanding.value = kw;
-
-    landing.classList.add("hidden");
-    resultsView.classList.remove("hidden");
     const nPlat = selectedPlatforms().length;
     status.textContent = mode === "marketing"
       ? "正在检索公开邮箱 / WhatsApp…"
@@ -497,10 +420,6 @@
       });
   }
 
-  landingForm.addEventListener("submit", function (ev) {
-    ev.preventDefault();
-    doSearch(keywordLanding.value);
-  });
   form.addEventListener("submit", function (ev) {
     ev.preventDefault();
     doSearch(keyword.value);
@@ -863,6 +782,7 @@
   bindCountry();
   bindKeywordFields();
   bindExamples();
+  bindPlatToggle();
   setMode("homepage");
   setRole("buyer");
   loadPlatforms();

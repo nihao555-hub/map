@@ -23,15 +23,23 @@ func TestDiscoverPageRenders(t *testing.T) {
 
 	body := rec.Body.String()
 	for _, want := range []string{
-		"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "不是地图搜店",
+		"智能引擎搜索", "discover-form", "发开发信", "地图获客",
 		"私信模式", "营销模式", "一键营销", "preview-pane", "共 0 条", "/static/js/discover.js",
 		`id="app-rail"`, "/static/css/shell.css", "rail-item is-active",
-		"智能引擎能为你做什么", "精确", "试试", "wmt-features", "wmt-ai-orb", "开发信跟进",
-		"请输入商品名称，例如 LED灯", "找买家", "找卖家", "国家/地区", "wmt-country", "wmt-country-field",
-		"platform-group-landing", "16 个已支持社媒", "当地检索词",
+		"精确", "试试", "请输入商品名称，例如 LED灯", "找买家", "找卖家", "国家/地区",
+		`id="country"`, `id="platform-group"`, `id="plat-toggle"`, "wmt-query",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+
+	for _, forbid := range []string{
+		"wmt-hero", "wmt-ai-orb", "wmt-features", "landing-form", "platform-group-landing",
+		"智能引擎能为你做什么", "不是地图搜店", "开发信跟进",
+	} {
+		if strings.Contains(body, forbid) {
+			t.Fatalf("landing chrome %q should not appear", forbid)
 		}
 	}
 
