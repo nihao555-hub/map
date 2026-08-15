@@ -25,6 +25,10 @@ func newTestServer(t *testing.T, dir string) *Server {
 		srv.engine.USITCURL = ""
 		srv.engine.FairCalendarURL = ""
 		srv.engine.FairMapURL = ""
+		srv.engine.ImportYetiURL = ""
+		srv.engine.ImportYetiAPIURL = ""
+		srv.engine.ImportYetiAPIKey = ""
+		srv.engine.ImportYetiCookie = ""
 	}
 
 	return srv

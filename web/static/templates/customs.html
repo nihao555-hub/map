@@ -32,7 +32,7 @@
     <main class="wmt-main">
       <section id="landing-view" class="cus-landing">
         <h1>海关数据</h1>
-        <p class="cus-fresh">逐票企业来自美国海关公开提单，不是全球企业库。</p>
+        <p class="cus-fresh">逐票企业来自 ImportYeti 实时检索美国海关公开提单，不是一次性数据包。</p>
         <div class="cus-tabs" id="landing-tabs">
           <button type="button" class="is-on" data-role="buyer">搜采购商</button>
           <button type="button" data-role="seller">搜供应商</button>
@@ -47,10 +47,10 @@
           <button type="submit" class="wmt-search-btn">搜索</button>
         </form>
         <div class="cus-proof">
-          <article>覆盖美国海运公开提单，可按产品词或 HS 找进口商。</article>
-          <article>搜供应商时，从美国进口提单里的海外发货人汇总。</article>
-          <article>金额优先展示联合国 Comtrade 国家口径；逐票提单没有 USD 时留空。</article>
-          <article>点公司名打开居中弹层，查看供应商和近期提单。</article>
+          <article>ImportYeti 按产品词或企业名实时搜美国进口商，记录随公开提单更新。</article>
+          <article>搜供应商时，列出美国进口提单里的海外发货人，不是货源国汇总。</article>
+          <article>金额若有联合国 Comtrade 国家口径会写在备注里；逐票提单没有 USD 时留空。</article>
+          <article>点公司名打开弹层，并可跳到 ImportYeti 档案页。</article>
         </div>
       </section>
 
@@ -118,7 +118,7 @@
             </thead>
             <tbody id="results"></tbody>
           </table>
-          <div id="empty" class="wmt-empty">输入产品名称后搜索采购商。逐票买家目前来自美国海关公开提单。</div>
+          <div id="empty" class="wmt-empty">输入产品名称后搜索采购商。逐票买家来自 ImportYeti 的美国海关公开提单。</div>
         </div>
       </section>
     </main>

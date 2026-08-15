@@ -300,7 +300,7 @@ func TestExhibitionPageRenders(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"展会获客", "自研展会工作台", "找展会", "找参展商", "GitHub 公开数据集",
+		"展会获客", "自研展会工作台", "找展会", "找参展商", "Wikidata",
 		`id="data-nav"`, "/static/js/exhibition.js", "exh-board",
 	} {
 		if !strings.Contains(body, want) {

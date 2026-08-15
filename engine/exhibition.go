@@ -21,7 +21,7 @@ const (
 var fairTokenRe = regexp.MustCompile(`(?i)(trade fair|trade show|exhibition|expo|messe|salon|\bfairs?\b|展会|博览会|展览会)`)
 
 // searchExhibition finds trade fairs (default) or exhibitors (role=seller)
-// from Wikidata (public SPARQL) plus the same public web indexes 智能引擎 already uses.
+// from live Wikidata SPARQL plus the same public web indexes 智能引擎 already uses.
 func (c *Client) searchExhibition(ctx context.Context, q Query) (Result, error) {
 	limit := q.Limit
 	if limit <= 0 {

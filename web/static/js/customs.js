@@ -139,7 +139,7 @@
       empty.classList.remove("hidden");
       empty.textContent = note || (role === "seller"
         ? "没有命中公开发货人。可换产品词，或把国家改成不限。"
-        : "没有命中公开进口商。逐票买家目前来自美国海关公开提单。");
+        : "没有命中公开进口商。逐票买家来自 ImportYeti 的美国海关公开提单。");
       results.innerHTML = "";
       updatePager();
       return;
@@ -155,10 +155,11 @@
       const weight = extra(h, "weight_kg");
       const amt = extra(h, "amount_usd");
       const via = extra(h, "via");
+      const home = h.homepage_url || "";
       const geo = h.country_label || h.country || "";
       const sub = [geo, product].filter(Boolean).join(" · ");
       return (
-        "<tr data-name=\"" + escapeAttr(h.name) + "\" data-via=\"" + escapeAttr(via) + "\">" +
+        "<tr data-name=\"" + escapeAttr(h.name) + "\" data-via=\"" + escapeAttr(via) + "\" data-url=\"" + escapeAttr(home) + "\">" +
           '<td class="col-check"><input type="checkbox" class="mkt-pick" data-i="' + i + '" data-name="' + escapeAttr(h.name) + '"></td>' +
           "<td><div class=\"cus-co\">" +
             '<span class="cus-flag">' + flagFor(h.country) + "</span>" +
@@ -302,7 +303,7 @@
       toast("这是联合国 Comtrade 国家口径，没有逐票企业档案。");
       return;
     }
-    openProfile(tr.getAttribute("data-name"));
+    openProfile(tr.getAttribute("data-name"), tr.getAttribute("data-url"));
   });
 
   function setTab(id) {
@@ -319,14 +320,17 @@
     btn.addEventListener("click", function () { setTab(btn.getAttribute("data-tab")); });
   });
 
-  function openProfile(name) {
+  function openProfile(name, pageUrl) {
     lastName = name;
     const modal = document.getElementById("cus-modal");
     modal.classList.remove("hidden");
     document.getElementById("modal-name").textContent = name;
     document.getElementById("modal-role").textContent = role === "seller" ? "供应商" : "采购商";
     setTab("basic");
-    fetch("/api/v1/discover/customs/profile?name=" + encodeURIComponent(name) + "&year=" + selectedYear())
+    const qs = "/api/v1/discover/customs/profile?name=" + encodeURIComponent(name) +
+      "&year=" + selectedYear() +
+      (pageUrl ? "&url=" + encodeURIComponent(pageUrl) : "");
+    fetch(qs)
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (out) {
         const p = out.ok ? out.j : {};

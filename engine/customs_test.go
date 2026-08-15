@@ -286,7 +286,7 @@ func TestPickHS4PrefersMatchingChapter(t *testing.T) {
 	}
 }
 
-func TestSearchCustomsComtradeSellerFallback(t *testing.T) {
+func TestSearchCustomsComtradeIsNoteNotCompany(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/lead-finder", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusInternalServerError)
@@ -325,11 +325,11 @@ func TestSearchCustomsComtradeSellerFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Hits) == 0 || !strings.Contains(res.Hits[0].Name, "货源国") {
-		t.Fatalf("hits=%+v", res.Hits)
+	if len(res.Hits) != 0 {
+		t.Fatalf("Comtrade must not become company rows, got %+v", res.Hits)
 	}
-	if res.Hits[0].Extra["amount_usd"] == "" || !strings.Contains(res.Note, "Comtrade") {
-		t.Fatalf("usd/note extra=%+v note=%s", res.Hits[0].Extra, res.Note)
+	if !strings.Contains(res.Note, "Comtrade") {
+		t.Fatalf("note=%s", res.Note)
 	}
 }
 

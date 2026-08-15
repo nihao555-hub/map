@@ -329,7 +329,8 @@ func (s *Server) apiCustomsProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	year, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("year")))
-	prof, err := s.engine.LookupCustomsProfile(r.Context(), name, year)
+	pageURL := strings.TrimSpace(r.URL.Query().Get("url"))
+	prof, err := s.engine.LookupCustomsProfileAt(r.Context(), name, pageURL, year)
 	if err != nil {
 		renderJSON(w, http.StatusBadRequest, apiError{
 			Code:    http.StatusBadRequest,
