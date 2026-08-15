@@ -368,6 +368,17 @@ func TestMergeHitsDropsUnrelatedQueryStamp(t *testing.T) {
 	}
 }
 
+func TestMergeHitsBuyerKeepsCategoryStore(t *testing.T) {
+	out := mergeHits([]Hit{
+		{ID: "store", Platform: PlatformFacebook, Name: "LED Lighting Store", HomepageURL: "https://www.facebook.com/ledlightingstore", Snippet: "LED lighting shop in KL"},
+		{ID: "how", Platform: PlatformYouTube, Name: "How to install LED lights", Title: "LED tutorial", HomepageURL: "https://www.youtube.com/@ledhowto", Snippet: "how to tutorial"},
+		{ID: "flag", Platform: PlatformDouyin, Name: "飞利浦LED旗舰店", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAFlag", Snippet: "官方旗舰"},
+	}, "LED灯", 0, RoleBuyer, "")
+	if len(out) != 1 || out[0].ID != "store" {
+		t.Fatalf("want category store only, got %+v", out)
+	}
+}
+
 func TestMergeHitsBuyerStillDropsFactoryDespiteQuery(t *testing.T) {
 	out := mergeHits([]Hit{{
 		ID:          "dy",

@@ -57,7 +57,7 @@ func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/preview/frame", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel", "expanded", "data.cached"} {
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/preview/frame", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel", "expanded", "data.cached", "data.refreshing"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -151,7 +151,7 @@ func TestScrubDiscoverResultStripsEngineNames(t *testing.T) {
 	if !res.Cached || !res.Refreshing {
 		t.Fatal("cached/refreshing flag stripped")
 	}
-	if res.Note != "系统不会代发。公开网页索引按目标国语言展开检索，做不到企业库那种一个国家几千条。" {
+	if res.Note != "系统不会代发。公开网页索引按品类找店铺/公司/采购商主页，不是外贸通那种一次几万条的企业库。" {
 		t.Fatalf("note=%s", res.Note)
 	}
 	raw, err := json.Marshal(res)

@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	maxLimit             = 500
-	messagePolicyNote    = "系统不会代发。公开索引按目标国语言展开检索词；做不到企业库那种一个国家几千条。"
+	maxLimit             = 20000
+	messagePolicyNote    = "系统不会代发。公开网页索引按品类找店铺/公司/采购商主页，不是外贸通那种一次几万条的企业库。"
 	marketingPolicyNote  = "系统不会代发。"
 	customsPolicyNote    = "系统不会代发。逐票企业来自多家公开海关源的实时检索（美国海关海运提单，Kirchner / ImportYeti）；金额和国家口径来自联合国 Comtrade 与世界银行。不是外贸通那种全球企业库，也没有联系人穿透。"
 	exhibitionPolicyNote = "系统不会代发。展会按关键词实时查 EventsEye（全球约 1.2 万场）、AUMA、Wikidata 和开源展会日历；参展商名单来自展会官网和公开名录，不是 50 万采购商库，也不做名片 OCR。"
@@ -59,7 +59,7 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 		q.Limit = maxLimit
 	}
 
-	if !testing.Testing() && (q.Kind == KindCustoms || q.Kind == KindExhibition) {
+	if !testing.Testing() && (q.Kind == KindCustoms || q.Kind == KindExhibition || q.Kind == KindPeople) {
 		return c.searchRealtime(ctx, q, start)
 	}
 
@@ -139,14 +139,10 @@ func (c *Client) searchRealtime(ctx context.Context, q Query, start time.Time) (
 		return stale, nil
 	}
 	if already {
-		note := customsPolicyNote
-		if q.Kind == KindExhibition {
-			note = exhibitionPolicyNote
-		}
 		return Result{
 			Keyword:    q.Keyword,
 			Kind:       q.Kind,
-			Note:       note,
+			Note:       policyNoteFor(q.Kind),
 			TookMS:     time.Since(start).Milliseconds(),
 			SearchedAt: time.Now().UTC(),
 			Refreshing: true,
@@ -175,19 +171,28 @@ func (c *Client) searchRealtime(ctx context.Context, q Query, start time.Time) (
 		return stale, nil
 	}
 
-	note := customsPolicyNote
-	if q.Kind == KindExhibition {
-		note = exhibitionPolicyNote
-	}
 	return Result{
 		Keyword:    q.Keyword,
 		Kind:       q.Kind,
 		Hits:       nil,
-		Note:       note,
+		Note:       policyNoteFor(q.Kind),
 		TookMS:     time.Since(start).Milliseconds(),
 		SearchedAt: time.Now().UTC(),
 		Refreshing: refreshInFlight(q),
 	}, nil
+}
+
+func policyNoteFor(kind string) string {
+	switch kind {
+	case KindMarketing:
+		return marketingPolicyNote
+	case KindCustoms:
+		return customsPolicyNote
+	case KindExhibition:
+		return exhibitionPolicyNote
+	default:
+		return messagePolicyNote
+	}
 }
 
 func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
@@ -223,7 +228,9 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		items, warns, srcs, terms := c.searchPublicProfiles(gctx, q.Keyword, q.Country, q.Role, wanted, q.Limit)
+		items, warns, srcs, terms := c.searchPublicProfiles(gctx, q, wanted, func(partial []Hit) {
+			publishPeopleProgress(q, partial)
+		})
 		src := strings.Join(srcs, "+")
 		warn := strings.Join(warns, "; ")
 		add(items, src, warn, nil)
@@ -292,6 +299,37 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 		Note:     messagePolicyNote,
 		Expanded: expanded,
 	}, nil
+}
+
+var (
+	peopleProgressMu   sync.Mutex
+	lastPeopleProgress = map[string]time.Time{}
+)
+
+func publishPeopleProgress(q Query, items []Hit) {
+	if testing.Testing() || len(items) == 0 {
+		return
+	}
+	key := searchCacheKey(q)
+	peopleProgressMu.Lock()
+	if lastPeopleProgress == nil {
+		lastPeopleProgress = map[string]time.Time{}
+	}
+	if time.Since(lastPeopleProgress[key]) < 800*time.Millisecond {
+		peopleProgressMu.Unlock()
+		return
+	}
+	lastPeopleProgress[key] = time.Now()
+	peopleProgressMu.Unlock()
+
+	merged := mergeHits(items, q.Keyword, q.Limit, q.Role, q.Country)
+	if len(merged) == 0 {
+		return
+	}
+	storeSearchCache(q, finalizeResult(q, Result{
+		Hits: merged,
+		Note: messagePolicyNote,
+	}, time.Now()))
 }
 
 func mergeHits(items []Hit, keyword string, limit int, role, country string) []Hit {
@@ -551,21 +589,21 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 		queryMatch := blobMatchesKeyword(hitKeywordBlob(hit), kw)
 		if queryMatch {
 			if role == RoleBuyer {
-				if !hasCustomerToken(roleBlob) && !hasCompanyToken(roleBlob) {
+				if !hasBuyerKeepToken(roleBlob) {
 					return true
 				}
 			} else if !hasMerchantToken(roleBlob) && !hasCompanyToken(roleBlob) {
 				return true
 			}
 		} else if role == RoleBuyer {
-			if !hasCustomerToken(roleBlob) && !hasCompanyToken(roleBlob) {
+			if !hasBuyerKeepToken(roleBlob) {
 				return true
 			}
 		} else if !hasMerchantToken(roleBlob) {
 			return true
 		}
 	} else if role == RoleBuyer && !strings.Contains(kw, "http") {
-		if !hasCustomerToken(roleBlob) && !hasCompanyToken(roleBlob) {
+		if !hasBuyerKeepToken(roleBlob) {
 			return true
 		}
 	}
@@ -682,10 +720,14 @@ func hasSellerToken(blob string) bool {
 	return hasFactoryToken(blob) || containsAnyToken(blob, []string{"供应", "supplier"})
 }
 
+func hasBuyerKeepToken(blob string) bool {
+	return hasCustomerToken(blob) || hasCompanyToken(blob) || hasShopToken(blob)
+}
+
 func hasShopToken(blob string) bool {
 	tokens := []string{
-		"店铺", "官方", "商行", "贸易",
-		"official", "trading", "retailer", "store", "shop",
+		"店铺", "商行", "贸易",
+		"trading", "retailer", "store", "shop",
 	}
 	if containsAnyToken(blob, tokens) {
 		return true

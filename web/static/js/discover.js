@@ -14,6 +14,7 @@
   let role = "buyer";
   let lastHits = [];
   let page = 1;
+  let searchGen = 0;
   const PAGE_SIZE = 20;
 
   const PLATFORM_ICONS = {
@@ -414,7 +415,11 @@
     const pager = document.getElementById("pager");
     if (pager) pager.hidden = true;
     setBusy(true);
+    const gen = ++searchGen;
+    fetchDiscover(kw, 0, gen);
+  }
 
+  function fetchDiscover(kw, attempt, gen) {
     fetch("/api/v1/discover/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -432,8 +437,9 @@
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (out) {
-        setBusy(false);
+        if (gen !== searchGen) return;
         if (!out.ok) {
+          setBusy(false);
           const msg = (out.j && out.j.message) || "";
           const friendly = /^请|^不支持|^关键词/.test(msg);
           status.textContent = friendly ? msg : "搜索繁忙，请稍后再试。";
@@ -443,43 +449,63 @@
           return;
         }
         const data = out.j;
-        lastHits = (data.hits || []).filter(isHomepageHit);
-        if (mode === "marketing") {
-          const want = selectedChannel();
-          lastHits = lastHits.filter(function (h) { return !want || h.channel === want; });
+        applyDiscoverHits(data, kw);
+        if (mode !== "marketing" && data.refreshing && attempt < 80) {
+          setBusy(false);
+          status.textContent = lastHits.length
+            ? ("已找到 " + lastHits.length + " 条主页，正在继续补全…")
+            : "正在检索公开主页…";
+          setTimeout(function () { fetchDiscover(kw, attempt + 1, gen); }, 1500);
+          return;
         }
-        if (isPrecise()) {
-          const needle = kw.toLowerCase();
-          lastHits = lastHits.filter(function (h) {
-            const blob = [h.name, h.handle, h.title, h.snippet, h.contact, h.homepage_url].join(" ").toLowerCase();
-            return blob.indexOf(needle) !== -1;
-          });
-        }
-        page = 1;
-        if (!lastHits.length) {
-          status.textContent = "";
-        } else if (mode === "marketing") {
-          status.textContent = "已找到 " + lastHits.length + " 条联系方式";
-        } else {
-          const plats = {};
-          lastHits.forEach(function (h) { plats[h.platform || ""] = true; });
-          const nPlat = Object.keys(plats).filter(Boolean).length;
-          status.textContent = "已找到 " + lastHits.length + " 条主页，来自 " + nPlat + " 个社媒";
-          if (data.cached) {
-            status.textContent += "（即时）";
-          }
-          if (data.expanded && data.expanded.length) {
-            status.textContent += "；当地检索词 " + data.expanded.slice(0, 6).join(" / ");
-          }
-        }
-        const actions = document.getElementById("market-actions");
-        if (actions) actions.hidden = mode !== "marketing";
-        renderHits(lastHits);
+        setBusy(false);
+        paintDiscoverStatus(data);
       })
       .catch(function () {
+        if (gen !== searchGen) return;
         setBusy(false);
         status.textContent = "搜索繁忙，请稍后再试。";
       });
+  }
+
+  function applyDiscoverHits(data, kw) {
+    lastHits = (data.hits || []).filter(isHomepageHit);
+    if (mode === "marketing") {
+      const want = selectedChannel();
+      lastHits = lastHits.filter(function (h) { return !want || h.channel === want; });
+    }
+    if (isPrecise()) {
+      const needle = kw.toLowerCase();
+      lastHits = lastHits.filter(function (h) {
+        const blob = [h.name, h.handle, h.title, h.snippet, h.contact, h.homepage_url].join(" ").toLowerCase();
+        return blob.indexOf(needle) !== -1;
+      });
+    }
+    if (page > pageCount()) page = 1;
+    const actions = document.getElementById("market-actions");
+    if (actions) actions.hidden = mode !== "marketing";
+    renderHits(lastHits);
+  }
+
+  function paintDiscoverStatus(data) {
+    if (!lastHits.length) {
+      status.textContent = "";
+      return;
+    }
+    if (mode === "marketing") {
+      status.textContent = "已找到 " + lastHits.length + " 条联系方式";
+      return;
+    }
+    const plats = {};
+    lastHits.forEach(function (h) { plats[h.platform || ""] = true; });
+    const nPlat = Object.keys(plats).filter(Boolean).length;
+    status.textContent = "已找到 " + lastHits.length + " 条主页，来自 " + nPlat + " 个社媒";
+    if (data.cached) {
+      status.textContent += "（即时）";
+    }
+    if (data.expanded && data.expanded.length) {
+      status.textContent += "；当地检索词 " + data.expanded.slice(0, 6).join(" / ");
+    }
   }
 
   form.addEventListener("submit", function (ev) {

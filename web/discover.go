@@ -137,7 +137,7 @@ func scrubDiscoverResult(res *engine.Result) {
 	case engine.KindExhibition:
 		res.Note = "系统不会代发。公开参展商名单来自展会官网和公开名录，不是官方全量库。"
 	default:
-		res.Note = "系统不会代发。公开网页索引按目标国语言展开检索，做不到企业库那种一个国家几千条。"
+		res.Note = "系统不会代发。公开网页索引按品类找店铺/公司/采购商主页，不是外贸通那种一次几万条的企业库。"
 	}
 	for i := range res.Hits {
 		res.Hits[i].Source = ""

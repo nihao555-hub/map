@@ -10,13 +10,14 @@ import (
 )
 
 const (
-	peopleCacheTTL     = 8 * time.Minute
-	customsCacheTTL    = 20 * time.Minute
-	exhibitionCacheTTL = 25 * time.Minute
-	emptyCacheTTL      = 90 * time.Second
-	staleKeepFor       = 6 * time.Hour
-	realtimeBudget     = 950 * time.Millisecond
-	refreshTimeout     = 45 * time.Second
+	peopleCacheTTL       = 8 * time.Minute
+	customsCacheTTL      = 20 * time.Minute
+	exhibitionCacheTTL   = 25 * time.Minute
+	emptyCacheTTL        = 90 * time.Second
+	staleKeepFor         = 6 * time.Hour
+	realtimeBudget       = 950 * time.Millisecond
+	refreshTimeout       = 45 * time.Second
+	peopleRefreshTimeout = 3 * time.Minute
 )
 
 type cachedSearch struct {
@@ -189,7 +190,11 @@ func kickSearchRefresh(c *Client, q Query) *refreshJob {
 			refreshJobsMu.Unlock()
 			close(job.done)
 		}()
-		ctx, cancel := context.WithTimeout(context.Background(), refreshTimeout)
+		timeout := refreshTimeout
+		if q.Kind == KindPeople {
+			timeout = peopleRefreshTimeout
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		res, err := c.runKind(ctx, q)
 		if err != nil {

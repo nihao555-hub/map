@@ -76,14 +76,14 @@ var productGlossary = map[string]productLangTerms{
 		"zh": {"电动工具"},
 	},
 	"led灯": {
-		"en": {"LED light", "LED lamp"},
+		"en": {"LED light", "LED lamp", "LED lighting"},
 		"th": {"ไฟ LED", "หลอด LED"},
 		"vi": {"đèn LED"},
 		"ms": {"lampu LED"},
 		"id": {"lampu LED"},
 	},
 	"led light": {
-		"en": {"LED light", "LED lamp"},
+		"en": {"LED light", "LED lamp", "LED lighting"},
 		"th": {"ไฟ LED"},
 		"zh": {"LED灯"},
 	},
@@ -100,7 +100,7 @@ var productGlossary = map[string]productLangTerms{
 	},
 }
 
-const maxLocalTerms = 6
+const maxLocalTerms = 8
 
 // LocalSearchTerms expands a product keyword into phrases locals actually type.
 // It always keeps the original keyword and adds English + the target-country language.
@@ -164,9 +164,9 @@ func localIntentWords(lang, role string) []string {
 	case "id":
 		return []string{"importir"}
 	case "zh":
-		return []string{"采购", "进口商", "求购", "经销商"}
+		return []string{"采购", "进口商", "求购", "经销商", "店铺", "贸易"}
 	default:
-		return []string{"importer", "buyer", "sourcing", "dealer"}
+		return []string{"importer", "buyer", "sourcing", "dealer", "store", "shop", "trading", "distributor"}
 	}
 }
 

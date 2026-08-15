@@ -28,10 +28,10 @@ var (
 )
 
 const (
-	indexExtraPages    = 3
-	enoughHitsPerQuery = 40
+	indexExtraPages    = 5
+	enoughHitsPerQuery = 60
 	blobExtractCap     = 200
-	publicSearchLimit  = 8
+	publicSearchLimit  = 10
 )
 
 // decodeBingRedirect resolves a bing.com/ck/a redirect link to its real target
@@ -139,13 +139,13 @@ func waitNamedIndex(ctx context.Context, name string) error {
 	return nil
 }
 
-func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, role string, wanted map[string]bool, limit int) ([]Hit, []string, []string, []string) {
+func (c *Client) searchPublicProfiles(ctx context.Context, q Query, wanted map[string]bool, onProgress func([]Hit)) ([]Hit, []string, []string, []string) {
 	if c != nil && c.DisablePublic {
 		return nil, nil, nil, nil
 	}
 
-	terms := ExpandSearchTerms(ctx, c, keyword, country, role)
-	queries := publicSearchQueriesTerms(keyword, terms, wanted, country, role)
+	terms := ExpandSearchTerms(ctx, c, q.Keyword, q.Country, q.Role)
+	queries := publicSearchQueriesTerms(q.Keyword, terms, wanted, q.Country, q.Role)
 
 	var (
 		mu       sync.Mutex
@@ -157,27 +157,24 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, rol
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(publicSearchLimit)
 
-	for _, q := range queries {
-		q := q
+	for _, pq := range queries {
+		pq := pq
 		g.Go(func() error {
 			if gctx.Err() != nil {
 				return nil
 			}
 
-			batch, src, err := c.searchOneIndex(gctx, q.query, q.platform)
-			mu.Lock()
-			defer mu.Unlock()
-
+			batch, src, err := c.searchOneIndex(gctx, pq.query, pq.platform)
 			if err != nil {
 				return nil
 			}
 
+			mu.Lock()
 			if src != "" {
 				sources = append(sources, src)
 			}
-
 			for _, h := range batch {
-				if q.platform != "" && h.Platform != q.platform {
+				if pq.platform != "" && h.Platform != pq.platform {
 					continue
 				}
 				if len(wanted) > 0 && !wanted[h.Platform] {
@@ -190,9 +187,14 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, rol
 					if h.Extra == nil {
 						h.Extra = map[string]string{}
 					}
-					h.Extra["q"] = q.query
+					h.Extra["q"] = pq.query
 				}
 				hits = append(hits, h)
+			}
+			snapshot := append([]Hit(nil), hits...)
+			mu.Unlock()
+			if onProgress != nil && len(snapshot) > 0 {
+				onProgress(snapshot)
 			}
 
 			return nil
@@ -238,8 +240,8 @@ var publicSearchOrder = []string{
 }
 
 const (
-	maxPublicQueries   = 64
-	publicQueryTermCap = 4
+	maxPublicQueries   = 200
+	publicQueryTermCap = 8
 )
 
 var platformProfileSite = map[string]string{
@@ -333,6 +335,11 @@ func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]
 		PlatformBilibili:    true,
 	}
 
+	type platSite struct {
+		platform string
+		site     string
+	}
+	plats := make([]platSite, 0, len(publicSearchOrder))
 	for _, platform := range publicSearchOrder {
 		if !wanted[platform] {
 			continue
@@ -347,38 +354,75 @@ func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]
 		if site == "" {
 			continue
 		}
+		plats = append(plats, platSite{platform: platform, site: site})
+	}
 
-		for i, term := range terms {
-			if i == 0 && hasCJK(term) {
-				add(platform, term+" "+PeoplePlatformLabel(platform))
+	// Phase 1: every platform gets site:term first so later networks are not starved.
+	for _, term := range terms {
+		for _, p := range plats {
+			add(p.platform, "site:"+p.site+" "+term)
+		}
+	}
+	for _, p := range plats {
+		if hasCJK(terms[0]) {
+			add(p.platform, terms[0]+" "+PeoplePlatformLabel(p.platform))
+		}
+	}
+
+	// Phase 2: shop/buyer intents, round-robin so Facebook/LinkedIn cannot eat the budget.
+	termCap := 3
+	if len(terms) < termCap {
+		termCap = len(terms)
+	}
+	for slot := 0; slot < 5; slot++ {
+		for _, term := range terms[:termCap] {
+			picked := pickIntentsForTerm(term, intents)
+			if slot >= len(picked) {
+				continue
 			}
-			if i < 2 && intentExtra[platform] {
-				for _, intent := range pickIntentsForTerm(term, intents) {
-					add(platform, "site:"+site+" "+term+" "+intent)
+			for _, p := range plats {
+				if !intentExtra[p.platform] {
+					continue
 				}
-			}
-			add(platform, "site:"+site+" "+term)
-			if overseasMarketPlatforms[platform] && i < 3 {
-				if engGeo != "" {
-					add(platform, "site:"+site+" "+term+" "+engGeo)
-				} else if localGeo != "" {
-					add(platform, "site:"+site+" "+term+" "+localGeo)
-				}
+				add(p.platform, "site:"+p.site+" "+term+" "+picked[slot])
 			}
 		}
-		if platform == PlatformLinkedIn {
-			head := terms[0]
-			if role == RoleSeller {
-				add(platform, "site:linkedin.com/company "+head+" manufacturer")
-			} else {
-				add(platform, "site:linkedin.com/company "+head+" importer")
-				add(platform, "site:linkedin.com/company "+head+" buyer")
-				add(platform, "site:linkedin.com/in "+head+" procurement")
-				add(platform, "site:linkedin.com/in "+head+" purchasing")
+	}
+
+	// Phase 3: target-market geo on overseas networks.
+	geoCap := 4
+	if len(terms) < geoCap {
+		geoCap = len(terms)
+	}
+	for _, term := range terms[:geoCap] {
+		for _, p := range plats {
+			if !overseasMarketPlatforms[p.platform] {
+				continue
 			}
 			if engGeo != "" {
-				add(platform, "site:linkedin.com/company "+head+" importer "+engGeo)
+				add(p.platform, "site:"+p.site+" "+term+" "+engGeo)
+			} else if localGeo != "" {
+				add(p.platform, "site:"+p.site+" "+term+" "+localGeo)
 			}
+		}
+	}
+
+	for _, p := range plats {
+		if p.platform != PlatformLinkedIn {
+			continue
+		}
+		head := terms[0]
+		if role == RoleSeller {
+			add(p.platform, "site:linkedin.com/company "+head+" manufacturer")
+		} else {
+			add(p.platform, "site:linkedin.com/company "+head+" importer")
+			add(p.platform, "site:linkedin.com/company "+head+" buyer")
+			add(p.platform, "site:linkedin.com/company "+head+" store")
+			add(p.platform, "site:linkedin.com/in "+head+" procurement")
+			add(p.platform, "site:linkedin.com/in "+head+" purchasing")
+		}
+		if engGeo != "" {
+			add(p.platform, "site:linkedin.com/company "+head+" importer "+engGeo)
 		}
 	}
 
@@ -396,7 +440,7 @@ func pickIntentsForTerm(term string, intents []string) []string {
 			continue
 		}
 		out = append(out, intent)
-		if len(out) >= 3 {
+		if len(out) >= 5 {
 			break
 		}
 	}
@@ -420,10 +464,10 @@ func merchantIntentKeywords(keyword, role string) []string {
 		return []string{keyword + " wholesaler"}
 	}
 	if hasCJK(keyword) {
-		return []string{keyword + " 采购", keyword + " 进口商", keyword + " importer"}
+		return []string{keyword + " 采购", keyword + " 进口商", keyword + " 店铺", keyword + " importer"}
 	}
 
-	return []string{keyword + " importer", keyword + " buyer"}
+	return []string{keyword + " importer", keyword + " buyer", keyword + " store", keyword + " shop"}
 }
 
 func hasCJK(s string) bool {

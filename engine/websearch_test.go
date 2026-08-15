@@ -472,6 +472,26 @@ func TestDecodeBingRedirect(t *testing.T) {
 	}
 }
 
+func TestPublicSearchQueriesCoversLatePlatforms(t *testing.T) {
+	wanted := map[string]bool{}
+	for _, p := range DefaultPeoplePlatforms {
+		wanted[p] = true
+	}
+	qs := publicSearchQueries("LED灯", wanted, "", RoleBuyer)
+	saw := map[string]int{}
+	for _, q := range qs {
+		saw[q.platform]++
+	}
+	for _, p := range []string{PlatformReddit, PlatformTwitch, PlatformTelegram, PlatformPinterest, PlatformWeibo} {
+		if saw[p] == 0 {
+			t.Fatalf("platform %s starved counts=%v n=%d", p, saw, len(qs))
+		}
+	}
+	if !containsString(queryStrings(qs), "site:facebook.com LED灯 店铺") {
+		t.Fatalf("missing shop intent %+v", queryStrings(qs))
+	}
+}
+
 func TestPublicSearchQueriesCapsAtMax(t *testing.T) {
 	wanted := map[string]bool{}
 	for _, p := range DefaultPeoplePlatforms {
