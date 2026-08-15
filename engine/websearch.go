@@ -449,7 +449,6 @@ func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, e
 			continue
 		}
 		if looksLikeChallenge(raw) {
-			c.markIndexLimited(a.name)
 			continue
 		}
 
@@ -595,7 +594,6 @@ func (c *Client) fetchIndexHTML(ctx context.Context, query string, names []strin
 			continue
 		}
 		if looksLikeChallenge(raw) {
-			c.markIndexLimited(a.name)
 			continue
 		}
 		if len(raw) < 400 {
@@ -643,9 +641,6 @@ func (c *Client) fetchDuckDuckGoPage(ctx context.Context, query string, page int
 	raw2, err2 := c.getHTMLReferer(ctx, lite, "https://lite.duckduckgo.com/")
 	if err2 == nil && !looksLikeChallenge(raw2) && len(raw2) > 400 {
 		return raw2, nil
-	}
-	if looksLikeChallenge(raw) || looksLikeChallenge(raw2) {
-		c.markDDGLimited()
 	}
 	if err2 != nil {
 		return nil, err2
