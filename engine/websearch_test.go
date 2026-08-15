@@ -159,8 +159,6 @@ func TestPublicSearchQueriesCJKUsesPlatformLabel(t *testing.T) {
 		"配电 Facebook",
 		"site:facebook.com 配电",
 		"site:facebook.com 配电 采购",
-		"site:facebook.com 配电 进口商",
-		"site:facebook.com 配电 importer",
 	} {
 		if !containsString(got, want) {
 			t.Fatalf("missing %q in %+v", want, got)
@@ -181,7 +179,6 @@ func TestPublicSearchQueriesSellerKeepsWholesale(t *testing.T) {
 		"配电 抖音",
 		"site:douyin.com/user 配电",
 		"site:douyin.com/user 配电 批发",
-		"site:douyin.com/user 配电 厂家",
 		"配电 Facebook",
 		"site:facebook.com 配电",
 		"site:facebook.com 配电 批发",
@@ -210,17 +207,14 @@ func TestPublicSearchQueriesAppendsCountry(t *testing.T) {
 	wanted := map[string]bool{PlatformFacebook: true, PlatformDouyin: true}
 	qs := publicSearchQueries("LED灯", wanted, "MY", RoleBuyer)
 	got := queryStrings(qs)
-	if !containsString(got, "site:facebook.com LED灯 采购 马来西亚") {
-		t.Fatalf("missing facebook geo %+v", got)
-	}
 	if !containsString(got, "site:facebook.com LED灯") {
 		t.Fatalf("missing facebook volume %+v", got)
 	}
 	if !containsString(got, "site:facebook.com LED light Malaysia") {
 		t.Fatalf("missing english alias %+v", got)
 	}
-	if !containsString(got, "site:facebook.com LED light importer Malaysia") {
-		t.Fatalf("missing english importer %+v", got)
+	if !containsString(got, "site:facebook.com LED灯 Malaysia") {
+		t.Fatalf("missing facebook geo %+v", got)
 	}
 	for _, q := range qs {
 		if q.platform == PlatformDouyin && strings.Contains(q.query, "马来西亚") {
@@ -235,10 +229,9 @@ func TestPublicSearchQueriesCJKThailandUsesPowerTools(t *testing.T) {
 	got := queryStrings(qs)
 	for _, want := range []string{
 		"site:facebook.com 电动工具",
-		"site:facebook.com 电动工具 泰国",
 		"site:facebook.com power tools Thailand",
-		"site:facebook.com power tools importer Thailand",
-		"site:linkedin.com power tools importer Thailand",
+		"site:facebook.com เครื่องมือไฟฟ้า",
+		"site:linkedin.com/company 电动工具 importer Thailand",
 	} {
 		if !containsString(got, want) {
 			t.Fatalf("missing %q in %+v", want, got)
@@ -268,7 +261,6 @@ func TestPublicSearchQueriesLinkedInBuyer(t *testing.T) {
 	for _, want := range []string{
 		"site:linkedin.com LED light",
 		"site:linkedin.com LED light importer",
-		"site:linkedin.com LED light buyer",
 		"site:linkedin.com/company LED light importer",
 		"site:linkedin.com/company LED light buyer",
 	} {

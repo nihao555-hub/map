@@ -28,7 +28,7 @@ func TestDiscoverPageRenders(t *testing.T) {
 		`id="app-rail"`, "/static/css/shell.css", "rail-item is-active",
 		"智能引擎能为你做什么", "精确", "试试", "wmt-features", "wmt-ai-orb", "开发信跟进",
 		"请输入商品名称，例如 LED灯", "找买家", "找卖家", "国家/地区", "wmt-country", "wmt-country-field",
-		"platform-group-landing", "16 个已支持社媒",
+		"platform-group-landing", "16 个已支持社媒", "当地检索词",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
@@ -55,7 +55,7 @@ func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/preview/frame", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel"} {
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/preview/frame", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel", "expanded"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -140,7 +140,7 @@ func TestScrubDiscoverResultStripsEngineNames(t *testing.T) {
 	if res.Hits[0].Source != "" || len(res.Sources) != 0 || res.Warnings != nil || res.TookMS != 0 {
 		t.Fatalf("not scrubbed %+v", res)
 	}
-	if res.Note != "系统不会代发。" {
+	if res.Note != "系统不会代发。公开网页索引按目标国语言展开检索，做不到企业库那种一个国家几千条。" {
 		t.Fatalf("note=%s", res.Note)
 	}
 	raw, err := json.Marshal(res)

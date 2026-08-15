@@ -40,6 +40,9 @@ type Client struct {
 	DisablePublic bool
 	// SkipExpand turns off sister-profile expansion (unit tests with shared mock HTML).
 	SkipExpand bool
+	// AIBaseURL is an OpenAI-compatible local endpoint (Ollama default :11434/v1).
+	AIBaseURL  string
+	AIModel    string
 	braveUntil atomic.Int64
 	ddgUntil   atomic.Int64
 	bingUntil  atomic.Int64
@@ -49,6 +52,8 @@ type Client struct {
 //
 //	ENGINE_TIKTOK_SIDECAR_URL  davidteather/TikTok-Api (default http://127.0.0.1:8091)
 //	ENGINE_F2_SIDECAR_URL      Johnserf-Seed/f2        (default http://127.0.0.1:8092)
+//	ENGINE_AI_BASE_URL         optional OpenAI-compatible local LLM (default http://127.0.0.1:11434/v1)
+//	ENGINE_AI_MODEL            optional model name (default qwen2.5:7b)
 //	TIKHUB_API_TOKEN           optional paid API when Douyin keyword search is needed
 func OptionsFromEnv() *Client {
 	timeout := defaultHTTPTimeout
@@ -73,6 +78,8 @@ func OptionsFromEnv() *Client {
 		TikTokURL:   tiktok,
 		F2URL:       f2,
 		TikHubToken: strings.TrimSpace(firstNonEmpty(os.Getenv("TIKHUB_API_TOKEN"), os.Getenv("TIKHUB_API_KEY"))),
+		AIBaseURL:   strings.TrimSpace(os.Getenv("ENGINE_AI_BASE_URL")),
+		AIModel:     strings.TrimSpace(os.Getenv("ENGINE_AI_MODEL")),
 	}
 }
 
@@ -312,7 +319,7 @@ func newBrowserRequest(ctx context.Context, method, rawURL, body string) (*http.
 
 	req.Header.Set("User-Agent", browserUA)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("Accept-Language", acceptLanguageFor(ctx))
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
 	req.Header.Set("Sec-Fetch-Dest", "document")
 	req.Header.Set("Sec-Fetch-Mode", "navigate")
@@ -332,4 +339,15 @@ func firstNonEmpty(vals ...string) string {
 	}
 
 	return ""
+}
+
+func acceptLanguageFor(ctx context.Context) string {
+	r := searchCountry(ctx)
+	hl := LangForCountry(r.Code)
+	switch hl {
+	case "", "zh":
+		return "zh-CN,zh;q=0.9,en;q=0.8"
+	default:
+		return hl + "," + hl + "-" + r.Code + ";q=0.9,en;q=0.8,zh;q=0.5"
+	}
 }

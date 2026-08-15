@@ -120,4 +120,5 @@ type Result struct {
 	TookMS     int64     `json:"took_ms"`
 	SearchedAt time.Time `json:"searched_at"`
 	Note       string    `json:"note,omitempty"`
+	Expanded   []string  `json:"expanded,omitempty"`
 }

@@ -24,7 +24,7 @@
     "不是地图搜店：输入商品或企业关键词",
     "先选找买家还是找卖家：买家是采购商 / 进口商，卖家是厂家 / 批发",
     "默认检索全部已支持社媒主页，可在下方取消勾选",
-    "输入时选国家，结果里每条都会带出所在国家",
+    "输入时选国家：按地图获客同一套语言表展开当地检索词",
     "去私信：在右侧打开主页预览，系统不代发"
   ];
   const MARKET_BULLETS = [
@@ -483,6 +483,9 @@
           lastHits.forEach(function (h) { plats[h.platform || ""] = true; });
           const nPlat = Object.keys(plats).filter(Boolean).length;
           status.textContent = "已找到 " + lastHits.length + " 条主页，来自 " + nPlat + " 个社媒";
+          if (data.expanded && data.expanded.length) {
+            status.textContent += "；当地检索词 " + data.expanded.slice(0, 6).join(" / ");
+          }
         }
         const actions = document.getElementById("market-actions");
         if (actions) actions.hidden = mode !== "marketing";
@@ -589,7 +592,7 @@
         ? "精确模式下没有命中，可关掉「精确」或换更具体的词再搜。"
         : (selectedRole() === "seller"
           ? "没有命中公开卖家主页。可换更具体的商品词，或勾选抖音、小红书后再搜。"
-          : "没有命中公开采购商 / 进口商主页。可换英文词（例如 LED light）、勾选 LinkedIn / Facebook，或改成找卖家。");
+          : "没有命中公开采购商主页。已按目标国语言展开检索词。公开索引不是企业库，一个国家几千家不会都出现在 Facebook/LinkedIn 第一页。");
       foot.textContent = "";
       updatePager();
       results.innerHTML = "";

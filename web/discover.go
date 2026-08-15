@@ -93,7 +93,7 @@ func scrubDiscoverResult(res *engine.Result) {
 	res.Warnings = nil
 	res.TookMS = 0
 	if res.Note != "" {
-		res.Note = "系统不会代发。"
+		res.Note = "系统不会代发。公开网页索引按目标国语言展开检索，做不到企业库那种一个国家几千条。"
 	}
 	for i := range res.Hits {
 		res.Hits[i].Source = ""

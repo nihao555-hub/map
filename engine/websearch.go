@@ -18,45 +18,49 @@ import (
 )
 
 var (
-	hrefAbsRe = regexp.MustCompile(`https?://[^\s"'<>]+`)
-
-	publicIndexMu   sync.Mutex
-	lastPublicIndex time.Time
-	lastNamedIndex  map[string]time.Time
+	hrefAbsRe      = regexp.MustCompile(`https?://[^\s"'<>]+`)
+	namedIndexMu   sync.Mutex
+	lastNamedIndex map[string]time.Time
 )
 
 const (
-	publicIndexGap     = 2800 * time.Millisecond
-	braveIndexGap      = 4000 * time.Millisecond
-	indexExtraPages    = 1
-	enoughHitsPerQuery = 24
+	indexExtraPages    = 2
+	enoughHitsPerQuery = 40
 	blobExtractCap     = 200
+	publicSearchLimit  = 8
 )
 
+func indexGap(name string) time.Duration {
+	switch name {
+	case "brave":
+		return 800 * time.Millisecond
+	case "duckduckgo":
+		return 500 * time.Millisecond
+	default:
+		return 350 * time.Millisecond
+	}
+}
+
 func waitPublicIndex(ctx context.Context) error {
-	return waitNamedIndex(ctx, "")
+	return waitNamedIndex(ctx, "bing")
 }
 
 func waitNamedIndex(ctx context.Context, name string) error {
 	if testing.Testing() {
 		return nil
 	}
-
-	gap := publicIndexGap
-	if name == "brave" {
-		gap = braveIndexGap
+	if name == "" {
+		name = "bing"
 	}
 
-	publicIndexMu.Lock()
-	wait := gap - time.Since(lastPublicIndex)
-	if name != "" {
-		if last, ok := lastNamedIndex[name]; ok {
-			if named := gap - time.Since(last); named > wait {
-				wait = named
-			}
-		}
+	gap := indexGap(name)
+
+	namedIndexMu.Lock()
+	wait := time.Duration(0)
+	if last, ok := lastNamedIndex[name]; ok {
+		wait = gap - time.Since(last)
 	}
-	publicIndexMu.Unlock()
+	namedIndexMu.Unlock()
 	if wait > 0 {
 		t := time.NewTimer(wait)
 		defer t.Stop()
@@ -67,24 +71,22 @@ func waitNamedIndex(ctx context.Context, name string) error {
 		}
 	}
 
-	publicIndexMu.Lock()
-	lastPublicIndex = time.Now()
-	if name != "" {
-		if lastNamedIndex == nil {
-			lastNamedIndex = map[string]time.Time{}
-		}
-		lastNamedIndex[name] = time.Now()
+	namedIndexMu.Lock()
+	if lastNamedIndex == nil {
+		lastNamedIndex = map[string]time.Time{}
 	}
-	publicIndexMu.Unlock()
+	lastNamedIndex[name] = time.Now()
+	namedIndexMu.Unlock()
 	return nil
 }
 
-func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, role string, wanted map[string]bool, limit int) ([]Hit, []string, []string) {
+func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, role string, wanted map[string]bool, limit int) ([]Hit, []string, []string, []string) {
 	if c != nil && c.DisablePublic {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
-	queries := publicSearchQueries(keyword, wanted, country, role)
+	terms := ExpandSearchTerms(ctx, c, keyword, country, role)
+	queries := publicSearchQueriesTerms(keyword, terms, wanted, country, role)
 
 	var (
 		mu       sync.Mutex
@@ -94,7 +96,7 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, rol
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(6)
+	g.SetLimit(publicSearchLimit)
 
 	for _, q := range queries {
 		q := q
@@ -132,7 +134,7 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, rol
 
 	_ = g.Wait()
 
-	return hits, uniqueStrings(warnings), uniqueStrings(sources)
+	return hits, uniqueStrings(warnings), uniqueStrings(sources), terms
 }
 
 type publicQuery struct {
@@ -187,16 +189,37 @@ var platformProfileSite = map[string]string{
 }
 
 func publicSearchQueries(keyword string, wanted map[string]bool, country, role string) []publicQuery {
-	out := make([]publicQuery, 0, len(wanted)*3)
-	cjk := hasCJK(keyword)
-	geo := CountryQueryToken(country, cjk)
+	return publicSearchQueriesTerms(keyword, LocalSearchTerms(keyword, country), wanted, country, role)
+}
+
+func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]bool, country, role string) []publicQuery {
+	out := make([]publicQuery, 0, len(wanted)*4)
+	keyword = strings.TrimSpace(keyword)
 	role = NormalizeRole(role)
-	intents := merchantIntentKeywords(keyword, role)
-	if len(intents) == 0 {
+	lang := LangForCountry(country)
+	if lang == "" {
+		if hasCJK(keyword) {
+			lang = "zh"
+		} else {
+			lang = "en"
+		}
+	}
+	engGeo := CountryQueryToken(country, false)
+	localGeo := CountryQueryToken(country, true)
+	terms = clipTerms(uniqueFoldedStrings(append([]string{keyword}, terms...)), maxLocalTerms)
+	if len(terms) == 0 || keyword == "" {
 		return out
 	}
+	intents := append([]string{}, localIntentWords(lang, role)...)
+	if role == RoleBuyer && lang != "en" {
+		intents = append(intents, "importer")
+	}
+	if role == RoleSeller && lang != "en" {
+		intents = append(intents, "wholesaler")
+	}
+	intents = uniqueFoldedStrings(intents)
 
-	seen := make(map[string]bool, len(wanted)*3)
+	seen := make(map[string]bool, len(wanted)*4)
 	add := func(platform, query string) {
 		query = strings.TrimSpace(query)
 		if platform == "" || query == "" {
@@ -209,24 +232,17 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country, role s
 		seen[key] = true
 		out = append(out, publicQuery{platform: platform, query: query})
 	}
-	withGeo := func(q string) string {
-		if geo == "" {
-			return q
-		}
-
-		return strings.TrimSpace(q + " " + geo)
-	}
 
 	intentExtra := map[string]bool{
 		PlatformFacebook:    true,
 		PlatformInstagram:   true,
 		PlatformLinkedIn:    true,
+		PlatformTikTok:      true,
 		PlatformDouyin:      true,
 		PlatformKuaishou:    true,
 		PlatformXiaohongshu: true,
 		PlatformWeibo:       true,
 		PlatformBilibili:    true,
-		PlatformTikTok:      true,
 	}
 	overseasMarketPlatforms := map[string]bool{
 		PlatformFacebook:  true,
@@ -259,44 +275,32 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country, role s
 			continue
 		}
 
-		primary := intents[0]
-		add(platform, "site:"+site+" "+keyword)
-		if primary != "" && primary != keyword {
-			add(platform, "site:"+site+" "+primary)
-		}
-		if cjk {
-			add(platform, keyword+" "+PeoplePlatformLabel(platform))
-		}
-		if intentExtra[platform] {
-			for _, extra := range intents[1:] {
-				add(platform, "site:"+site+" "+extra)
+		for i, term := range terms {
+			add(platform, "site:"+site+" "+term)
+			if i == 0 && hasCJK(term) {
+				add(platform, term+" "+PeoplePlatformLabel(platform))
+			}
+			if i < 2 && intentExtra[platform] && len(intents) > 0 {
+				add(platform, "site:"+site+" "+term+" "+intents[0])
+			}
+			if overseasMarketPlatforms[platform] && i < 3 {
+				if engGeo != "" {
+					add(platform, "site:"+site+" "+term+" "+engGeo)
+				} else if localGeo != "" {
+					add(platform, "site:"+site+" "+term+" "+localGeo)
+				}
 			}
 		}
 		if platform == PlatformLinkedIn {
+			head := terms[0]
 			if role == RoleSeller {
-				add(platform, "site:linkedin.com/company "+keyword+" manufacturer")
+				add(platform, "site:linkedin.com/company "+head+" manufacturer")
 			} else {
-				add(platform, "site:linkedin.com/company "+keyword+" importer")
-				add(platform, "site:linkedin.com/company "+keyword+" buyer")
+				add(platform, "site:linkedin.com/company "+head+" importer")
+				add(platform, "site:linkedin.com/company "+head+" buyer")
 			}
-		}
-		if geo != "" && overseasMarketPlatforms[platform] {
-			add(platform, "site:"+site+" "+withGeo(keyword))
-			if primary != keyword {
-				add(platform, "site:"+site+" "+withGeo(primary))
-			}
-			engGeo := CountryQueryToken(country, false)
-			for _, alias := range productSearchAliases(keyword) {
-				q := alias
-				if engGeo != "" {
-					q = strings.TrimSpace(alias + " " + engGeo)
-				}
-				add(platform, "site:"+site+" "+q)
-				if role == RoleBuyer {
-					add(platform, "site:"+site+" "+strings.TrimSpace(alias+" importer "+engGeo))
-				} else {
-					add(platform, "site:"+site+" "+strings.TrimSpace(alias+" wholesaler "+engGeo))
-				}
+			if engGeo != "" {
+				add(platform, "site:linkedin.com/company "+head+" importer "+engGeo)
 			}
 		}
 	}
@@ -304,17 +308,8 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country, role s
 	return out
 }
 
-// productSearchAliases maps common CJK product names onto English index terms.
-// Overseas Facebook / LinkedIn pages rarely contain the original Chinese keyword.
 func productSearchAliases(keyword string) []string {
-	switch foldSearchText(strings.TrimSpace(keyword)) {
-	case "电动工具":
-		return []string{"power tools"}
-	case "led灯", "led 灯":
-		return []string{"LED light"}
-	default:
-		return nil
-	}
+	return glossaryAliases(keyword)
 }
 
 func merchantIntentKeywords(keyword, role string) []string {

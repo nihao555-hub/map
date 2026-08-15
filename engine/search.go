@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	maxLimit            = 200
-	messagePolicyNote   = "系统不会代发。"
+	maxLimit            = 500
+	messagePolicyNote   = "系统不会代发。公开索引按目标国语言展开检索词；做不到企业库那种一个国家几千条。"
 	marketingPolicyNote = "系统不会代发。"
 )
 
@@ -105,6 +105,7 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 		hits     []Hit
 		warnings []string
 		sources  []string
+		expanded []string
 	)
 
 	add := func(items []Hit, src string, warn string, err error) {
@@ -129,10 +130,13 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		items, warns, srcs := c.searchPublicProfiles(gctx, q.Keyword, q.Country, q.Role, wanted, q.Limit)
+		items, warns, srcs, terms := c.searchPublicProfiles(gctx, q.Keyword, q.Country, q.Role, wanted, q.Limit)
 		src := strings.Join(srcs, "+")
 		warn := strings.Join(warns, "; ")
 		add(items, src, warn, nil)
+		mu.Lock()
+		expanded = terms
+		mu.Unlock()
 
 		return nil
 	})
@@ -193,6 +197,7 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 		Warnings: uniqueStrings(warnings),
 		Sources:  uniqueStrings(sources),
 		Note:     messagePolicyNote,
+		Expanded: expanded,
 	}, nil
 }
 
@@ -494,6 +499,8 @@ func hasBuyerToken(blob string) bool {
 		"采购", "进口商", "进口", "采购商", "采购部",
 		"importer", "importers", "buyer", "buyers",
 		"procurement", "purchasing", "importing",
+		"นำเข้า", "ผู้นำเข้า", "จัดซื้อ",
+		"nhập khẩu", "pengimport", "importir",
 	}
 	return containsAnyToken(blob, tokens)
 }
