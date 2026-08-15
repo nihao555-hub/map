@@ -122,4 +122,5 @@ type Result struct {
 	SearchedAt time.Time `json:"searched_at"`
 	Note       string    `json:"note,omitempty"`
 	Expanded   []string  `json:"expanded,omitempty"`
+	Cached     bool      `json:"cached,omitempty"`
 }

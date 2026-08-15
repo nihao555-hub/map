@@ -141,6 +141,13 @@ func scrubDiscoverResult(res *engine.Result) {
 	}
 	for i := range res.Hits {
 		res.Hits[i].Source = ""
+		if res.Hits[i].Extra == nil {
+			continue
+		}
+		delete(res.Hits[i].Extra, "q")
+		if len(res.Hits[i].Extra) == 0 {
+			res.Hits[i].Extra = nil
+		}
 	}
 }
 

@@ -58,6 +58,13 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 		q.Limit = maxLimit
 	}
 
+	if cached, ok := lookupSearchCache(q); ok {
+		cached.TookMS = time.Since(start).Milliseconds()
+		cached.SearchedAt = time.Now().UTC()
+		cached.Cached = true
+		return cached, nil
+	}
+
 	var (
 		res Result
 		err error
@@ -102,6 +109,7 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 		res.Note = exhibitionPolicyNote
 	}
 
+	storeSearchCache(q, res)
 	return res, nil
 }
 
@@ -283,12 +291,20 @@ func filterPreciseHits(hits []Hit, keyword string) []Hit {
 	return out
 }
 
-func hitMatchesKeyword(hit Hit, kw string) bool {
-	blob := foldSearchText(strings.Join([]string{
-		hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.Contact, hit.HomepageURL,
-	}, " "))
+func hitKeywordBlob(hit Hit) string {
+	parts := []string{hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.Contact, hit.HomepageURL}
+	if hit.Extra != nil {
+		parts = append(parts, hit.Extra["q"])
+	}
+	return foldSearchText(strings.Join(parts, " "))
+}
 
-	return blobMatchesKeyword(blob, kw)
+func hitRoleBlob(hit Hit) string {
+	return foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet}, " "))
+}
+
+func hitMatchesKeyword(hit Hit, kw string) bool {
+	return blobMatchesKeyword(hitKeywordBlob(hit), kw)
 }
 
 func blobMatchesKeyword(blob, kw string) bool {
@@ -305,6 +321,20 @@ func blobMatchesKeyword(blob, kw string) bool {
 			return true
 		}
 	}
+	// "power tools" should match handles like PowerbiltTools / boschpowertools.
+	if tokens := strings.Fields(kw); len(tokens) >= 2 {
+		ok := true
+		for _, tok := range tokens {
+			tok = foldSearchText(tok)
+			if len([]rune(tok)) < 2 || !strings.Contains(blob, tok) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return true
+		}
+	}
 
 	return false
 }
@@ -314,7 +344,7 @@ func keywordBonus(hit Hit, kw string) int {
 		return 0
 	}
 
-	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet}, " "))
+	blob := hitKeywordBlob(hit)
 	kw = foldSearchText(kw)
 	switch {
 	case strings.EqualFold(hit.Handle, strings.TrimPrefix(kw, "@")):
@@ -327,7 +357,8 @@ func keywordBonus(hit Hit, kw string) int {
 }
 
 func merchantBonus(hit Hit, kw, role string) int {
-	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.HomepageURL}, " "))
+	roleBlob := hitRoleBlob(hit)
+	kwBlob := hitKeywordBlob(hit)
 	score := 0
 	if isProfileURL(hit.HomepageURL) {
 		score += 12
@@ -338,30 +369,30 @@ func merchantBonus(hit Hit, kw, role string) int {
 
 	switch strings.ToLower(strings.TrimSpace(role)) {
 	case RoleBuyer:
-		if hasBuyerToken(blob) {
+		if hasBuyerToken(roleBlob) {
 			score += 24
 		}
-		if hasCompanyToken(blob) {
+		if hasCompanyToken(roleBlob) {
 			score += 6
 		}
-		if hasSellerToken(blob) && !hasBuyerToken(blob) {
+		if hasSellerToken(roleBlob) && !hasBuyerToken(roleBlob) {
 			score -= 16
 		}
-		if kw != "" && !blobMatchesKeyword(blob, kw) && !hasBuyerToken(blob) {
+		if kw != "" && !blobMatchesKeyword(kwBlob, kw) && !hasBuyerToken(roleBlob) {
 			score -= 28
 		}
 	case RoleSeller:
-		if hasSellerToken(blob) {
+		if hasSellerToken(roleBlob) {
 			score += 22
 		}
-		if kw != "" && !blobMatchesKeyword(blob, kw) && !hasMerchantToken(blob) {
+		if kw != "" && !blobMatchesKeyword(kwBlob, kw) && !hasMerchantToken(roleBlob) {
 			score -= 28
 		}
 	default:
-		if hasMerchantToken(blob) {
+		if hasMerchantToken(roleBlob) {
 			score += 22
 		}
-		if kw != "" && !blobMatchesKeyword(blob, kw) && !hasMerchantToken(blob) {
+		if kw != "" && !blobMatchesKeyword(kwBlob, kw) && !hasMerchantToken(roleBlob) {
 			score -= 28
 		}
 	}
@@ -370,7 +401,7 @@ func merchantBonus(hit Hit, kw, role string) int {
 }
 
 func inferHitRole(hit Hit, queryRole string) string {
-	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet}, " "))
+	blob := hitRoleBlob(hit)
 	buy := hasBuyerToken(blob)
 	sell := hasSellerToken(blob)
 	switch {
@@ -404,21 +435,21 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 		return true
 	}
 
-	blob := foldSearchText(strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.HomepageURL}, " "))
-	if looksLikeTutorial(blob) {
+	roleBlob := hitRoleBlob(hit)
+	if looksLikeTutorial(roleBlob + " " + foldSearchText(hit.HomepageURL)) {
 		return true
 	}
 	role = strings.ToLower(strings.TrimSpace(role))
-	if kw != "" && !blobMatchesKeyword(blob, kw) {
+	if kw != "" && !blobMatchesKeyword(hitKeywordBlob(hit), kw) {
 		if role == RoleBuyer {
-			if !hasBuyerToken(blob) {
+			if !hasBuyerToken(roleBlob) {
 				return true
 			}
-		} else if !hasMerchantToken(blob) {
+		} else if !hasMerchantToken(roleBlob) {
 			return true
 		}
 	}
-	if role == RoleBuyer && hasSellerToken(blob) && !hasBuyerToken(blob) {
+	if role == RoleBuyer && hasSellerToken(roleBlob) && !hasBuyerToken(roleBlob) {
 		switch hit.Platform {
 		case PlatformDouyin, PlatformXiaohongshu, PlatformKuaishou, PlatformWeibo, PlatformBilibili:
 			if !strings.Contains(kw, "http") && !hasSellerToken(foldSearchText(kw)) {

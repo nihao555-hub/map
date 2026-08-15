@@ -192,7 +192,7 @@
         }
         const hits = out.j.hits || [];
         status.textContent = hits.length
-          ? ("已找到 " + hits.length + (role === "seller" ? " 家参展商" : " 场展会"))
+          ? ("已找到 " + hits.length + (role === "seller" ? " 家参展商" : " 场展会") + (out.j.cached ? "（即时）" : ""))
           : (out.j.note || "没有命中");
         renderHits(hits);
       })

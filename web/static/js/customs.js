@@ -234,7 +234,7 @@
         }
         lastHits = hits;
         status.textContent = hits.length
-          ? ("已找到 " + hits.length + " 家企业")
+          ? ("已找到 " + hits.length + " 家企业" + (out.j.cached ? "（即时）" : ""))
           : (out.j.note || "没有命中");
         renderHits(hits, out.j.note);
       })

@@ -57,7 +57,7 @@ func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/preview/frame", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel", "expanded"} {
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/preview/frame", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel", "expanded", "data.cached"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -132,7 +132,9 @@ func TestScrubDiscoverResultStripsEngineNames(t *testing.T) {
 			Name:        "厂",
 			HomepageURL: "https://www.facebook.com/factory",
 			Source:      "bing",
+			Extra:       map[string]string{"q": "site:facebook.com LED灯 采购", "shipments": "48"},
 		}},
+		Cached:   true,
 		Sources:  []string{"bing", "duckduckgo"},
 		Warnings: []string{"duckduckgo: status 429 rate limited"},
 		TookMS:   12,
@@ -141,6 +143,12 @@ func TestScrubDiscoverResultStripsEngineNames(t *testing.T) {
 	scrubDiscoverResult(&res)
 	if res.Hits[0].Source != "" || len(res.Sources) != 0 || res.Warnings != nil || res.TookMS != 0 {
 		t.Fatalf("not scrubbed %+v", res)
+	}
+	if res.Hits[0].Extra["q"] != "" || res.Hits[0].Extra["shipments"] != "48" {
+		t.Fatalf("extra not scrubbed %+v", res.Hits[0].Extra)
+	}
+	if !res.Cached {
+		t.Fatal("cached flag stripped")
 	}
 	if res.Note != "系统不会代发。公开网页索引按目标国语言展开检索，做不到企业库那种一个国家几千条。" {
 		t.Fatalf("note=%s", res.Note)

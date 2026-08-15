@@ -465,6 +465,9 @@
           lastHits.forEach(function (h) { plats[h.platform || ""] = true; });
           const nPlat = Object.keys(plats).filter(Boolean).length;
           status.textContent = "已找到 " + lastHits.length + " 条主页，来自 " + nPlat + " 个社媒";
+          if (data.cached) {
+            status.textContent += "（即时）";
+          }
           if (data.expanded && data.expanded.length) {
             status.textContent += "；当地检索词 " + data.expanded.slice(0, 6).join(" / ");
           }

@@ -283,3 +283,48 @@ func TestNormalizeRoleDefaultsBuyer(t *testing.T) {
 		t.Fatalf("buyer=%s seller=%s", NormalizeRole(""), NormalizeRole("卖家"))
 	}
 }
+
+func TestBlobMatchesKeywordHandle(t *testing.T) {
+	if !blobMatchesKeyword("https://www.facebook.com/PowerbiltTools official page", "power tools") {
+		t.Fatal("expected PowerbiltTools to match power tools")
+	}
+	if blobMatchesKeyword("https://www.facebook.com/randomshop", "power tools") {
+		t.Fatal("false positive")
+	}
+}
+
+func TestMergeHitsKeepsProductHandle(t *testing.T) {
+	out := mergeHits([]Hit{
+		{ID: "fb", Platform: PlatformFacebook, Name: "Powerbilt Tools", Handle: "PowerbiltTools", HomepageURL: "https://www.facebook.com/PowerbiltTools", Snippet: "tools"},
+	}, "power tools", 0, RoleBuyer, "")
+	if len(out) != 1 {
+		t.Fatalf("dropped product handle %+v", out)
+	}
+}
+
+func TestMergeHitsKeepsQueryStampedEmptySnippet(t *testing.T) {
+	out := mergeHits([]Hit{{
+		ID:          "dy",
+		Platform:    PlatformDouyin,
+		Name:        "MS4wLjABAAAAledbuyer",
+		HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAledbuyer",
+		Extra:       map[string]string{"q": "site:douyin.com/user LED灯"},
+	}}, "LED灯", 0, RoleBuyer, "")
+	if len(out) != 1 {
+		t.Fatalf("query-stamped profile dropped %+v", out)
+	}
+}
+
+func TestMergeHitsBuyerStillDropsFactoryDespiteQuery(t *testing.T) {
+	out := mergeHits([]Hit{{
+		ID:          "dy",
+		Platform:    PlatformDouyin,
+		Name:        "LED灯厂家直销",
+		HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAFactory",
+		Snippet:     "工厂批发",
+		Extra:       map[string]string{"q": "site:douyin.com/user LED灯 采购"},
+	}}, "LED灯", 0, RoleBuyer, "")
+	if len(out) != 0 {
+		t.Fatalf("factory leaked via query stamp %+v", out)
+	}
+}

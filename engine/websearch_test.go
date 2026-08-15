@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -437,5 +438,53 @@ func TestSearchOneIndexPaginatesBing(t *testing.T) {
 	}
 	if !sawPage2 {
 		t.Fatalf("missing bing pagination firsts=%v", firsts)
+	}
+}
+
+func TestDecodeBingRedirect(t *testing.T) {
+	target := "https://www.facebook.com/PowerbiltTools"
+	enc := base64.RawURLEncoding.EncodeToString([]byte(target))
+	href := "https://www.bing.com/ck/a?!&&p=abc&u=a1" + enc + "&ntb=1"
+	if got := decodeBingRedirect(href); got != target {
+		t.Fatalf("got %s", got)
+	}
+	if got := decodeBingRedirect("https://www.facebook.com/plain"); got != "https://www.facebook.com/plain" {
+		t.Fatalf("plain %s", got)
+	}
+	rel := "/ck/a?!&&p=abc&u=a1" + enc + "&ntb=1"
+	if got := decodeBingRedirect(rel); got != target {
+		t.Fatalf("relative %s", got)
+	}
+}
+
+func TestPublicSearchQueriesCapsAtMax(t *testing.T) {
+	wanted := map[string]bool{}
+	for _, p := range DefaultPeoplePlatforms {
+		wanted[p] = true
+	}
+	qs := publicSearchQueries("LED灯", wanted, "", RoleBuyer)
+	if len(qs) > maxPublicQueries {
+		t.Fatalf("queries=%d cap=%d", len(qs), maxPublicQueries)
+	}
+	if len(qs) < 20 {
+		t.Fatalf("too few queries %d", len(qs))
+	}
+}
+
+func TestExtractProfilesFromBingRedirectHTML(t *testing.T) {
+	target := "https://www.facebook.com/PowerbiltTools"
+	enc := base64.RawURLEncoding.EncodeToString([]byte(target))
+	html := `<html><body><li class="b_algo"><h2>
+		<a href="https://www.bing.com/ck/a?!&amp;&amp;p=x&amp;u=a1` + enc + `&amp;ntb=1">Powerbilt Tools</a>
+		</h2><cite>www.facebook.com/PowerbiltTools</cite></li></body></html>`
+	hits := extractProfilesFromHTML([]byte(html), "bing")
+	saw := false
+	for _, h := range hits {
+		if h.Platform == PlatformFacebook && strings.Contains(h.HomepageURL, "facebook.com/PowerbiltTools") {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("missing facebook profile %+v", hits)
 	}
 }

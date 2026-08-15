@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode"
@@ -19,16 +21,73 @@ import (
 
 var (
 	hrefAbsRe      = regexp.MustCompile(`https?://[^\s"'<>]+`)
+	bingRedirectRe = regexp.MustCompile(`[?&](?:amp;)?u=a1([A-Za-z0-9_\-]+={0,2})`)
 	namedIndexMu   sync.Mutex
 	lastNamedIndex map[string]time.Time
+	indexRotation  atomic.Uint64
 )
 
 const (
-	indexExtraPages    = 2
+	indexExtraPages    = 3
 	enoughHitsPerQuery = 40
 	blobExtractCap     = 200
 	publicSearchLimit  = 8
 )
+
+// decodeBingRedirect resolves a bing.com/ck/a redirect link to its real target
+// URL (the u=a1<base64url> parameter Bing wraps every organic result in).
+func decodeBingRedirect(href string) string {
+	if !strings.Contains(href, "u=a1") {
+		return href
+	}
+	m := bingRedirectRe.FindStringSubmatch(href)
+	if len(m) != 2 {
+		return href
+	}
+	if target := decodeBingTarget(m[1]); target != "" {
+		return target
+	}
+	return href
+}
+
+func decodeBingTarget(enc string) string {
+	dec, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(enc, "="))
+	if err != nil {
+		return ""
+	}
+	target := string(dec)
+	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+		return target
+	}
+	return ""
+}
+
+// decodeBingRedirectsBlob extracts every redirect target embedded in a Bing
+// result page so profile regexes can see the real URLs.
+func decodeBingRedirectsBlob(html string) []string {
+	if !strings.Contains(html, "u=a1") {
+		return nil
+	}
+	var out []string
+	for _, m := range bingRedirectRe.FindAllStringSubmatch(html, blobExtractCap*2) {
+		if len(m) != 2 {
+			continue
+		}
+		if target := decodeBingTarget(m[1]); target != "" {
+			out = append(out, target)
+		}
+	}
+	return out
+}
+
+func isRateLimitedErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "429") || strings.Contains(s, "rate limited") ||
+		strings.Contains(s, "403") || strings.Contains(s, "challenge")
+}
 
 func indexGap(name string) time.Duration {
 	switch name {
@@ -124,7 +183,13 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, rol
 				if len(wanted) > 0 && !wanted[h.Platform] {
 					continue
 				}
-
+				// Stamp the finding query for keyword matching only.
+				// Do not copy it into Snippet: buyer queries contain 采购/importer
+				// and would fake every hit as a buyer and hide factory tokens.
+				if h.Extra == nil {
+					h.Extra = map[string]string{}
+				}
+				h.Extra["q"] = q.query
 				hits = append(hits, h)
 			}
 
@@ -164,10 +229,16 @@ var platformSearchDomain = map[string]string{
 // publicSearchOrder prefers Chinese networks first so a CJK keyword can
 // return Douyin/Xiaohongshu hits before site: queries trip index challenges.
 var publicSearchOrder = []string{
-	PlatformDouyin, PlatformXiaohongshu, PlatformKuaishou, PlatformWeibo, PlatformBilibili,
-	PlatformTikTok, PlatformFacebook, PlatformInstagram, PlatformYouTube, PlatformLinkedIn,
+	PlatformDouyin, PlatformTikTok, PlatformFacebook, PlatformLinkedIn,
+	PlatformInstagram, PlatformYouTube, PlatformXiaohongshu,
+	PlatformKuaishou, PlatformWeibo, PlatformBilibili,
 	PlatformX, PlatformPinterest, PlatformThreads, PlatformTelegram, PlatformReddit, PlatformTwitch,
 }
+
+const (
+	maxPublicQueries   = 48
+	publicQueryTermCap = 4
+)
 
 var platformProfileSite = map[string]string{
 	PlatformFacebook:    "facebook.com",
@@ -206,7 +277,7 @@ func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]
 	}
 	engGeo := CountryQueryToken(country, false)
 	localGeo := CountryQueryToken(country, true)
-	terms = clipTerms(uniqueFoldedStrings(append([]string{keyword}, terms...)), maxLocalTerms)
+	terms = clipTerms(uniqueFoldedStrings(append([]string{keyword}, terms...)), publicQueryTermCap)
 	if len(terms) == 0 || keyword == "" {
 		return out
 	}
@@ -305,6 +376,9 @@ func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]
 		}
 	}
 
+	if len(out) > maxPublicQueries {
+		out = out[:maxPublicQueries]
+	}
 	return out
 }
 
@@ -367,6 +441,9 @@ func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, e
 
 		raw, err := a.fn(ctx, query)
 		if err != nil {
+			if isRateLimitedErr(err) {
+				c.markIndexLimited(a.name)
+			}
 			continue
 		}
 		if looksLikeChallenge(raw) {
@@ -481,6 +558,15 @@ func indexAttempts(c *Client, names []string) []indexAttempt {
 	}
 	all = filtered
 	if len(names) == 0 {
+		// Rotate the starting engine so concurrent queries spread across
+		// all live indexes instead of hammering the first one.
+		if len(all) > 1 {
+			off := int(indexRotation.Add(1)) % len(all)
+			rot := make([]indexAttempt, 0, len(all))
+			rot = append(rot, all[off:]...)
+			rot = append(rot, all[:off]...)
+			all = rot
+		}
 		return all
 	}
 
@@ -673,6 +759,7 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 		addAnchors := func(sel *goquery.Selection) {
 			sel.Each(func(_ int, s *goquery.Selection) {
 				href, _ := s.Attr("href")
+				href = decodeBingRedirect(href)
 				title := strings.TrimSpace(s.Text())
 				snippet := strings.TrimSpace(s.Parent().Text())
 				if len(snippet) > 240 {
@@ -685,9 +772,25 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 		cards := doc.Find("a.result__a, li.b_algo h2 a, #b_results h2 a")
 		addAnchors(cards)
 		addAnchors(doc.Find("a[href]"))
+		doc.Find("cite").Each(func(_ int, s *goquery.Selection) {
+			cite := strings.TrimSpace(s.Text())
+			if cite == "" {
+				return
+			}
+			if !strings.HasPrefix(cite, "http://") && !strings.HasPrefix(cite, "https://") {
+				cite = "https://" + strings.TrimPrefix(cite, "//")
+			}
+			add(ParseSocialURL(cite, strings.TrimSpace(s.Parent().Text()), ""))
+		})
 	}
 
 	blob := html + "\n" + decoded
+	if targets := decodeBingRedirectsBlob(html); len(targets) > 0 {
+		blob += "\n" + strings.Join(targets, "\n")
+		for _, target := range targets {
+			add(ParseSocialURL(target, "", ""))
+		}
+	}
 	addBlob := func(re *regexp.Regexp, home func(string) string) {
 		for _, m := range re.FindAllStringSubmatch(blob, blobExtractCap) {
 			if len(m) >= 2 {

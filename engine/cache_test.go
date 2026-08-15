@@ -1,0 +1,47 @@
+package engine
+
+import (
+	"testing"
+	"time"
+)
+
+func TestSearchCacheRoundTrip(t *testing.T) {
+	q := Query{Keyword: "shoes", Kind: KindCustoms, Role: RoleBuyer, Limit: 0}
+	storeSearchCacheAlways(q, Result{
+		Keyword: "shoes",
+		Kind:    KindCustoms,
+		Hits:    []Hit{{ID: "c1", Name: "FOOT LOCKER INC", Extra: map[string]string{"shipments": "48"}}},
+	})
+	got, ok := lookupSearchCacheAlways(q)
+	if !ok || len(got.Hits) != 1 || got.Hits[0].Name != "FOOT LOCKER INC" {
+		t.Fatalf("cache miss %+v ok=%v", got, ok)
+	}
+	got.Hits[0].Extra["shipments"] = "0"
+	again, _ := lookupSearchCacheAlways(q)
+	if again.Hits[0].Extra["shipments"] != "48" {
+		t.Fatal("cache alias")
+	}
+}
+
+func TestSearchCacheExpires(t *testing.T) {
+	q := Query{Keyword: "empty-expire", Kind: KindPeople}
+	storeSearchCacheAlways(q, Result{Kind: KindPeople})
+	searchCacheMu.Lock()
+	key := searchCacheKey(q)
+	ent := searchCache[key]
+	ent.at = time.Now().Add(-2 * time.Minute)
+	searchCache[key] = ent
+	searchCacheMu.Unlock()
+	if _, ok := lookupSearchCacheAlways(q); ok {
+		t.Fatal("expired empty result should miss")
+	}
+}
+
+func TestCacheTTLFor(t *testing.T) {
+	if cacheTTLFor(KindCustoms, 3) != customsCacheTTL {
+		t.Fatal("customs ttl")
+	}
+	if cacheTTLFor(KindExhibition, 0) != emptyCacheTTL {
+		t.Fatal("empty ttl")
+	}
+}

@@ -437,6 +437,7 @@ func extractOrganicResults(raw []byte, source string) []Hit {
 	var out []Hit
 	add := func(href, title, snippet string) {
 		href = strings.TrimSpace(href)
+		href = decodeBingRedirect(href)
 		title = strings.TrimSpace(title)
 		if href == "" || title == "" {
 			return
