@@ -58,17 +58,16 @@ func (c *Client) searchPublicContacts(ctx context.Context, keyword string, wante
 		hits     []Hit
 		warnings []string
 		sources  []string
+		pages    []string
 	)
+	order := []string{"duckduckgo", "bing", "brave"}
 
 	for _, q := range queries {
 		if ctx.Err() != nil {
 			break
 		}
-		if limit > 0 && len(hits) >= limit {
-			break
-		}
 
-		batch, src, err := c.searchOneIndexExtract(ctx, q, extractContactsFromHTML)
+		raw, src, err := c.fetchIndexHTML(ctx, q, order)
 		if err != nil {
 			warnings = append(warnings, err.Error())
 			continue
@@ -76,7 +75,15 @@ func (c *Client) searchPublicContacts(ctx context.Context, keyword string, wante
 		if src != "" {
 			sources = append(sources, src)
 		}
-		hits = append(hits, batch...)
+		hits = append(hits, extractContactsFromHTML(raw, src)...)
+		pages = append(pages, candidatePagesFromHTML(raw)...)
+	}
+
+	harvested, hw := c.harvestPages(ctx, pages, limit)
+	hits = append(hits, harvested...)
+	warnings = append(warnings, hw...)
+	if len(harvested) > 0 {
+		sources = append(sources, "page-harvest")
 	}
 
 	return hits, uniqueStrings(warnings), uniqueStrings(sources)
@@ -84,8 +91,8 @@ func (c *Client) searchPublicContacts(ctx context.Context, keyword string, wante
 
 func marketingSearchQueries(keyword string, wanted map[string]bool) []string {
 	out := []string{
-		keyword + " email contact",
-		keyword + " whatsapp",
+		keyword + ` email OR contact OR mailto`,
+		keyword + ` whatsapp OR wa.me`,
 	}
 
 	n := 0
@@ -95,7 +102,7 @@ func marketingSearchQueries(keyword string, wanted map[string]bool) []string {
 		}
 		out = append(out, "site:"+p+".com "+keyword+" email")
 		n++
-		if n >= 2 {
+		if n >= 1 {
 			break
 		}
 	}

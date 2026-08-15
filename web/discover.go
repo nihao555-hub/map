@@ -82,6 +82,39 @@ func (s *Server) apiDiscoverSearch(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusOK, res)
 }
 
+func (s *Server) apiDiscoverPreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+
+		return
+	}
+
+	raw := strings.TrimSpace(r.URL.Query().Get("url"))
+	if raw == "" {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "url is required",
+		})
+
+		return
+	}
+
+	prev, err := s.engine.Preview(r.Context(), raw)
+	if err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		})
+
+		return
+	}
+
+	renderJSON(w, http.StatusOK, prev)
+}
+
 func (s *Server) apiDiscoverPlatforms(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		renderJSON(w, http.StatusMethodNotAllowed, apiError{
@@ -129,6 +162,13 @@ func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 				"license": "Apache-2.0",
 				"pushed":  "2026-04",
 				"use":     "TikTok 关键词搜作品抽作者；抖音主页 URL→资料",
+			},
+			{
+				"name":    "s0md3v/Photon",
+				"stars":   "13085",
+				"license": "GPL-3.0（不链进 Go，只对齐其公开页 intel 抽取）",
+				"pushed":  "2018+",
+				"use":     "营销模式：公开检索定位页面后，抓取页面中的邮箱 / WhatsApp / 社媒链接",
 			},
 		},
 		"skipped": []map[string]string{

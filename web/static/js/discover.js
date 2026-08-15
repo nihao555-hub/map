@@ -21,13 +21,13 @@
     "不是地图搜店：输入商品或企业关键词",
     "在抖音、TikTok 等社媒找店主 / 真人主页",
     "拿到的是可打开的官方主页，不是邮箱",
-    "去私信：打开主页后由你手动发，系统不代发"
+    "去私信：在右侧打开主页预览，系统不代发"
   ];
   const MARKET_BULLETS = [
     "营销模式对齐网易外贸通智能引擎：找已公开的联系方式",
-    "从搜索引擎 / 社媒公开页抽取邮箱或 WhatsApp",
+    "从公开检索定位页面，再抽取邮箱或 WhatsApp（Photon 式 intel）",
     "结果是账号或邮箱、网页标题、来源链接",
-    "一键营销只打开写信或官方聊天窗口，系统不代发"
+    "一键营销在右侧写信，系统不代发"
   ];
 
   const PLATFORM_ICONS = {
@@ -293,14 +293,19 @@
                 platformSvg(plat) + escapeHtml(src) + "</a>"
             : "—") + "</td>" +
           '<td class="row-actions">' +
-            '<a target="_blank" rel="noopener" href="' + escapeAttr(home || "#") + '">打开主页</a>' +
-            '<a class="btn-msg" target="_blank" rel="noopener" href="' + escapeAttr(msg || "#") +
-              '" title="' + escapeAttr(h.message_hint || "") + '">去私信</a>' +
+            '<button type="button" class="linkish" data-open="home" data-url="' + escapeAttr(home) +
+              '" data-name="' + escapeAttr(h.name || handle) + '" data-platform="' + escapeAttr(plat) +
+              '" data-handle="' + escapeAttr(h.handle || "") + '" data-snippet="' + escapeAttr(h.snippet || "") +
+              '">打开主页</button>' +
+            '<button type="button" class="linkish btn-msg" data-open="msg" data-url="' + escapeAttr(msg || home) +
+              '" data-name="' + escapeAttr(h.name || handle) + '" data-platform="' + escapeAttr(plat) +
+              '" data-handle="' + escapeAttr(h.handle || "") + '" data-snippet="' + escapeAttr(h.snippet || h.message_hint || "") +
+              '">去私信</button>' +
           "</td>" +
         "</tr>"
       );
     }).join("");
-    foot.textContent = "共 " + hits.length + " 条公开主页 · 去私信只打开官方页，不代发";
+    foot.textContent = "共 " + hits.length + " 条公开主页 · 点击后在右侧打开，不代发";
   }
 
   function renderMarketHits(hits) {
@@ -334,13 +339,19 @@
                 platformSvg(plat) + escapeHtml(src || home) + "</a>"
             : "—") + "</td>" +
           '<td class="row-actions">' +
-            '<a class="btn-msg" target="_blank" rel="noopener" href="' + escapeAttr(h.message_url || home || "#") +
-              '">' + (h.channel === "whatsapp" ? "打开 WhatsApp" : "写邮件") + "</a>" +
+            '<button type="button" class="linkish btn-msg" data-open="' +
+              (h.channel === "whatsapp" ? "wa" : "mail") +
+              '" data-url="' + escapeAttr(h.message_url || home) +
+              '" data-contact="' + escapeAttr(contact) +
+              '" data-name="' + escapeAttr(title || contact) +
+              '" data-platform="' + escapeAttr(plat) +
+              '" data-snippet="' + escapeAttr(h.snippet || "") +
+              '">' + (h.channel === "whatsapp" ? "打开 WhatsApp" : "写邮件") + "</button>" +
           "</td>" +
         "</tr>"
       );
     }).join("");
-    foot.textContent = "共 " + rows.length + " 条公开联系方式 · 一键营销不代发";
+    foot.textContent = "共 " + rows.length + " 条公开联系方式 · 一键营销在右侧写信，不代发";
   }
 
   function pickedRows() {
@@ -366,13 +377,129 @@
       return;
     }
     const emails = picked.filter(function (p) { return p.channel === "email" && p.contact; });
-    const was = picked.filter(function (p) { return p.channel === "whatsapp" && p.msg; });
+    const was = picked.filter(function (p) { return p.channel === "whatsapp" && (p.msg || p.contact); });
     if (emails.length) {
-      window.open("/outreach?emails=" + encodeURIComponent(emails.map(function (p) { return p.contact; }).join(",")), "_blank", "noopener");
-    } else if (was.length) {
-      window.open(was[0].msg, "_blank", "noopener");
+      showPreview({
+        kind: "mail",
+        name: "一键营销",
+        contact: emails.map(function (p) { return p.contact; }).join(", "),
+        url: "mailto:" + emails.map(function (p) { return p.contact; }).join(","),
+        snippet: "已选 " + emails.length + " 个公开邮箱。在右侧写草稿后打开系统邮箱，系统不会代发。",
+      });
+      return;
     }
-    toast("已打开写信或官方聊天窗口，系统不会代发");
+    if (was.length) {
+      showPreview({
+        kind: "wa",
+        name: "WhatsApp",
+        contact: was[0].contact,
+        url: was[0].msg,
+        snippet: "在右侧写草稿后打开 WhatsApp 官方窗口，系统不会代发。",
+      });
+    }
+  });
+
+  let previewOfficial = "";
+
+  function showPreview(hit) {
+    document.getElementById("preview-empty").classList.add("hidden");
+    document.getElementById("preview-card").classList.remove("hidden");
+        document.getElementById("preview-name").textContent = hit.name || hit.contact || "主页预览";
+    document.getElementById("preview-kicker").textContent =
+      hit.kind === "mail" ? "写开发信" : hit.kind === "wa" ? "WhatsApp" : hit.kind === "msg" ? "去私信" : "打开主页";
+    document.getElementById("preview-desc").textContent = hit.snippet || "";
+    document.getElementById("preview-to").value = hit.contact || (hit.handle ? "@" + hit.handle : "");
+    document.getElementById("preview-to-label").textContent =
+      hit.kind === "mail" ? "收件人邮箱" : hit.kind === "wa" ? "WhatsApp" : "账号";
+    document.getElementById("preview-note").textContent = "正在载入公开页摘要…";
+    document.getElementById("preview-image").classList.add("hidden");
+    const frame = document.getElementById("preview-frame");
+    frame.classList.add("hidden");
+    frame.removeAttribute("src");
+    previewOfficial = hit.url || "";
+    const pageURL = (hit.url || "").indexOf("mailto:") === 0 ? "" : hit.url;
+    if (!pageURL) {
+      document.getElementById("preview-note").textContent = hit.snippet || "系统不会代发。";
+      return;
+    }
+    fetch("/api/v1/discover/preview?url=" + encodeURIComponent(pageURL))
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (out) {
+        if (!out.ok) {
+          document.getElementById("preview-note").textContent = (out.j && out.j.message) ||
+            "官方页无法内嵌。可点「在官方页打开」后手动发送，系统不会代发。";
+          return;
+        }
+        const p = out.j;
+        if (p.title && !hit.name) document.getElementById("preview-name").textContent = p.title;
+        if (p.description) document.getElementById("preview-desc").textContent = p.description;
+        document.getElementById("preview-note").textContent = p.note || "";
+        if (p.final_url) previewOfficial = p.final_url;
+        const img = document.getElementById("preview-image");
+        if (p.image) {
+          img.src = p.image;
+          img.classList.remove("hidden");
+        }
+        if (p.embeddable && previewOfficial) {
+          frame.src = previewOfficial;
+          frame.classList.remove("hidden");
+        }
+        if (p.contacts && p.contacts.length && !hit.contact) {
+          document.getElementById("preview-to").value = p.contacts[0].contact || "";
+        }
+      })
+      .catch(function () {
+        document.getElementById("preview-note").textContent =
+          "无法载入摘要。可点「在官方页打开」后手动发送，系统不会代发。";
+      });
+  }
+
+  results.addEventListener("click", function (ev) {
+    const btn = ev.target.closest("[data-open]");
+    if (!btn) return;
+    ev.preventDefault();
+    showPreview({
+      kind: btn.getAttribute("data-open"),
+      url: btn.getAttribute("data-url"),
+      name: btn.getAttribute("data-name"),
+      contact: btn.getAttribute("data-contact"),
+      handle: btn.getAttribute("data-handle"),
+      snippet: btn.getAttribute("data-snippet"),
+    });
+  });
+
+  document.getElementById("preview-close").addEventListener("click", function () {
+    document.getElementById("preview-card").classList.add("hidden");
+    document.getElementById("preview-empty").classList.remove("hidden");
+    document.getElementById("preview-frame").removeAttribute("src");
+  });
+
+  document.getElementById("preview-open-official").addEventListener("click", function () {
+    if (!previewOfficial) {
+      toast("没有可打开的官方页");
+      return;
+    }
+    if (previewOfficial.indexOf("mailto:") === 0) {
+      const to = document.getElementById("preview-to").value.trim();
+      const draft = document.getElementById("preview-draft").value.trim();
+      window.location.href = "mailto:" + encodeURIComponent(to).replace(/%40/g, "@").replace(/%2C/g, ",") +
+        (draft ? "?body=" + encodeURIComponent(draft) : "");
+      return;
+    }
+    window.open(previewOfficial, "_blank", "noopener");
+  });
+
+  document.getElementById("preview-copy").addEventListener("click", function () {
+    const text = document.getElementById("preview-draft").value;
+    if (!text) {
+      toast("草稿是空的");
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast("已复制草稿"); });
+      return;
+    }
+    toast("请手动复制草稿");
   });
 
   function escapeHtml(s) {

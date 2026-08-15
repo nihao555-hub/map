@@ -52,7 +52,7 @@
             <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>不是地图搜店：输入商品或企业关键词</li>
             <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>在抖音、TikTok 等社媒找店主 / 真人主页</li>
             <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>拿到的是可打开的官方主页，不是邮箱</li>
-            <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>去私信：打开主页后由你手动发，系统不代发</li>
+            <li><span class="wmt-check"><svg class="wmt-icon" style="width:10px;height:10px"><use href="#i-tick"/></svg></span>去私信：在右侧打开主页预览，系统不代发</li>
           </ul>
           <div class="wmt-channel" id="channel-group-landing" hidden>
             <button type="button" class="is-on" data-channel="email">邮箱</button>
@@ -94,20 +94,46 @@
           <button type="button" class="btn-ghost" id="select-all">全选</button>
           <button type="button" class="btn-ghost" id="market-btn">一键营销</button>
         </div>
-        <div class="wmt-table-wrap">
-          <table class="wmt-table" id="discover-table">
-            <thead id="discover-thead">
-              <tr>
-                <th>名称</th>
-                <th style="width:130px">平台</th>
-                <th style="width:180px">账号</th>
-                <th>主页</th>
-                <th style="width:160px">操作</th>
-              </tr>
-            </thead>
-            <tbody id="discover-results"></tbody>
-          </table>
-          <div id="discover-empty" class="wmt-empty">暂无结果。请输入企业或商品名称后搜索。</div>
+        <div class="wmt-workbench">
+          <div class="wmt-table-wrap">
+            <table class="wmt-table" id="discover-table">
+              <thead id="discover-thead">
+                <tr>
+                  <th>名称</th>
+                  <th style="width:130px">平台</th>
+                  <th style="width:180px">账号</th>
+                  <th>主页</th>
+                  <th style="width:160px">操作</th>
+                </tr>
+              </thead>
+              <tbody id="discover-results"></tbody>
+            </table>
+            <div id="discover-empty" class="wmt-empty">暂无结果。请输入企业或商品名称后搜索。</div>
+          </div>
+          <aside id="preview-pane" class="wmt-preview" aria-label="主页预览">
+            <div id="preview-empty" class="wmt-preview-empty">点击左侧「打开主页」或「去私信」，在这里查看主页并写草稿。系统不会代发。</div>
+            <div id="preview-card" class="hidden">
+              <header class="wmt-preview-head">
+                <div>
+                  <div class="wmt-preview-kicker" id="preview-kicker">主页预览</div>
+                  <h2 id="preview-name">—</h2>
+                </div>
+                <button type="button" class="btn-ghost" id="preview-close">关闭</button>
+              </header>
+              <p class="wmt-preview-desc" id="preview-desc"></p>
+              <img id="preview-image" class="wmt-preview-img hidden" alt="">
+              <iframe id="preview-frame" class="wmt-preview-frame hidden" title="官方主页" referrerpolicy="no-referrer-when-downgrade"></iframe>
+              <p class="wmt-preview-note" id="preview-note"></p>
+              <label class="wmt-preview-label" for="preview-to" id="preview-to-label">收件人</label>
+              <input id="preview-to" class="wmt-preview-input" placeholder="邮箱或 WhatsApp">
+              <label class="wmt-preview-label" for="preview-draft">草稿（只存在本页，不会发出）</label>
+              <textarea id="preview-draft" class="wmt-preview-draft" rows="6" placeholder="在这里写私信或开发信草稿，再到官方页 / 系统邮箱手动发送。"></textarea>
+              <div class="wmt-actions">
+                <button type="button" class="btn-ghost" id="preview-open-official">在官方页打开</button>
+                <button type="button" class="btn-ghost" id="preview-copy">复制草稿</button>
+              </div>
+            </div>
+          </aside>
         </div>
         <div id="discover-foot" class="wmt-pageinfo" style="margin:12px 0 0;justify-content:flex-start"></div>
       </section>

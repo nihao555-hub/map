@@ -20,7 +20,7 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "不是地图搜店", "私信模式", "营销模式", "一键营销", "/static/js/discover.js"} {
+	for _, want := range []string{"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "不是地图搜店", "私信模式", "营销模式", "一键营销", "preview-pane", "/static/js/discover.js"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
@@ -42,7 +42,7 @@ func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "plat-logo", "setMode", "kind: mode === \"marketing\" ? \"marketing\" : \"people\""} {
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "plat-logo", "showPreview"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -133,8 +133,18 @@ func TestDiscoverSourcesListsOSS(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "davidteather/TikTok-Api") || !strings.Contains(body, "Johnserf-Seed/f2") || !strings.Contains(body, "public-websearch") {
+	if !strings.Contains(body, "davidteather/TikTok-Api") || !strings.Contains(body, "Johnserf-Seed/f2") || !strings.Contains(body, "public-websearch") || !strings.Contains(body, "s0md3v/Photon") {
 		t.Fatalf("body=%s", body)
+	}
+}
+
+func TestDiscoverPreviewRejectsLocalhost(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/preview?url=http://127.0.0.1/", nil)
+	rec := httptest.NewRecorder()
+	srv.apiDiscoverPreview(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -81,7 +81,7 @@ func TestSearchModeMarketingRoutesKind(t *testing.T) {
 }
 
 func TestSearchMarketingFromPublicHTML(t *testing.T) {
-	html := `<html><body>
+	html := `<html><body>` + strings.Repeat("<!-- pad -->", 40) + `
 <a href="https://www.linkedin.com/in/jane-doe">Jane Doe | Power Tools</a>
 <p>Contact jane.doe@bosch-tools.com</p>
 <a href="https://wa.me/6281234567890">WhatsApp</a>
@@ -116,5 +116,53 @@ func TestSearchMarketingFromPublicHTML(t *testing.T) {
 		if h.Contact == "" || !strings.Contains(h.MessageURL, "mailto:") {
 			t.Fatalf("incomplete email hit %+v", h)
 		}
+	}
+}
+
+func TestSearchMarketingHarvestsLinkedPages(t *testing.T) {
+	serp := `<html><body>` + strings.Repeat("<!-- pad -->", 40) + `
+<a href="https://factory-tools.com/about">Factory Tools | Power tools manufacturer</a>
+</body></html>`
+	page := `<html><body>
+<title>Contact Factory Tools</title>
+<p>Email sales@factory-tools.com</p>
+<a href="https://wa.me/14155552671">WhatsApp</a>
+</body></html>`
+
+	c := &Client{
+		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			body := serp
+			if strings.Contains(req.URL.Host, "factory-tools.com") {
+				body = page
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		})},
+	}
+
+	res, err := c.Search(context.Background(), Query{
+		Keyword: "power tools",
+		Kind:    KindMarketing,
+		Limit:   10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var sawMail, sawWA bool
+	for _, h := range res.Hits {
+		if h.Contact == "sales@factory-tools.com" {
+			sawMail = true
+		}
+		if strings.Contains(h.Contact, "14155552671") {
+			sawWA = true
+		}
+	}
+	if !sawMail || !sawWA {
+		t.Fatalf("harvest mail=%v wa=%v hits=%+v warnings=%v", sawMail, sawWA, res.Hits, res.Warnings)
 	}
 }

@@ -139,16 +139,11 @@ func (c *Client) searchOneIndex(ctx context.Context, query string) ([]Hit, strin
 }
 
 func (c *Client) searchOneIndexExtract(ctx context.Context, query string, extract func([]byte, string) []Hit) ([]Hit, string, error) {
-	type attempt struct {
-		name string
-		fn   func(context.Context, string) ([]byte, error)
-	}
+	return c.searchOneIndexExtractOrder(ctx, query, extract, nil)
+}
 
-	attempts := []attempt{
-		{"brave", c.fetchBrave},
-		{"duckduckgo", c.fetchDuckDuckGo},
-		{"bing", c.fetchBing},
-	}
+func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, extract func([]byte, string) []Hit, names []string) ([]Hit, string, error) {
+	attempts := indexAttempts(c, names)
 
 	if err := waitPublicIndex(ctx); err != nil {
 		return nil, "", err
@@ -161,7 +156,6 @@ func (c *Client) searchOneIndexExtract(ctx context.Context, query string, extrac
 			errs = append(errs, fmt.Sprintf("%s: %s", a.name, err.Error()))
 			continue
 		}
-
 		if looksLikeChallenge(raw) {
 			errs = append(errs, a.name+": challenge page")
 			continue
@@ -174,6 +168,67 @@ func (c *Client) searchOneIndexExtract(ctx context.Context, query string, extrac
 		}
 
 		return hits, a.name, nil
+	}
+
+	if len(errs) > 0 {
+		return nil, "", fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+
+	return nil, "", fmt.Errorf("public search empty")
+}
+
+type indexAttempt struct {
+	name string
+	fn   func(context.Context, string) ([]byte, error)
+}
+
+func indexAttempts(c *Client, names []string) []indexAttempt {
+	all := []indexAttempt{
+		{"brave", c.fetchBrave},
+		{"duckduckgo", c.fetchDuckDuckGo},
+		{"bing", c.fetchBing},
+	}
+	if len(names) == 0 {
+		return all
+	}
+
+	byName := map[string]indexAttempt{}
+	for _, a := range all {
+		byName[a.name] = a
+	}
+
+	out := make([]indexAttempt, 0, len(names))
+	for _, n := range names {
+		if a, ok := byName[n]; ok {
+			out = append(out, a)
+		}
+	}
+
+	return out
+}
+
+func (c *Client) fetchIndexHTML(ctx context.Context, query string, names []string) ([]byte, string, error) {
+	if err := waitPublicIndex(ctx); err != nil {
+		return nil, "", err
+	}
+
+	var errs []string
+	for _, a := range indexAttempts(c, names) {
+		raw, err := a.fn(ctx, query)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %s", a.name, err.Error()))
+			continue
+		}
+		if looksLikeChallenge(raw) {
+			errs = append(errs, a.name+": challenge page")
+			continue
+		}
+		if len(raw) < 400 {
+			errs = append(errs, a.name+": empty page")
+			continue
+		}
+
+		return raw, a.name, nil
 	}
 
 	if len(errs) > 0 {

@@ -13,8 +13,8 @@ import (
 const (
 	defaultLimit        = 20
 	maxLimit            = 50
-	messagePolicyNote   = "私信只打开官方主页，由您登录后手动发送。系统不会代发或绕过平台私信接口。"
-	marketingPolicyNote = "营销模式从公开网页抽取已公开的邮箱 / WhatsApp。一键营销只打开写信或官方聊天窗口，系统不会代发。"
+	messagePolicyNote   = "私信在右侧打开主页预览。请到官方页手动发送，系统不会代发或绕过平台私信接口。"
+	marketingPolicyNote = "营销模式对齐 Photon 公开页 intel：检索结果页后再抓取页面中的邮箱 / WhatsApp。一键营销在右侧写信，系统不会代发。"
 )
 
 // Search runs customer discovery. People search uses public web indexes by default
