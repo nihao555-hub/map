@@ -59,6 +59,10 @@ func TestParseSocialURLFacebookLinkedInX(t *testing.T) {
 	if _, ok := ParseSocialURL("https://www.facebook.com/watch", "watch", ""); ok {
 		t.Fatal("facebook watch must be rejected")
 	}
+
+	if _, ok := ParseSocialURL("https://www.facebook.com/index.php", "Facebook", ""); ok {
+		t.Fatal("facebook index.php must be rejected")
+	}
 }
 
 func TestParseSocialURLMoreNetworks(t *testing.T) {
