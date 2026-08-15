@@ -156,7 +156,7 @@ func (c *Client) LookupCustomsProfile(ctx context.Context, name string, year int
 	prof := CustomsProfile{
 		Name:            firstNonEmpty(asString(parsed["name"]), name),
 		Role:            RoleBuyer,
-		Country:         firstNonEmpty(asString(parsed["country"]), "美国"),
+		Country:         "美国",
 		Address:         asString(parsed["address"]),
 		YearFrom:        jsonInt(parsed["from_year"]),
 		YearTo:          jsonInt(parsed["to_year"]),

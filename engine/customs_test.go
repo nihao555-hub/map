@@ -179,6 +179,9 @@ func TestLookupCustomsProfile(t *testing.T) {
 	if prof.Name != "ACME TOOLS INC" || prof.TotalShipments != 12 || len(prof.Suppliers) != 1 {
 		t.Fatalf("%+v", prof)
 	}
+	if prof.Country != "美国" {
+		t.Fatalf("buyer country=%q", prof.Country)
+	}
 	if len(prof.Shipments) != 1 || prof.Shipments[0].Date != "2025-03-01" || prof.Shipments[0].Shipper != "FACTORY A" {
 		t.Fatalf("shipments %+v", prof.Shipments)
 	}
