@@ -368,6 +368,16 @@ func TestMergeHitsDropsUnrelatedQueryStamp(t *testing.T) {
 	}
 }
 
+func TestMergeHitsDropsGenericProductName(t *testing.T) {
+	out := mergeHits([]Hit{
+		{ID: "gen", Platform: PlatformYouTube, Name: "LED", Handle: "LEDs", HomepageURL: "https://www.youtube.com/@LEDs", Snippet: "YouTube About"},
+		{ID: "store", Platform: PlatformFacebook, Name: "LED Lighting Store", HomepageURL: "https://www.facebook.com/ledlightingstore", Snippet: "LED lighting shop"},
+	}, "LED灯", 0, RoleBuyer, "")
+	if len(out) != 1 || out[0].ID != "store" {
+		t.Fatalf("generic LED channel leaked %+v", out)
+	}
+}
+
 func TestMergeHitsBuyerKeepsCategoryStore(t *testing.T) {
 	out := mergeHits([]Hit{
 		{ID: "store", Platform: PlatformFacebook, Name: "LED Lighting Store", HomepageURL: "https://www.facebook.com/ledlightingstore", Snippet: "LED lighting shop in KL"},

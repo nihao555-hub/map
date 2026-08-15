@@ -548,6 +548,33 @@ func looksLikeProfileName(name string) bool {
 	return true
 }
 
+func isGenericProductName(name, kw string) bool {
+	n := foldSearchText(strings.TrimSpace(name))
+	if n == "" {
+		return true
+	}
+	n = strings.Trim(n, "()[]{}<>|/\\.,;:：·-—_")
+	if n == "" {
+		return true
+	}
+	kw = foldSearchText(kw)
+	if kw != "" && (n == kw || n == strings.ReplaceAll(kw, " ", "")) {
+		return true
+	}
+	for _, alias := range productSearchAliases(kw) {
+		a := foldSearchText(alias)
+		if a != "" && (n == a || n == strings.ReplaceAll(a, " ", "")) {
+			return true
+		}
+	}
+	switch n {
+	case "led", "leds", "lighting", "light", "lights", "lamp", "lamps":
+		return true
+	}
+
+	return false
+}
+
 func genericSocialLabel(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	n = strings.TrimSuffix(n, "...")
@@ -566,6 +593,9 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 	}
 
 	if genericSocialLabel(hit.Name) {
+		return true
+	}
+	if isGenericProductName(hit.Name, kw) {
 		return true
 	}
 	if looksLikeClickbait(hit.Name) {

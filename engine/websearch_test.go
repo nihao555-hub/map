@@ -139,6 +139,16 @@ func TestSearchPeopleFallsOverQuietly(t *testing.T) {
 	}
 }
 
+func TestWaitReadyIndexesStopsWhenAllCoolingDown(t *testing.T) {
+	c := &Client{}
+	c.markDDGLimited()
+	c.markBingLimited()
+	c.markBraveLimited()
+	if got := c.waitReadyIndexes(context.Background(), nil); len(got) != 0 {
+		t.Fatalf("want empty while cooling, got %+v", got)
+	}
+}
+
 func TestIndexAttemptsSkipsDDGAfterChallenge(t *testing.T) {
 	c := &Client{}
 	c.markDDGLimited()

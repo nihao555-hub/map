@@ -488,7 +488,7 @@ func (c *Client) searchOneIndexExtract(ctx context.Context, query string, extrac
 }
 
 func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, extract func([]byte, string) []Hit, names []string, platform string) ([]Hit, string, error) {
-	attempts := indexAttempts(c, names)
+	attempts := c.waitReadyIndexes(ctx, names)
 
 	var (
 		merged []Hit
@@ -512,6 +512,7 @@ func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, e
 			continue
 		}
 		if looksLikeChallenge(raw) {
+			c.markIndexLimited(a.name)
 			continue
 		}
 
@@ -542,7 +543,14 @@ func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, e
 				break
 			}
 			raw, err := c.fetchIndexPage(ctx, name, query, page)
-			if err != nil || looksLikeChallenge(raw) {
+			if err != nil {
+				if isRateLimitedErr(err) {
+					c.markIndexLimited(name)
+				}
+				break
+			}
+			if looksLikeChallenge(raw) {
+				c.markIndexLimited(name)
 				break
 			}
 			hits := filterHitsPlatform(extract(raw, name), platform)
@@ -579,6 +587,49 @@ func filterHitsPlatform(hits []Hit, platform string) []Hit {
 		}
 	}
 	return out
+}
+
+func (c *Client) waitReadyIndexes(ctx context.Context, names []string) []indexAttempt {
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+		attempts := indexAttempts(c, names)
+		if len(attempts) > 0 {
+			return attempts
+		}
+		if err := c.waitIndexCooldown(ctx); err != nil {
+			return nil
+		}
+	}
+}
+
+func (c *Client) waitIndexCooldown(ctx context.Context) error {
+	if c == nil || testing.Testing() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return fmt.Errorf("indexes cooling down")
+	}
+	now := time.Now()
+	var soonest time.Time
+	for _, until := range []*atomic.Int64{&c.ddgUntil, &c.bingUntil, &c.braveUntil} {
+		t := time.Unix(0, until.Load())
+		if t.After(now) && (soonest.IsZero() || t.Before(soonest)) {
+			soonest = t
+		}
+	}
+	if soonest.IsZero() {
+		return nil
+	}
+	timer := time.NewTimer(time.Until(soonest) + 20*time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func uniqueHitCount(hits []Hit) int {
