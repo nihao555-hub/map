@@ -349,8 +349,19 @@ func keepExhibitionHit(h Hit, exhibitors bool) bool {
 			strings.Contains(blob, "exhibitors") ||
 			strings.Contains(blob, "参展") ||
 			strings.Contains(blob, "booth")
-		hasFair := fairTokenRe.MatchString(blob)
-		return hasExhibitor && hasFair
+		return hasExhibitor && fairTokenRe.MatchString(blob)
+	}
+	title := strings.ToLower(h.Name + " " + h.Title)
+	if strings.Contains(title, "calendar") || strings.Contains(title, "directory") ||
+		strings.Contains(title, "complete guide") || strings.Contains(title, "list of") ||
+		strings.Contains(title, "trade shows") || strings.Contains(title, "exhibitions calendar") ||
+		strings.Contains(title, "fairs calendar") || strings.Contains(title, "top furniture fairs") {
+		return false
+	}
+	for _, host := range []string{"expoassist.", "globalfurniturefairs.com", "worldfurnitureonline.com"} {
+		if strings.Contains(home, host) {
+			return false
+		}
 	}
 	return fairTokenRe.MatchString(blob)
 }

@@ -656,7 +656,7 @@ func stripMarkup(s string) string {
 
 func (c *Client) customsProfileFallback(ctx context.Context, keyword, term string, year int) []Hit {
 	for _, name := range uniqueFoldedStrings([]string{strings.TrimSpace(keyword), strings.TrimSpace(term)}) {
-		if name == "" || looksLikeHS(name) {
+		if name == "" || looksLikeHS(name) || !looksLikeCompanyName(name) {
 			continue
 		}
 		prof, err := c.LookupCustomsProfile(ctx, name, year)
@@ -666,6 +666,32 @@ func (c *Client) customsProfileFallback(ctx context.Context, keyword, term strin
 		return []Hit{hitFromCustomsProfile(prof, year)}
 	}
 	return nil
+}
+
+func looksLikeCompanyName(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	up := strings.ToUpper(s)
+	for _, tok := range []string{
+		" INC", " INC.", " LLC", " LTD", " LTD.", " CORP", " CORP.", " GMBH",
+		" CO.", " COMPANY", " LIMITED", " GROUP", " HOLDINGS", " INDUSTRIES",
+		" INTERNATIONAL", " DISTRIBUTION", " TRADING", " IMPORTS", " IMPORT ",
+		" EXPORT", " LOGISTICS", " ENTERPRISE", " FACTORY", " MANUFACTUR",
+		"公司", "有限", "集团", "实业", "贸易",
+	} {
+		if strings.Contains(up, strings.ToUpper(tok)) || strings.Contains(s, tok) {
+			return true
+		}
+	}
+	for _, f := range strings.Fields(up) {
+		switch strings.Trim(f, ".,") {
+		case "INC", "LLC", "LTD", "CORP", "GMBH":
+			return true
+		}
+	}
+	return false
 }
 
 func hitFromCustomsProfile(prof CustomsProfile, year int) Hit {

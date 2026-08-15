@@ -97,6 +97,10 @@ func TestKeepExhibitionHitDropsExhibitorNoise(t *testing.T) {
 	if keepExhibitionHit(dir, false) {
 		t.Fatal("directory calendar should be dropped")
 	}
+	cal := Hit{Name: "Furniture Exhibitions Calendar 2026 - 2027", HomepageURL: "https://expoassist.net/en/furniture", Snippet: "trade fair"}
+	if keepExhibitionHit(cal, false) {
+		t.Fatal("calendar page should be dropped")
+	}
 }
 
 func TestWikidataFairLabelSPARQLContainsProduct(t *testing.T) {

@@ -236,6 +236,40 @@ func TestSearchCustomsFallsBackToCompanyProfile(t *testing.T) {
 	}
 }
 
+func TestSearchCustomsDoesNotTreatProductAsCompany(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "lead-finder") {
+			http.Error(w, "", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"name":            "shoes",
+			"total_shipments": 2154,
+			"from_year":       2024,
+			"to_year":         2024,
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{HTTP: srv.Client(), CustomsBaseURL: srv.URL, DisablePublic: true}
+	res, err := c.Search(context.Background(), Query{Keyword: "shoes", Kind: KindCustoms, Role: RoleBuyer, Year: 2024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Hits) != 0 {
+		t.Fatalf("product word should not become a company row, got %+v", res.Hits)
+	}
+}
+
+func TestLooksLikeCompanyName(t *testing.T) {
+	if !looksLikeCompanyName("SIDEWALK DISTRIBUTION") || !looksLikeCompanyName("ACME TOOLS INC") {
+		t.Fatal("company names")
+	}
+	if looksLikeCompanyName("shoes") || looksLikeCompanyName("coffee") || looksLikeCompanyName("furniture") {
+		t.Fatal("product words")
+	}
+}
+
 func TestSearchCustomsSkipsWhenUnconfigured(t *testing.T) {
 	c := &Client{DisablePublic: true}
 	res, err := c.Search(context.Background(), Query{Keyword: "coffee", Kind: KindCustoms})
