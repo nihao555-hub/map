@@ -302,6 +302,19 @@ func TestMergeHitsKeepsProductHandle(t *testing.T) {
 	}
 }
 
+func TestMergeHitsDropsClickbait(t *testing.T) {
+	out := mergeHits([]Hit{{
+		ID:          "fb",
+		Platform:    PlatformFacebook,
+		Name:        "65 में ख़रीदे 150 पर बेचे 😱",
+		HomepageURL: "https://www.facebook.com/sirajsaifipage",
+		Snippet:     "LED light trading",
+	}}, "LED灯", 0, RoleBuyer, "")
+	if len(out) != 0 {
+		t.Fatalf("clickbait leaked %+v", out)
+	}
+}
+
 func TestMergeHitsBuyerDropsBrandWithoutCustomerSignal(t *testing.T) {
 	out := mergeHits([]Hit{
 		{ID: "brand", Platform: PlatformFacebook, Name: "Powerbilt Tools", Handle: "PowerbiltTools", HomepageURL: "https://www.facebook.com/PowerbiltTools", Snippet: "tools"},

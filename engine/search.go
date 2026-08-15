@@ -529,6 +529,9 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 	if genericSocialLabel(hit.Name) {
 		return true
 	}
+	if looksLikeClickbait(hit.Name) {
+		return true
+	}
 
 	roleBlob := hitRoleBlob(hit)
 	if looksLikeTutorial(roleBlob + " " + foldSearchText(hit.HomepageURL)) {
@@ -652,6 +655,19 @@ func hasFactoryToken(blob string) bool {
 	}
 	for _, r := range []rune(blob) {
 		if r == '厂' {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeClickbait(name string) bool {
+	n := strings.TrimSpace(name)
+	if n == "" {
+		return false
+	}
+	for _, tok := range []string{"😱", "🔥", "😂", "点击", "点赞", "viral"} {
+		if strings.Contains(n, tok) {
 			return true
 		}
 	}

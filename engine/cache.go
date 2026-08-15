@@ -98,9 +98,9 @@ func storeSearchCache(q Query, res Result) {
 	if testing.Testing() {
 		return
 	}
-	// Empty people results are often a transient index challenge.
-	// Do not lock the UI on a 90s miss.
-	if len(res.Hits) == 0 && firstNonEmpty(q.Kind, res.Kind) == KindPeople {
+	// Empty results are often a transient challenge or timeout.
+	// Do not lock the UI on a miss.
+	if len(res.Hits) == 0 {
 		return
 	}
 	storeSearchCacheAlways(q, res)
@@ -196,7 +196,7 @@ func kickSearchRefresh(c *Client, q Query) *refreshJob {
 			return
 		}
 		res = finalizeResult(q, res, time.Now())
-		storeSearchCacheAlways(q, res)
+		storeSearchCache(q, res)
 	}()
 	return job
 }
