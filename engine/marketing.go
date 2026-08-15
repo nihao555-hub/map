@@ -69,8 +69,7 @@ func (c *Client) searchPublicContacts(ctx context.Context, keyword string, wante
 		}
 
 		raw, src, err := c.fetchIndexHTML(ctx, q, order)
-		if err != nil {
-			warnings = append(warnings, err.Error())
+		if err != nil || len(raw) == 0 {
 			continue
 		}
 		if src != "" {

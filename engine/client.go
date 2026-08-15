@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -21,6 +23,11 @@ const (
 	defaultTikTokURL   = "http://127.0.0.1:8091"
 	defaultF2URL       = "http://127.0.0.1:8092"
 	browserUA          = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+
+	ddgCooldown   = 2 * time.Minute
+	bingCooldown  = 2 * time.Minute
+	braveCooldown = 3 * time.Minute
+	maxCooldown   = 5 * time.Minute
 )
 
 // Client talks to public web indexes and cloned high-star OSS sidecars.
@@ -31,8 +38,9 @@ type Client struct {
 	F2URL         string
 	TikHubToken   string
 	DisablePublic bool
-	braveLimited  atomic.Bool
-	ddgLimited    atomic.Bool
+	braveUntil    atomic.Int64
+	ddgUntil      atomic.Int64
+	bingUntil     atomic.Int64
 }
 
 // OptionsFromEnv wires sidecar base URLs.
@@ -59,10 +67,19 @@ func OptionsFromEnv() *Client {
 	}
 
 	return &Client{
-		HTTP:        &http.Client{Timeout: timeout, Transport: browserTransport()},
+		HTTP:        newBrowserHTTPClient(timeout),
 		TikTokURL:   tiktok,
 		F2URL:       f2,
 		TikHubToken: strings.TrimSpace(firstNonEmpty(os.Getenv("TIKHUB_API_TOKEN"), os.Getenv("TIKHUB_API_KEY"))),
+	}
+}
+
+func newBrowserHTTPClient(timeout time.Duration) *http.Client {
+	jar, _ := cookiejar.New(nil)
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: browserTransport(),
+		Jar:       jar,
 	}
 }
 
@@ -78,24 +95,84 @@ func browserTransport() *http.Transport {
 	return t
 }
 
+func cooldownActive(until *atomic.Int64) bool {
+	u := until.Load()
+	return u > 0 && time.Now().UnixNano() < u
+}
+
+func setCooldown(until *atomic.Int64, d time.Duration) {
+	if d <= 0 {
+		d = time.Minute
+	}
+	if d > maxCooldown {
+		d = maxCooldown
+	}
+	until.Store(time.Now().Add(d).UnixNano())
+}
+
 func (c *Client) markBraveLimited() {
 	if c != nil {
-		c.braveLimited.Store(true)
+		setCooldown(&c.braveUntil, braveCooldown)
 	}
 }
 
 func (c *Client) braveSkipped() bool {
-	return c != nil && c.braveLimited.Load()
+	return c != nil && cooldownActive(&c.braveUntil)
 }
 
 func (c *Client) markDDGLimited() {
 	if c != nil {
-		c.ddgLimited.Store(true)
+		setCooldown(&c.ddgUntil, ddgCooldown)
 	}
 }
 
 func (c *Client) ddgSkipped() bool {
-	return c != nil && c.ddgLimited.Load()
+	return c != nil && cooldownActive(&c.ddgUntil)
+}
+
+func (c *Client) markBingLimited() {
+	if c != nil {
+		setCooldown(&c.bingUntil, bingCooldown)
+	}
+}
+
+func (c *Client) bingSkipped() bool {
+	return c != nil && cooldownActive(&c.bingUntil)
+}
+
+func (c *Client) markIndexLimited(name string) {
+	switch name {
+	case "duckduckgo":
+		c.markDDGLimited()
+	case "bing":
+		c.markBingLimited()
+	case "brave":
+		c.markBraveLimited()
+	}
+}
+
+func (c *Client) markHostLimited(host string, retryAfter time.Duration) {
+	if c == nil {
+		return
+	}
+	h := strings.ToLower(host)
+	switch {
+	case strings.Contains(h, "duckduckgo"):
+		if retryAfter <= 0 {
+			retryAfter = ddgCooldown
+		}
+		setCooldown(&c.ddgUntil, retryAfter)
+	case strings.Contains(h, "brave"):
+		if retryAfter <= 0 {
+			retryAfter = braveCooldown
+		}
+		setCooldown(&c.braveUntil, retryAfter)
+	case strings.Contains(h, "bing"):
+		if retryAfter <= 0 {
+			retryAfter = bingCooldown
+		}
+		setCooldown(&c.bingUntil, retryAfter)
+	}
 }
 
 func (c *Client) httpClient() *http.Client {
@@ -103,7 +180,7 @@ func (c *Client) httpClient() *http.Client {
 		return c.HTTP
 	}
 
-	return &http.Client{Timeout: defaultHTTPTimeout, Transport: browserTransport()}
+	return newBrowserHTTPClient(defaultHTTPTimeout)
 }
 
 func (c *Client) get(ctx context.Context, rawURL string, extra map[string]string) ([]byte, error) {
@@ -155,22 +232,23 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 	}
 
 	host := strings.ToLower(req.URL.Host)
+	retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
+
 	if resp.StatusCode == http.StatusAccepted && strings.Contains(host, "duckduckgo") {
-		c.markDDGLimited()
+		c.markHostLimited(host, ddgCooldown)
 		return raw, fmt.Errorf("%s: status 202 challenge", host)
 	}
 
-	if resp.StatusCode >= 400 {
-		if resp.StatusCode == http.StatusTooManyRequests {
-			if strings.Contains(host, "brave") {
-				c.markBraveLimited()
-			}
-			if strings.Contains(host, "duckduckgo") {
-				c.markDDGLimited()
-			}
-			return raw, fmt.Errorf("%s: status 429 rate limited", req.URL.Host)
-		}
+	if resp.StatusCode == http.StatusTooManyRequests ||
+		(resp.StatusCode == http.StatusForbidden && isPublicIndexHost(host)) {
+		c.markHostLimited(host, retryAfter)
+		return raw, fmt.Errorf("%s: status %d rate limited", host, resp.StatusCode)
+	}
 
+	if resp.StatusCode >= 400 {
+		if isPublicIndexHost(host) && (resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway) {
+			c.markHostLimited(host, retryAfter)
+		}
 		msg := strings.TrimSpace(string(raw))
 		if len(msg) > 300 {
 			msg = msg[:300]
@@ -180,6 +258,23 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 	}
 
 	return raw, nil
+}
+
+func parseRetryAfter(raw string) time.Duration {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return time.Duration(n) * time.Second
+}
+
+func isPublicIndexHost(host string) bool {
+	h := strings.ToLower(host)
+	return strings.Contains(h, "duckduckgo") || strings.Contains(h, "brave") || strings.Contains(h, "bing")
 }
 
 func (c *Client) sidecarAlive(ctx context.Context, base string) bool {

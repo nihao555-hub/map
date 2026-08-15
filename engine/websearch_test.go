@@ -1,8 +1,12 @@
 package engine
 
 import (
+	"context"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 const ddgDouyinHTML = `
@@ -48,6 +52,10 @@ func TestLooksLikeChallenge(t *testing.T) {
 		t.Fatal("expected challenge")
 	}
 
+	if !looksLikeChallenge([]byte(`<div id="b_captcha">verify</div>`)) {
+		t.Fatal("expected bing captcha")
+	}
+
 	if looksLikeChallenge([]byte(`<a class="result__a" href="https://www.tiktok.com/@nike">Nike</a>`)) {
 		t.Fatal("false positive")
 	}
@@ -59,6 +67,70 @@ func TestIndexAttemptsSkipsBraveAfter429(t *testing.T) {
 	for _, a := range indexAttempts(c, nil) {
 		if a.name == "brave" {
 			t.Fatal("brave still attempted after 429")
+		}
+	}
+}
+
+func TestIndexAttemptsSkipsBingAfterLimited(t *testing.T) {
+	c := &Client{}
+	c.markBingLimited()
+	for _, a := range indexAttempts(c, nil) {
+		if a.name == "bing" {
+			t.Fatal("bing still attempted after cooldown")
+		}
+	}
+}
+
+func TestIndexCooldownRecovers(t *testing.T) {
+	c := &Client{}
+	c.markBraveLimited()
+	if !c.braveSkipped() {
+		t.Fatal("expected skip")
+	}
+	c.braveUntil.Store(time.Now().Add(-time.Second).UnixNano())
+	if c.braveSkipped() {
+		t.Fatal("cooldown should expire")
+	}
+}
+
+func TestSearchPeopleFallsOverQuietly(t *testing.T) {
+	c := &Client{
+		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if strings.Contains(req.URL.Host, "duckduckgo") {
+				return &http.Response{
+					StatusCode: http.StatusTooManyRequests,
+					Body:       io.NopCloser(strings.NewReader("rate")),
+					Header:     make(http.Header),
+					Request:    req,
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(ddgDouyinHTML)),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		})},
+		TikTokURL: "",
+		F2URL:     "",
+	}
+
+	res, err := c.Search(context.Background(), Query{
+		Keyword:   "电动工具",
+		Kind:      KindPeople,
+		Platforms: []string{PlatformDouyin, PlatformTikTok},
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Hits) < 2 {
+		t.Fatalf("hits=%+v warnings=%v", res.Hits, res.Warnings)
+	}
+	for _, w := range res.Warnings {
+		low := strings.ToLower(w)
+		if strings.Contains(low, "429") || strings.Contains(low, "duckduckgo") || strings.Contains(low, "rate limited") {
+			t.Fatalf("leaked warning %q", w)
 		}
 	}
 }

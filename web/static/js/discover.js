@@ -236,7 +236,7 @@
       .then(function (out) {
         setBusy(false);
         if (!out.ok) {
-          status.textContent = out.j.message || "搜索失败";
+          status.textContent = "搜索繁忙，请稍后再试。";
           empty.classList.remove("hidden");
           empty.textContent = status.textContent;
           return;
@@ -255,9 +255,9 @@
         if (actions) actions.hidden = mode !== "marketing";
         renderHits(lastHits);
       })
-      .catch(function (err) {
+      .catch(function () {
         setBusy(false);
-        status.textContent = "搜索失败，请稍后重试。";
+        status.textContent = "搜索繁忙，请稍后再试。";
       });
   }
 

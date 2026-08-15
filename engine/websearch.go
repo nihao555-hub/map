@@ -21,16 +21,37 @@ var (
 
 	publicIndexMu   sync.Mutex
 	lastPublicIndex time.Time
+	lastNamedIndex  map[string]time.Time
 )
 
-const publicIndexGap = 2200 * time.Millisecond
+const (
+	publicIndexGap = 2800 * time.Millisecond
+	braveIndexGap  = 4000 * time.Millisecond
+)
 
 func waitPublicIndex(ctx context.Context) error {
+	return waitNamedIndex(ctx, "")
+}
+
+func waitNamedIndex(ctx context.Context, name string) error {
 	if testing.Testing() {
 		return nil
 	}
+
+	gap := publicIndexGap
+	if name == "brave" {
+		gap = braveIndexGap
+	}
+
 	publicIndexMu.Lock()
-	wait := publicIndexGap - time.Since(lastPublicIndex)
+	wait := gap - time.Since(lastPublicIndex)
+	if name != "" {
+		if last, ok := lastNamedIndex[name]; ok {
+			if named := gap - time.Since(last); named > wait {
+				wait = named
+			}
+		}
+	}
 	publicIndexMu.Unlock()
 	if wait > 0 {
 		t := time.NewTimer(wait)
@@ -44,6 +65,12 @@ func waitPublicIndex(ctx context.Context) error {
 
 	publicIndexMu.Lock()
 	lastPublicIndex = time.Now()
+	if name != "" {
+		if lastNamedIndex == nil {
+			lastNamedIndex = map[string]time.Time{}
+		}
+		lastNamedIndex[name] = time.Now()
+	}
 	publicIndexMu.Unlock()
 	return nil
 }
@@ -77,7 +104,6 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wante
 			defer mu.Unlock()
 
 			if err != nil {
-				warnings = append(warnings, err.Error())
 				return nil
 			}
 
@@ -180,39 +206,29 @@ func (c *Client) searchOneIndexExtract(ctx context.Context, query string, extrac
 func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, extract func([]byte, string) []Hit, names []string) ([]Hit, string, error) {
 	attempts := indexAttempts(c, names)
 
-	if err := waitPublicIndex(ctx); err != nil {
-		return nil, "", err
-	}
-
-	var errs []string
 	for _, a := range attempts {
+		if err := waitNamedIndex(ctx, a.name); err != nil {
+			return nil, "", err
+		}
+
 		raw, err := a.fn(ctx, query)
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %s", a.name, err.Error()))
 			continue
 		}
 		if looksLikeChallenge(raw) {
-			if a.name == "duckduckgo" {
-				c.markDDGLimited()
-			}
-			errs = append(errs, a.name+": challenge page")
+			c.markIndexLimited(a.name)
 			continue
 		}
 
 		hits := extract(raw, a.name)
 		if len(hits) == 0 {
-			errs = append(errs, a.name+": no hits")
 			continue
 		}
 
 		return hits, a.name, nil
 	}
 
-	if len(errs) > 0 {
-		return nil, "", fmt.Errorf("%s", strings.Join(errs, "; "))
-	}
-
-	return nil, "", fmt.Errorf("public search empty")
+	return nil, "", nil
 }
 
 type indexAttempt struct {
@@ -232,6 +248,9 @@ func indexAttempts(c *Client, names []string) []indexAttempt {
 			continue
 		}
 		if a.name == "duckduckgo" && c.ddgSkipped() {
+			continue
+		}
+		if a.name == "bing" && c.bingSkipped() {
 			continue
 		}
 		filtered = append(filtered, a)
@@ -257,37 +276,27 @@ func indexAttempts(c *Client, names []string) []indexAttempt {
 }
 
 func (c *Client) fetchIndexHTML(ctx context.Context, query string, names []string) ([]byte, string, error) {
-	if err := waitPublicIndex(ctx); err != nil {
-		return nil, "", err
-	}
-
-	var errs []string
 	for _, a := range indexAttempts(c, names) {
+		if err := waitNamedIndex(ctx, a.name); err != nil {
+			return nil, "", err
+		}
+
 		raw, err := a.fn(ctx, query)
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("%s: %s", a.name, err.Error()))
 			continue
 		}
 		if looksLikeChallenge(raw) {
-			if a.name == "duckduckgo" {
-				c.markDDGLimited()
-			}
-			errs = append(errs, a.name+": challenge page")
+			c.markIndexLimited(a.name)
 			continue
 		}
 		if len(raw) < 400 {
-			errs = append(errs, a.name+": empty page")
 			continue
 		}
 
 		return raw, a.name, nil
 	}
 
-	if len(errs) > 0 {
-		return nil, "", fmt.Errorf("%s", strings.Join(errs, "; "))
-	}
-
-	return nil, "", fmt.Errorf("public search empty")
+	return nil, "", nil
 }
 
 func (c *Client) fetchDuckDuckGo(ctx context.Context, query string) ([]byte, error) {
@@ -296,16 +305,30 @@ func (c *Client) fetchDuckDuckGo(ctx context.Context, query string) ([]byte, err
 		kl = "cn-zh"
 	}
 	form := "q=" + url.QueryEscape(query) + "&kl=" + kl
-	raw, err := c.postFormHTML(ctx, "https://html.duckduckgo.com/html/", form)
+	raw, err := c.postFormHTML(ctx, "https://html.duckduckgo.com/html/", form, "https://html.duckduckgo.com/")
 	if err == nil && !looksLikeChallenge(raw) && len(raw) > 500 {
 		return raw, nil
 	}
 
-	return c.getHTML(ctx, "https://lite.duckduckgo.com/lite/?q="+url.QueryEscape(query))
+	lite := "https://lite.duckduckgo.com/lite/?q=" + url.QueryEscape(query) + "&kl=" + kl
+	raw2, err2 := c.getHTMLReferer(ctx, lite, "https://lite.duckduckgo.com/")
+	if err2 == nil && !looksLikeChallenge(raw2) && len(raw2) > 400 {
+		return raw2, nil
+	}
+	if looksLikeChallenge(raw) || looksLikeChallenge(raw2) {
+		c.markDDGLimited()
+	}
+	if err2 != nil {
+		return nil, err2
+	}
+	if err != nil {
+		return nil, err
+	}
+	return nil, fmt.Errorf("challenge page")
 }
 
 func (c *Client) fetchBrave(ctx context.Context, query string) ([]byte, error) {
-	return c.getHTML(ctx, "https://search.brave.com/search?q="+url.QueryEscape(query))
+	return c.getHTMLReferer(ctx, "https://search.brave.com/search?q="+url.QueryEscape(query), "https://search.brave.com/")
 }
 
 func (c *Client) fetchBing(ctx context.Context, query string) ([]byte, error) {
@@ -315,22 +338,39 @@ func (c *Client) fetchBing(ctx context.Context, query string) ([]byte, error) {
 	} else {
 		rawURL += "&setlang=en"
 	}
-	return c.getHTML(ctx, rawURL)
+	return c.getHTMLReferer(ctx, rawURL, "https://www.bing.com/")
 }
 
 func (c *Client) getHTML(ctx context.Context, rawURL string) ([]byte, error) {
+	return c.getHTMLReferer(ctx, rawURL, "")
+}
+
+func (c *Client) getHTMLReferer(ctx context.Context, rawURL, referer string) ([]byte, error) {
 	return c.doHTML(ctx, func() (*http.Request, error) {
-		return newBrowserRequest(ctx, "GET", rawURL, "")
+		req, err := newBrowserRequest(ctx, "GET", rawURL, "")
+		if err != nil {
+			return nil, err
+		}
+		if referer != "" {
+			req.Header.Set("Referer", referer)
+			req.Header.Set("Sec-Fetch-Site", "same-origin")
+		}
+		return req, nil
 	})
 }
 
-func (c *Client) postFormHTML(ctx context.Context, rawURL, body string) ([]byte, error) {
+func (c *Client) postFormHTML(ctx context.Context, rawURL, body, referer string) ([]byte, error) {
 	return c.doHTML(ctx, func() (*http.Request, error) {
 		req, err := newBrowserRequest(ctx, "POST", rawURL, body)
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if referer != "" {
+			req.Header.Set("Referer", referer)
+			req.Header.Set("Origin", strings.TrimRight(referer, "/"))
+			req.Header.Set("Sec-Fetch-Site", "same-origin")
+		}
 		return req, nil
 	})
 }
@@ -529,7 +569,18 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 
 func looksLikeChallenge(raw []byte) bool {
 	s := strings.ToLower(string(raw))
-	return strings.Contains(s, "anomaly-modal") ||
+	if strings.Contains(s, "anomaly-modal") ||
 		strings.Contains(s, "select all squares containing a duck") ||
-		strings.Contains(s, "unfortunately, bots use duckduckgo")
+		strings.Contains(s, "unfortunately, bots use duckduckgo") {
+		return true
+	}
+	if strings.Contains(s, `id="b_captcha"`) || strings.Contains(s, `id='b_captcha'`) ||
+		strings.Contains(s, "our systems have detected unusual traffic") {
+		return true
+	}
+	if strings.Contains(s, "sorry, you have been rate limited") ||
+		strings.Contains(s, "too many requests made") {
+		return true
+	}
+	return false
 }
