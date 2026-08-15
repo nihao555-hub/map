@@ -1,156 +1,42 @@
-body.exh { background: #efe8dc; }
-body.exh #app-body { background: #f4efe6; }
-
-.exh-main {
-  flex: 1;
-  min-width: 0;
-  overflow: auto;
-  padding: 28px 32px 40px;
-}
-
-.exh-head { max-width: 720px; margin-bottom: 22px; }
-.exh-kicker {
-  margin: 0 0 6px;
-  font-size: 12px;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  color: #0f766e;
-  font-weight: 600;
-}
-.exh-head h1 {
-  margin: 0 0 8px;
-  font-size: 28px;
-  font-weight: 650;
-  color: #1c1917;
-  letter-spacing: -.02em;
-}
-.exh-lead {
-  margin: 0;
-  color: #57534e;
-  line-height: 1.7;
-  font-size: 14px;
-}
-
-.exh-search {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  background: #fff;
-  border: 1px solid #e7e0d4;
-  border-radius: 18px;
-  padding: 10px;
-  box-shadow: 0 8px 24px rgba(28, 25, 23, .04);
-}
-.exh-seg {
-  display: inline-flex;
-  background: #f5f0e8;
-  border-radius: 12px;
-  padding: 3px;
-}
-.exh-seg button {
-  border: 0;
-  background: transparent;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 10px;
-  color: #57534e;
-  cursor: pointer;
-}
-.exh-seg button.is-on { background: #0f766e; color: #fff; }
-.exh-search input {
-  flex: 1;
-  min-width: 220px;
-  height: 36px;
-  border: 0;
-  outline: none;
-  font-size: 14px;
-  background: transparent;
-}
-.exh-search select {
-  height: 36px;
-  border: 0;
-  background: #f5f0e8;
-  border-radius: 10px;
-  padding: 0 10px;
-  color: #44403c;
-}
-.exh-search button[type="submit"] {
-  height: 36px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 10px;
-  background: #0f766e;
-  color: #fff;
-  font-size: 14px;
-}
-.exh-search button[type="submit"]:disabled { opacity: .65; cursor: wait; }
-
-.exh-meta {
-  display: flex;
-  justify-content: space-between;
-  margin: 14px 2px;
-  color: #78716c;
-  font-size: 12px;
-}
-
 .exh-board {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  padding: 12px;
 }
-.exh-empty {
-  grid-column: 1 / -1;
-  background: #fff;
-  border: 1px dashed #d6cbb8;
-  border-radius: 16px;
-  padding: 36px 20px;
-  text-align: center;
-  color: #78716c;
-}
-.exh-empty strong { display: block; color: #1c1917; font-size: 16px; margin-bottom: 8px; }
-.exh-examples { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
-.exh-examples button {
-  border: 1px solid #d6cbb8;
-  background: #fff;
-  border-radius: 999px;
-  padding: 4px 12px;
-  color: #44403c;
-  cursor: pointer;
-}
+.exh-board.hidden { display: none; }
+.wmt-table.hidden { display: none; }
 
 .exh-card {
-  background: #fffaf3;
-  border: 1px solid #e7e0d4;
-  border-radius: 16px;
-  padding: 16px 16px 14px;
+  background: #fff;
+  border: 1px solid var(--wmt-line, #ebebeb);
+  border-radius: 10px;
+  padding: 14px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-height: 168px;
-  box-shadow: 0 1px 0 rgba(28,25,23,.04);
+  gap: 6px;
+  min-height: 148px;
 }
-.exh-card:hover { border-color: #0f766e; }
+.exh-card:hover { border-color: var(--wmt-blue, #3370ff); }
 .exh-when {
   align-self: flex-start;
   font-size: 11px;
-  letter-spacing: .04em;
-  color: #0f766e;
-  background: #ecfdf8;
+  color: var(--wmt-blue, #3370ff);
+  background: #eef3ff;
   border-radius: 999px;
   padding: 2px 8px;
 }
 .exh-card h3 {
   margin: 0;
-  font-size: 16px;
-  color: #1c1917;
+  font-size: 15px;
+  color: #1f2329;
   line-height: 1.35;
 }
-.exh-where { margin: 0; color: #78716c; font-size: 12px; }
+.exh-where { margin: 0; color: #8f959e; font-size: 12px; }
 .exh-snip {
   margin: 0;
-  color: #57534e;
+  color: #646a73;
   font-size: 13px;
   line-height: 1.5;
   display: -webkit-box;
@@ -158,7 +44,7 @@ body.exh #app-body { background: #f4efe6; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.exh-card-foot { margin-top: auto; color: #0f766e; font-size: 12px; }
+.exh-card-foot { margin-top: auto; color: var(--wmt-blue, #3370ff); font-size: 12px; }
 
 .exh-drawer {
   position: fixed;
@@ -166,40 +52,32 @@ body.exh #app-body { background: #f4efe6; }
   right: 0;
   width: min(520px, 94vw);
   height: 100%;
-  background: #fffaf3;
-  border-left: 1px solid #e7e0d4;
+  background: #fff;
+  border-left: 1px solid var(--wmt-line, #ebebeb);
   z-index: 30;
   padding: 24px 22px;
   overflow: auto;
-  box-shadow: -12px 0 32px rgba(28,25,23,.08);
+  box-shadow: -12px 0 32px rgba(31, 35, 41, .08);
+}
+.exh-kicker {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--wmt-blue, #3370ff);
+  font-weight: 600;
 }
 .exh-drawer h2 { margin: 8px 0 10px; font-size: 22px; }
 .exh-sub {
   margin: 22px 0 8px;
   font-size: 14px;
-  color: #1c1917;
+  color: #1f2329;
 }
 .exh-exhibitor-wrap { overflow: auto; max-height: 52vh; }
-.exh-exhibitor-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.exh-exhibitor-table th,
-.exh-exhibitor-table td {
-  text-align: left;
-  padding: 7px 6px;
-  border-bottom: 1px solid #efe8dc;
-  vertical-align: top;
-}
-.exh-exhibitor-table th { color: #78716c; font-weight: 600; }
-.exh-board.is-table {
-  display: block;
-}
 .exh-table-wrap {
-  background: #fffaf3;
-  border: 1px solid #e7e0d4;
-  border-radius: 16px;
+  background: #fff;
+  border: 1px solid var(--wmt-line, #ebebeb);
+  border-radius: 8px;
   overflow: auto;
 }
 .exh-table {
@@ -210,25 +88,23 @@ body.exh #app-body { background: #f4efe6; }
 .exh-table th, .exh-table td {
   text-align: left;
   padding: 10px 12px;
-  border-bottom: 1px solid #efe8dc;
+  border-bottom: 1px solid #f0f0f0;
 }
-.exh-table th { color: #78716c; font-weight: 600; background: #faf6ef; }
-.exh-table tr:hover { background: #f5f0e8; cursor: pointer; }
-.exh-table small { display: block; color: #8c8c8c; font-size: 12px; }
+.exh-table th { color: #8f959e; font-weight: 600; background: #fafafa; }
 .exh-drawer-close {
   float: right;
   border: 0;
   background: none;
-  color: #78716c;
+  color: #8f959e;
   cursor: pointer;
 }
 .exh-open {
   display: inline-flex;
   margin-top: 16px;
   padding: 8px 14px;
-  border-radius: 10px;
-  background: #0f766e;
+  border-radius: 8px;
+  background: var(--wmt-blue, #3370ff);
   color: #fff;
   text-decoration: none;
 }
-.exh-note { color: #78716c; font-size: 12px; line-height: 1.6; margin-top: 16px; }
+.exh-note { color: #8f959e; font-size: 12px; line-height: 1.6; margin-top: 16px; }

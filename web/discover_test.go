@@ -310,8 +310,8 @@ func TestExhibitionPageRenders(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"展会获客", "自研展会工作台", "找展会", "找参展商", "参展商名单",
-		`id="data-nav"`, "/static/js/exhibition.js", "exh-board",
+		"展会获客", "搜客户", "搜展会", "参展商名单", "AUMA", "Wikidata", "伊梅",
+		`id="data-nav"`, "/static/js/exhibition.js", "landing-view", "exh-table",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
