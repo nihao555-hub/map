@@ -306,12 +306,25 @@ func TestMergeHitsKeepsQueryStampedEmptySnippet(t *testing.T) {
 	out := mergeHits([]Hit{{
 		ID:          "dy",
 		Platform:    PlatformDouyin,
-		Name:        "MS4wLjABAAAAledbuyer",
+		Name:        "深圳灯饰采购部",
 		HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAledbuyer",
 		Extra:       map[string]string{"q": "site:douyin.com/user LED灯"},
 	}}, "LED灯", 0, RoleBuyer, "")
 	if len(out) != 1 {
-		t.Fatalf("query-stamped profile dropped %+v", out)
+		t.Fatalf("query-stamped buyer dropped %+v", out)
+	}
+}
+
+func TestMergeHitsDropsUnrelatedQueryStamp(t *testing.T) {
+	out := mergeHits([]Hit{{
+		ID:          "dy",
+		Platform:    PlatformDouyin,
+		Name:        "宝藏老师",
+		HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAteacher",
+		Extra:       map[string]string{"q": "site:douyin.com/user 电动工具"},
+	}}, "电动工具", 0, RoleBuyer, "")
+	if len(out) != 0 {
+		t.Fatalf("unrelated card leaked via query stamp %+v", out)
 	}
 }
 

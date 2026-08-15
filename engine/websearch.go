@@ -184,12 +184,14 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, rol
 					continue
 				}
 				// Stamp the finding query for keyword matching only.
-				// Do not copy it into Snippet: buyer queries contain 采购/importer
-				// and would fake every hit as a buyer and hide factory tokens.
-				if h.Extra == nil {
-					h.Extra = map[string]string{}
+				// Skip ID-only cards (regex leftovers) so sidebar noise
+				// cannot ride in on the product query.
+				if looksLikeProfileName(h.Name) {
+					if h.Extra == nil {
+						h.Extra = map[string]string{}
+					}
+					h.Extra["q"] = q.query
 				}
-				h.Extra["q"] = q.query
 				hits = append(hits, h)
 			}
 

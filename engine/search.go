@@ -291,12 +291,18 @@ func filterPreciseHits(hits []Hit, keyword string) []Hit {
 	return out
 }
 
+func hitPageBlob(hit Hit) string {
+	return foldSearchText(strings.Join([]string{
+		hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.Contact, hit.HomepageURL,
+	}, " "))
+}
+
 func hitKeywordBlob(hit Hit) string {
-	parts := []string{hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.Contact, hit.HomepageURL}
-	if hit.Extra != nil {
-		parts = append(parts, hit.Extra["q"])
+	blob := hitPageBlob(hit)
+	if hit.Extra != nil && hit.Extra["q"] != "" {
+		blob = foldSearchText(blob + " " + hit.Extra["q"])
 	}
-	return foldSearchText(strings.Join(parts, " "))
+	return blob
 }
 
 func hitRoleBlob(hit Hit) string {
@@ -414,6 +420,17 @@ func inferHitRole(hit Hit, queryRole string) string {
 	}
 }
 
+func looksLikeProfileName(name string) bool {
+	n := strings.TrimSpace(name)
+	if n == "" || genericSocialLabel(n) {
+		return false
+	}
+	if strings.HasPrefix(n, "MS4w") {
+		return false
+	}
+	return true
+}
+
 func genericSocialLabel(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	n = strings.TrimSuffix(n, "...")
@@ -440,8 +457,20 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 		return true
 	}
 	role = strings.ToLower(strings.TrimSpace(role))
-	if kw != "" && !blobMatchesKeyword(hitKeywordBlob(hit), kw) {
-		if role == RoleBuyer {
+	pageMatch := kw == "" || blobMatchesKeyword(hitPageBlob(hit), kw)
+	if !pageMatch {
+		queryMatch := blobMatchesKeyword(hitKeywordBlob(hit), kw)
+		if queryMatch {
+			// Found via a product query, but the card itself does not mention
+			// the product. Keep only accounts that look like a buyer/company.
+			if role == RoleBuyer {
+				if !hasBuyerToken(roleBlob) && !hasCompanyToken(roleBlob) {
+					return true
+				}
+			} else if !hasMerchantToken(roleBlob) && !hasCompanyToken(roleBlob) {
+				return true
+			}
+		} else if role == RoleBuyer {
 			if !hasBuyerToken(roleBlob) {
 				return true
 			}
