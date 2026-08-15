@@ -22,10 +22,14 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "不是地图搜店", "私信模式", "营销模式", "一键营销", "preview-pane", "共 0 条", "/static/js/discover.js"} {
+	for _, want := range []string{"智能引擎搜索", "discover-form", "发开发信", "地图获客", "社媒主页", "不是地图搜店", "私信模式", "营销模式", "一键营销", "preview-pane", "共 0 条", "/static/js/discover.js", "id=\"app-rail\"", "/static/css/shell.css", "rail-item is-active"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)
 		}
+	}
+
+	if strings.Contains(body, "wmt-side") || strings.Contains(body, "wmt-tabs") {
+		t.Fatal("discover should use the map app-rail, not a second sidebar")
 	}
 
 	if strings.Contains(body, "工作台") || strings.Contains(body, "全球搜索") || strings.Contains(body, "智能推荐") || strings.Contains(body, "展会买家") || strings.Contains(body, "市场洞察") {
@@ -205,5 +209,11 @@ func TestOutreachPageRenders(t *testing.T) {
 	}
 	if !strings.Contains(body, "outreach-emails") || !strings.Contains(body, "不会代发") {
 		t.Fatalf("outreach should accept emails query: %s", body)
+	}
+	if !strings.Contains(body, `id="app-rail"`) || !strings.Contains(body, "/static/css/shell.css") {
+		t.Fatal("outreach should share the map app-rail")
+	}
+	if strings.Contains(body, "wmt-side") || strings.Contains(body, "wmt-tabs") {
+		t.Fatal("outreach should use the map app-rail, not a second sidebar")
 	}
 }

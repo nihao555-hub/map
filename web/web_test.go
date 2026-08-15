@@ -32,7 +32,7 @@ func TestIndexPageHasWaimaoTongRail(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"app-rail", "地图获客", "智能引擎", "发开发信", "map-toolbar", "搜索记录", "locations", "keywords"} {
+	for _, want := range []string{"app-rail", "地图获客", "智能引擎", "发开发信", "map-toolbar", "搜索记录", "locations", "keywords", "/static/css/shell.css"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}

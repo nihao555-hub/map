@@ -165,8 +165,19 @@ func New(svc *Service, addr string) (*Server, error) {
 		"static/templates/redoc.html",
 	}
 
+	pagesWithRail := map[string]struct{}{
+		"static/templates/index.html":    {},
+		"static/templates/discover.html": {},
+		"static/templates/outreach.html": {},
+	}
+
 	for _, key := range tmplsKeys {
-		tmp, err := template.ParseFS(static, key)
+		files := []string{key}
+		if _, ok := pagesWithRail[key]; ok {
+			files = append(files, "static/templates/app_rail.html")
+		}
+
+		tmp, err := template.ParseFS(static, files...)
 		if err != nil {
 			return nil, err
 		}

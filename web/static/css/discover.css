@@ -14,15 +14,8 @@
 
 * { box-sizing: border-box; }
 
-html, body.wmt {
-  margin: 0;
-  height: 100%;
-  overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
-    "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-  font-size: 13px;
+body.wmt {
   color: var(--wmt-text);
-  background: #fff;
 }
 
 .hidden { display: none !important; }
@@ -38,153 +31,12 @@ html, body.wmt {
 .wmt-icon-28 { width: 28px; height: 28px; }
 .plat-logo { width: 14px; height: 14px; flex-shrink: 0; display: block; }
 
-/* ===== 顶栏 ===== */
-.wmt-top {
-  height: 48px;
-  background: var(--wmt-top);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  padding: 0 16px 0 12px;
-  gap: 8px;
-  flex-shrink: 0;
-  z-index: 20;
-}
-
-.wmt-logo {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #fff;
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 15px;
-  padding-right: 16px;
-  white-space: nowrap;
-}
-.wmt-logo-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  background: var(--wmt-blue);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.wmt-tabs {
-  display: flex;
-  align-items: stretch;
-  height: 100%;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-.wmt-tabs a {
-  color: rgba(255,255,255,.78);
-  text-decoration: none;
-  padding: 0 12px;
-  display: inline-flex;
-  align-items: center;
-  font-size: 13px;
-  position: relative;
-  white-space: nowrap;
-}
-.wmt-tabs a:hover { color: #fff; }
-.wmt-tabs a.is-on { color: #fff; font-weight: 500; }
-.wmt-tabs a.is-on::after {
-  content: "";
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 0;
-  height: 2px;
-  background: var(--wmt-blue);
-}
-
-.wmt-top-right {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-left: auto;
-  color: rgba(255,255,255,.78);
-  font-size: 13px;
-}
-.wmt-top-right a { color: inherit; text-decoration: none; }
-.wmt-top-right a:hover { color: #fff; }
-.wmt-icon-btn {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  padding: 4px;
-  cursor: pointer;
-  display: inline-flex;
-}
-.wmt-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: #3a4556;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-}
-.wmt-user { display: inline-flex; align-items: center; gap: 6px; color: #fff; }
-
-/* ===== 主体 ===== */
+/* ===== 主体（顶栏已由 shell.css 提供，此处只排内容区） ===== */
 .wmt-shell {
-  height: calc(100% - 48px);
-  display: flex;
+  flex: 1;
   min-height: 0;
-}
-
-.wmt-side {
-  width: 220px;
-  flex-shrink: 0;
-  background: var(--wmt-side);
-  border-right: 1px solid var(--wmt-line);
-  overflow-y: auto;
-  padding: 8px 0 24px;
-}
-
-.wmt-group { margin-bottom: 6px; }
-.wmt-group-title {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  color: var(--wmt-sub);
-  font-size: 12px;
-  cursor: default;
-}
-.wmt-group-title svg { opacity: .7; }
-.wmt-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 16px;
-  color: var(--wmt-text);
-  text-decoration: none;
-  position: relative;
-}
-.wmt-item:hover { background: #eef1f6; }
-.wmt-item.is-on {
-  background: #e8eeff;
-  color: var(--wmt-blue);
-  font-weight: 500;
-}
-.wmt-item .new-tag {
-  margin-left: auto;
-  background: #ff4d4f;
-  color: #fff;
-  font-size: 10px;
-  line-height: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
-  font-weight: 600;
+  overflow: hidden;
 }
 
 .wmt-main {
@@ -727,5 +579,4 @@ html, body.wmt {
 
 @media (max-width: 1100px) {
   .wmt-feat-grid { grid-template-columns: 1fr; }
-  .wmt-tabs a:nth-child(n+6) { display: none; }
 }
