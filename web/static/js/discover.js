@@ -23,6 +23,7 @@
   const HOME_BULLETS = [
     "不是地图搜店：输入商品或企业关键词",
     "先选找买家还是找卖家：买家是采购商 / 进口商，卖家是厂家 / 批发",
+    "默认检索全部已支持社媒主页，可在下方取消勾选",
     "输入时选国家，结果里每条都会带出所在国家",
     "去私信：在右侧打开主页预览，系统不代发"
   ];
@@ -240,10 +241,12 @@
       return '<button type="button" class="plat-chip' + on + '" data-platform="' + escapeAttr(p.id) + '">' +
         platformSvg(p.id) + "<span>" + escapeHtml(p.label) + "</span></button>";
     }).join("");
-    const el = document.getElementById("platform-group");
-    if (!el) return;
-    el.innerHTML = html;
-    bindChips(el);
+    ["platform-group", "platform-group-landing"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.innerHTML = html;
+      bindChips(el);
+    });
   }
 
   function selectedPlatforms() {
@@ -415,9 +418,10 @@
 
     landing.classList.add("hidden");
     resultsView.classList.remove("hidden");
+    const nPlat = selectedPlatforms().length;
     status.textContent = mode === "marketing"
       ? "正在检索公开邮箱 / WhatsApp…"
-      : (selectedRole() === "seller" ? "正在检索公开卖家主页…" : "正在检索会买这些货的采购商 / 进口商…");
+      : ("正在检索 " + nPlat + " 个社媒的公开主页…");
     warnings.classList.add("hidden");
     warnings.textContent = "";
     results.innerHTML = "";
@@ -470,11 +474,16 @@
           });
         }
         page = 1;
-        status.textContent = lastHits.length
-          ? ("已找到 " + lastHits.length + (mode === "marketing"
-            ? " 条联系方式"
-            : (selectedRole() === "seller" ? " 条卖家主页" : " 条买家主页")))
-          : "";
+        if (!lastHits.length) {
+          status.textContent = "";
+        } else if (mode === "marketing") {
+          status.textContent = "已找到 " + lastHits.length + " 条联系方式";
+        } else {
+          const plats = {};
+          lastHits.forEach(function (h) { plats[h.platform || ""] = true; });
+          const nPlat = Object.keys(plats).filter(Boolean).length;
+          status.textContent = "已找到 " + lastHits.length + " 条主页，来自 " + nPlat + " 个社媒";
+        }
         const actions = document.getElementById("market-actions");
         if (actions) actions.hidden = mode !== "marketing";
         renderHits(lastHits);

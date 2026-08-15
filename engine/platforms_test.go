@@ -34,6 +34,9 @@ func TestPeoplePlatformCatalogMatchesSearchableSet(t *testing.T) {
 	if defaults != len(DefaultPeoplePlatforms) {
 		t.Fatalf("defaults=%d want %d", defaults, len(DefaultPeoplePlatforms))
 	}
+	if defaults != len(PeoplePlatforms) {
+		t.Fatalf("all platforms should start on, defaults=%d platforms=%d", defaults, len(PeoplePlatforms))
+	}
 }
 
 func TestWantedPeoplePlatformsIgnoresUnknown(t *testing.T) {

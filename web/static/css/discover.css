@@ -532,6 +532,20 @@ body.wmt {
   flex-wrap: wrap;
   gap: 8px;
 }
+.wmt-plat-landing {
+  margin: 12px 0 8px;
+  max-width: 680px;
+}
+.wmt-hero .plat-chip {
+  background: rgba(255,255,255,.1);
+  border-color: rgba(255,255,255,.22);
+  color: rgba(255,255,255,.9);
+}
+.wmt-hero .plat-chip.is-on {
+  border-color: #fff;
+  color: var(--wmt-blue);
+  background: #fff;
+}
 .plat-chip {
   display: inline-flex;
   align-items: center;

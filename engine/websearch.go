@@ -94,7 +94,7 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword, country, rol
 	)
 
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(2)
+	g.SetLimit(6)
 
 	for _, q := range queries {
 		q := q
@@ -217,10 +217,16 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country, role s
 		return strings.TrimSpace(q + " " + geo)
 	}
 
-	buyerExtra := map[string]bool{
-		PlatformFacebook:  true,
-		PlatformInstagram: true,
-		PlatformLinkedIn:  true,
+	intentExtra := map[string]bool{
+		PlatformFacebook:    true,
+		PlatformInstagram:   true,
+		PlatformLinkedIn:    true,
+		PlatformDouyin:      true,
+		PlatformKuaishou:    true,
+		PlatformXiaohongshu: true,
+		PlatformWeibo:       true,
+		PlatformBilibili:    true,
+		PlatformTikTok:      true,
 	}
 	overseasMarketPlatforms := map[string]bool{
 		PlatformFacebook:  true,
@@ -244,18 +250,17 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country, role s
 		}
 
 		primary := intents[0]
-		if cjk {
-			add(platform, primary+" "+PeoplePlatformLabel(platform))
+		add(platform, "site:"+site+" "+keyword)
+		if primary != "" && primary != keyword {
+			add(platform, "site:"+site+" "+primary)
 		}
-		add(platform, "site:"+site+" "+primary)
-
-		if buyerExtra[platform] {
+		if cjk {
+			add(platform, keyword+" "+PeoplePlatformLabel(platform))
+		}
+		if intentExtra[platform] {
 			for _, extra := range intents[1:] {
 				add(platform, "site:"+site+" "+extra)
 			}
-		}
-		if role == RoleSeller && buyerExtra[platform] {
-			add(platform, "site:"+site+" "+keyword)
 		}
 		if platform == PlatformLinkedIn {
 			if role == RoleSeller {
@@ -266,9 +271,9 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country, role s
 			}
 		}
 		if geo != "" && overseasMarketPlatforms[platform] {
-			add(platform, "site:"+site+" "+withGeo(primary))
-			for _, extra := range intents[1:] {
-				add(platform, "site:"+site+" "+withGeo(extra))
+			add(platform, "site:"+site+" "+withGeo(keyword))
+			if primary != keyword {
+				add(platform, "site:"+site+" "+withGeo(primary))
 			}
 		}
 	}
@@ -283,7 +288,7 @@ func merchantIntentKeywords(keyword, role string) []string {
 	}
 	if NormalizeRole(role) == RoleSeller {
 		if hasCJK(keyword) {
-			return []string{keyword + " 批发"}
+			return []string{keyword + " 批发", keyword + " 厂家"}
 		}
 
 		return []string{keyword + " wholesaler"}

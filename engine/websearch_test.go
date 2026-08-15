@@ -153,9 +153,11 @@ func TestPublicSearchQueriesCJKUsesPlatformLabel(t *testing.T) {
 	qs := publicSearchQueries("配电", wanted, "", RoleBuyer)
 	got := queryStrings(qs)
 	for _, want := range []string{
-		"配电 采购 抖音",
+		"配电 抖音",
+		"site:douyin.com/user 配电",
 		"site:douyin.com/user 配电 采购",
-		"配电 采购 Facebook",
+		"配电 Facebook",
+		"site:facebook.com 配电",
 		"site:facebook.com 配电 采购",
 		"site:facebook.com 配电 进口商",
 		"site:facebook.com 配电 importer",
@@ -176,11 +178,13 @@ func TestPublicSearchQueriesSellerKeepsWholesale(t *testing.T) {
 	qs := publicSearchQueries("配电", wanted, "", RoleSeller)
 	got := queryStrings(qs)
 	for _, want := range []string{
-		"配电 批发 抖音",
+		"配电 抖音",
+		"site:douyin.com/user 配电",
 		"site:douyin.com/user 配电 批发",
-		"配电 批发 Facebook",
-		"site:facebook.com 配电 批发",
+		"site:douyin.com/user 配电 厂家",
+		"配电 Facebook",
 		"site:facebook.com 配电",
+		"site:facebook.com 配电 批发",
 	} {
 		if !containsString(got, want) {
 			t.Fatalf("missing %q in %+v", want, got)
@@ -191,8 +195,14 @@ func TestPublicSearchQueriesSellerKeepsWholesale(t *testing.T) {
 func TestPublicSearchQueriesEnglishUsesSite(t *testing.T) {
 	wanted := map[string]bool{PlatformTikTok: true}
 	qs := publicSearchQueries("power tools", wanted, "", RoleBuyer)
-	if len(qs) != 1 || qs[0].query != "site:tiktok.com/@ power tools importer" {
-		t.Fatalf("%+v", qs)
+	got := queryStrings(qs)
+	for _, want := range []string{
+		"site:tiktok.com/@ power tools",
+		"site:tiktok.com/@ power tools importer",
+	} {
+		if !containsString(got, want) {
+			t.Fatalf("missing %q in %+v", want, got)
+		}
 	}
 }
 
@@ -203,7 +213,7 @@ func TestPublicSearchQueriesAppendsCountry(t *testing.T) {
 	if !containsString(got, "site:facebook.com LED灯 采购 马来西亚") {
 		t.Fatalf("missing facebook geo %+v", got)
 	}
-	if !containsString(got, "site:facebook.com LED灯 采购") {
+	if !containsString(got, "site:facebook.com LED灯") {
 		t.Fatalf("missing facebook volume %+v", got)
 	}
 	for _, q := range qs {
@@ -228,6 +238,7 @@ func TestPublicSearchQueriesLinkedInBuyer(t *testing.T) {
 	qs := publicSearchQueries("LED light", wanted, "", RoleBuyer)
 	got := queryStrings(qs)
 	for _, want := range []string{
+		"site:linkedin.com LED light",
 		"site:linkedin.com LED light importer",
 		"site:linkedin.com LED light buyer",
 		"site:linkedin.com/company LED light importer",

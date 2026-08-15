@@ -39,7 +39,7 @@ export TIKHUB_API_TOKEN=...          # 抖音「关键词搜人」f2 仍为 🔵
 
 两种模式共用已支持的社媒勾选；营销模式查询条数有上限，避免一次打满公开检索限流。
 
-已支持公开主页解析（无需 sidecar）：TikTok、抖音、Facebook、Instagram、YouTube、LinkedIn、小红书、快手、微博、B站、X、Pinterest、Threads、Telegram、Reddit、Twitch。默认勾选 TikTok / 抖音 / Facebook / Instagram / YouTube / LinkedIn。
+已支持公开主页解析（无需 sidecar）：TikTok、抖音、Facebook、Instagram、YouTube、LinkedIn、小红书、快手、微博、B站、X、Pinterest、Threads、Telegram、Reddit、Twitch。**默认全部勾选**，可在搜索框下取消。查询会同时用商品词和「批发/采购」等意图词，尽量多收回可打开的主页。
 
 - 关键词「电动工具」→ 抖音：电动工具小王、盛隆绿巨人、河北喜提工厂、东成旗舰店、大有工具 等，均带 `douyin.com/user/MS4wLjAB…`
 - 关键词「power tools」→ TikTok：`@boschpowertools`、`@mjdtpowertools` 等

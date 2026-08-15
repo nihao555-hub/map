@@ -28,6 +28,7 @@ func TestDiscoverPageRenders(t *testing.T) {
 		`id="app-rail"`, "/static/css/shell.css", "rail-item is-active",
 		"智能引擎能为你做什么", "精确", "试试", "wmt-features", "wmt-ai-orb", "开发信跟进",
 		"请输入商品名称，例如 LED灯", "找买家", "找卖家", "国家/地区", "wmt-country", "wmt-country-field",
+		"platform-group-landing", "16 个已支持社媒",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in %s", want, body)

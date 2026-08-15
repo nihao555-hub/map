@@ -28,15 +28,24 @@ const (
 )
 
 // DefaultPeoplePlatforms is the set used when the UI sends no platforms.
-// Core job is Douyin / TikTok / Xiaohongshu shop pages; major overseas networks are on by default too.
+// All searchable networks start on; the user can uncheck chips.
 var DefaultPeoplePlatforms = []string{
 	PlatformTikTok,
 	PlatformDouyin,
-	PlatformXiaohongshu,
 	PlatformFacebook,
 	PlatformInstagram,
 	PlatformYouTube,
 	PlatformLinkedIn,
+	PlatformXiaohongshu,
+	PlatformKuaishou,
+	PlatformWeibo,
+	PlatformBilibili,
+	PlatformX,
+	PlatformPinterest,
+	PlatformThreads,
+	PlatformTelegram,
+	PlatformReddit,
+	PlatformTwitch,
 }
 
 // Kind selects which customer-discovery module to run.
