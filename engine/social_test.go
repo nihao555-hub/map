@@ -63,6 +63,16 @@ func TestParseSocialURLFacebookLinkedInX(t *testing.T) {
 	if _, ok := ParseSocialURL("https://www.facebook.com/index.php", "Facebook", ""); ok {
 		t.Fatal("facebook index.php must be rejected")
 	}
+
+	people, ok := ParseSocialURL("https://www.facebook.com/people/Jiaqi-Lou/1000123456789", "Jiaqi Lou", "")
+	if !ok || people.Platform != PlatformFacebook || people.Handle != "Jiaqi-Lou" {
+		t.Fatalf("facebook people %+v ok=%v", people, ok)
+	}
+
+	ytw, ok := ParseSocialURL("https://www.youtube.com/watch?v=dQw4w9wgGcQ", "Power tools demo", "")
+	if !ok || ytw.Platform != PlatformYouTube || !strings.Contains(ytw.HomepageURL, "watch?v=") {
+		t.Fatalf("youtube watch %+v ok=%v", ytw, ok)
+	}
 }
 
 func TestParseSocialURLMoreNetworks(t *testing.T) {
@@ -139,6 +149,16 @@ func TestParseSocialURLDouyinVideoNotShortLink(t *testing.T) {
 		t.Fatal("www video must not become short link")
 	}
 	if hit.Name != "知了电力" {
+		t.Fatalf("name=%q", hit.Name)
+	}
+}
+
+func TestDisplayNameFromAtAuthor(t *testing.T) {
+	hit, ok := ParseSocialURL("https://www.douyin.com/video/7342493376194809098", "看户内配电箱内部配线方法是怎样的？@机电安装鸷鹏", "")
+	if !ok {
+		t.Fatal("expected hit")
+	}
+	if hit.Name != "机电安装鸷鹏" {
 		t.Fatalf("name=%q", hit.Name)
 	}
 }

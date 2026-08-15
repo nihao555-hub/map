@@ -48,7 +48,7 @@ func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。"} {
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}

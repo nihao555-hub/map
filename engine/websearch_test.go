@@ -149,17 +149,20 @@ func TestIndexAttemptsSkipsDDGAfterChallenge(t *testing.T) {
 func TestPublicSearchQueriesCJKUsesPlatformLabel(t *testing.T) {
 	wanted := map[string]bool{PlatformDouyin: true, PlatformFacebook: true}
 	qs := publicSearchQueries("配电", wanted)
-	if len(qs) != 2 {
+	if len(qs) != 4 {
 		t.Fatalf("queries=%+v", qs)
 	}
 	if qs[0].platform != PlatformDouyin || qs[0].query != "配电 抖音" {
 		t.Fatalf("douyin first %+v", qs[0])
 	}
-	if strings.Contains(qs[0].query, "site:") || strings.Contains(qs[0].query, "/user") {
-		t.Fatalf("CJK query still uses site path %+v", qs[0])
+	if qs[1].platform != PlatformDouyin || qs[1].query != "site:douyin.com 配电" {
+		t.Fatalf("douyin site %+v", qs[1])
 	}
-	if qs[1].platform != PlatformFacebook || qs[1].query != "配电 Facebook" {
-		t.Fatalf("facebook %+v", qs[1])
+	if qs[2].platform != PlatformFacebook || qs[2].query != "配电 Facebook" {
+		t.Fatalf("facebook %+v", qs[2])
+	}
+	if qs[3].query != "site:facebook.com 配电" {
+		t.Fatalf("facebook site %+v", qs[3])
 	}
 }
 
@@ -314,7 +317,7 @@ func TestSearchOneIndexPaginatesBing(t *testing.T) {
 	if uniqueHitCount(hits) != 1+indexExtraPages {
 		t.Fatalf("hits=%d firsts=%v", uniqueHitCount(hits), firsts)
 	}
-	sawPage2, sawPage3 := false, false
+	sawPage2, sawPage3, sawPage4 := false, false, false
 	for _, f := range firsts {
 		if f == "11" {
 			sawPage2 = true
@@ -322,8 +325,11 @@ func TestSearchOneIndexPaginatesBing(t *testing.T) {
 		if f == "21" {
 			sawPage3 = true
 		}
+		if f == "31" {
+			sawPage4 = true
+		}
 	}
-	if !sawPage2 || !sawPage3 {
+	if !sawPage2 || !sawPage3 || !sawPage4 {
 		t.Fatalf("missing bing pagination firsts=%v", firsts)
 	}
 }

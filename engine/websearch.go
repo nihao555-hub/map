@@ -28,7 +28,7 @@ var (
 const (
 	publicIndexGap     = 2800 * time.Millisecond
 	braveIndexGap      = 4000 * time.Millisecond
-	indexExtraPages    = 2
+	indexExtraPages    = 3
 	enoughHitsPerQuery = 80
 )
 
@@ -178,12 +178,11 @@ func publicSearchQueries(keyword string, wanted map[string]bool) []publicQuery {
 			continue
 		}
 
-		query := "site:" + domain + " " + keyword
 		if cjk {
 			// Natural queries survive HTML indexes better than site:path filters.
-			query = keyword + " " + PeoplePlatformLabel(platform)
+			out = append(out, publicQuery{platform: platform, query: keyword + " " + PeoplePlatformLabel(platform)})
 		}
-		out = append(out, publicQuery{platform: platform, query: query})
+		out = append(out, publicQuery{platform: platform, query: "site:" + domain + " " + keyword})
 	}
 
 	return out

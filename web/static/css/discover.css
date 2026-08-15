@@ -43,9 +43,23 @@ body.wmt {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   background: #fff;
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+#landing {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+#results-view {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* ===== 落地 Banner ===== */
@@ -220,12 +234,6 @@ body.wmt {
   color: var(--wmt-blue);
 }
 
-.hit-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.row-actions { display: flex; gap: 12px; }
 .row-actions a,
 .row-actions .linkish {
   color: var(--wmt-sub);
@@ -235,6 +243,7 @@ body.wmt {
   padding: 0;
   font: inherit;
   cursor: pointer;
+  flex-shrink: 0;
 }
 .row-actions a.btn-msg,
 .row-actions .btn-msg { color: var(--wmt-blue); }
@@ -414,16 +423,26 @@ body.wmt {
   font-size: 12px;
 }
 
-.wmt-table-wrap { flex: 1; overflow: auto; border: 1px solid var(--wmt-line); border-radius: 4px; min-width: 0; }
+.wmt-table-wrap {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--wmt-line);
+  border-radius: 4px;
+  min-width: 0;
+  min-height: 0;
+}
 .wmt-workbench {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
   gap: 12px;
 }
 .wmt-preview {
-  width: 400px;
+  width: 320px;
+  max-width: 36%;
   flex-shrink: 0;
+  min-width: 240px;
   border: 1px solid var(--wmt-line);
   border-radius: 4px;
   background: #fafbfc;
@@ -451,6 +470,10 @@ body.wmt {
   font-size: 16px;
   font-weight: 600;
   color: var(--wmt-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
 }
 .wmt-preview-kicker {
   font-size: 12px;
@@ -502,6 +525,7 @@ body.wmt {
 .wmt-table tbody tr.is-on { background: #eef3ff; }
 .wmt-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -513,20 +537,44 @@ body.wmt {
   border-bottom: 1px solid var(--wmt-line);
   padding: 10px 12px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .wmt-table td {
   border-bottom: 1px solid var(--wmt-line);
-  padding: 12px;
+  padding: 10px 12px;
   vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 0;
 }
+.wmt-table td.col-check {
+  width: 36px;
+  max-width: 36px;
+  overflow: visible;
+}
+.wmt-table td.col-plat { width: 96px; }
+.wmt-table td.row-actions,
+.wmt-table th:last-child { width: 148px; }
 .wmt-table tbody tr:hover { background: #f7f9ff; }
+.cell-clip {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .hit-home {
   color: var(--wmt-blue);
   text-decoration: none;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
-  max-width: 420px;
+  min-width: 0;
+  overflow: hidden;
+}
+.hit-home span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -534,6 +582,28 @@ body.wmt {
 .hit-home:hover { text-decoration: underline; }
 .hit-title { color: var(--wmt-text); }
 .hit-mail { color: var(--wmt-text); }
+.hit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  overflow: hidden;
+}
+.hit-badge span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-actions {
+  display: flex;
+  gap: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.wmt-table td.row-actions {
+  overflow: hidden;
+  max-width: none;
+}
 .wmt-empty {
   padding: 64px 0;
   text-align: center;

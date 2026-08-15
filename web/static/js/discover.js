@@ -302,7 +302,20 @@
     if (next) next.disabled = page >= pageCount();
   }
 
-  function renderHits(hits) {
+  function shortHandle(h) {
+    h = (h || "").trim();
+    if (!h) return "—";
+    if (h.length > 16) {
+      return "@" + h.slice(0, 8) + "…" + h.slice(-4);
+    }
+    return "@" + h;
+  }
+
+  function cell(text, cls) {
+    text = text || "—";
+    return '<td class="' + (cls || "") + '" title="' + escapeAttr(text) + '"><span class="cell-clip">' +
+      escapeHtml(text) + "</span></td>";
+  }
     lastHits = hits || [];
     if (mode === "marketing") {
       renderMarketHits(lastHits);
@@ -320,27 +333,28 @@
     const rows = pagedHits();
     results.innerHTML = rows.map(function (h) {
       const plat = (h.platform || "").toLowerCase();
-      const handle = h.handle ? "@" + h.handle : "—";
+      const handle = h.handle || "";
       const home = h.homepage_url || "";
       const msg = h.message_url || home;
       const src = home.replace(/^https?:\/\/(www\.)?/, "");
+      const name = h.name || handle || "—";
       return (
         "<tr>" +
-          '<td class="hit-title">' + escapeHtml(h.name || handle) + "</td>" +
-          '<td><span class="hit-badge">' + platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></span></td>" +
-          "<td>" + escapeHtml(handle) + "</td>" +
+          cell(name, "hit-title") +
+          '<td class="col-plat"><span class="hit-badge">' + platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></span></td>" +
+          cell(shortHandle(handle), "") +
           "<td>" + (home
-            ? '<a class="hit-home" target="_blank" rel="noopener" href="' + escapeAttr(home) + '">' +
-                platformSvg(plat) + escapeHtml(src) + "</a>"
+            ? '<a class="hit-home" target="_blank" rel="noopener" href="' + escapeAttr(home) + '" title="' + escapeAttr(src) + '">' +
+                platformSvg(plat) + "<span>" + escapeHtml(src) + "</span></a>"
             : "—") + "</td>" +
           '<td class="row-actions">' +
             '<button type="button" class="linkish" data-open="home" data-url="' + escapeAttr(home) +
-              '" data-name="' + escapeAttr(h.name || handle) + '" data-platform="' + escapeAttr(plat) +
-              '" data-handle="' + escapeAttr(h.handle || "") + '" data-snippet="' + escapeAttr(h.snippet || "") +
+              '" data-name="' + escapeAttr(name) + '" data-platform="' + escapeAttr(plat) +
+              '" data-handle="' + escapeAttr(handle) + '" data-snippet="' + escapeAttr(h.snippet || "") +
               '">打开主页</button>' +
             '<button type="button" class="linkish btn-msg" data-open="msg" data-url="' + escapeAttr(msg || home) +
-              '" data-name="' + escapeAttr(h.name || handle) + '" data-platform="' + escapeAttr(plat) +
-              '" data-handle="' + escapeAttr(h.handle || "") + '" data-snippet="' + escapeAttr(h.snippet || h.message_hint || "") +
+              '" data-name="' + escapeAttr(name) + '" data-platform="' + escapeAttr(plat) +
+              '" data-handle="' + escapeAttr(handle) + '" data-snippet="' + escapeAttr(h.snippet || h.message_hint || "") +
               '">去私信</button>' +
           "</td>" +
         "</tr>"
@@ -370,14 +384,14 @@
       const src = home.replace(/^https?:\/\/(www\.)?/, "");
       return (
         "<tr>" +
-          '<td><input type="checkbox" class="mkt-pick" data-i="' + i + '" data-channel="' +
+          '<td class="col-check"><input type="checkbox" class="mkt-pick" data-i="' + i + '" data-channel="' +
             escapeAttr(h.channel || "") + '" data-contact="' + escapeAttr(contact) +
             '" data-msg="' + escapeAttr(h.message_url || "") + '"></td>' +
-          '<td class="hit-mail">' + escapeHtml(contact) + "</td>" +
-          '<td class="hit-title">' + escapeHtml(title) + "</td>" +
+          cell(contact, "hit-mail") +
+          cell(title, "hit-title") +
           "<td>" + (home
-            ? '<a class="hit-home" target="_blank" rel="noopener" href="' + escapeAttr(home) + '">' +
-                platformSvg(plat) + escapeHtml(src || home) + "</a>"
+            ? '<a class="hit-home" target="_blank" rel="noopener" href="' + escapeAttr(home) + '" title="' + escapeAttr(src || home) + '">' +
+                platformSvg(plat) + "<span>" + escapeHtml(src || home) + "</span></a>"
             : "—") + "</td>" +
           '<td class="row-actions">' +
             '<button type="button" class="linkish btn-msg" data-open="' +

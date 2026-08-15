@@ -16,7 +16,10 @@ var (
 	instagramRe        = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9._]+)`)
 	youtubeAtRe        = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?youtube\.com/@([A-Za-z0-9._\-]+)`)
 	youtubeChanRe      = regexp.MustCompile(`(?i)youtube\.com/channel/([A-Za-z0-9_\-]+)`)
+	youtubeWatchRe     = regexp.MustCompile(`(?i)(?:youtube\.com/watch\?(?:[^#]*&)?v=|youtu\.be/)([A-Za-z0-9_\-]{6,})`)
+	youtubeShortsRe    = regexp.MustCompile(`(?i)youtube\.com/shorts/([A-Za-z0-9_\-]{6,})`)
 	facebookIDRe       = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/profile\.php\?id=(\d+)`)
+	facebookPeopleRe   = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/people/([^/?#]+)/(\d+)`)
 	facebookUserRe     = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/([A-Za-z0-9.]+)`)
 	linkedinInRe       = regexp.MustCompile(`(?i)linkedin\.com/in/([A-Za-z0-9_\-%]+)`)
 	linkedinCoRe       = regexp.MustCompile(`(?i)linkedin\.com/company/([A-Za-z0-9_\-%]+)`)
@@ -142,10 +145,31 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 		}, true
 	}
 
+	if m := youtubeWatchRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://www.youtube.com/watch?v=" + id
+		return makeHit(PlatformYouTube, "watch:"+id, id, home, title, snippet,
+			"打开 YouTube 视频后进入频道主页联系（系统不会代发）", 52), true
+	}
+
+	if m := youtubeShortsRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://www.youtube.com/shorts/" + id
+		return makeHit(PlatformYouTube, "shorts:"+id, id, home, title, snippet,
+			"打开 YouTube Shorts 后进入频道主页联系（系统不会代发）", 52), true
+	}
+
 	if m := facebookIDRe.FindStringSubmatch(decoded); len(m) == 2 {
 		home := "https://www.facebook.com/profile.php?id=" + m[1]
 		return makeHit(PlatformFacebook, "id:"+m[1], m[1], home, title, snippet,
 			"打开 Facebook 主页后点击 Message（需登录官方账号，系统不会代发私信）", 75), true
+	}
+
+	if m := facebookPeopleRe.FindStringSubmatch(decoded); len(m) == 3 {
+		name, _ := url.PathUnescape(m[1])
+		home := "https://www.facebook.com/people/" + m[1] + "/" + m[2]
+		return makeHit(PlatformFacebook, "people:"+m[2], name, home, title, snippet,
+			"打开 Facebook 主页后点击 Message（需登录官方账号，系统不会代发私信）", 74), true
 	}
 
 	if m := facebookUserRe.FindStringSubmatch(decoded); len(m) == 2 {
@@ -435,7 +459,17 @@ func displayName(title, fallback string) string {
 		return strings.TrimSpace(title[:i])
 	}
 
-	if len([]rune(title)) > 36 || strings.Contains(title, "#") {
+	if i := strings.LastIndex(title, "@"); i > 0 {
+		author := strings.TrimSpace(title[i+1:])
+		if sp := strings.IndexAny(author, " 　|/"); sp > 0 {
+			author = strings.TrimSpace(author[:sp])
+		}
+		if author != "" && len([]rune(author)) <= 24 && !looksLikeHandle(author) {
+			return author
+		}
+	}
+
+	if len([]rune(title)) > 28 || strings.Contains(title, "#") {
 		return fallback
 	}
 
