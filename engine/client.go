@@ -32,6 +32,7 @@ type Client struct {
 	TikHubToken   string
 	DisablePublic bool
 	braveLimited  atomic.Bool
+	ddgLimited    atomic.Bool
 }
 
 // OptionsFromEnv wires sidecar base URLs.
@@ -85,6 +86,16 @@ func (c *Client) markBraveLimited() {
 
 func (c *Client) braveSkipped() bool {
 	return c != nil && c.braveLimited.Load()
+}
+
+func (c *Client) markDDGLimited() {
+	if c != nil {
+		c.ddgLimited.Store(true)
+	}
+}
+
+func (c *Client) ddgSkipped() bool {
+	return c != nil && c.ddgLimited.Load()
 }
 
 func (c *Client) httpClient() *http.Client {
@@ -143,10 +154,19 @@ func (c *Client) do(req *http.Request) ([]byte, error) {
 		return nil, err
 	}
 
+	host := strings.ToLower(req.URL.Host)
+	if resp.StatusCode == http.StatusAccepted && strings.Contains(host, "duckduckgo") {
+		c.markDDGLimited()
+		return raw, fmt.Errorf("%s: status 202 challenge", host)
+	}
+
 	if resp.StatusCode >= 400 {
 		if resp.StatusCode == http.StatusTooManyRequests {
-			if strings.Contains(strings.ToLower(req.URL.Host), "brave") {
+			if strings.Contains(host, "brave") {
 				c.markBraveLimited()
+			}
+			if strings.Contains(host, "duckduckgo") {
+				c.markDDGLimited()
 			}
 			return raw, fmt.Errorf("%s: status 429 rate limited", req.URL.Host)
 		}

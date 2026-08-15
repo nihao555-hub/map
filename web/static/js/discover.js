@@ -310,7 +310,7 @@
     }
     if (!lastHits.length) {
       empty.classList.remove("hidden");
-      empty.textContent = "没有命中公开主页。可换关键词或勾选更多平台。";
+      empty.textContent = "没有命中公开主页。可换更具体的词（例如「配电柜厂家」），或勾选抖音、小红书后再搜。";
       foot.textContent = "";
       updatePager();
       results.innerHTML = "";
@@ -354,7 +354,7 @@
     lastHits = hits || [];
     if (!lastHits.length) {
       empty.classList.remove("hidden");
-      empty.textContent = "没有命中公开" + (selectedChannel() === "whatsapp" ? " WhatsApp" : "邮箱") + "。可换关键词或改回私信模式。";
+      empty.textContent = "没有命中公开" + (selectedChannel() === "whatsapp" ? " WhatsApp" : "邮箱") + "。中文词可改搜「厂家 / 官网 / 联系方式」，或改回私信模式。";
       foot.textContent = "";
       results.innerHTML = "";
       updatePager();

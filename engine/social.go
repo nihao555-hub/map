@@ -7,27 +7,32 @@ import (
 )
 
 var (
-	tiktokHandleRe = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.|m\.)?tiktok\.com/@([A-Za-z0-9._]+)`)
-	douyinUserRe   = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.|m\.)?douyin\.com/user/([A-Za-z0-9_\-]+)`)
-	douyinShortRe  = regexp.MustCompile(`(?i)(?:v|www)\.douyin\.com/([A-Za-z0-9]+)`)
-	instagramRe    = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9._]+)`)
-	youtubeAtRe    = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?youtube\.com/@([A-Za-z0-9._\-]+)`)
-	youtubeChanRe  = regexp.MustCompile(`(?i)youtube\.com/channel/([A-Za-z0-9_\-]+)`)
-	facebookIDRe   = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/profile\.php\?id=(\d+)`)
-	facebookUserRe = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/([A-Za-z0-9.]+)`)
-	linkedinInRe   = regexp.MustCompile(`(?i)linkedin\.com/in/([A-Za-z0-9_\-%]+)`)
-	linkedinCoRe   = regexp.MustCompile(`(?i)linkedin\.com/company/([A-Za-z0-9_\-%]+)`)
-	xHandleRe      = regexp.MustCompile(`(?i)(?:twitter|x)\.com/([A-Za-z0-9_]+)`)
-	pinterestRe    = regexp.MustCompile(`(?i)pinterest\.(?:com|co\.[a-z]{2})/([A-Za-z0-9_]+)`)
-	threadsRe      = regexp.MustCompile(`(?i)threads\.net/@([A-Za-z0-9._]+)`)
-	xiaohongshuRe  = regexp.MustCompile(`(?i)(?:www\.)?xiaohongshu\.com/user/profile/([A-Za-z0-9]+)`)
-	kuaishouRe     = regexp.MustCompile(`(?i)(?:www\.)?kuaishou\.com/profile/([A-Za-z0-9_\-]+)`)
-	weiboUIDRe     = regexp.MustCompile(`(?i)(?:www\.|m\.)?weibo\.(?:com|cn)/u/(\d+)`)
-	weiboNameRe    = regexp.MustCompile(`(?i)(?:www\.)?weibo\.com/n/([^/?#\s]+)`)
-	bilibiliRe     = regexp.MustCompile(`(?i)space\.bilibili\.com/(\d+)`)
-	telegramRe     = regexp.MustCompile(`(?i)(?:t\.me|telegram\.me)/([A-Za-z][A-Za-z0-9_]{3,31})`)
-	redditUserRe   = regexp.MustCompile(`(?i)(?:www\.)?reddit\.com/(?:user|u)/([A-Za-z0-9_\-]+)`)
-	twitchRe       = regexp.MustCompile(`(?i)(?:www\.)?twitch\.tv/([A-Za-z0-9_]+)`)
+	tiktokHandleRe     = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.|m\.)?tiktok\.com/@([A-Za-z0-9._]+)`)
+	douyinUserRe       = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.|m\.)?douyin\.com/user/([A-Za-z0-9_\-]+)`)
+	douyinVideoRe      = regexp.MustCompile(`(?i)(?:www\.|m\.)?douyin\.com/video/(\d+)`)
+	douyinNoteRe       = regexp.MustCompile(`(?i)(?:www\.|m\.)?douyin\.com/note/(\d+)`)
+	douyinCollectionRe = regexp.MustCompile(`(?i)(?:www\.|m\.)?douyin\.com/collection/(\d+)`)
+	douyinShortRe      = regexp.MustCompile(`(?i)(?:^|https?://)?v\.douyin\.com/([A-Za-z0-9]+)`)
+	instagramRe        = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9._]+)`)
+	youtubeAtRe        = regexp.MustCompile(`(?i)(?:^|https?://)?(?:www\.)?youtube\.com/@([A-Za-z0-9._\-]+)`)
+	youtubeChanRe      = regexp.MustCompile(`(?i)youtube\.com/channel/([A-Za-z0-9_\-]+)`)
+	facebookIDRe       = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/profile\.php\?id=(\d+)`)
+	facebookUserRe     = regexp.MustCompile(`(?i)(?:facebook\.com|fb\.com)/([A-Za-z0-9.]+)`)
+	linkedinInRe       = regexp.MustCompile(`(?i)linkedin\.com/in/([A-Za-z0-9_\-%]+)`)
+	linkedinCoRe       = regexp.MustCompile(`(?i)linkedin\.com/company/([A-Za-z0-9_\-%]+)`)
+	xHandleRe          = regexp.MustCompile(`(?i)(?:twitter|x)\.com/([A-Za-z0-9_]+)`)
+	pinterestRe        = regexp.MustCompile(`(?i)pinterest\.(?:com|co\.[a-z]{2})/([A-Za-z0-9_]+)`)
+	threadsRe          = regexp.MustCompile(`(?i)threads\.net/@([A-Za-z0-9._]+)`)
+	xiaohongshuRe      = regexp.MustCompile(`(?i)(?:www\.)?xiaohongshu\.com/user/profile/([A-Za-z0-9]+)`)
+	xiaohongshuNoteRe  = regexp.MustCompile(`(?i)(?:www\.)?xiaohongshu\.com/(?:explore|discovery/item)/([0-9a-f]{16,})`)
+	kuaishouRe         = regexp.MustCompile(`(?i)(?:www\.)?kuaishou\.com/profile/([A-Za-z0-9_\-]+)`)
+	kuaishouVideoRe    = regexp.MustCompile(`(?i)(?:www\.)?kuaishou\.com/short-video/(\d+)`)
+	weiboUIDRe         = regexp.MustCompile(`(?i)(?:www\.|m\.)?weibo\.(?:com|cn)/u/(\d+)`)
+	weiboNameRe        = regexp.MustCompile(`(?i)(?:www\.)?weibo\.com/n/([^/?#\s]+)`)
+	bilibiliRe         = regexp.MustCompile(`(?i)space\.bilibili\.com/(\d+)`)
+	telegramRe         = regexp.MustCompile(`(?i)(?:t\.me|telegram\.me)/([A-Za-z][A-Za-z0-9_]{3,31})`)
+	redditUserRe       = regexp.MustCompile(`(?i)(?:www\.)?reddit\.com/(?:user|u)/([A-Za-z0-9_\-]+)`)
+	twitchRe           = regexp.MustCompile(`(?i)(?:www\.)?twitch\.tv/([A-Za-z0-9_]+)`)
 )
 
 var reservedPaths = map[string]struct{}{
@@ -68,6 +73,27 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 
 	if m := douyinUserRe.FindStringSubmatch(decoded); len(m) == 2 {
 		return douyinHit(m[1], title, snippet, decoded, "websearch"), true
+	}
+
+	if m := douyinVideoRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://www.douyin.com/video/" + id
+		return makeHit(PlatformDouyin, "video:"+id, id, home, title, snippet,
+			"打开抖音作品后进入作者主页再点「私信」（需登录官方 App，系统不会代发）", 62), true
+	}
+
+	if m := douyinNoteRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://www.douyin.com/note/" + id
+		return makeHit(PlatformDouyin, "note:"+id, id, home, title, snippet,
+			"打开抖音图文后进入作者主页再点「私信」（需登录官方 App，系统不会代发）", 60), true
+	}
+
+	if m := douyinCollectionRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://www.douyin.com/collection/" + id
+		return makeHit(PlatformDouyin, "collection:"+id, id, home, title, snippet,
+			"打开抖音合集后进入作者主页再点「私信」（需登录官方 App，系统不会代发）", 58), true
 	}
 
 	if m := instagramRe.FindStringSubmatch(decoded); len(m) == 2 {
@@ -184,11 +210,25 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 			"打开小红书主页后点击「私信」（需登录官方 App，系统不会代发）", 75), true
 	}
 
+	if m := xiaohongshuNoteRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://www.xiaohongshu.com/explore/" + id
+		return makeHit(PlatformXiaohongshu, "note:"+id, id, home, title, snippet,
+			"打开小红书笔记后进入作者主页再点「私信」（需登录官方 App，系统不会代发）", 60), true
+	}
+
 	if m := kuaishouRe.FindStringSubmatch(decoded); len(m) == 2 {
 		id := m[1]
 		home := "https://www.kuaishou.com/profile/" + id
 		return makeHit(PlatformKuaishou, id, id, home, title, snippet,
 			"打开快手主页后点击「私信」（需登录官方 App，系统不会代发）", 70), true
+	}
+
+	if m := kuaishouVideoRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		home := "https://www.kuaishou.com/short-video/" + id
+		return makeHit(PlatformKuaishou, "video:"+id, id, home, title, snippet,
+			"打开快手作品后进入作者主页再点「私信」（需登录官方 App，系统不会代发）", 58), true
 	}
 
 	if m := weiboUIDRe.FindStringSubmatch(decoded); len(m) == 2 {
@@ -258,15 +298,19 @@ func ParseSocialURL(raw, title, snippet string) (Hit, bool) {
 		}, true
 	}
 
-	if m := douyinShortRe.FindStringSubmatch(decoded); len(m) == 2 && strings.Contains(strings.ToLower(decoded), "douyin") {
-		home := "https://v.douyin.com/" + m[1]
+	if m := douyinShortRe.FindStringSubmatch(decoded); len(m) == 2 {
+		id := m[1]
+		if _, skip := reservedPaths[strings.ToLower(id)]; skip {
+			return Hit{}, false
+		}
+		home := "https://v.douyin.com/" + id
 
 		return Hit{
-			ID:          "douyin:short:" + m[1],
+			ID:          "douyin:short:" + id,
 			Kind:        KindPeople,
 			Platform:    PlatformDouyin,
-			Name:        displayName(title, m[1]),
-			Handle:      m[1],
+			Name:        displayName(title, id),
+			Handle:      id,
 			Title:       title,
 			Snippet:     snippet,
 			HomepageURL: home,
@@ -346,6 +390,20 @@ func displayName(title, fallback string) string {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return fallback
+	}
+
+	if i := strings.LastIndex(title, " - 抖音"); i > 0 {
+		rest := strings.TrimSpace(title[:i])
+		if j := strings.LastIndex(rest, " - "); j >= 0 {
+			if author := strings.TrimSpace(rest[j+3:]); author != "" && len([]rune(author)) <= 36 {
+				title = author
+			} else {
+				title = rest
+			}
+		} else {
+			title = rest
+		}
+		title = strings.TrimSpace(strings.TrimSuffix(title, "的抖音"))
 	}
 
 	title = strings.TrimSpace(strings.Split(title, "|")[0])

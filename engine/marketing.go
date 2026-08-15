@@ -17,7 +17,8 @@ var (
 var skipEmailHost = map[string]struct{}{
 	"example.com": {}, "sentry.io": {}, "wixpress.com": {}, "cloudflare.com": {},
 	"google.com": {}, "gstatic.com": {}, "github.com": {}, "githubusercontent.com": {},
-	"facebookmail.com": {},
+	"facebookmail.com": {}, "company.com": {}, "domain.com": {}, "email.com": {},
+	"yourcompany.com": {}, "test.com": {}, "example.org": {}, "example.net": {},
 }
 
 func (c *Client) searchMarketing(ctx context.Context, q Query) (Result, error) {
@@ -90,9 +91,22 @@ func (c *Client) searchPublicContacts(ctx context.Context, keyword string, wante
 }
 
 func marketingSearchQueries(keyword string, wanted map[string]bool) []string {
-	out := []string{
-		keyword + ` email OR contact OR mailto`,
-		keyword + ` whatsapp OR wa.me`,
+	var out []string
+	if hasCJK(keyword) {
+		out = []string{
+			keyword + " 厂家 联系方式",
+			keyword + " 官网 邮箱",
+			keyword + " 邮箱 OR mailto OR 联系我们",
+		}
+	} else {
+		out = []string{
+			keyword + ` email OR contact OR mailto`,
+			keyword + ` whatsapp OR wa.me`,
+		}
+	}
+
+	if hasCJK(keyword) {
+		return out
 	}
 
 	n := 0

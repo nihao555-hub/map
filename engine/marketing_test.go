@@ -66,6 +66,26 @@ func TestMarketingSearchQueriesCapped(t *testing.T) {
 	}
 }
 
+func TestValidPublicEmailSkipsPlaceholderHosts(t *testing.T) {
+	if validPublicEmail("support@company.com") || validPublicEmail("sales@domain.com") {
+		t.Fatal("placeholder host accepted")
+	}
+	if !validPublicEmail("jane.doe@bosch-tools.com") {
+		t.Fatal("real host rejected")
+	}
+}
+
+func TestMarketingSearchQueriesCJK(t *testing.T) {
+	q := marketingSearchQueries("配电", nil)
+	if len(q) != 3 {
+		t.Fatalf("queries=%v", q)
+	}
+	joined := strings.Join(q, " ")
+	if !strings.Contains(joined, "厂家") || strings.Contains(joined, "site:") {
+		t.Fatalf("cjk queries=%v", q)
+	}
+}
+
 func TestSearchModeMarketingRoutesKind(t *testing.T) {
 	c := &Client{DisablePublic: true}
 	res, err := c.Search(context.Background(), Query{Keyword: "power tools", Mode: ModeMarketing})

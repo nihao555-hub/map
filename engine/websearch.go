@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/sync/errgroup"
@@ -71,7 +72,7 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wante
 				return nil
 			}
 
-			batch, src, err := c.searchOneIndex(gctx, q)
+			batch, src, err := c.searchOneIndex(gctx, q.query)
 			mu.Lock()
 			defer mu.Unlock()
 
@@ -85,6 +86,9 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wante
 			}
 
 			for _, h := range batch {
+				if q.platform != "" && h.Platform != q.platform {
+					continue
+				}
 				if len(wanted) > 0 && !wanted[h.Platform] {
 					continue
 				}
@@ -101,37 +105,68 @@ func (c *Client) searchPublicProfiles(ctx context.Context, keyword string, wante
 	return hits, uniqueStrings(warnings), uniqueStrings(sources)
 }
 
-func publicSearchQueries(keyword string, wanted map[string]bool) []string {
-	specs := []struct {
-		platform string
-		query    string
-	}{
-		{PlatformFacebook, "site:facebook.com " + keyword},
-		{PlatformLinkedIn, "site:linkedin.com " + keyword},
-		{PlatformInstagram, "site:instagram.com " + keyword},
-		{PlatformYouTube, "site:youtube.com " + keyword},
-		{PlatformTikTok, "site:tiktok.com " + keyword},
-		{PlatformX, "site:x.com " + keyword},
-		{PlatformPinterest, "site:pinterest.com " + keyword},
-		{PlatformThreads, "site:threads.net " + keyword},
-		{PlatformDouyin, "site:douyin.com/user " + keyword},
-		{PlatformXiaohongshu, "site:xiaohongshu.com/user/profile " + keyword},
-		{PlatformKuaishou, "site:kuaishou.com/profile " + keyword},
-		{PlatformWeibo, "site:weibo.com/u " + keyword},
-		{PlatformBilibili, "site:space.bilibili.com " + keyword},
-		{PlatformTelegram, "site:t.me " + keyword},
-		{PlatformReddit, "site:reddit.com/user " + keyword},
-		{PlatformTwitch, "site:twitch.tv " + keyword},
-	}
+type publicQuery struct {
+	platform string
+	query    string
+}
 
-	out := make([]string, 0, len(specs))
-	for _, s := range specs {
-		if wanted[s.platform] {
-			out = append(out, s.query)
+var platformSearchDomain = map[string]string{
+	PlatformFacebook:    "facebook.com",
+	PlatformLinkedIn:    "linkedin.com",
+	PlatformInstagram:   "instagram.com",
+	PlatformYouTube:     "youtube.com",
+	PlatformTikTok:      "tiktok.com",
+	PlatformX:           "x.com",
+	PlatformPinterest:   "pinterest.com",
+	PlatformThreads:     "threads.net",
+	PlatformDouyin:      "douyin.com",
+	PlatformXiaohongshu: "xiaohongshu.com",
+	PlatformKuaishou:    "kuaishou.com",
+	PlatformWeibo:       "weibo.com",
+	PlatformBilibili:    "bilibili.com",
+	PlatformTelegram:    "t.me",
+	PlatformReddit:      "reddit.com",
+	PlatformTwitch:      "twitch.tv",
+}
+
+// publicSearchOrder prefers Chinese networks first so a CJK keyword can
+// return Douyin/Xiaohongshu hits before site: queries trip index challenges.
+var publicSearchOrder = []string{
+	PlatformDouyin, PlatformXiaohongshu, PlatformKuaishou, PlatformWeibo, PlatformBilibili,
+	PlatformTikTok, PlatformFacebook, PlatformInstagram, PlatformYouTube, PlatformLinkedIn,
+	PlatformX, PlatformPinterest, PlatformThreads, PlatformTelegram, PlatformReddit, PlatformTwitch,
+}
+
+func publicSearchQueries(keyword string, wanted map[string]bool) []publicQuery {
+	out := make([]publicQuery, 0, len(wanted))
+	cjk := hasCJK(keyword)
+	for _, platform := range publicSearchOrder {
+		if !wanted[platform] {
+			continue
 		}
+		domain := platformSearchDomain[platform]
+		if domain == "" {
+			continue
+		}
+
+		query := "site:" + domain + " " + keyword
+		if cjk {
+			// Natural queries survive HTML indexes better than site:path filters.
+			query = keyword + " " + PeoplePlatformLabel(platform)
+		}
+		out = append(out, publicQuery{platform: platform, query: query})
 	}
 
 	return out
+}
+
+func hasCJK(s string) bool {
+	for _, r := range s {
+		if unicode.In(r, unicode.Han, unicode.Hangul, unicode.Hiragana, unicode.Katakana) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) searchOneIndex(ctx context.Context, query string) ([]Hit, string, error) {
@@ -157,6 +192,9 @@ func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, e
 			continue
 		}
 		if looksLikeChallenge(raw) {
+			if a.name == "duckduckgo" {
+				c.markDDGLimited()
+			}
 			errs = append(errs, a.name+": challenge page")
 			continue
 		}
@@ -188,15 +226,17 @@ func indexAttempts(c *Client, names []string) []indexAttempt {
 		{"bing", c.fetchBing},
 		{"brave", c.fetchBrave},
 	}
-	if c.braveSkipped() {
-		filtered := make([]indexAttempt, 0, len(all))
-		for _, a := range all {
-			if a.name != "brave" {
-				filtered = append(filtered, a)
-			}
+	filtered := make([]indexAttempt, 0, len(all))
+	for _, a := range all {
+		if a.name == "brave" && c.braveSkipped() {
+			continue
 		}
-		all = filtered
+		if a.name == "duckduckgo" && c.ddgSkipped() {
+			continue
+		}
+		filtered = append(filtered, a)
 	}
+	all = filtered
 	if len(names) == 0 {
 		return all
 	}
@@ -229,6 +269,9 @@ func (c *Client) fetchIndexHTML(ctx context.Context, query string, names []strin
 			continue
 		}
 		if looksLikeChallenge(raw) {
+			if a.name == "duckduckgo" {
+				c.markDDGLimited()
+			}
 			errs = append(errs, a.name+": challenge page")
 			continue
 		}
@@ -248,7 +291,11 @@ func (c *Client) fetchIndexHTML(ctx context.Context, query string, names []strin
 }
 
 func (c *Client) fetchDuckDuckGo(ctx context.Context, query string) ([]byte, error) {
-	form := "q=" + url.QueryEscape(query) + "&kl=wt-wt"
+	kl := "wt-wt"
+	if hasCJK(query) {
+		kl = "cn-zh"
+	}
+	form := "q=" + url.QueryEscape(query) + "&kl=" + kl
 	raw, err := c.postFormHTML(ctx, "https://html.duckduckgo.com/html/", form)
 	if err == nil && !looksLikeChallenge(raw) && len(raw) > 500 {
 		return raw, nil
@@ -262,7 +309,13 @@ func (c *Client) fetchBrave(ctx context.Context, query string) ([]byte, error) {
 }
 
 func (c *Client) fetchBing(ctx context.Context, query string) ([]byte, error) {
-	return c.getHTML(ctx, "https://www.bing.com/search?q="+url.QueryEscape(query)+"&setlang=en")
+	rawURL := "https://www.bing.com/search?q=" + url.QueryEscape(query)
+	if hasCJK(query) {
+		rawURL += "&setlang=zh-Hans&cc=CN"
+	} else {
+		rawURL += "&setlang=en"
+	}
+	return c.getHTML(ctx, rawURL)
 }
 
 func (c *Client) getHTML(ctx context.Context, rawURL string) ([]byte, error) {
@@ -316,16 +369,23 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 	}
 
 	if doc, err := goquery.NewDocumentFromReader(strings.NewReader(html)); err == nil {
-		doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
-			href, _ := s.Attr("href")
-			title := strings.TrimSpace(s.Text())
-			snippet := strings.TrimSpace(s.Parent().Text())
-			if len(snippet) > 240 {
-				snippet = snippet[:240]
-			}
+		addAnchors := func(sel *goquery.Selection) {
+			sel.Each(func(_ int, s *goquery.Selection) {
+				href, _ := s.Attr("href")
+				title := strings.TrimSpace(s.Text())
+				snippet := strings.TrimSpace(s.Parent().Text())
+				if len(snippet) > 240 {
+					snippet = snippet[:240]
+				}
+				add(ParseSocialURL(href, title, snippet))
+			})
+		}
 
-			add(ParseSocialURL(href, title, snippet))
-		})
+		cards := doc.Find("a.result__a, li.b_algo h2 a, #b_results h2 a")
+		addAnchors(cards)
+		if len(seen) == 0 {
+			addAnchors(doc.Find("a[href]"))
+		}
 	}
 
 	blob := html + "\n" + decoded
@@ -383,15 +443,45 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 		}
 	}
 
+	for _, m := range douyinVideoRe.FindAllStringSubmatch(blob, 40) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.douyin.com/video/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range douyinNoteRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.douyin.com/note/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range douyinCollectionRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.douyin.com/collection/"+m[1], m[1], ""))
+		}
+	}
+
 	for _, m := range xiaohongshuRe.FindAllStringSubmatch(blob, 20) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.xiaohongshu.com/user/profile/"+m[1], m[1], ""))
 		}
 	}
 
+	for _, m := range xiaohongshuNoteRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.xiaohongshu.com/explore/"+m[1], m[1], ""))
+		}
+	}
+
 	for _, m := range kuaishouRe.FindAllStringSubmatch(blob, 20) {
 		if len(m) == 2 {
 			add(ParseSocialURL("https://www.kuaishou.com/profile/"+m[1], m[1], ""))
+		}
+	}
+
+	for _, m := range kuaishouVideoRe.FindAllStringSubmatch(blob, 20) {
+		if len(m) == 2 {
+			add(ParseSocialURL("https://www.kuaishou.com/short-video/"+m[1], m[1], ""))
 		}
 	}
 
@@ -441,5 +531,5 @@ func looksLikeChallenge(raw []byte) bool {
 	s := strings.ToLower(string(raw))
 	return strings.Contains(s, "anomaly-modal") ||
 		strings.Contains(s, "select all squares containing a duck") ||
-		(strings.Contains(s, "unfortunately, bots use duckduckgo") && strings.Contains(s, "challenge"))
+		strings.Contains(s, "unfortunately, bots use duckduckgo")
 }

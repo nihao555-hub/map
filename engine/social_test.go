@@ -123,6 +123,32 @@ func TestParseSocialURLDouyin(t *testing.T) {
 	}
 }
 
+func TestParseSocialURLDouyinVideoNotShortLink(t *testing.T) {
+	hit, ok := ParseSocialURL("https://www.douyin.com/video/7642369989815868323", "配电设备图解（基础篇） - 知了电力 - 抖音", "")
+	if !ok || hit.Platform != PlatformDouyin {
+		t.Fatalf("ok=%v hit=%+v", ok, hit)
+	}
+	if !strings.Contains(hit.HomepageURL, "/video/7642369989815868323") {
+		t.Fatalf("home %s", hit.HomepageURL)
+	}
+	if strings.Contains(hit.HomepageURL, "v.douyin.com") {
+		t.Fatal("www video must not become short link")
+	}
+	if hit.Name != "知了电力" {
+		t.Fatalf("name=%q", hit.Name)
+	}
+}
+
+func TestParseSocialURLXiaohongshuNote(t *testing.T) {
+	hit, ok := ParseSocialURL("https://www.xiaohongshu.com/explore/64f0ab12cd34ef567890abcd", "配电箱现场", "")
+	if !ok || hit.Platform != PlatformXiaohongshu || !strings.Contains(hit.HomepageURL, "/explore/") {
+		t.Fatalf("ok=%v hit=%+v", ok, hit)
+	}
+	if _, ok := ParseSocialURL("https://www.xiaohongshu.com/explore?language=zh-CN", "小红书", ""); ok {
+		t.Fatal("bare explore must be rejected")
+	}
+}
+
 func TestUnwrapDuckDuckGoRedirect(t *testing.T) {
 	raw := "https://duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.tiktok.com%2F%40allbirds"
 	hit, ok := ParseSocialURL(raw, "Allbirds (@allbirds)", "")
@@ -155,6 +181,10 @@ func TestDisplayNameStripsHandle(t *testing.T) {
 	}
 
 	if got := displayName("Instagram instagram.com › tonyspowertools   Tony's Power Tools", "tonyspowertools"); got != "Tony's Power Tools" {
+		t.Fatalf("got %q", got)
+	}
+
+	if got := displayName("配电设备图解（基础篇） - 知了电力 - 抖音", "id"); got != "知了电力" {
 		t.Fatalf("got %q", got)
 	}
 }
