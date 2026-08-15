@@ -195,8 +195,8 @@ func TestPublicSearchQueriesEnglishUsesSite(t *testing.T) {
 	qs := publicSearchQueries("power tools", wanted, "", RoleBuyer)
 	got := queryStrings(qs)
 	for _, want := range []string{
-		"site:tiktok.com/@ power tools",
-		"site:tiktok.com/@ power tools importer",
+		"site:tiktok.com power tools",
+		"site:tiktok.com power tools importer",
 	} {
 		if !containsString(got, want) {
 			t.Fatalf("missing %q in %+v", want, got)
