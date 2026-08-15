@@ -23,6 +23,24 @@ var fairTokenRe = regexp.MustCompile(`(?i)(trade fair|trade show|exhibition|expo
 // searchExhibition finds trade fairs (default) or exhibitors (role=seller)
 // from live Wikidata SPARQL plus the same public web indexes 智能引擎 already uses.
 func (c *Client) searchExhibition(ctx context.Context, q Query) (Result, error) {
+	wantExhibitors := NormalizeRole(q.Role) == RoleSeller
+	term := firstNonEmpty(englishProductTerm(q.Keyword, q.Country), q.Keyword)
+
+	if wantExhibitors {
+		limit := exhibitorLimit(q.Limit)
+		items, src := c.searchFairExhibitors(ctx, q.Keyword, term, q.Country, limit)
+		note := exhibitionPolicyNote
+		if len(items) == 0 {
+			note = strings.TrimSpace(note + " 没有在公开名录里找到参展商名单。")
+		}
+		return Result{
+			Hits:     items,
+			Sources:  uniqueStrings([]string{src}),
+			Note:     note,
+			Expanded: []string{term},
+		}, nil
+	}
+
 	limit := q.Limit
 	if limit <= 0 {
 		limit = exhibitionDefaultLimit
@@ -30,9 +48,6 @@ func (c *Client) searchExhibition(ctx context.Context, q Query) (Result, error) 
 	if limit > exhibitionMaxLimit {
 		limit = exhibitionMaxLimit
 	}
-
-	wantExhibitors := NormalizeRole(q.Role) == RoleSeller
-	term := firstNonEmpty(englishProductTerm(q.Keyword, q.Country), q.Keyword)
 
 	var (
 		mu       sync.Mutex

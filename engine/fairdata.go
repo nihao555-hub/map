@@ -132,7 +132,7 @@ func fairSearchTokens(keyword, term string) []string {
 	blob := strings.ToLower(keyword + " " + term)
 	switch {
 	case containsAny(blob, "furniture", "家具", "sofa", "chair", "mattress"):
-		base = append(base, "furniture", "maison", "ambiente", "ligna", "canton", "interior")
+		base = append(base, "furniture", "家具", "ciff", "maison", "ambiente", "ligna", "canton", "interior")
 	case containsAny(blob, "shoe", "鞋", "apparel", "fashion", "服装", "纺织"):
 		base = append(base, "fashion", "textile", "intertextile", "canton")
 	case containsAny(blob, "led", "light", "lamp", "灯", "照明"):

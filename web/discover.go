@@ -135,7 +135,7 @@ func scrubDiscoverResult(res *engine.Result) {
 			res.Note = "系统不会代发。逐票企业来自美国海关公开提单，不是全球企业库。"
 		}
 	case engine.KindExhibition:
-		res.Note = "系统不会代发。展会来自公开知识库和公开网页，不是官方全量名录。"
+		res.Note = "系统不会代发。公开参展商名单来自展会官网和公开名录，不是官方全量库。"
 	default:
 		res.Note = "系统不会代发。公开网页索引按目标国语言展开检索，做不到企业库那种一个国家几千条。"
 	}
@@ -345,4 +345,36 @@ func (s *Server) apiCustomsProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderJSON(w, http.StatusOK, prof)
+}
+
+func (s *Server) apiExhibitionExhibitors(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+		return
+	}
+
+	name := strings.TrimSpace(r.URL.Query().Get("name"))
+	pageURL := strings.TrimSpace(r.URL.Query().Get("url"))
+	if name == "" && pageURL == "" {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: "请输入展会名称",
+		})
+		return
+	}
+
+	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	out, err := s.engine.LookupFairExhibitors(r.Context(), name, pageURL, limit)
+	if err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		})
+		return
+	}
+	out.Note = "系统不会代发。公开参展商名单来自展会官网和公开名录，不是官方全量库。"
+	renderJSON(w, http.StatusOK, out)
 }

@@ -211,3 +211,30 @@ func TestLiveExhibitionFurniture(t *testing.T) {
 		t.Fatal("furniture 应能从 AUMA/Wikidata/公开网页找到具名展会")
 	}
 }
+
+func TestLiveExhibitionExhibitorsFurniture(t *testing.T) {
+	c := OptionsFromEnv()
+	c.TikTokURL = ""
+	c.F2URL = ""
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	res, err := c.Search(ctx, Query{Keyword: "furniture", Kind: KindExhibition, Role: RoleSeller, Limit: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("exhibitors hits=%d sources=%v took=%dms note=%s", len(res.Hits), res.Sources, res.TookMS, res.Note)
+	for i, h := range res.Hits {
+		if i >= 12 {
+			break
+		}
+		t.Logf("  %s fair=%s booth=%s geo=%s", h.Name, h.Extra["fair"], h.Extra["booth"], h.CountryLabel)
+	}
+	if len(res.Hits) < 10 {
+		t.Fatalf("furniture 应能拉到公开参展商名单, got %d", len(res.Hits))
+	}
+	if res.Hits[0].Role != RoleSeller || strings.TrimSpace(res.Hits[0].Name) == "" {
+		t.Fatalf("hit %+v", res.Hits[0])
+	}
+}

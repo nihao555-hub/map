@@ -164,7 +164,7 @@ body.exh #app-body { background: #f4efe6; }
   position: fixed;
   top: 0;
   right: 0;
-  width: min(380px, 92vw);
+  width: min(520px, 94vw);
   height: 100%;
   background: #fffaf3;
   border-left: 1px solid #e7e0d4;
@@ -174,6 +174,47 @@ body.exh #app-body { background: #f4efe6; }
   box-shadow: -12px 0 32px rgba(28,25,23,.08);
 }
 .exh-drawer h2 { margin: 8px 0 10px; font-size: 22px; }
+.exh-sub {
+  margin: 22px 0 8px;
+  font-size: 14px;
+  color: #1c1917;
+}
+.exh-exhibitor-wrap { overflow: auto; max-height: 52vh; }
+.exh-exhibitor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.exh-exhibitor-table th,
+.exh-exhibitor-table td {
+  text-align: left;
+  padding: 7px 6px;
+  border-bottom: 1px solid #efe8dc;
+  vertical-align: top;
+}
+.exh-exhibitor-table th { color: #78716c; font-weight: 600; }
+.exh-board.is-table {
+  display: block;
+}
+.exh-table-wrap {
+  background: #fffaf3;
+  border: 1px solid #e7e0d4;
+  border-radius: 16px;
+  overflow: auto;
+}
+.exh-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.exh-table th, .exh-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid #efe8dc;
+}
+.exh-table th { color: #78716c; font-weight: 600; background: #faf6ef; }
+.exh-table tr:hover { background: #f5f0e8; cursor: pointer; }
+.exh-table small { display: block; color: #8c8c8c; font-size: 12px; }
 .exh-drawer-close {
   float: right;
   border: 0;

@@ -205,7 +205,7 @@ func TestDiscoverExhibitionDoesNotCrawl(t *testing.T) {
 		t.Fatalf("hits=%v", hits)
 	}
 	note, _ := payload["note"].(string)
-	if !strings.Contains(note, "公开知识库") {
+	if !strings.Contains(note, "公开") {
 		t.Fatalf("note=%v", payload["note"])
 	}
 	if warns, ok := payload["warnings"].([]any); ok && len(warns) > 0 {
@@ -301,7 +301,7 @@ func TestExhibitionPageRenders(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"展会获客", "自研展会工作台", "找展会", "找参展商", "AUMA",
+		"展会获客", "自研展会工作台", "找展会", "找参展商", "参展商名单",
 		`id="data-nav"`, "/static/js/exhibition.js", "exh-board",
 	} {
 		if !strings.Contains(body, want) {
@@ -315,6 +315,16 @@ func TestCustomsProfileRequiresName(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/customs/profile", nil)
 	rec := httptest.NewRecorder()
 	srv.apiCustomsProfile(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestExhibitionExhibitorsRequiresName(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/exhibition/exhibitors", nil)
+	rec := httptest.NewRecorder()
+	srv.apiExhibitionExhibitors(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
 	}

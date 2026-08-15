@@ -29,8 +29,8 @@
     <main class="exh-main">
       <header class="exh-head">
         <p class="exh-kicker">自研展会工作台</p>
-        <h1>按行业找展会，再打开官网</h1>
-        <p class="exh-lead">复刻外贸通「先找展会」。按关键词实时查 AUMA FairFinder、Wikidata 和公开网页，不是 50 万采购商库，也不是名片扫描。找到展会后去官网看参展商。</p>
+        <h1>先找展会，再拉参展商名单</h1>
+        <p class="exh-lead">复刻外贸通「展会获客」：按行业找展会，点进去拉取公开参展商名单（公司名、展位、国家）。不是 50 万采购商库，也不做名片 OCR。</p>
       </header>
       <form id="exh-form" class="exh-search">
         <div class="exh-seg" id="role-group">
@@ -49,7 +49,7 @@
       <div id="board" class="exh-board">
         <div id="empty" class="exh-empty">
           <strong>从一条行业词开始</strong>
-          <p>例如 lighting、furniture、广交会。结果是展会或参展商卡片，点开官网自行联系。</p>
+          <p>例如 furniture、LED灯、广交会。找展会后点卡片拉名单；找参展商直接出公司名和展位。</p>
           <div class="exh-examples">
             <button type="button" data-q="furniture">furniture</button>
             <button type="button" data-q="LED灯">LED灯</button>
@@ -68,7 +68,10 @@
     <p id="drawer-when"></p>
     <p id="drawer-snip"></p>
     <a id="drawer-link" class="exh-open" href="#" target="_blank" rel="noopener">打开官网</a>
-    <p class="exh-note">系统不代发，也不从展会网页批量抽邮箱。</p>
+    <h3 class="exh-sub">参展商名单</h3>
+    <p id="drawer-exh-status" class="exh-note">点展会后加载公开名单。</p>
+    <div id="drawer-exhibitors" class="exh-exhibitor-wrap"></div>
+    <p class="exh-note">系统不代发，也不从展会网页批量抽邮箱。名单来自公开名录，不是全量库。</p>
   </aside>
   <div id="toast" class="wmt-toast hidden"></div>
   <script src="/static/js/exhibition.js"></script>

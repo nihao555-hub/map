@@ -140,6 +140,7 @@ func New(svc *Service, addr string) (*Server, error) {
 	mux.HandleFunc("/api/v1/discover/countries", ans.apiDiscoverCountries)
 	mux.HandleFunc("/api/v1/discover/sources", ans.apiDiscoverSources)
 	mux.HandleFunc("/api/v1/discover/customs/profile", ans.apiCustomsProfile)
+	mux.HandleFunc("/api/v1/discover/exhibition/exhibitors", ans.apiExhibitionExhibitors)
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 
