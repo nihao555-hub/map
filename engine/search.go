@@ -129,6 +129,7 @@ func (c *Client) searchRealtime(ctx context.Context, q Query, start time.Time) (
 	}
 
 	stale, hasStale := lookupStaleCache(q)
+	already := refreshInFlight(q)
 	job := kickSearchRefresh(c, q)
 	if hasStale {
 		stale.TookMS = time.Since(start).Milliseconds()
@@ -136,6 +137,20 @@ func (c *Client) searchRealtime(ctx context.Context, q Query, start time.Time) (
 		stale.Cached = true
 		stale.Refreshing = true
 		return stale, nil
+	}
+	if already {
+		note := customsPolicyNote
+		if q.Kind == KindExhibition {
+			note = exhibitionPolicyNote
+		}
+		return Result{
+			Keyword:    q.Keyword,
+			Kind:       q.Kind,
+			Note:       note,
+			TookMS:     time.Since(start).Milliseconds(),
+			SearchedAt: time.Now().UTC(),
+			Refreshing: true,
+		}, nil
 	}
 
 	timer := time.NewTimer(realtimeBudget)
