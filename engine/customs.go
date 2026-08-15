@@ -463,7 +463,7 @@ func topProductExtra(raw any) (product, hs string) {
 	if m == nil {
 		return "", ""
 	}
-	product = firstNonEmpty(asString(m["term"]), asString(m["product"]), asString(m["description"]))
+	product = stripMarkup(firstNonEmpty(asString(m["term"]), asString(m["product"]), asString(m["description"])))
 	hs = firstNonEmpty(asString(m["hs_code"]), asString(m["code"]))
 	if product == "" {
 		product = hs
@@ -723,7 +723,7 @@ func mapCustomsProducts(raw any, limit int) []CustomsProduct {
 		if m == nil {
 			continue
 		}
-		code := firstNonEmpty(asString(m["hs_code"]), asString(m["code"]), asString(m["term"]))
+		code := stripMarkup(firstNonEmpty(asString(m["hs_code"]), asString(m["code"]), asString(m["term"])))
 		if code == "" {
 			continue
 		}
