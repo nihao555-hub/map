@@ -23,6 +23,26 @@ func TestAssertPublicHTTPURL(t *testing.T) {
 	}
 }
 
+func TestPreviewSoftFailsOnBlockedPage(t *testing.T) {
+	c := &Client{
+		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Body:       io.NopCloser(strings.NewReader("denied")),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		})},
+	}
+	prev, err := c.Preview(context.Background(), "https://acme-powertools.com/in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prev.Embeddable || prev.Note == "" {
+		t.Fatalf("%+v", prev)
+	}
+}
+
 func TestPreviewExtractsMetaAndBlocksFrame(t *testing.T) {
 	html := `<html><head>
 <title>Ignore</title>
@@ -56,9 +76,11 @@ func TestPreviewExtractsMetaAndBlocksFrame(t *testing.T) {
 }
 
 func TestCandidatePagesFromHTML(t *testing.T) {
-	html := []byte(`<a href="https://html.duckduckgo.com/l/?uddg=https%3A%2F%2Ffactory-tools.com%2Fabout">Factory</a>`)
+	html := []byte(`<a href="https://html.duckduckgo.com/l/?uddg=https%3A%2F%2Ffactory-tools.com%2Fabout">Factory</a>
+<a href="https://r.bing.com/rp/foo">junk</a>
+<a href="https://outlook.live.com/mail">junk2</a>`)
 	pages := candidatePagesFromHTML(html)
-	if len(pages) == 0 || !strings.Contains(pages[0], "factory-tools.com") {
+	if len(pages) != 1 || !strings.Contains(pages[0], "factory-tools.com") {
 		t.Fatalf("pages=%v", pages)
 	}
 }

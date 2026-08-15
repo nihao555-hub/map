@@ -39,6 +39,24 @@ var skipIndexHost = map[string]struct{}{
 	"html.duckduckgo.com": {}, "lite.duckduckgo.com": {},
 	"bing.com": {}, "www.bing.com": {}, "google.com": {}, "www.google.com": {},
 	"googleusercontent.com": {}, "gstatic.com": {}, "microsoft.com": {},
+	"live.com": {}, "office.com": {}, "msn.com": {}, "w3.org": {},
+	"cloudflare.com": {}, "akamaiedge.net": {}, "akamaihd.net": {},
+}
+
+func skippedPageHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return true
+	}
+	if _, skip := skipIndexHost[host]; skip {
+		return true
+	}
+	for skip := range skipIndexHost {
+		if strings.HasSuffix(host, "."+skip) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) harvestPages(ctx context.Context, pages []string, limit int) ([]Hit, []string) {
@@ -99,9 +117,22 @@ func (c *Client) harvestPages(ctx context.Context, pages []string, limit int) ([
 
 // Preview fetches one public page and returns a card for the right-hand workbench.
 func (c *Client) Preview(ctx context.Context, rawURL string) (Preview, error) {
+	if err := assertPublicHTTPURL(rawURL); err != nil {
+		return Preview{}, err
+	}
+
 	doc, err := c.fetchDocument(ctx, rawURL)
 	if err != nil {
-		return Preview{}, err
+		return Preview{
+			URL:         rawURL,
+			FinalURL:    rawURL,
+			Title:       hostOf(rawURL),
+			Site:        hostOf(rawURL),
+			Embeddable:  false,
+			EmbedReason: err.Error(),
+			Note:        "无法抓取该页（可能需登录或被拦截）。可点「在官方页打开」后手动发送。系统不会代发。",
+			Platform:    platformFromURL(rawURL),
+		}, nil
 	}
 
 	title, desc, image := ogMeta(doc.Body)
@@ -193,10 +224,7 @@ func candidatePagesFromHTML(raw []byte) []string {
 			return
 		}
 		host := strings.ToLower(hostOf(u))
-		if _, skip := skipIndexHost[host]; skip {
-			return
-		}
-		if strings.Contains(host, "duckduckgo.") || strings.Contains(host, "brave.") {
+		if skippedPageHost(host) {
 			return
 		}
 		if _, ok := seen[u]; ok {
