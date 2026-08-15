@@ -11,7 +11,7 @@
 | 模块 | 能不能做 | 采用的盘子 | 不采用 |
 |---|---|---|---|
 | **智能引擎搜索**（抖音 / TikTok 找人、主页） | **能**，本 PR 已接入 | [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api)（6563★ MIT，2026-07 仍在推）关键词搜人；[Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2)（2603★ Apache-2.0，2026-04）TikTok 作品搜索抽作者、抖音主页 URL→资料 | [NanmiCoder/MediaCrawler](https://github.com/NanmiCoder/MediaCrawler) 62389★、当天仍在推，但是 **非商业学习许可**，不能进商用产品。[Evil0ctal/Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) 19352★，主分支 2025-10 后再无推送，且没有关键词搜人接口 |
-| **展会获客** | **能（公开知识库 + 公开网页）** | Wikidata SPARQL（trade fair）+ 现有 DuckDuckGo / Bing / Brave 公开检索 | 不自研名片 OCR，不链 GPL 爬虫。前端是自研卡片工作台，不复刻外贸通（他们没有独立展会列表页） |
+| **展会获客** | **能（公开目录 + 知识库）** | [EventsEye](https://www.eventseye.com/) 全球约 1.2 万场实时目录；[LensmorOfficial/trade-show-calendar](https://github.com/LensmorOfficial/trade-show-calendar) 主流展 JSON；AUMA FairFinder；Wikidata SPARQL；公开网页索引 | 没有一家免费的官方全球全量 API。不自研名片 OCR，不链 GPL / 付费爬虫。 |
 | **海关数据** | **能（美国公开提单）** | [Kirchner 公开 API](https://www.kirchnerdata.com/llms.txt) 无 key，约 500 次/IP/天 | `hughie21/Customs-Crawler` ~12★。没有全球企业库和金额字段。UI 复刻外贸通：搜采购商/供应商 + 居中弹层 |
 
 ## 私信

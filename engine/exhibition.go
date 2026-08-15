@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -14,8 +15,9 @@ import (
 )
 
 const (
-	exhibitionDefaultLimit = 40
-	exhibitionMaxLimit     = 80
+	exhibitionDefaultLimit = 80
+	exhibitionMaxLimit     = 160
+	wikidataFairLimitCap   = 50
 )
 
 var fairTokenRe = regexp.MustCompile(`(?i)(trade fair|trade show|exhibition|expo|messe|salon|\bfairs?\b|展会|博览会|展览会)`)
@@ -68,6 +70,14 @@ func (c *Client) searchExhibition(ctx context.Context, q Query) (Result, error) 
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
+
+	if !wantExhibitors && c != nil && strings.TrimSpace(c.EventsEyeURL) != "" {
+		g.Go(func() error {
+			items, src := c.searchEventsEyeFairs(gctx, q.Keyword, term, q.Country, limit)
+			add(items, src, "")
+			return nil
+		})
+	}
 
 	if !wantExhibitors && c != nil && strings.TrimSpace(c.AUMAFairURL) != "" {
 		g.Go(func() error {
@@ -191,10 +201,16 @@ func wikidataCountryFilter(country string) string {
 	return `OPTIONAL { ?item wdt:P17 ?country. }`
 }
 
+func wikidataFairClassFilter() string {
+	// Q57305 trade fair, Q2856432 convention/trade show, Q625994 exhibition.
+	return `VALUES ?class { wd:Q57305 wd:Q2856432 wd:Q625994 }
+  ?item wdt:P31/wdt:P279* ?class .`
+}
+
 func wikidataFairEntitySPARQL(keyword, term, country string, limit int) string {
 	search := wikidataFairSearchTerm(keyword, term)
-	if limit > 30 {
-		limit = 30
+	if limit > wikidataFairLimitCap {
+		limit = wikidataFairLimitCap
 	}
 	if !fairTokenRe.MatchString(search) {
 		search = strings.TrimSpace(search + " trade fair")
@@ -207,7 +223,7 @@ func wikidataFairEntitySPARQL(keyword, term, country string, limit int) string {
     bd:serviceParam mwapi:language "en" .
     ?item wikibase:apiOutputItem mwapi:item .
   }
-  ?item wdt:P31/wdt:P279* wd:Q57305 .
+  %s
   OPTIONAL { ?item wdt:P580 ?start. }
   OPTIONAL { ?item wdt:P582 ?end. }
   OPTIONAL { ?item wdt:P276 ?city. }
@@ -215,16 +231,16 @@ func wikidataFairEntitySPARQL(keyword, term, country string, limit int) string {
   %s
   SERVICE wikibase:label { bd:serviceParam wikibase:language "zh,en". }
 }
-LIMIT %d`, search, wikidataCountryFilter(country), limit)
+LIMIT %d`, search, wikidataFairClassFilter(), wikidataCountryFilter(country), limit)
 }
 
 func wikidataFairLabelSPARQL(keyword, term, country string, limit int) string {
 	search := wikidataFairSearchTerm(keyword, term)
-	if limit > 30 {
-		limit = 30
+	if limit > wikidataFairLimitCap {
+		limit = wikidataFairLimitCap
 	}
 	return fmt.Sprintf(`SELECT ?item ?itemLabel ?start ?end ?countryLabel ?cityLabel ?website WHERE {
-  ?item wdt:P31/wdt:P279* wd:Q57305 .
+  %s
   ?item rdfs:label ?lab .
   FILTER(LANG(?lab) = "en")
   FILTER(CONTAINS(LCASE(?lab), LCASE(%q)))
@@ -235,7 +251,7 @@ func wikidataFairLabelSPARQL(keyword, term, country string, limit int) string {
   %s
   SERVICE wikibase:label { bd:serviceParam wikibase:language "zh,en". }
 }
-LIMIT %d`, search, wikidataCountryFilter(country), limit)
+LIMIT %d`, wikidataFairClassFilter(), search, wikidataCountryFilter(country), limit)
 }
 
 func parseWikidataFairs(raw []byte, selected string) ([]Hit, error) {
@@ -348,6 +364,7 @@ func exhibitionQueries(keyword, term, country string, exhibitors bool) []string 
 			base + " trade show 2026",
 			keyword + " 展会",
 			"site:auma.de " + base + " fair",
+			"site:eventseye.com/fairs/f- " + base,
 			"site:10times.com " + base + " tradeshow",
 		}
 		if geo != "" {
@@ -373,7 +390,10 @@ func isExhibitionDirectory(home, title string) bool {
 				return true
 			}
 		}
-		if strings.Contains(host, "eventseye.com") && (path == "" || strings.Contains(path, "countries") || strings.Contains(path, "calendar")) {
+		if strings.Contains(host, "eventseye.com") {
+			if eventsEyeFairPathRe.MatchString(path) || strings.Contains(path, "/f-") {
+				return false
+			}
 			return true
 		}
 	}
@@ -509,5 +529,12 @@ func mergeExhibitionHits(items []Hit, country string, limit int) []Hit {
 	for _, key := range order {
 		out = append(out, seen[key])
 	}
+	sortExhibitionHits(out)
 	return clipHits(out, limit)
+}
+
+func sortExhibitionHits(items []Hit) {
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].Score > items[j].Score
+	})
 }

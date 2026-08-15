@@ -112,6 +112,9 @@ func TestWikidataFairLabelSPARQLContainsProduct(t *testing.T) {
 	if !strings.Contains(q, "CONTAINS") || !strings.Contains(q, "furniture") {
 		t.Fatalf("sparql=%s", q)
 	}
+	if !strings.Contains(q, "wd:Q57305") || !strings.Contains(q, "wd:Q2856432") {
+		t.Fatalf("missing fair classes: %s", q)
+	}
 }
 
 func TestSearchExhibitionFromOpenDataset(t *testing.T) {
@@ -144,6 +147,17 @@ func TestSearchExhibitionFromOpenDataset(t *testing.T) {
 	}
 	if !foundCanton || !foundMaison {
 		t.Fatalf("canton/maison missing: %+v", res.Hits)
+	}
+}
+
+func TestMergeExhibitionHitsPrefersHigherScore(t *testing.T) {
+	out := mergeExhibitionHits([]Hit{
+		{Name: "Local Home Show", HomepageURL: "https://eventseye.com/fairs/f-home-1.html", Score: 84},
+		{Name: "Canton Fair", HomepageURL: "https://www.cantonfair.org.cn/", Score: 95},
+		{Name: "CIFF", HomepageURL: "https://eventseye.com/fairs/f-ciff-1.html", Score: 94},
+	}, "", 10)
+	if len(out) != 3 || out[0].Name != "Canton Fair" || out[1].Name != "CIFF" {
+		t.Fatalf("order=%+v", out)
 	}
 }
 

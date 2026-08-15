@@ -121,6 +121,31 @@ func (c *Client) discoverExhibitorListPages(ctx context.Context, keyword, term, 
 		return nil
 	})
 	g.Go(func() error {
+		if c.EventsEyeURL == "" {
+			return nil
+		}
+		fairs, _ := c.searchEventsEyeFairs(gctx, keyword, term, country, 6)
+		for i, fair := range fairs {
+			if i >= 3 {
+				break
+			}
+			name := strings.TrimSpace(fair.Name)
+			if name == "" {
+				continue
+			}
+			batch, _, err := c.searchOneIndexExtract(gctx, name+" exhibitor list", extractOrganicResults, "")
+			if err != nil {
+				continue
+			}
+			for _, h := range batch {
+				if isExhibitorListURL(h.HomepageURL, h.Name+" "+h.Title) {
+					add(h.HomepageURL, firstNonEmpty(cleanFairTitle(h.Name), name))
+				}
+			}
+		}
+		return nil
+	})
+	g.Go(func() error {
 		queries := []string{
 			`site:exhibitors.emagecompany.com ` + firstNonEmpty(term, keyword),
 			firstNonEmpty(term, keyword) + " 参展商名单",

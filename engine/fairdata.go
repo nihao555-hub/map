@@ -127,20 +127,55 @@ func (c *Client) loadOpenFairs(ctx context.Context, rawURL string) ([]openFair, 
 	return shows, nil
 }
 
+func coreFairTokens(keyword, term string) []string {
+	out := make([]string, 0, 2)
+	for _, t := range []string{keyword, term} {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if len([]rune(t)) >= 2 {
+			out = append(out, t)
+		}
+	}
+	return uniqueFoldedStrings(out)
+}
+
 func fairSearchTokens(keyword, term string) []string {
 	base := []string{keyword, term}
 	blob := strings.ToLower(keyword + " " + term)
-	switch {
-	case containsAny(blob, "furniture", "家具", "sofa", "chair", "mattress"):
-		base = append(base, "furniture", "家具", "ciff", "maison", "ambiente", "ligna", "canton", "interior")
-	case containsAny(blob, "shoe", "鞋", "apparel", "fashion", "服装", "纺织"):
-		base = append(base, "fashion", "textile", "intertextile", "canton")
-	case containsAny(blob, "led", "light", "lamp", "灯", "照明"):
-		base = append(base, "light", "electron", "ces", "canton")
-	case containsAny(blob, "food", "coffee", "食品", "咖啡", "茶"):
-		base = append(base, "food", "sial", "anuga", "canton")
-	case containsAny(blob, "广交会", "广交", "canton"):
-		base = append(base, "canton")
+	if containsAny(blob, "furniture", "家具", "sofa", "chair", "mattress", "家居") {
+		base = append(base, "furniture", "家具", "ciff", "maison", "ambiente", "ligna", "canton", "interior", "consumer goods")
+	}
+	if containsAny(blob, "shoe", "鞋", "apparel", "fashion", "服装", "纺织") {
+		base = append(base, "fashion", "textile", "intertextile", "canton", "magic")
+	}
+	if containsAny(blob, "led", "light", "lamp", "灯", "照明", "电子", "芯片") {
+		base = append(base, "light", "electron", "ces", "computex", "ifa", "gitex", "technology")
+	}
+	if containsAny(blob, "food", "coffee", "食品", "咖啡", "茶", "海鲜") {
+		base = append(base, "food", "sial", "anuga", "gulfood", "beverage")
+	}
+	if containsAny(blob, "machine", "machinery", "tool", "机械", "机床", "电机", "robot") {
+		base = append(base, "manufacturing", "industrial", "hannover", "imts", "emo")
+	}
+	if containsAny(blob, "medical", "pharma", "hospital", "医疗", "医药", "药械") {
+		base = append(base, "healthcare", "medical", "medica", "cmef", "pharmaceutical")
+	}
+	if containsAny(blob, "auto", "car", "vehicle", "汽车", "汽配") {
+		base = append(base, "automotive", "automechanika", "iaa")
+	}
+	if containsAny(blob, "packag", "包装", "logistic", "物流") {
+		base = append(base, "packaging", "interpack", "logistics")
+	}
+	if containsAny(blob, "build", "construction", "建材", "建筑", "concrete") {
+		base = append(base, "construction", "bauma", "big 5")
+	}
+	if containsAny(blob, "beauty", "cosmetic", "美容", "化妆品") {
+		base = append(base, "beauty", "cosmoprof")
+	}
+	if containsAny(blob, "energy", "solar", "battery", "能源", "光伏", "电池") {
+		base = append(base, "energy", "intersolar", "battery")
+	}
+	if containsAny(blob, "广交会", "广交", "canton") {
+		base = append(base, "canton", "general merchandise")
 	}
 	out := make([]string, 0, len(base))
 	for _, t := range base {

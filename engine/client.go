@@ -17,17 +17,18 @@ import (
 )
 
 const (
-	defaultHTTPTimeout    = 45 * time.Second
-	sidecarProbeWait      = 800 * time.Millisecond
-	maxBodyBytes          = 2 << 20
-	defaultTikTokURL      = "http://127.0.0.1:8091"
-	defaultF2URL          = "http://127.0.0.1:8092"
-	defaultKirchnerURL    = "https://www.kirchnerdata.com"
-	defaultWikidataSPARQL = "https://query.wikidata.org/sparql"
-	defaultComtradeURL    = "https://comtradeapi.un.org/public/v1/preview"
-	defaultUSITCURL       = "https://hts.usitc.gov/reststop/search"
-	defaultAUMAFairURL    = "https://www.auma.de/en/find-your-fair/"
-	browserUA             = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+	defaultHTTPTimeout     = 45 * time.Second
+	sidecarProbeWait       = 800 * time.Millisecond
+	maxBodyBytes           = 2 << 20
+	defaultTikTokURL       = "http://127.0.0.1:8091"
+	defaultF2URL           = "http://127.0.0.1:8092"
+	defaultKirchnerURL     = "https://www.kirchnerdata.com"
+	defaultWikidataSPARQL  = "https://query.wikidata.org/sparql"
+	defaultComtradeURL     = "https://comtradeapi.un.org/public/v1/preview"
+	defaultUSITCURL        = "https://hts.usitc.gov/reststop/search"
+	defaultAUMAFairURL     = "https://www.auma.de/en/find-your-fair/"
+	defaultFairCalendarURL = "https://raw.githubusercontent.com/LensmorOfficial/trade-show-calendar/main/data/trade_shows.json"
+	browserUA              = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
 	ddgCooldown   = 12 * time.Second
 	bingCooldown  = 10 * time.Second
@@ -64,10 +65,12 @@ type Client struct {
 	ImportYetiAPIKey string
 	// ImportYetiCookie is an optional session cookie for the public search.
 	ImportYetiCookie string
-	// FairCalendarURL is an optional live JSON calendar (empty by default).
+	// FairCalendarURL is a maintained JSON calendar of major world fairs.
 	FairCalendarURL string
 	// FairMapURL is an optional live JSON fair map (empty by default).
 	FairMapURL string
+	// EventsEyeURL is EventsEye's live worldwide trade-show directory (~12k fairs).
+	EventsEyeURL string
 	// AUMAFairURL is AUMA FairFinder, a live trade-fair calendar.
 	AUMAFairURL string
 	braveUntil  atomic.Int64
@@ -88,8 +91,9 @@ type Client struct {
 //	ENGINE_IMPORTYETI_URL      ImportYeti live search (default https://www.importyeti.com)
 //	ENGINE_IMPORTYETI_API_URL  official ImportYeti API (default https://data.importyeti.com)
 //	ENGINE_IMPORTYETI_API_KEY  optional official API key
-//	ENGINE_FAIR_CALENDAR_URL   optional JSON calendar, off by default
+//	ENGINE_FAIR_CALENDAR_URL   JSON calendar (default LensmorOfficial/trade-show-calendar)
 //	ENGINE_FAIR_MAP_URL        optional JSON fair map, off by default
+//	ENGINE_EVENTSEYE_URL       EventsEye directory (default https://www.eventseye.com)
 //	ENGINE_AUMA_FAIR_URL       AUMA FairFinder (default https://www.auma.de/en/find-your-fair/)
 //	TIKHUB_API_TOKEN           optional paid API when Douyin keyword search is needed
 func OptionsFromEnv() *Client {
@@ -135,8 +139,9 @@ func OptionsFromEnv() *Client {
 		ImportYetiAPIURL: envServiceURL("ENGINE_IMPORTYETI_API_URL", defaultImportYetiAPIURL),
 		ImportYetiAPIKey: strings.TrimSpace(os.Getenv("ENGINE_IMPORTYETI_API_KEY")),
 		ImportYetiCookie: strings.TrimSpace(os.Getenv("ENGINE_IMPORTYETI_COOKIE")),
-		FairCalendarURL:  envServiceURL("ENGINE_FAIR_CALENDAR_URL", ""),
+		FairCalendarURL:  envServiceURL("ENGINE_FAIR_CALENDAR_URL", defaultFairCalendarURL),
 		FairMapURL:       envServiceURL("ENGINE_FAIR_MAP_URL", ""),
+		EventsEyeURL:     envServiceURL("ENGINE_EVENTSEYE_URL", defaultEventsEyeURL),
 		AUMAFairURL:      envServiceURL("ENGINE_AUMA_FAIR_URL", defaultAUMAFairURL),
 	}
 }
