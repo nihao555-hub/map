@@ -29,10 +29,10 @@ const (
 	defaultAUMAFairURL    = "https://www.auma.de/en/find-your-fair/"
 	browserUA             = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
-	ddgCooldown   = 2 * time.Minute
-	bingCooldown  = 2 * time.Minute
-	braveCooldown = 3 * time.Minute
-	maxCooldown   = 5 * time.Minute
+	ddgCooldown   = 12 * time.Second
+	bingCooldown  = 10 * time.Second
+	braveCooldown = 15 * time.Second
+	maxCooldown   = 45 * time.Second
 )
 
 // Client talks to public web indexes and cloned high-star OSS sidecars.

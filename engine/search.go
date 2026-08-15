@@ -478,10 +478,16 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 			return true
 		}
 	}
-	if role == RoleBuyer && hasSellerToken(roleBlob) && !hasBuyerToken(roleBlob) {
+	if role == RoleBuyer {
 		switch hit.Platform {
 		case PlatformDouyin, PlatformXiaohongshu, PlatformKuaishou, PlatformWeibo, PlatformBilibili:
-			if !strings.Contains(kw, "http") && !hasSellerToken(foldSearchText(kw)) {
+			if strings.Contains(kw, "http") || hasSellerToken(foldSearchText(kw)) {
+				break
+			}
+			if !hasBuyerToken(roleBlob) && !hasCompanyToken(roleBlob) {
+				return true
+			}
+			if hasSellerToken(roleBlob) && !hasBuyerToken(roleBlob) {
 				return true
 			}
 		}

@@ -315,6 +315,23 @@ func TestMergeHitsKeepsQueryStampedEmptySnippet(t *testing.T) {
 	}
 }
 
+func TestMergeHitsBuyerKeepsCompanyDropsPersonalShop(t *testing.T) {
+	out := mergeHits([]Hit{
+		{ID: "buy", Platform: PlatformDouyin, Name: "林芝雄海五金一站式采购", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAbuyer", Snippet: "机电物资"},
+		{ID: "co", Platform: PlatformDouyin, Name: "江苏工佰汇五金工具有限公司", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAco", Snippet: "五金工具", Extra: map[string]string{"q": "site:douyin.com/user 电动工具"}},
+		{ID: "shop", Platform: PlatformDouyin, Name: "电动工具小王", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAshop", Snippet: "电动工具"},
+		{ID: "off", Platform: PlatformDouyin, Name: "盛隆绿巨人电动工具官方账号", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAoff", Snippet: "官方旗舰"},
+	}, "电动工具", 0, RoleBuyer, "")
+	if len(out) != 2 {
+		t.Fatalf("want buyer+company, got %+v", out)
+	}
+	for _, h := range out {
+		if h.ID == "shop" || h.ID == "off" {
+			t.Fatalf("personal/official shop leaked %+v", h)
+		}
+	}
+}
+
 func TestMergeHitsDropsUnrelatedQueryStamp(t *testing.T) {
 	out := mergeHits([]Hit{{
 		ID:          "dy",

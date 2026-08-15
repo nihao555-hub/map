@@ -481,9 +481,6 @@ func (c *Client) searchOneIndexExtractOrder(ctx context.Context, query string, e
 			}
 			raw, err := c.fetchIndexPage(ctx, name, query, page)
 			if err != nil || looksLikeChallenge(raw) {
-				if looksLikeChallenge(raw) {
-					c.markIndexLimited(name)
-				}
 				break
 			}
 			hits := filterHitsPlatform(extract(raw, name), platform)
