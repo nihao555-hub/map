@@ -48,7 +48,7 @@ func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
 	}
 
 	hs4 := hs4Digits(term)
-	if hs4 == "" {
+	if hs4 == "" && !looksLikeCompanyName(term) {
 		hs4 = c.lookupHS4(ctx, term)
 	}
 	if looksLikeHS(term) {
@@ -128,15 +128,17 @@ func (c *Client) searchCustoms(ctx context.Context, q Query) (Result, error) {
 		merged = mergeCustomsHits(sellers, limit)
 	}
 
-	if n := c.productTrendsNote(ctx, term, year); n != "" {
-		notes = append(notes, n)
-		sources = append(sources, "kirchner-trends")
-	}
-	if partners, err := c.searchComtradeOrigins(ctx, hs4, year, q.Country); err == nil && len(partners) > 0 {
-		if n := comtradeNote(partners, hs4); n != "" {
+	if !looksLikeCompanyName(term) {
+		if n := c.productTrendsNote(ctx, term, year); n != "" {
 			notes = append(notes, n)
+			sources = append(sources, "kirchner-trends")
 		}
-		sources = append(sources, "comtrade")
+		if partners, err := c.searchComtradeOrigins(ctx, hs4, year, q.Country); err == nil && len(partners) > 0 {
+			if n := comtradeNote(partners, hs4); n != "" {
+				notes = append(notes, n)
+			}
+			sources = append(sources, "comtrade")
+		}
 	}
 
 	note := strings.Join(uniqueStrings(notes), " ")

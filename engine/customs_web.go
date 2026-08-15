@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,9 +59,18 @@ func (c *Client) searchCustomsWeb(ctx context.Context, term, role, country strin
 			var found []string
 			for _, h := range batch {
 				if iy := importYetiHitsFromWebHit(h, role, country); len(iy) > 0 {
-					addHits(iy, "importyeti-web")
+					for _, item := range iy {
+						if jsonInt(item.Extra["shipments"]) > 0 {
+							addHits([]Hit{item}, "importyeti-web")
+							continue
+						}
+						found = append(found, item.Name)
+					}
 				}
 				found = append(found, companyCandidatesFromHit(h)...)
+			}
+			if looksLikeCompanyName(term) {
+				found = filterNamesForTerm(term, found)
 			}
 			addNames(found, src)
 			return nil
@@ -357,5 +367,80 @@ func mergeCustomsHits(items []Hit, limit int) []Hit {
 	for _, key := range order {
 		out = append(out, seen[key])
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		si, sj := jsonInt(out[i].Extra["shipments"]), jsonInt(out[j].Extra["shipments"])
+		if si != sj {
+			return si > sj
+		}
+		mi, mj := jsonInt(out[i].Extra["matching"]), jsonInt(out[j].Extra["matching"])
+		if mi != mj {
+			return mi > mj
+		}
+		return out[i].Score > out[j].Score
+	})
+	hasShip := false
+	for _, h := range out {
+		if jsonInt(h.Extra["shipments"]) > 0 {
+			hasShip = true
+			break
+		}
+	}
+	if hasShip {
+		filtered := make([]Hit, 0, len(out))
+		for _, h := range out {
+			if jsonInt(h.Extra["shipments"]) > 0 {
+				filtered = append(filtered, h)
+			}
+		}
+		out = filtered
+	}
 	return clipHits(out, limit)
+}
+
+func companyNameTokens(term string) []string {
+	skip := map[string]bool{
+		"INC": true, "LLC": true, "LTD": true, "CORP": true, "CO": true,
+		"THE": true, "AND": true, "OF": true, "COMPANY": true,
+	}
+	var out []string
+	for _, f := range strings.Fields(strings.ToUpper(term)) {
+		f = strings.Trim(f, ".,")
+		if skip[f] || len(f) < 3 {
+			continue
+		}
+		out = append(out, strings.ToLower(f))
+	}
+	return uniqueFoldedStrings(out)
+}
+
+func companyTokensMatch(term, blob string) bool {
+	tokens := companyNameTokens(term)
+	if len(tokens) == 0 {
+		return true
+	}
+	blob = strings.ToLower(blob)
+	need := len(tokens)
+	if need > 2 {
+		need = 2
+	}
+	hit := 0
+	for _, tok := range tokens {
+		if strings.Contains(blob, tok) {
+			hit++
+		}
+	}
+	return hit >= need
+}
+
+func filterNamesForTerm(term string, names []string) []string {
+	if !looksLikeCompanyName(term) {
+		return names
+	}
+	out := names[:0]
+	for _, name := range names {
+		if companyTokensMatch(term, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }

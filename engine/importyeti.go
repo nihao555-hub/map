@@ -256,15 +256,16 @@ func (c *Client) fetchImportYetiOfficialProfile(ctx context.Context, kind, slug,
 }
 
 func (c *Client) searchImportYetiWeb(ctx context.Context, term, role, country string, limit int) ([]Hit, string, error) {
-	path := "company"
-	if role == RoleSeller {
-		path = "supplier"
+	if NormalizeRole(role) == RoleSeller {
+		return nil, "", nil
 	}
+	path := "company"
 	query := "site:importyeti.com/" + path + " " + strings.TrimSpace(term)
 	batch, src, err := c.searchOneIndexExtract(ctx, query, extractImportYetiResults, "")
 	if err != nil {
 		return nil, "", err
 	}
+	var names []string
 	out := make([]Hit, 0, len(batch))
 	for _, hit := range batch {
 		kind, slug := importYetiSlug(hit.HomepageURL)
@@ -275,14 +276,14 @@ func (c *Client) searchImportYetiWeb(ctx context.Context, term, role, country st
 		if rowType == "" {
 			rowType = "company"
 		}
-		if role == RoleBuyer && rowType != "company" {
-			continue
-		}
-		if role == RoleSeller && rowType != "supplier" {
+		if rowType != "company" {
 			continue
 		}
 		name := firstNonEmpty(cleanImportYetiTitle(hit.Name), importYetiNameFromSlug(slug))
 		if name == "" {
+			continue
+		}
+		if looksLikeCompanyName(term) && !companyTokensMatch(term, name+" "+slug) {
 			continue
 		}
 		row := importYetiRow{
@@ -295,13 +296,20 @@ func (c *Client) searchImportYetiWeb(ctx context.Context, term, role, country st
 			continue
 		}
 		h := converted[0]
-		if hit.Snippet != "" {
-			h.Snippet = hit.Snippet
+		if jsonInt(h.Extra["shipments"]) > 0 {
+			out = append(out, h)
+			continue
 		}
-		out = append(out, h)
-		if limit > 0 && len(out) >= limit {
-			break
-		}
+		names = append(names, name, brandToConsignee(name))
+	}
+	hydrated := c.hydrateCustomsNames(ctx, filterNamesForTerm(term, names), country, customsYear(0))
+	if len(hydrated) > 0 {
+		out = append(out, hydrated...)
+		src = strings.TrimSpace(firstNonEmpty(src, "importyeti-web") + "+kirchner")
+	}
+	out = mergeCustomsHits(out, limit)
+	if len(out) == 0 {
+		return nil, "", nil
 	}
 	return out, firstNonEmpty(src, "importyeti-web"), nil
 }

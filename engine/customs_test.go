@@ -390,3 +390,23 @@ func TestSearchCustomsCompanyNameFromProfile(t *testing.T) {
 		t.Fatalf("sellers=%+v", sellers.Hits)
 	}
 }
+
+func TestMergeCustomsHitsDropsZeroWhenRealShipmentsExist(t *testing.T) {
+	out := mergeCustomsHits([]Hit{
+		{Name: "Footscientific", Extra: map[string]string{"shipments": "0"}, Score: 90},
+		{Name: "FOOT LOCKER INC", Extra: map[string]string{"shipments": "48"}, Score: 80},
+		{Name: "WAL-MART STORES INC", Extra: map[string]string{"shipments": "100"}, Score: 70},
+	}, 10)
+	if len(out) != 2 || out[0].Name != "WAL-MART STORES INC" || out[1].Name != "FOOT LOCKER INC" {
+		t.Fatalf("%+v", out)
+	}
+}
+
+func TestCompanyTokensMatchFootLocker(t *testing.T) {
+	if !companyTokensMatch("FOOT LOCKER INC", "Foot Locker Inc") {
+		t.Fatal("should match foot locker")
+	}
+	if companyTokensMatch("FOOT LOCKER INC", "Footscientific") {
+		t.Fatal("should not match footsientific")
+	}
+}
