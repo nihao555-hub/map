@@ -209,7 +209,15 @@ func publicSearchQueries(keyword string, wanted map[string]bool, country string)
 		if cjk {
 			out = append(out, publicQuery{platform: platform, query: intent + " " + PeoplePlatformLabel(platform)})
 		}
-		out = append(out, publicQuery{platform: platform, query: "site:" + site + " " + intent})
+		siteKW := intent
+		switch platform {
+		case PlatformFacebook, PlatformInstagram, PlatformLinkedIn, PlatformX:
+			siteKW = keyword
+			if geo != "" {
+				siteKW = strings.TrimSpace(keyword + " " + geo)
+			}
+		}
+		out = append(out, publicQuery{platform: platform, query: "site:" + site + " " + siteKW})
 	}
 
 	return out

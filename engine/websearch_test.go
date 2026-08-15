@@ -161,7 +161,7 @@ func TestPublicSearchQueriesCJKUsesPlatformLabel(t *testing.T) {
 	if qs[2].platform != PlatformFacebook || qs[2].query != "配电 批发 Facebook" {
 		t.Fatalf("facebook %+v", qs[2])
 	}
-	if qs[3].query != "site:facebook.com 配电 批发" {
+	if qs[3].query != "site:facebook.com 配电" {
 		t.Fatalf("facebook site %+v", qs[3])
 	}
 }
