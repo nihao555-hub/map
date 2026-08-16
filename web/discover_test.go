@@ -46,6 +46,22 @@ func TestDiscoverPageRenders(t *testing.T) {
 	}
 }
 
+func TestDiscoverCSSHidesHiddenViews(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/static/css/discover.css", nil)
+	rec := httptest.NewRecorder()
+	srv.srv.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"#landing-view[hidden]", "#results-view[hidden]", "body.is-landing #results-view"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
 func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	srv := newTestServer(t, t.TempDir())
 	req := httptest.NewRequest(http.MethodGet, "/static/js/discover.js", nil)

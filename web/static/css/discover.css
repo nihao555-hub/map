@@ -39,6 +39,11 @@ body.wmt { color: var(--wmt-text); }
   flex-direction: column;
 }
 
+#landing-view[hidden],
+#results-view[hidden] {
+  display: none !important;
+}
+
 #results-view {
   flex: 1;
   min-height: 0;
@@ -46,6 +51,10 @@ body.wmt { color: var(--wmt-text); }
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+body.is-landing #results-view {
+  display: none !important;
 }
 
 .wmt-results {
