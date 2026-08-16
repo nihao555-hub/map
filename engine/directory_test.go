@@ -144,6 +144,16 @@ func TestListUnverifiedProfiles(t *testing.T) {
 	}
 }
 
+func TestMergeWikidataLEIProp(t *testing.T) {
+	by := map[string]*Merchant{}
+	n := mergeWikidataLEIProp(by, []byte(`{"results":{"bindings":[
+		{"lei":{"value":"001GPB6A9XPE8XJICC14"},"val":{"value":"https://www.signify.com"}}
+	]}}`), "", PlatformWebsite)
+	if n != 1 || by["001GPB6A9XPE8XJICC14"] == nil || !strings.Contains(by["001GPB6A9XPE8XJICC14"].Homepage, "signify.com") {
+		t.Fatalf("n=%d by=%+v", n, by)
+	}
+}
+
 func TestParseWikidataLEIMerchants(t *testing.T) {
 	raw := []byte(`{"results":{"bindings":[
 		{"lei":{"value":"001GPB6A9XPE8XJICC14"},

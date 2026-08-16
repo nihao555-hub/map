@@ -178,15 +178,17 @@ func parseWikidataSEAMerchants(raw []byte, country string) []Merchant {
 	return out
 }
 
-// ISO markets with the most GLEIF rows. Wikidata P1278 (LEI) is the only
-// public join from a legal entity onto a website or social homepage.
-var leiIngestCountries = []string{
-	"US", "IN", "DE", "IT", "GB", "NL", "ES", "FR", "SE", "DK",
-	"CN", "LU", "BE", "NO", "CA", "FI", "AU", "AT", "KY", "PL",
-	"IE", "VG", "CZ", "EE", "CH", "HU", "JP", "PT", "SG", "LI",
-	"CY", "HK", "JE", "TR", "AE", "RO", "MX", "GG", "GR", "SK",
-	"TH", "MY", "ID", "VN", "PH", "KH", "LA", "MM", "BN", "BR",
-	"KR", "TW", "NZ", "ZA", "IL", "SA", "EG", "NG", "CL", "AR",
+var leiContactQueries = []struct {
+	prop     string
+	prefix   string
+	platform string
+}{
+	{"P856", "", PlatformWebsite},
+	{"P2013", "https://www.facebook.com/", PlatformFacebook},
+	{"P2003", "https://www.instagram.com/", PlatformInstagram},
+	{"P2002", "https://x.com/", PlatformX},
+	{"P4264", "https://www.linkedin.com/company/", PlatformLinkedIn},
+	{"P7085", "https://www.tiktok.com/@", PlatformTikTok},
 }
 
 func (c *Client) ingestWikidataLEI(ctx context.Context, dir *Directory) IngestStats {
@@ -194,59 +196,99 @@ func (c *Client) ingestWikidataLEI(ctx context.Context, dir *Directory) IngestSt
 	if c == nil || strings.TrimSpace(c.WikidataURL) == "" {
 		return IngestStats{Source: "gleif-lei", Took: time.Since(started), Note: "skipped"}
 	}
-	matched := 0
-	profiles := 0
+	byLEI := map[string]*Merchant{}
 	failed := 0
-	for _, code := range leiIngestCountries {
+	for _, q := range leiContactQueries {
 		if err := ctx.Err(); err != nil {
-			st := IngestStats{Source: "gleif-lei", Rows: matched, Took: time.Since(started), Err: err.Error()}
-			_ = dir.RecordRun(ctx, "gleif-lei", started, matched, st.Err)
+			st := IngestStats{Source: "gleif-lei", Took: time.Since(started), Err: err.Error()}
+			_ = dir.RecordRun(ctx, "gleif-lei", started, 0, st.Err)
 			return st
 		}
-		raw, err := c.fetchWikidataSPARQL(ctx, wikidataLEISPARQL(code))
+		raw, err := c.fetchWikidataSPARQL(ctx, wikidataLEIPropSPARQL(q.prop))
 		if err != nil {
 			time.Sleep(2 * time.Second)
-			raw, err = c.fetchWikidataSPARQL(ctx, wikidataLEISPARQL(code))
+			raw, err = c.fetchWikidataSPARQL(ctx, wikidataLEIPropSPARQL(q.prop))
 		}
 		if err != nil {
 			failed++
-			logIngest("Wikidata LEI %s fail: %v", code, err)
+			logIngest("Wikidata LEI %s fail: %v", q.prop, err)
 			continue
 		}
-		rows := parseWikidataLEIMerchants(raw, code)
-		n, p, err := dir.attachExisting(ctx, rows)
-		if err != nil {
-			st := IngestStats{Source: "gleif-lei", Rows: matched, Took: time.Since(started), Err: err.Error()}
-			_ = dir.RecordRun(ctx, "gleif-lei", started, matched, st.Err)
-			return st
-		}
-		matched += n
-		profiles += p
-		if n > 0 {
-			logIngest("Wikidata LEI %s matched=%d profiles=%d", code, n, p)
-		}
+		n := mergeWikidataLEIProp(byLEI, raw, q.prefix, q.platform)
+		logIngest("Wikidata LEI %s +%d (entities=%d)", q.prop, n, len(byLEI))
 	}
-	note := fmt.Sprintf("Wikidata P1278, %d profiles, %d failed", profiles, failed)
-	st := IngestStats{Source: "gleif-lei", Rows: matched, Took: time.Since(started), Note: note}
-	_ = dir.RecordRun(ctx, "gleif-lei", started, matched, note)
+	rows := make([]Merchant, 0, len(byLEI))
+	for _, m := range byLEI {
+		rows = append(rows, *m)
+	}
+	matched, profiles, err := dir.attachExisting(ctx, rows)
+	st := IngestStats{Source: "gleif-lei", Rows: matched, Took: time.Since(started), Note: fmt.Sprintf("Wikidata P1278, %d profiles, %d failed", profiles, failed)}
+	if err != nil {
+		st.Err = err.Error()
+	}
+	_ = dir.RecordRun(ctx, "gleif-lei", started, matched, st.Note)
 	return st
 }
 
-func wikidataLEISPARQL(countryISO string) string {
-	return fmt.Sprintf(`SELECT ?lei ?itemLabel ?website ?facebook ?instagram ?twitter ?linkedin ?tiktok WHERE {
-  ?country wdt:P297 %q .
-  ?item wdt:P17 ?country ;
-        wdt:P1278 ?lei .
-  OPTIONAL { ?item wdt:P856 ?website. }
-  OPTIONAL { ?item wdt:P2013 ?facebook. }
-  OPTIONAL { ?item wdt:P2003 ?instagram. }
-  OPTIONAL { ?item wdt:P2002 ?twitter. }
-  OPTIONAL { ?item wdt:P4264 ?linkedin. }
-  OPTIONAL { ?item wdt:P7085 ?tiktok. }
-  FILTER(BOUND(?website) || BOUND(?facebook) || BOUND(?instagram) || BOUND(?twitter) || BOUND(?linkedin) || BOUND(?tiktok))
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+func wikidataLEIPropSPARQL(prop string) string {
+	return fmt.Sprintf(`SELECT ?lei ?val WHERE {
+  ?item wdt:P1278 ?lei ;
+        wdt:%s ?val .
 }
-LIMIT 4000`, countryISO)
+LIMIT 30000`, prop)
+}
+
+func mergeWikidataLEIProp(byLEI map[string]*Merchant, raw []byte, prefix, platform string) int {
+	var doc struct {
+		Results struct {
+			Bindings []map[string]struct {
+				Value string `json:"value"`
+			} `json:"bindings"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return 0
+	}
+	added := 0
+	for _, row := range doc.Results.Bindings {
+		lei := strings.ToUpper(strings.TrimSpace(row["lei"].Value))
+		val := strings.TrimSpace(row["val"].Value)
+		if len(lei) < 18 || len(lei) > 20 || val == "" {
+			continue
+		}
+		m := byLEI[lei]
+		if m == nil {
+			m = &Merchant{ExtID: "gleif:" + lei, Source: "gleif"}
+			byLEI[lei] = m
+		}
+		if platform == PlatformWebsite {
+			if !strings.Contains(val, "wikidata.org") && (m.Homepage == "" || registryOnlyHomepage(m.Homepage)) {
+				m.Homepage = val
+				added++
+			}
+			continue
+		}
+		if prefix != "" && !strings.Contains(val, "://") {
+			val = prefix + val
+		}
+		hit, ok := ParseSocialURL(val, "", "")
+		if !ok {
+			continue
+		}
+		m.Profiles = append(m.Profiles, Profile{
+			ExtID:    m.ExtID,
+			Platform: firstNonEmpty(hit.Platform, platform),
+			URL:      hit.HomepageURL,
+			Handle:   hit.Handle,
+			Verified: false,
+			Source:   "wikidata-lei",
+		})
+		if m.Homepage == "" {
+			m.Homepage = hit.HomepageURL
+		}
+		added++
+	}
+	return added
 }
 
 func parseWikidataLEIMerchants(raw []byte, country string) []Merchant {
