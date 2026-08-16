@@ -1,0 +1,29 @@
+# High-star, recently maintained OSS sidecars for 智能引擎搜索.
+# Go 进程只做 HTTP 适配，不自研平台爬虫。
+#
+#   docker compose -f docker-compose.engine.yaml up -d --build
+#   # 可选：TikTok 网页里先搜索一次后把 ms_token 填进来
+#   export TIKTOK_MS_TOKEN=...
+#   export F2_TIKTOK_COOKIE=...
+#   export F2_DOUYIN_COOKIE=...
+
+services:
+  tiktok-api:
+    build: ./sidecars/tiktok-api
+    ports:
+      - "8091:8091"
+    environment:
+      TIKTOK_MS_TOKEN: ${TIKTOK_MS_TOKEN:-}
+      TIKTOK_BROWSER: chromium
+      SIDECAR_PORT: "8091"
+    restart: unless-stopped
+
+  f2:
+    build: ./sidecars/f2
+    ports:
+      - "8092:8092"
+    environment:
+      F2_TIKTOK_COOKIE: ${F2_TIKTOK_COOKIE:-}
+      F2_DOUYIN_COOKIE: ${F2_DOUYIN_COOKIE:-}
+      SIDECAR_PORT: "8092"
+    restart: unless-stopped

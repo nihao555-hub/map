@@ -1,6 +1,7 @@
 <div class="record-item status-{{.Status}}" data-job-id="{{.ID}}" data-ts="{{.Date.Unix}}" data-status="{{.Status}}" data-lat="{{.Data.Lat}}" data-lon="{{.Data.Lon}}" onclick="selectRecord(this)">
   <div class="record-main">
     <div class="record-name">{{.Name}}</div>
+    {{ if .Data.GeoAnchor }}<div class="record-progress">锚定坐标 {{.Data.GeoAnchor}}</div>{{ end }}
     {{ if eq .Status "working" }}<div class="record-progress">采集中…</div>
     {{ else if eq .Status "pending" }}<div class="record-progress">待启动…</div>
     {{ else if eq .Status "failed" }}<div class="record-failed">采集失败</div>{{ end }}

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gosom/google-maps-scraper/engine"
 )
 
 // nominatimSearchURL 是 Nominatim (OpenStreetMap) 搜索接口，免费、不需要 API key。
@@ -126,19 +128,7 @@ func hasGeoAnchor(latStr, lonStr string) bool {
 	return lat != 0 || lon != 0
 }
 
-// countryLang 国家代码 -> Google hl 语言参数（均为 2 字符，满足 JobData 校验）。
-// 只覆盖常见国家，未覆盖的返回空串（保留用户选择的语言）
-var countryLang = map[string]string{
-	"cn": "zh", "hk": "zh", "tw": "zh", "mo": "zh",
-	"jp": "ja", "kr": "ko", "th": "th", "vn": "vi",
-	"id": "id", "my": "ms", "sg": "en", "ph": "en", "in": "en",
-	"us": "en", "gb": "en", "au": "en", "nz": "en", "ca": "en",
-	"de": "de", "at": "de", "ch": "de", "fr": "fr", "es": "es",
-	"it": "it", "pt": "pt", "br": "pt", "ru": "ru", "ua": "uk",
-	"tr": "tr", "nl": "nl", "pl": "pl", "se": "sv", "ae": "ar", "sa": "ar",
-}
-
 // langForCountryCode 返回与目标地国家匹配的 hl 语言参数，未知国家返回空串
 func langForCountryCode(countryCode string) string {
-	return countryLang[strings.ToLower(countryCode)]
+	return engine.LangForCountry(countryCode)
 }
