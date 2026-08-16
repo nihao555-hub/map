@@ -312,6 +312,7 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 			sources = append(sources, "expand-socials")
 		}
 		merged = packCompanyHits(merged)
+		merged = sortHitsByCountry(merged)
 		c.persistHitProfiles(ctx, merged)
 	}
 	if len(merged) == 0 {

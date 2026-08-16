@@ -35,6 +35,12 @@ var SearchCountries = []CountryInfo{
 	{Code: "IT", Label: "意大利", Query: "Italy", DDGKL: "it-it", BingCC: "IT"},
 	{Code: "ES", Label: "西班牙", Query: "Spain", DDGKL: "es-es", BingCC: "ES"},
 	{Code: "NL", Label: "荷兰", Query: "Netherlands", DDGKL: "nl-nl", BingCC: "NL"},
+	{Code: "BE", Label: "比利时", Query: "Belgium", DDGKL: "be-fr", BingCC: "BE"},
+	{Code: "AT", Label: "奥地利", Query: "Austria", DDGKL: "at-de", BingCC: "AT"},
+	{Code: "CH", Label: "瑞士", Query: "Switzerland", DDGKL: "ch-de", BingCC: "CH"},
+	{Code: "SE", Label: "瑞典", Query: "Sweden", DDGKL: "se-sv", BingCC: "SE"},
+	{Code: "DK", Label: "丹麦", Query: "Denmark", DDGKL: "dk-da", BingCC: "DK"},
+	{Code: "CZ", Label: "捷克", Query: "Czechia", DDGKL: "cz-cs", BingCC: "CZ"},
 	{Code: "PL", Label: "波兰", Query: "Poland", DDGKL: "pl-pl", BingCC: "PL"},
 	{Code: "RU", Label: "俄罗斯", Query: "Russia", DDGKL: "ru-ru", BingCC: "RU"},
 	{Code: "TR", Label: "土耳其", Query: "Turkey", DDGKL: "tr-tr", BingCC: "TR"},
@@ -222,6 +228,13 @@ func isCountryWordChar(r rune) bool {
 }
 
 func inferHitCountry(hit Hit, selected string) (code, label string) {
+	if cc := strings.ToUpper(strings.TrimSpace(hit.Country)); len(cc) == 2 {
+		c := LookupCountry(cc)
+		if c.Code != "" {
+			return c.Code, c.Label
+		}
+		return cc, firstNonEmpty(hit.CountryLabel, cc)
+	}
 	blob := strings.Join([]string{hit.Name, hit.Handle, hit.Title, hit.Snippet, hit.HomepageURL}, " ")
 	if found := matchCountryCode(blob); found != "" {
 		c := LookupCountry(found)

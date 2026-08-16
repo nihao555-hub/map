@@ -33,6 +33,12 @@ func TestParseSocialURLRejectsTag(t *testing.T) {
 	if _, ok := ParseSocialURL("https://www.tiktok.com/tag/shoes", "shoes", ""); ok {
 		t.Fatal("tag pages must not become profiles")
 	}
+	if _, ok := ParseSocialURL("https://www.facebook.com/tr", "pixel", ""); ok {
+		t.Fatal("facebook tracking pixel must not become a profile")
+	}
+	if _, ok := ParseSocialURL("https://x.com/save", "save", ""); ok {
+		t.Fatal("x.com/save must not become a profile")
+	}
 }
 
 func TestParseSocialURLFacebookLinkedInX(t *testing.T) {

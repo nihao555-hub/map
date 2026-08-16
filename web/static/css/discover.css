@@ -226,6 +226,36 @@ body.wmt { color: var(--wmt-text); }
   color: var(--wmt-aux);
   font-size: 12px;
 }
+.geo-facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  padding: 0 0 4px;
+}
+.geo-chip {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--wmt-line);
+  background: #fff;
+  border-radius: 13px;
+  cursor: pointer;
+  color: var(--wmt-sub);
+  font-size: 12px;
+}
+.geo-chip.is-on {
+  border-color: var(--wmt-blue);
+  color: var(--wmt-blue);
+  background: #eef3ff;
+}
+.geo-head td {
+  padding: 8px 10px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wmt-sub);
+  background: #fafafa;
+  border-bottom: 1px solid var(--wmt-line);
+}
 .wmt-actions {
   display: flex;
   align-items: center;

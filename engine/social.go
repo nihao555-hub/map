@@ -51,6 +51,8 @@ var reservedPaths = map[string]struct{}{
 	"drops": {}, "turbo": {}, "subscriptions": {}, "wallet": {},
 	"index": {}, "index.php": {}, "index.html": {}, "privacy.php": {},
 	"login.php": {}, "sharer.php": {}, "policy": {}, "policies": {},
+	"tr": {}, "save": {}, "beacon": {}, "pixel": {}, "tracking": {},
+	"plugins": {}, "ajax": {}, "cdn": {}, "static": {},
 }
 
 // ParseSocialURL extracts a profile hit from a supported social homepage URL.

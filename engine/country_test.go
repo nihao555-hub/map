@@ -12,6 +12,16 @@ func TestLookupCountry(t *testing.T) {
 	if got := LookupCountry("ZZ"); got.Code != "" {
 		t.Fatalf("unknown should be 不限 %+v", got)
 	}
+	if got := LookupCountry("CH"); got.Code != "CH" || got.Label != "瑞士" {
+		t.Fatalf("switzerland %+v", got)
+	}
+}
+
+func TestInferHitCountryKeepsDirectoryCountry(t *testing.T) {
+	code, label := inferHitCountry(Hit{Name: "Indiana lighting shop", Country: "DE"}, "")
+	if code != "DE" || label != "德国" {
+		t.Fatalf("osm country overwritten: %s %s", code, label)
+	}
 }
 
 func TestCountryQueryToken(t *testing.T) {

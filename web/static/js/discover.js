@@ -13,6 +13,7 @@
   let channel = "email";
   let role = "buyer";
   let lastHits = [];
+  let countryFilter = "";
   let page = 1;
   let searchGen = 0;
   const PAGE_SIZE = 20;
@@ -412,6 +413,7 @@
     foot.textContent = "";
     page = 1;
     lastHits = [];
+    countryFilter = "";
     const pager = document.getElementById("pager");
     if (pager) pager.hidden = true;
     setBusy(true);
@@ -504,7 +506,8 @@
       (h.profiles || []).forEach(function (p) { plats[p.platform || ""] = true; });
     });
     const nPlat = Object.keys(plats).filter(Boolean).length;
-    status.textContent = "已找到 " + lastHits.length + " 家公司/店铺，共 " + pages + " 个主页，来自 " + nPlat + " 个平台";
+    const nGeo = countryBuckets(lastHits).length;
+    status.textContent = "已找到 " + lastHits.length + " 家公司/店铺，共 " + pages + " 个主页，来自 " + nPlat + " 个平台、" + nGeo + " 个国家";
     if (data.cached) {
       status.textContent += "（即时）";
     }
@@ -528,28 +531,90 @@
   }
 
   function pageCount() {
-    return Math.max(1, Math.ceil(lastHits.length / PAGE_SIZE));
+    return Math.max(1, Math.ceil(visibleHits().length / PAGE_SIZE));
+  }
+
+  function visibleHits() {
+    if (!countryFilter) return lastHits;
+    return lastHits.filter(function (h) {
+      return String(h.country || "").toUpperCase() === countryFilter;
+    });
   }
 
   function pagedHits() {
+    const rows = visibleHits();
     const total = pageCount();
     if (page > total) page = total;
     if (page < 1) page = 1;
     const start = (page - 1) * PAGE_SIZE;
-    return lastHits.slice(start, start + PAGE_SIZE);
+    return rows.slice(start, start + PAGE_SIZE);
+  }
+
+  function countryBuckets(hits) {
+    const map = {};
+    (hits || []).forEach(function (h) {
+      const code = String(h.country || "").toUpperCase();
+      const key = code || "ZZ";
+      if (!map[key]) {
+        map[key] = { code: code, label: h.country_label || code || "未标注", n: 0, pages: 0 };
+      }
+      map[key].n += 1;
+      map[key].pages += 1 + ((h.profiles || []).length);
+      if (h.country_label) map[key].label = h.country_label;
+    });
+    return Object.keys(map).sort().map(function (k) { return map[k]; });
+  }
+
+  function flagFor(code) {
+    const c = String(code || "").toUpperCase();
+    if (!c || c.length !== 2) return "🏳️";
+    return String.fromCodePoint(127397 + c.charCodeAt(0), 127397 + c.charCodeAt(1));
+  }
+
+  function renderCountryFacets() {
+    const el = document.getElementById("country-facets");
+    if (!el) return;
+    const buckets = countryBuckets(lastHits);
+    if (buckets.length < 2) {
+      el.hidden = true;
+      el.innerHTML = "";
+      return;
+    }
+    el.hidden = false;
+    const allPages = lastHits.reduce(function (n, h) { return n + 1 + ((h.profiles || []).length); }, 0);
+    const chips = ['<button type="button" class="geo-chip' + (countryFilter ? "" : " is-on") + '" data-cc="">全部 ' + lastHits.length + "</button>"];
+    buckets.forEach(function (b) {
+      const on = countryFilter === b.code ? " is-on" : "";
+      chips.push(
+        '<button type="button" class="geo-chip' + on + '" data-cc="' + escapeAttr(b.code) + '">' +
+          flagFor(b.code) + " " + escapeHtml(b.label) + " " + b.n + "</button>"
+      );
+    });
+    el.innerHTML = chips.join("");
+    el.querySelectorAll(".geo-chip").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        countryFilter = String(btn.getAttribute("data-cc") || "").toUpperCase();
+        page = 1;
+        renderHits(lastHits);
+        const dummy = { cached: true };
+        paintDiscoverStatus(dummy);
+      });
+    });
+    void allPages;
   }
 
   function updatePager() {
     const pager = document.getElementById("pager");
     const countEl = document.getElementById("hit-count");
     if (!pager) return;
-    if (!lastHits.length) {
+    const n = visibleHits().length;
+    if (!n) {
       pager.hidden = true;
       if (countEl) countEl.textContent = "共 0 条";
       return;
     }
     pager.hidden = false;
-    if (countEl) countEl.textContent = "共 " + lastHits.length + " 条";
+    if (countEl) countEl.textContent = "共 " + n + " 条";
     const cur = document.getElementById("page-cur");
     const tot = document.getElementById("page-total");
     if (cur) cur.textContent = String(page);
@@ -624,6 +689,8 @@
       return;
     }
     if (!lastHits.length) {
+      const facets = document.getElementById("country-facets");
+      if (facets) { facets.hidden = true; facets.innerHTML = ""; }
       empty.classList.remove("hidden");
       empty.textContent = isPrecise()
         ? "精确模式下没有命中，可关掉「精确」或换更具体的词再搜。"
@@ -636,7 +703,9 @@
       return;
     }
     empty.classList.add("hidden");
+    renderCountryFacets();
     const rows = pagedHits();
+    let lastCC = "";
     results.innerHTML = rows.map(function (h) {
       const plat = (h.platform || "").toLowerCase();
       const handle = h.handle || "";
@@ -651,8 +720,15 @@
         ? '<span class="hit-via" title="' + escapeAttr("从已找到的主页扩出") + '">同源</span>'
         : "";
       const verified = h.verified ? '<span class="hit-ok" title="已探活">已验证</span>' : "";
+      const cc = String(h.country || "").toUpperCase();
+      let head = "";
+      if (!countryFilter && cc && cc !== lastCC) {
+        lastCC = cc;
+        head = '<tr class="geo-head"><td colspan="7">' + flagFor(cc) + " " +
+          escapeHtml(geo) + "</td></tr>";
+      }
       return (
-        "<tr>" +
+        head + "<tr>" +
           '<td class="hit-title" title="' + escapeAttr(name) + '"><span class="cell-clip">' +
             escapeHtml(name) + "</span>" + via + verified + "</td>" +
           '<td class="col-role"><span class="hit-role ' + (kind === "卖家" ? "is-seller" : "is-buyer") + '">' +

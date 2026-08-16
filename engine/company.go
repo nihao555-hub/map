@@ -112,6 +112,38 @@ func stripProfiles(h Hit) Hit {
 	return h
 }
 
+func sortHitsByCountry(hits []Hit) []Hit {
+	if len(hits) < 2 {
+		return hits
+	}
+	out := append([]Hit(nil), hits...)
+	less := func(i, j int) bool {
+		ci := strings.ToUpper(strings.TrimSpace(out[i].Country))
+		cj := strings.ToUpper(strings.TrimSpace(out[j].Country))
+		if ci == "" {
+			ci = "ZZ"
+		}
+		if cj == "" {
+			cj = "ZZ"
+		}
+		if ci != cj {
+			return ci < cj
+		}
+		if out[i].Score != out[j].Score {
+			return out[i].Score > out[j].Score
+		}
+		return foldSearchText(out[i].Name) < foldSearchText(out[j].Name)
+	}
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			if less(j, i) {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	return out
+}
+
 func profileCount(hits []Hit) int {
 	n := 0
 	for _, h := range hits {

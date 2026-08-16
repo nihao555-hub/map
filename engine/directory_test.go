@@ -70,6 +70,17 @@ func TestPackCompanyHitsMergesSocials(t *testing.T) {
 	}
 }
 
+func TestSortHitsByCountry(t *testing.T) {
+	out := sortHitsByCountry([]Hit{
+		{Name: "B", Country: "US", Score: 10},
+		{Name: "A", Country: "DE", Score: 1},
+		{Name: "C", Country: "DE", Score: 9},
+	})
+	if len(out) != 3 || out[0].Country != "DE" || out[0].Name != "C" || out[2].Country != "US" {
+		t.Fatalf("%+v", out)
+	}
+}
+
 func TestGLEIFWithoutSocialDroppedFromHits(t *testing.T) {
 	hits := merchantsToHits([]Merchant{{
 		ExtID: "gleif:1", Source: "gleif", Name: "Some Fund", Homepage: "https://search.gleif.org/#/record/1",
