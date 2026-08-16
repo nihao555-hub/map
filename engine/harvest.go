@@ -189,7 +189,7 @@ func (c *Client) runTradeDorks(ctx context.Context, dorks []publicQuery, wanted 
 				if len(wanted) > 0 && !wanted[h.Platform] {
 					continue
 				}
-				if !isSocialHomepage(h) {
+				if !isSocialHomepage(h) || !keepDorkHit(h) {
 					continue
 				}
 				hits = append(hits, h)
@@ -253,6 +253,29 @@ func dorkExtID(hit Hit) string {
 		return ""
 	}
 	return "dork:" + plat + ":" + strings.Trim(strings.NewReplacer("https://", "", "http://", "", "www.", "").Replace(home), "/")
+}
+
+func keepDorkHit(hit Hit) bool {
+	name := strings.ToLower(strings.TrimSpace(hit.Name))
+	handle := strings.ToLower(strings.TrimSpace(hit.Handle))
+	if handle == "" {
+		return false
+	}
+	if _, skip := reservedPaths[handle]; skip {
+		return false
+	}
+	if _, skip := reservedPaths[name]; skip {
+		return false
+	}
+	switch name {
+	case "facebook", "instagram", "linkedin", "youtube", "tiktok", "videos", "watch", "home", "about":
+		return false
+	}
+	if hit.Platform == PlatformYouTube && strings.Contains(strings.ToLower(hit.HomepageURL), "/channel/") &&
+		(strings.Contains(name, "youtube") || name == "") {
+		return false
+	}
+	return true
 }
 
 func harvestDorkTerms(keyword, country string) []string {

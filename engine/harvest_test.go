@@ -16,6 +16,15 @@ func TestHarvestDorkTermsPutsEnglishFirst(t *testing.T) {
 	}
 }
 
+func TestKeepDorkHitDropsGenericPages(t *testing.T) {
+	if keepDorkHit(Hit{Platform: PlatformFacebook, Handle: "videos", Name: "videos", HomepageURL: "https://www.facebook.com/videos"}) {
+		t.Fatal("generic videos page")
+	}
+	if !keepDorkHit(Hit{Platform: PlatformFacebook, Handle: "LedWorldLighting", Name: "LED World Inc", HomepageURL: "https://www.facebook.com/LedWorldLighting"}) {
+		t.Fatal("real shop dropped")
+	}
+}
+
 func TestDorkExtID(t *testing.T) {
 	id := dorkExtID(Hit{Platform: PlatformFacebook, Handle: "PowerbiltTools", HomepageURL: "https://www.facebook.com/PowerbiltTools"})
 	if id != "dork:facebook:powerbilttools" {
