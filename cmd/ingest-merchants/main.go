@@ -20,8 +20,10 @@ func main() {
 	skipWikidata := flag.Bool("skip-wikidata", false, "跳过 Wikidata 东南亚公司")
 	leiSocials := flag.Bool("lei-socials", false, "只用 Wikidata LEI 给已入库的 GLEIF 补官网/社媒")
 	publicSocials := flag.Bool("public-socials", false, "用 ROR / Wikidata 官网 / 同名同国已验证主页给 GLEIF 补主页")
+	maxPublic := flag.Bool("public-max", false, "把剩下的公开源用尽：Wikidata 全量社媒、OSM contact:*、GLEIF 父子继承")
 	attachOnly := flag.Bool("attach-only", false, "只做 ROR/P856/同名对拷，不再拉 Wikidata 国家公司")
 	rorZip := flag.String("ror-zip", "", "已下载的 ROR dump zip；空则自动下载")
+	rrZip := flag.String("rr-zip", "", "已下载的 GLEIF Relationship csv.zip；空则自动下载")
 	sea := flag.Bool("sea", false, "只补东南亚城市店铺 + Wikidata 公司")
 	osmLimit := flag.Int("osm-limit", 2000, "每个城市最多拉多少家店")
 	flag.Parse()
@@ -44,8 +46,10 @@ func main() {
 		SkipOSM:         *skipOSM,
 		SkipWikidata:    *skipWikidata,
 		PublicSocials:   *publicSocials,
+		MaxPublic:       *maxPublic,
 		AttachOnly:      *attachOnly,
 		RORZip:          *rorZip,
+		RRZip:           *rrZip,
 		Overpass:        !*skipOSM,
 		OSMLimitPerCity: *osmLimit,
 	}
@@ -70,6 +74,14 @@ func main() {
 		opt.SkipWikidata = true
 		opt.PublicSocials = true
 		opt.AttachOnly = *attachOnly
+	}
+	if *maxPublic {
+		opt.SkipGLEIF = true
+		opt.SkipOSM = false
+		opt.Overpass = false
+		opt.SkipWikidata = true
+		opt.PublicSocials = false
+		opt.MaxPublic = true
 	}
 	started := time.Now()
 	fmt.Printf("开始入库 db=%s sea=%v cities=%d\n", *db, *sea, len(opt.OSMBoxes))

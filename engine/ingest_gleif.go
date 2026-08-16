@@ -35,13 +35,17 @@ func (c *Client) ingestGLEIF(ctx context.Context, dir *Directory, opt IngestOpti
 }
 
 func downloadGLEIF(ctx context.Context, httpc *http.Client, dest string) error {
-	if st, err := os.Stat(dest); err == nil && st.Size() > 100*1024*1024 {
+	return downloadCachedURL(ctx, httpc, gleifLatestCSV, dest, 100*1024*1024)
+}
+
+func downloadCachedURL(ctx context.Context, httpc *http.Client, rawURL, dest string, minSize int64) error {
+	if st, err := os.Stat(dest); err == nil && st.Size() > minSize {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gleifLatestCSV, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return err
 	}
@@ -53,7 +57,7 @@ func downloadGLEIF(ctx context.Context, httpc *http.Client, dest string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("gleif download: %s", resp.Status)
+		return fmt.Errorf("download %s: %s", rawURL, resp.Status)
 	}
 	tmp := dest + ".part"
 	f, err := os.Create(tmp)

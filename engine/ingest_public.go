@@ -378,14 +378,18 @@ func (d *Directory) loadBareGLEIFKeys(ctx context.Context) (map[string]string, e
 
 func (d *Directory) loadSocialDonors(ctx context.Context) ([]Merchant, error) {
 	rows, err := d.scanMerchants(ctx, `SELECT ext_id, source, name, shop, country, city, homepage, phone
-		FROM merchants WHERE source IN ('osm', 'wikidata')`)
+		FROM merchants m
+		WHERE m.source IN ('osm', 'wikidata', 'dork')
+		   OR (m.source='gleif' AND EXISTS (
+		        SELECT 1 FROM merchant_profiles p WHERE p.ext_id=m.ext_id
+		      ))`)
 	if err != nil {
 		return nil, err
 	}
 	rows = d.attachProfiles(ctx, rows)
 	out := make([]Merchant, 0, len(rows))
 	for _, row := range rows {
-		if isRealHomepage(row.Homepage) || len(row.Profiles) > 0 {
+		if (isRealHomepage(row.Homepage) && !registryOnlyHomepage(row.Homepage)) || len(row.Profiles) > 0 {
 			out = append(out, row)
 		}
 	}

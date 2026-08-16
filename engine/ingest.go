@@ -35,7 +35,9 @@ type IngestOptions struct {
 	WikidataLEI     bool
 	PublicSocials   bool
 	AttachOnly      bool
+	MaxPublic       bool
 	RORZip          string
+	RRZip           string
 	Overpass        bool
 	OSMBoxes        []ingestBox
 	OSMLimitPerCity int
@@ -102,7 +104,29 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	if opt.PublicSocials {
 		stats = append(stats, c.ingestPublicSocials(ctx, dir, opt)...)
 	}
+	if opt.MaxPublic {
+		stats = append(stats, c.ingestMaxPublic(ctx, dir, opt)...)
+	}
 	return stats, nil
+}
+
+func (c *Client) ingestMaxPublic(ctx context.Context, dir *Directory, opt IngestOptions) []IngestStats {
+	var stats []IngestStats
+	if err := dir.beginBulk(ctx); err != nil {
+		return []IngestStats{{Source: "public-max", Err: err.Error()}}
+	}
+	if c != nil && strings.TrimSpace(c.WikidataURL) != "" {
+		stats = append(stats, c.ingestWikidataGlobalSocials(ctx, dir))
+	}
+	if !opt.SkipOSM {
+		stats = append(stats, c.ingestOSMContacts(ctx, dir))
+	}
+	if err := dir.endBulk(ctx); err != nil {
+		stats = append(stats, IngestStats{Source: "public-max-fts", Err: err.Error()})
+	}
+	stats = append(stats, dir.attachUniqueNameSocials(ctx))
+	stats = append(stats, c.ingestGLEIFRelationships(ctx, dir, opt.RRZip))
+	return stats
 }
 
 func logIngest(format string, args ...any) {
