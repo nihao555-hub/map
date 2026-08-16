@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -144,6 +145,57 @@ func (d *Directory) CountSource(ctx context.Context, source string) (int, error)
 	var n int
 	err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM merchants WHERE source=?`, source).Scan(&n)
 	return n, err
+}
+
+// ListNameDorkTargets returns GLEIF rows with no profiles whose legal name
+// looks like a tradable company (lighting/furniture/…) in a target market.
+func (d *Directory) ListNameDorkTargets(ctx context.Context, limit int) ([]Merchant, error) {
+	if d == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 4000
+	}
+	clauses := make([]string, 0, len(nameDorkNeedles))
+	args := make([]any, 0, len(nameDorkNeedles))
+	for _, n := range nameDorkNeedles {
+		clauses = append(clauses, `lower(name) LIKE ?`)
+		args = append(args, "%"+n+"%")
+	}
+	q := `SELECT ext_id, source, name, shop, country, city, homepage, phone FROM merchants m
+		WHERE m.source='gleif'
+		  AND NOT EXISTS (SELECT 1 FROM merchant_profiles p WHERE p.ext_id=m.ext_id)
+		  AND (` + strings.Join(clauses, " OR ") + `)`
+	rows, err := d.scanMerchants(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	type scored struct {
+		m Merchant
+		n int
+	}
+	var keep []scored
+	seen := map[string]bool{}
+	for _, row := range rows {
+		if !nameDorkCandidate(row) {
+			continue
+		}
+		key := nameCountryKey(row.Name, row.Country)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		keep = append(keep, scored{m: row, n: nameDorkScore(row)})
+	}
+	sort.Slice(keep, func(i, j int) bool { return keep[i].n > keep[j].n })
+	if len(keep) > limit {
+		keep = keep[:limit]
+	}
+	out := make([]Merchant, 0, len(keep))
+	for _, s := range keep {
+		out = append(out, s.m)
+	}
+	return out, nil
 }
 
 func (d *Directory) InsertBatch(ctx context.Context, rows []Merchant) (int, error) {

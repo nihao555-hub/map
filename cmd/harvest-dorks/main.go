@@ -17,7 +17,8 @@ func main() {
 	keywords := flag.String("keywords", "", "逗号分隔品类；空则用内置外贸清单")
 	countries := flag.String("countries", "", "逗号分隔国家码，空表示不限+东南亚/美/德")
 	workers := flag.Int("workers", 6, "同时跑多少个品类×国家")
-	queryLimit := flag.Int("query-limit", 0, "每个品类×国家最多几条公式，0=全部")
+	queryLimit := flag.Int("query-limit", 0, "品类模式：每个品类×国家最多几条公式；公司名模式：最多查多少家")
+	names := flag.Bool("names", false, "按已入库 GLEIF 公司全名搜社媒（比按品类扫更准）")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -40,8 +41,17 @@ func main() {
 	if client.HTTP != nil {
 		client.HTTP.Timeout = 25 * time.Second
 	}
-	fmt.Printf("开始批量公式收割 db=%s keywords=%v countries=%v\n", *db, firstOr(opt.Keywords, engine.DefaultHarvestKeywords), firstOr(opt.Countries, engine.DefaultHarvestCountries))
-	st, err := client.HarvestTradeDorks(ctx, opt)
+	var (
+		st  engine.HarvestStats
+		err error
+	)
+	if *names {
+		fmt.Printf("开始公司名公式收割 db=%s limit=%d\n", *db, *queryLimit)
+		st, err = client.HarvestNameDorks(ctx, opt)
+	} else {
+		fmt.Printf("开始批量公式收割 db=%s keywords=%v countries=%v\n", *db, firstOr(opt.Keywords, engine.DefaultHarvestKeywords), firstOr(opt.Countries, engine.DefaultHarvestCountries))
+		st, err = client.HarvestTradeDorks(ctx, opt)
+	}
 	fmt.Println(st.String())
 	if len(st.ByPlat) > 0 {
 		fmt.Printf("按平台: %v\n", st.ByPlat)
