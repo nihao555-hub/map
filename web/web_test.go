@@ -17,8 +17,50 @@ func newTestServer(t *testing.T, dir string) *Server {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	if srv.engine != nil {
+		srv.engine.DisablePublic = true
+		srv.engine.CustomsBaseURL = ""
+		srv.engine.WikidataURL = ""
+		srv.engine.ComtradeURL = ""
+		srv.engine.WorldBankURL = ""
+		srv.engine.USITCURL = ""
+		srv.engine.FairCalendarURL = ""
+		srv.engine.FairMapURL = ""
+		srv.engine.EventsEyeURL = ""
+		srv.engine.AUMAFairURL = ""
+		srv.engine.ImportYetiURL = ""
+		srv.engine.ImportYetiAPIURL = ""
+		srv.engine.ImportYetiAPIKey = ""
+		srv.engine.ImportYetiCookie = ""
+	}
 
 	return srv
+}
+
+func TestIndexPageIsLatestNoRailMap(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	srv.index(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		"找到精准客户，从地图开始", "在哪里", "找什么", "开始搜索",
+		"地图搜索", "智能引擎", "发开发信", "locations", "keywords",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+	for _, drop := range []string{`id="app-rail"`, "/static/css/shell.css", "map-toolbar", "展会获客", "海关数据"} {
+		if strings.Contains(body, drop) {
+			t.Fatalf("map page should be 8126d0e no-rail layout, still has %q", drop)
+		}
+	}
 }
 
 func TestViewJobRendersPlaces(t *testing.T) {
@@ -88,7 +130,7 @@ func TestSecurityHeadersAllowMapResources(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	csp := rec.Header().Get("Content-Security-Policy")
-	for _, want := range []string{"tile.openstreetmap.org", "cdnjs.cloudflare.com"} {
+	for _, want := range []string{"tile.openstreetmap.org", "cdnjs.cloudflare.com", "frame-src 'self'", "img-src 'self' data: https:"} {
 		if !strings.Contains(csp, want) {
 			t.Fatalf("CSP missing %q: %s", want, csp)
 		}

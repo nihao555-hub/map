@@ -116,5 +116,17 @@ gen: saas-gen ## generate swagger docs
 saas-psql: ## connect to SaaS development database
 	PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres gmapssaas
 
+ingest-merchants: ## dump GLEIF + OSM all-shop cities into local SQLite
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -gleif-zip /tmp/merchant-ingest/gleif-lei2.csv.zip
+
+ingest-sea: ## dump extra Southeast Asia OSM cities + Wikidata companies
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -sea -osm-limit 2000
+
+ingest-lei-socials: ## attach Wikidata website/socials onto GLEIF rows by LEI
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -lei-socials
+
+enrich-merchants: ## fetch OSM official sites and probe missing social homepages
+	go run ./cmd/enrich-merchants -db webdata/merchants.db -workers 12
+
 clean: ## clean build artifacts
 	@rm -rf bin/ tmp/
