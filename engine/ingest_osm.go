@@ -51,7 +51,6 @@ var ingestShopBoxes = []ingestBox{
 	{city: "prague", country: "CZ", south: 50.06, west: 14.39, north: 50.10, east: 14.46},
 	{city: "istanbul", country: "TR", south: 41.00, west: 28.94, north: 41.06, east: 29.04},
 	{city: "dubai", country: "AE", south: 25.18, west: 55.25, north: 25.28, east: 55.35},
-	{city: "singapore", country: "SG", south: 1.28, west: 103.82, north: 1.36, east: 103.90},
 	{city: "hongkong", country: "HK", south: 22.27, west: 114.14, north: 22.33, east: 114.20},
 	{city: "tokyo", country: "JP", south: 35.65, west: 139.70, north: 35.72, east: 139.80},
 	{city: "osaka", country: "JP", south: 34.66, west: 135.48, north: 34.72, east: 135.54},
@@ -59,15 +58,61 @@ var ingestShopBoxes = []ingestBox{
 	{city: "shanghai", country: "CN", south: 31.20, west: 121.44, north: 31.26, east: 121.52},
 	{city: "shenzhen", country: "CN", south: 22.52, west: 114.04, north: 22.58, east: 114.12},
 	{city: "guangzhou", country: "CN", south: 23.10, west: 113.24, north: 23.16, east: 113.32},
-	{city: "kualalumpur", country: "MY", south: 3.12, west: 101.66, north: 3.18, east: 101.72},
-	{city: "bangkok", country: "TH", south: 13.72, west: 100.50, north: 13.78, east: 100.56},
-	{city: "jakarta", country: "ID", south: -6.22, west: 106.80, north: -6.16, east: 106.86},
 	{city: "sydney", country: "AU", south: -33.90, west: 151.18, north: -33.84, east: 151.24},
 	{city: "melbourne", country: "AU", south: -37.84, west: 144.94, north: -37.80, east: 145.00},
 	{city: "toronto", country: "CA", south: 43.64, west: -79.42, north: 43.68, east: -79.36},
 	{city: "vancouver", country: "CA", south: 49.26, west: -123.14, north: 49.30, east: -123.08},
 	{city: "saopaulo", country: "BR", south: -23.58, west: -46.68, north: -23.53, east: -46.62},
 	{city: "mexicocity", country: "MX", south: 19.41, west: -99.18, north: 19.45, east: -99.12},
+}
+
+// ingestSEAShopBoxes is a denser Southeast Asia dump: wider metro boxes plus
+// Vietnam / Philippines / Cambodia / Laos / Myanmar / Brunei that the first
+// 42-city pass skipped. Public Overpass still cannot do a country-wide shop=*.
+var ingestSEAShopBoxes = []ingestBox{
+	{city: "singapore", country: "SG", south: 1.22, west: 103.60, north: 1.47, east: 104.04},
+	{city: "kualalumpur", country: "MY", south: 2.95, west: 101.50, north: 3.28, east: 101.85},
+	{city: "penang", country: "MY", south: 5.38, west: 100.28, north: 5.45, east: 100.36},
+	{city: "johorbahru", country: "MY", south: 1.45, west: 103.70, north: 1.55, east: 103.80},
+	{city: "ipoh", country: "MY", south: 4.58, west: 101.05, north: 4.65, east: 101.12},
+	{city: "bangkok", country: "TH", south: 13.65, west: 100.40, north: 13.90, east: 100.70},
+	{city: "chiangmai", country: "TH", south: 18.75, west: 98.94, north: 18.85, east: 99.04},
+	{city: "pattaya", country: "TH", south: 12.90, west: 100.85, north: 13.00, east: 100.95},
+	{city: "phuket", country: "TH", south: 7.84, west: 98.30, north: 7.95, east: 98.40},
+	{city: "hatyai", country: "TH", south: 7.00, west: 100.44, north: 7.06, east: 100.52},
+	{city: "jakarta", country: "ID", south: -6.40, west: 106.70, north: -6.10, east: 106.98},
+	{city: "surabaya", country: "ID", south: -7.32, west: 112.70, north: -7.22, east: 112.80},
+	{city: "bandung", country: "ID", south: -6.95, west: 107.57, north: -6.87, east: 107.65},
+	{city: "medan", country: "ID", south: 3.55, west: 98.64, north: 3.63, east: 98.72},
+	{city: "denpasar", country: "ID", south: -8.72, west: 115.17, north: -8.63, east: 115.26},
+	{city: "semarang", country: "ID", south: -7.02, west: 110.38, north: -6.95, east: 110.46},
+	{city: "makassar", country: "ID", south: -5.18, west: 119.38, north: -5.10, east: 119.46},
+	{city: "hanoi", country: "VN", south: 21.00, west: 105.80, north: 21.08, east: 105.90},
+	{city: "hochiminh", country: "VN", south: 10.75, west: 106.65, north: 10.83, east: 106.75},
+	{city: "danang", country: "VN", south: 16.03, west: 108.18, north: 16.10, east: 108.25},
+	{city: "haiphong", country: "VN", south: 20.84, west: 106.65, north: 20.88, east: 106.72},
+	{city: "cantho", country: "VN", south: 10.02, west: 105.75, north: 10.08, east: 105.80},
+	{city: "manila", country: "PH", south: 14.55, west: 120.96, north: 14.70, east: 121.10},
+	{city: "cebu", country: "PH", south: 10.28, west: 123.85, north: 10.35, east: 123.92},
+	{city: "davao", country: "PH", south: 7.05, west: 125.58, north: 7.12, east: 125.65},
+	{city: "phnompenh", country: "KH", south: 11.52, west: 104.88, north: 11.60, east: 104.96},
+	{city: "siemreap", country: "KH", south: 13.34, west: 103.84, north: 13.40, east: 103.90},
+	{city: "vientiane", country: "LA", south: 17.94, west: 102.58, north: 18.00, east: 102.66},
+	{city: "yangon", country: "MM", south: 16.76, west: 96.12, north: 16.85, east: 96.20},
+	{city: "mandalay", country: "MM", south: 21.94, west: 96.06, north: 22.00, east: 96.13},
+	{city: "bandarseri", country: "BN", south: 4.88, west: 114.90, north: 4.95, east: 114.97},
+}
+
+func allIngestShopBoxes() []ingestBox {
+	out := make([]ingestBox, 0, len(ingestShopBoxes)+len(ingestSEAShopBoxes))
+	out = append(out, ingestShopBoxes...)
+	out = append(out, ingestSEAShopBoxes...)
+	return out
+}
+
+// SEAIngestBoxes returns the Southeast Asia city dump used by -sea ingest.
+func SEAIngestBoxes() []ingestBox {
+	return append([]ingestBox(nil), ingestSEAShopBoxes...)
 }
 
 func (c *Client) ingestOSMAllShops(ctx context.Context, dir *Directory, opt IngestOptions) IngestStats {
@@ -88,7 +133,7 @@ func (c *Client) ingestOSMAllShops(ctx context.Context, dir *Directory, opt Inge
 			_ = dir.RecordRun(ctx, "osm", started, inserted, st.Err)
 			return st
 		}
-		query := fmt.Sprintf(`[out:json][timeout:25];(node["shop"]["name"](%s);way["shop"]["name"](%s););out tags %d;`,
+		query := fmt.Sprintf(`[out:json][timeout:45];(node["shop"]["name"](%s);way["shop"]["name"](%s););out tags %d;`,
 			box.bbox(), box.bbox(), limit)
 		raw, err := c.fetchOverpassLimit(ctx, query, ingestOverpassBodyLimit)
 		if err != nil {

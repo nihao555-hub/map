@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,7 @@ type IngestOptions struct {
 	GLEIFLimit      int
 	SkipGLEIF       bool
 	SkipOSM         bool
+	SkipWikidata    bool
 	Overpass        bool
 	OSMBoxes        []ingestBox
 	OSMLimitPerCity int
@@ -40,7 +42,7 @@ func DefaultIngestOptions() IngestOptions {
 	return IngestOptions{
 		DBPath:          DefaultMerchantDB,
 		Overpass:        true,
-		OSMBoxes:        ingestShopBoxes,
+		OSMBoxes:        allIngestShopBoxes(),
 		OSMLimitPerCity: 1500,
 	}
 }
@@ -51,7 +53,7 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 		opt.DBPath = DefaultMerchantDB
 	}
 	if len(opt.OSMBoxes) == 0 {
-		opt.OSMBoxes = ingestShopBoxes
+		opt.OSMBoxes = allIngestShopBoxes()
 	}
 	if opt.OSMLimitPerCity <= 0 {
 		opt.OSMLimitPerCity = 1500
@@ -72,6 +74,9 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	}
 	if opt.Overpass && !opt.SkipOSM {
 		stats = append(stats, c.ingestOSMAllShops(ctx, dir, opt))
+	}
+	if !opt.SkipWikidata && c != nil && strings.TrimSpace(c.WikidataURL) != "" {
+		stats = append(stats, c.ingestWikidataSEA(ctx, dir))
 	}
 
 	if err := dir.endBulk(ctx); err != nil {

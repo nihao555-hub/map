@@ -15,6 +15,9 @@ func TestLookupCountry(t *testing.T) {
 	if got := LookupCountry("CH"); got.Code != "CH" || got.Label != "瑞士" {
 		t.Fatalf("switzerland %+v", got)
 	}
+	if got := LookupCountry("KH"); got.Code != "KH" || got.Label != "柬埔寨" {
+		t.Fatalf("cambodia %+v", got)
+	}
 }
 
 func TestInferHitCountryKeepsDirectoryCountry(t *testing.T) {

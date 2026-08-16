@@ -330,9 +330,10 @@ func (d *Directory) ListToEnrich(ctx context.Context, limit int) ([]Merchant, er
 		limit = 500
 	}
 	q := `SELECT ext_id, source, name, shop, country, city, homepage, phone FROM merchants
-		WHERE source='osm'
+		WHERE source IN ('osm', 'wikidata')
 		  AND homepage NOT LIKE '%openstreetmap.org%'
 		  AND homepage NOT LIKE '%gleif.org%'
+		  AND homepage NOT LIKE '%wikidata.org%'
 		  AND (enriched_at IS NULL OR enriched_at='')
 		ORDER BY id
 		LIMIT ?`
@@ -355,7 +356,7 @@ func (d *Directory) ListToProbe(ctx context.Context, limit int) ([]Merchant, err
 	}
 	q := `SELECT m.ext_id, m.source, m.name, m.shop, m.country, m.city, m.homepage, m.phone
 		FROM merchants m
-		WHERE m.source='osm'
+		WHERE m.source IN ('osm', 'wikidata')
 		  AND (m.probed_at IS NULL OR m.probed_at='')
 		  AND NOT EXISTS (
 		    SELECT 1 FROM merchant_profiles p

@@ -119,6 +119,9 @@ saas-psql: ## connect to SaaS development database
 ingest-merchants: ## dump GLEIF + OSM all-shop cities into local SQLite
 	go run ./cmd/ingest-merchants -db webdata/merchants.db -gleif-zip /tmp/merchant-ingest/gleif-lei2.csv.zip
 
+ingest-sea: ## dump extra Southeast Asia OSM cities + Wikidata companies
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -sea -osm-limit 2000
+
 enrich-merchants: ## fetch OSM official sites and probe missing social homepages
 	go run ./cmd/enrich-merchants -db webdata/merchants.db -workers 12
 

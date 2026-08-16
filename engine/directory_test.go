@@ -236,6 +236,38 @@ func TestIngestOSMAllShops(t *testing.T) {
 	}
 }
 
+func TestSEAIngestBoxesCoverASEAN(t *testing.T) {
+	got := map[string]int{}
+	for _, box := range SEAIngestBoxes() {
+		got[box.country]++
+	}
+	for _, code := range []string{"TH", "VN", "MY", "ID", "SG", "PH", "KH", "LA", "MM", "BN"} {
+		if got[code] == 0 {
+			t.Fatalf("missing SEA country %s in %+v", code, got)
+		}
+	}
+	if got["VN"] < 3 || got["ID"] < 5 || got["PH"] < 2 {
+		t.Fatalf("SEA coverage too thin: %+v", got)
+	}
+}
+
+func TestParseWikidataSEAMerchants(t *testing.T) {
+	raw := []byte(`{"results":{"bindings":[
+		{"item":{"value":"http://www.wikidata.org/entity/Q123"},
+		 "itemLabel":{"value":"CP All"},
+		 "website":{"value":"https://www.cpall.co.th"},
+		 "facebook":{"value":"CPALL"},
+		 "instagram":{"value":"cpall"}}
+	]}}`)
+	rows := parseWikidataSEAMerchants(raw, "TH")
+	if len(rows) != 1 || rows[0].ExtID != "wd:Q123" || rows[0].Country != "TH" || rows[0].Source != "wikidata" {
+		t.Fatalf("%+v", rows)
+	}
+	if len(rows[0].Profiles) < 2 {
+		t.Fatalf("socials=%+v", rows[0].Profiles)
+	}
+}
+
 func TestOSMTagProfiles(t *testing.T) {
 	got := osmTagProfiles("osm:node:1", "Licht Kraus", map[string]string{
 		"contact:facebook":  "LichtKraus",

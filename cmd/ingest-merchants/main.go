@@ -17,7 +17,9 @@ func main() {
 	gleifLimit := flag.Int("gleif-limit", 0, "GLEIF 最多导入条数，0=全量")
 	skipGLEIF := flag.Bool("skip-gleif", false, "跳过 GLEIF")
 	skipOSM := flag.Bool("skip-osm", false, "跳过 OSM 全品类城市店铺")
-	osmLimit := flag.Int("osm-limit", 1500, "每个城市最多拉多少家店")
+	skipWikidata := flag.Bool("skip-wikidata", false, "跳过 Wikidata 东南亚公司")
+	sea := flag.Bool("sea", false, "只补东南亚城市店铺 + Wikidata 公司")
+	osmLimit := flag.Int("osm-limit", 2000, "每个城市最多拉多少家店")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -27,17 +29,26 @@ func main() {
 	if client.HTTP != nil {
 		client.HTTP.Timeout = 90 * time.Second
 	}
-	started := time.Now()
-	fmt.Printf("开始全量入库 db=%s\n", *db)
-	stats, err := client.IngestMerchants(ctx, engine.IngestOptions{
+	opt := engine.IngestOptions{
 		DBPath:          *db,
 		GLEIFZip:        *gleifZip,
 		GLEIFLimit:      *gleifLimit,
 		SkipGLEIF:       *skipGLEIF,
 		SkipOSM:         *skipOSM,
+		SkipWikidata:    *skipWikidata,
 		Overpass:        !*skipOSM,
 		OSMLimitPerCity: *osmLimit,
-	})
+	}
+	if *sea {
+		opt.SkipGLEIF = true
+		opt.OSMBoxes = engine.SEAIngestBoxes()
+		if *osmLimit == 2000 {
+			opt.OSMLimitPerCity = 2000
+		}
+	}
+	started := time.Now()
+	fmt.Printf("开始入库 db=%s sea=%v cities=%d\n", *db, *sea, len(opt.OSMBoxes))
+	stats, err := client.IngestMerchants(ctx, opt)
 	elapsed := time.Since(started)
 	total := 0
 	for _, st := range stats {
