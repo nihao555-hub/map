@@ -42,6 +42,10 @@ func (c *Client) ingestWikidataSEA(ctx context.Context, dir *Directory) IngestSt
 		}
 		raw, err := c.fetchWikidataSPARQL(ctx, wikidataSEACompanySPARQL(cc.QID))
 		if err != nil {
+			time.Sleep(2 * time.Second)
+			raw, err = c.fetchWikidataSPARQL(ctx, wikidataSEACompanySPARQL(cc.QID))
+		}
+		if err != nil {
 			failed++
 			logIngest("Wikidata %s fail: %v", cc.Code, err)
 			continue
