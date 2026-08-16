@@ -104,8 +104,8 @@ func (c *Client) HarvestTradeDorks(ctx context.Context, opt HarvestOptions) (Har
 				if gctx.Err() != nil {
 					return nil
 				}
-				terms := LocalSearchTerms(kw, cc)
-				dorks := tradeGuruQueries(append([]string{kw}, terms...), wanted, cc, opt.Role)
+				terms := harvestDorkTerms(kw, cc)
+				dorks := tradeGuruQueries(terms, wanted, cc, opt.Role)
 				if opt.QueryLimit > 0 && len(dorks) > opt.QueryLimit {
 					dorks = dorks[:opt.QueryLimit]
 				}
@@ -253,6 +253,20 @@ func dorkExtID(hit Hit) string {
 		return ""
 	}
 	return "dork:" + plat + ":" + strings.Trim(strings.NewReplacer("https://", "", "http://", "", "www.", "").Replace(home), "/")
+}
+
+func harvestDorkTerms(keyword, country string) []string {
+	raw := uniqueFoldedStrings(append([]string{keyword}, LocalSearchTerms(keyword, country)...))
+	var en, other []string
+	for _, t := range raw {
+		if hasCJK(t) {
+			other = append(other, t)
+		} else {
+			en = append(en, t)
+		}
+	}
+	// English first: Facebook/LinkedIn SERPs rank Latin product names.
+	return clipTerms(append(en, other...), 3)
 }
 
 func harvestShop(keyword string) string {

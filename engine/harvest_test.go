@@ -9,6 +9,13 @@ import (
 	"testing"
 )
 
+func TestHarvestDorkTermsPutsEnglishFirst(t *testing.T) {
+	got := harvestDorkTerms("家具", "TH")
+	if len(got) == 0 || hasCJK(got[0]) {
+		t.Fatalf("want english first, got %+v", got)
+	}
+}
+
 func TestDorkExtID(t *testing.T) {
 	id := dorkExtID(Hit{Platform: PlatformFacebook, Handle: "PowerbiltTools", HomepageURL: "https://www.facebook.com/PowerbiltTools"})
 	if id != "dork:facebook:powerbilttools" {
