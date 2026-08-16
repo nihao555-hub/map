@@ -59,8 +59,14 @@ var productShopTags = map[string][]string{
 	"家具":           {"furniture"},
 	"shoes":        {"shoes"},
 	"鞋":            {"shoes"},
+	"鞋子":           {"shoes"},
 	"电动工具":         {"doityourself", "hardware"},
 	"power tools":  {"doityourself", "hardware"},
+	"便利店":          {"convenience"},
+	"超市":           {"supermarket"},
+	"服装":           {"clothes"},
+	"衣服":           {"clothes"},
+	"clothes":      {"clothes"},
 }
 
 func shopTagsForKeyword(keyword string) []string {
@@ -312,6 +318,53 @@ func osmElementHits(el overpassEl, keyword, country string, wanted map[string]bo
 	web.MessageURL = home
 	web.MessageHint = "打开商家官网或 OpenStreetMap 页。系统不会代发。"
 	out = append(out, web)
+	return out
+}
+
+func osmTagProfiles(extID, name string, tags map[string]string) []Profile {
+	if tags == nil {
+		return nil
+	}
+	type pair struct{ raw, site string }
+	pairs := []pair{
+		{firstNonEmpty(tags["contact:facebook"], tags["facebook"]), "www.facebook.com"},
+		{firstNonEmpty(tags["contact:instagram"], tags["instagram"]), "www.instagram.com"},
+		{firstNonEmpty(tags["contact:linkedin"], tags["linkedin"]), "www.linkedin.com/company"},
+		{firstNonEmpty(tags["contact:twitter"], tags["twitter"], tags["contact:x"]), "x.com"},
+		{firstNonEmpty(tags["contact:youtube"], tags["youtube"]), "www.youtube.com"},
+		{firstNonEmpty(tags["contact:tiktok"], tags["tiktok"]), "www.tiktok.com"},
+	}
+	var out []Profile
+	seen := map[string]struct{}{}
+	for _, p := range pairs {
+		raw := strings.TrimSpace(p.raw)
+		if raw == "" {
+			continue
+		}
+		candidates := []string{normalizeOSMContact(raw)}
+		if !strings.Contains(raw, "://") && !strings.Contains(raw, "/") {
+			candidates = append(candidates, "https://"+p.site+"/"+strings.TrimPrefix(raw, "@"))
+		}
+		for _, cand := range candidates {
+			hit, ok := ParseSocialURL(cand, name, "")
+			if !ok || hit.HomepageURL == "" {
+				continue
+			}
+			key := hit.Platform + "|" + strings.ToLower(hit.HomepageURL)
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, Profile{
+				ExtID:    extID,
+				Platform: hit.Platform,
+				URL:      hit.HomepageURL,
+				Handle:   hit.Handle,
+				Source:   "osm-tag",
+			})
+			break
+		}
+	}
 	return out
 }
 

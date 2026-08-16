@@ -13,7 +13,7 @@ import (
 
 const (
 	maxLimit             = 20000
-	messagePolicyNote    = "系统不会代发。品类店铺来自 OpenStreetMap（ODbL）和 Wikidata，社媒主页仍走公开网页索引。不是外贸通那种一次几万条的企业库。"
+	messagePolicyNote    = "系统不会代发。一家公司尽量挂上已验证存在的官网和社媒主页：本地库（OSM 全品类店 + GLEIF）先出主体，再抓官网外链并探活。公开索引仍会补漏，但不是外贸通那种一次几万条的企业库。"
 	marketingPolicyNote  = "系统不会代发。"
 	customsPolicyNote    = "系统不会代发。逐票企业来自多家公开海关源的实时检索（美国海关海运提单，Kirchner / ImportYeti）；金额和国家口径来自联合国 Comtrade 与世界银行。不是外贸通那种全球企业库，也没有联系人穿透。"
 	exhibitionPolicyNote = "系统不会代发。展会按关键词实时查 EventsEye（全球约 1.2 万场）、AUMA、Wikidata 和开源展会日历；参展商名单来自展会官网和公开名录，不是 50 万采购商库，也不做名片 OCR。"
@@ -301,12 +301,18 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 
 	merged := mergeHits(hits, q.Keyword, q.Limit, q.Role, q.Country)
 	if len(merged) > 0 {
+		before := profileCount(merged)
+		merged = c.enrichHits(ctx, merged, 12)
+		if profileCount(merged) > before {
+			sources = append(sources, "enrich")
+		}
 		extra := c.expandMerchantSocials(ctx, merged, wanted)
 		if len(extra) > 0 {
 			merged = mergeHits(append(merged, extra...), q.Keyword, q.Limit, q.Role, q.Country)
 			sources = append(sources, "expand-socials")
 		}
-		merged = groupExpandedHits(merged)
+		merged = packCompanyHits(merged)
+		c.persistHitProfiles(ctx, merged)
 	}
 	if len(merged) == 0 {
 		warnings = append(warnings, "未找到公开主页，请换关键词。")
@@ -599,7 +605,7 @@ func isDirectoryMerchant(hit Hit) bool {
 		return false
 	}
 	src := hit.Extra["src"]
-	return (src == "osm" || src == "wikidata" || src == "gleif") && hit.Extra["match"] == "category"
+	return (src == "osm" || src == "wikidata" || src == "gleif" || src == "enrich") && hit.Extra["match"] == "category"
 }
 
 func genericSocialLabel(name string) bool {

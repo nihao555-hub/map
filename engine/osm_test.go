@@ -15,6 +15,9 @@ func TestShopTagsForKeyword(t *testing.T) {
 	if tags := shopTagsForKeyword("furniture"); len(tags) != 1 || tags[0] != "furniture" {
 		t.Fatalf("furniture tags=%v", tags)
 	}
+	if tags := shopTagsForKeyword("鞋子"); len(tags) != 1 || tags[0] != "shoes" {
+		t.Fatalf("鞋子 tags=%v", tags)
+	}
 	if tags := shopTagsForKeyword("unknown widget"); len(tags) != 0 {
 		t.Fatalf("unknown tags=%v", tags)
 	}

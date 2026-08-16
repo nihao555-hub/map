@@ -20,7 +20,9 @@ func TestDirectorySearchByShopAndName(t *testing.T) {
 	defer dir.Close()
 
 	n, err := dir.InsertBatch(context.Background(), []Merchant{
-		{ExtID: "osm:node:1", Source: "osm", Name: "Licht Kraus", Shop: "lighting", Country: "DE", City: "Berlin", Homepage: "https://licht-kraus.example"},
+		{ExtID: "osm:node:1", Source: "osm", Name: "Licht Kraus", Shop: "lighting", Country: "DE", City: "Berlin", Homepage: "https://licht-kraus.example", Profiles: []Profile{
+			{ExtID: "osm:node:1", Platform: PlatformFacebook, URL: "https://www.facebook.com/lichtkraus", Handle: "lichtkraus", Verified: true, Source: "website"},
+		}},
 		{ExtID: "osm:node:2", Source: "osm", Name: "Aldi", Shop: "supermarket", Country: "DE", City: "Berlin", Homepage: "https://www.openstreetmap.org/node/2"},
 		{ExtID: "gleif:001", Source: "gleif", Name: "Signify Holding B.V.", Shop: "GENERAL", Country: "NL", City: "Eindhoven", Homepage: "https://search.gleif.org/#/record/001"},
 	})
@@ -49,8 +51,31 @@ func TestDirectorySearchByShopAndName(t *testing.T) {
 	}
 
 	hits := merchantsToHits(rows)
-	if len(hits) == 0 || hits[0].Platform != PlatformWebsite {
+	if len(hits) == 0 || hits[0].Name != "Licht Kraus" {
 		t.Fatalf("hits=%+v", hits)
+	}
+	if len(hits[0].Profiles) != 1 || hits[0].Profiles[0].Platform != PlatformFacebook {
+		t.Fatalf("profiles=%+v", hits[0].Profiles)
+	}
+}
+
+func TestPackCompanyHitsMergesSocials(t *testing.T) {
+	out := packCompanyHits([]Hit{
+		{ID: "web", Name: "Licht Kraus", Platform: PlatformWebsite, HomepageURL: "https://licht.example", Extra: map[string]string{"ext_id": "osm:node:1"}},
+		{ID: "fb", Name: "Licht Kraus", Platform: PlatformFacebook, HomepageURL: "https://www.facebook.com/lichtkraus", Handle: "lichtkraus", Verified: true, Extra: map[string]string{"ext_id": "osm:node:1", "via": "https://licht.example"}},
+		{ID: "ig", Name: "Licht Kraus", Platform: PlatformInstagram, HomepageURL: "https://www.instagram.com/lichtkraus/", Handle: "lichtkraus", Verified: true, Extra: map[string]string{"ext_id": "osm:node:1"}},
+	})
+	if len(out) != 1 || len(out[0].Profiles) != 2 {
+		t.Fatalf("card=%+v", out)
+	}
+}
+
+func TestGLEIFWithoutSocialDroppedFromHits(t *testing.T) {
+	hits := merchantsToHits([]Merchant{{
+		ExtID: "gleif:1", Source: "gleif", Name: "Some Fund", Homepage: "https://search.gleif.org/#/record/1",
+	}})
+	if len(hits) != 0 {
+		t.Fatalf("gleif-only leaked %+v", hits)
 	}
 }
 
@@ -95,7 +120,7 @@ func TestIngestOSMAllShops(t *testing.T) {
 		gotQuery = r.Form.Get("data")
 		_, _ = w.Write([]byte(`{"elements":[
 			{"type":"node","id":11,"tags":{"name":"Backwerk","shop":"bakery","addr:country":"DE"}},
-			{"type":"node","id":12,"tags":{"name":"Licht Kraus","shop":"lighting","website":"https://licht.example"}}
+			{"type":"node","id":12,"tags":{"name":"Licht Kraus","shop":"lighting","website":"https://licht.example","contact:facebook":"LichtKraus","contact:instagram":"lichtkraus"}}
 		]}`))
 	}))
 	defer srv.Close()
@@ -127,6 +152,23 @@ func TestIngestOSMAllShops(t *testing.T) {
 	n, err := dir.Count(context.Background())
 	if err != nil || n != 2 {
 		t.Fatalf("count=%d err=%v", n, err)
+	}
+	profs, err := dir.ProfilesFor(context.Background(), []string{"osm:node:12"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profs["osm:node:12"]) < 2 {
+		t.Fatalf("osm social tags not stored: %+v", profs)
+	}
+}
+
+func TestOSMTagProfiles(t *testing.T) {
+	got := osmTagProfiles("osm:node:1", "Licht Kraus", map[string]string{
+		"contact:facebook":  "LichtKraus",
+		"contact:instagram": "https://www.instagram.com/lichtkraus/",
+	})
+	if len(got) != 2 {
+		t.Fatalf("got=%+v", got)
 	}
 }
 

@@ -497,9 +497,14 @@
       return;
     }
     const plats = {};
-    lastHits.forEach(function (h) { plats[h.platform || ""] = true; });
+    let pages = 0;
+    lastHits.forEach(function (h) {
+      plats[h.platform || ""] = true;
+      pages += 1 + ((h.profiles || []).length);
+      (h.profiles || []).forEach(function (p) { plats[p.platform || ""] = true; });
+    });
     const nPlat = Object.keys(plats).filter(Boolean).length;
-    status.textContent = "已找到 " + lastHits.length + " 条主页，来自 " + nPlat + " 个社媒";
+    status.textContent = "已找到 " + lastHits.length + " 家公司/店铺，共 " + pages + " 个主页，来自 " + nPlat + " 个平台";
     if (data.cached) {
       status.textContent += "（即时）";
     }
@@ -587,6 +592,31 @@
       escapeHtml(text) + "</span></td>";
   }
 
+  function allProfiles(h) {
+    const out = [];
+    if (h && h.homepage_url) out.push(h);
+    (h && h.profiles || []).forEach(function (p) {
+      if (p && p.homepage_url) out.push(p);
+    });
+    return out;
+  }
+
+  function renderProfileBadges(h) {
+    const items = allProfiles(h);
+    if (!items.length) {
+      const plat = (h.platform || "").toLowerCase();
+      return '<span class="hit-badge">' + platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></span>";
+    }
+    return '<div class="hit-plats">' + items.map(function (p) {
+      const plat = (p.platform || "").toLowerCase();
+      const url = p.homepage_url || "";
+      const ok = p.verified ? " is-ok" : "";
+      return '<a class="hit-badge' + ok + '" target="_blank" rel="noopener" href="' + escapeAttr(url) +
+        '" title="' + escapeAttr(platformLabel(plat) + (p.verified ? " · 已验证" : "") + " " + url) + '">' +
+        platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></a>";
+    }).join("") + "</div>";
+  }
+
   function renderHits(hits) {
     lastHits = hits || [];
     if (mode === "marketing") {
@@ -620,14 +650,15 @@
       const via = h.extra && h.extra.via
         ? '<span class="hit-via" title="' + escapeAttr("从已找到的主页扩出") + '">同源</span>'
         : "";
+      const verified = h.verified ? '<span class="hit-ok" title="已探活">已验证</span>' : "";
       return (
         "<tr>" +
           '<td class="hit-title" title="' + escapeAttr(name) + '"><span class="cell-clip">' +
-            escapeHtml(name) + "</span>" + via + "</td>" +
+            escapeHtml(name) + "</span>" + via + verified + "</td>" +
           '<td class="col-role"><span class="hit-role ' + (kind === "卖家" ? "is-seller" : "is-buyer") + '">' +
             escapeHtml(kind) + "</span></td>" +
           cell(geo, "col-country") +
-          '<td class="col-plat"><span class="hit-badge">' + platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></span></td>" +
+          '<td class="col-plat">' + renderProfileBadges(h) + "</td>" +
           "<td>" + (home
             ? '<a class="hit-home" target="_blank" rel="noopener" href="' + escapeAttr(home) + '" title="' + escapeAttr(src) + '">' +
                 platformSvg(plat) + "<span>" + escapeHtml(src) + "</span></a>"

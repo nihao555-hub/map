@@ -109,6 +109,8 @@ type Hit struct {
 	Role         string            `json:"role,omitempty"`
 	Country      string            `json:"country,omitempty"`
 	CountryLabel string            `json:"country_label,omitempty"`
+	Verified     bool              `json:"verified,omitempty"`
+	Profiles     []Hit             `json:"profiles,omitempty"`
 	Extra        map[string]string `json:"extra,omitempty"`
 }
 

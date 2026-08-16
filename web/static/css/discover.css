@@ -444,16 +444,23 @@ body.wmt { color: var(--wmt-text); }
 }
 .hit-home:hover { text-decoration: underline; }
 .hit-title { color: var(--wmt-text); }
-.hit-via {
+.hit-via,
+.hit-ok {
   display: inline-block;
   margin-left: 6px;
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 11px;
-  color: #1677ff;
-  background: #e6f4ff;
   vertical-align: middle;
 }
+.hit-via { color: #1677ff; background: #e6f4ff; }
+.hit-ok { color: #157347; background: #e8f6ee; }
+.hit-plats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.hit-badge.is-ok { outline: 1px solid #86efac; border-radius: 4px; padding: 1px 4px; }
 .hit-mail { color: var(--wmt-text); }
 .hit-badge {
   display: inline-flex;

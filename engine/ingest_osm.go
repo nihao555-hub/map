@@ -135,8 +135,9 @@ func parseOverpassMerchants(raw []byte, box ingestBox) []Merchant {
 		} else if !strings.Contains(home, "://") {
 			home = "https://" + strings.TrimPrefix(home, "//")
 		}
+		extID := fmt.Sprintf("osm:%s:%d", kind, el.ID)
 		out = append(out, Merchant{
-			ExtID:    fmt.Sprintf("osm:%s:%d", kind, el.ID),
+			ExtID:    extID,
 			Source:   "osm",
 			Name:     name,
 			Shop:     strings.TrimSpace(el.Tags["shop"]),
@@ -144,6 +145,7 @@ func parseOverpassMerchants(raw []byte, box ingestBox) []Merchant {
 			City:     firstNonEmpty(el.Tags["addr:city"], el.Tags["addr:town"], box.city),
 			Homepage: home,
 			Phone:    firstNonEmpty(el.Tags["phone"], el.Tags["contact:phone"]),
+			Profiles: osmTagProfiles(extID, name, el.Tags),
 		})
 	}
 	return out

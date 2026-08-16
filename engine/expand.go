@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	maxExpandSeeds     = 10
-	maxExpandFetches   = 20
+	maxExpandSeeds     = 16
+	maxExpandFetches   = 32
 	maxHandleProbePlat = 6
-	expandBudget       = 18 * time.Second
+	expandBudget       = 20 * time.Second
 )
 
 // expandMerchantSocials finds more homepages for the same merchant:
@@ -134,6 +134,7 @@ func (c *Client) expandOneMerchant(ctx context.Context, seed Hit, wanted map[str
 			}
 			probed++
 			if c.probeProfileExists(ctx, h.HomepageURL) {
+				h.Verified = true
 				addHit(h)
 			}
 		}

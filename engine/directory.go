@@ -27,6 +27,17 @@ type Merchant struct {
 	City     string
 	Homepage string
 	Phone    string
+	Profiles []Profile
+}
+
+// Profile is one verified or claimed homepage belonging to a merchant.
+type Profile struct {
+	ExtID    string
+	Platform string
+	URL      string
+	Handle   string
+	Verified bool
+	Source   string
 }
 
 // Directory is a local SQLite merchant dump used by 智能引擎.
@@ -51,7 +62,16 @@ func OpenDirectory(path string) (*Directory, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	return &Directory{db: db}, nil
+	d := &Directory{db: db}
+	d.migrate()
+	return d, nil
+}
+
+func (d *Directory) migrate() {
+	if d == nil || d.db == nil {
+		return
+	}
+	_, _ = d.db.Exec(`ALTER TABLE merchants ADD COLUMN enriched_at TEXT`)
 }
 
 const directorySchema = `
@@ -85,6 +105,19 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
   ms INTEGER,
   note TEXT
 );
+CREATE TABLE IF NOT EXISTS merchant_profiles (
+  id INTEGER PRIMARY KEY,
+  ext_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  url TEXT NOT NULL,
+  handle TEXT,
+  verified INTEGER NOT NULL DEFAULT 0,
+  source TEXT,
+  updated TEXT,
+  UNIQUE(ext_id, platform, url)
+);
+CREATE INDEX IF NOT EXISTS merchant_profiles_ext ON merchant_profiles(ext_id);
+CREATE INDEX IF NOT EXISTS merchant_profiles_plat ON merchant_profiles(platform);
 `
 
 func (d *Directory) Close() error {
@@ -144,7 +177,187 @@ func (d *Directory) InsertBatch(ctx context.Context, rows []Merchant) (int, erro
 	if err := tx.Commit(); err != nil {
 		return n, err
 	}
+	var profiles []Profile
+	for _, row := range rows {
+		profiles = append(profiles, row.Profiles...)
+	}
+	if err := d.UpsertProfiles(ctx, profiles); err != nil {
+		return n, err
+	}
 	return n, nil
+}
+
+func (d *Directory) UpsertProfiles(ctx context.Context, rows []Profile) error {
+	if d == nil || len(rows) == 0 {
+		return nil
+	}
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO merchant_profiles(ext_id, platform, url, handle, verified, source, updated)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(ext_id, platform, url) DO UPDATE SET
+			handle=excluded.handle,
+			verified=CASE WHEN excluded.verified=1 THEN 1 ELSE merchant_profiles.verified END,
+			source=excluded.source,
+			updated=excluded.updated`)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, row := range rows {
+		if strings.TrimSpace(row.ExtID) == "" || strings.TrimSpace(row.URL) == "" || strings.TrimSpace(row.Platform) == "" {
+			continue
+		}
+		verified := 0
+		if row.Verified {
+			verified = 1
+		}
+		if _, err := stmt.ExecContext(ctx, row.ExtID, row.Platform, row.URL, row.Handle, verified, row.Source, now); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (d *Directory) ProfilesFor(ctx context.Context, extIDs []string) (map[string][]Profile, error) {
+	out := map[string][]Profile{}
+	if d == nil || len(extIDs) == 0 {
+		return out, nil
+	}
+	seen := map[string]struct{}{}
+	ids := make([]string, 0, len(extIDs))
+	for _, id := range extIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	const chunk = 400
+	for i := 0; i < len(ids); i += chunk {
+		end := i + chunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		part := ids[i:end]
+		pholders := make([]string, len(part))
+		args := make([]any, len(part))
+		for j, id := range part {
+			pholders[j] = "?"
+			args[j] = id
+		}
+		q := `SELECT ext_id, platform, url, handle, verified, source FROM merchant_profiles WHERE ext_id IN (` + strings.Join(pholders, ",") + `)`
+		rows, err := d.db.QueryContext(ctx, q, args...)
+		if err != nil {
+			return out, err
+		}
+		for rows.Next() {
+			var p Profile
+			var verified int
+			if err := rows.Scan(&p.ExtID, &p.Platform, &p.URL, &p.Handle, &verified, &p.Source); err != nil {
+				_ = rows.Close()
+				return out, err
+			}
+			p.Verified = verified == 1
+			out[p.ExtID] = append(out[p.ExtID], p)
+		}
+		err = rows.Err()
+		_ = rows.Close()
+		if err != nil {
+			return out, err
+		}
+	}
+	return out, nil
+}
+
+func (d *Directory) attachProfiles(ctx context.Context, rows []Merchant) []Merchant {
+	if len(rows) == 0 {
+		return rows
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ExtID)
+	}
+	byID, err := d.ProfilesFor(ctx, ids)
+	if err != nil {
+		return rows
+	}
+	for i := range rows {
+		rows[i].Profiles = byID[rows[i].ExtID]
+	}
+	return rows
+}
+
+func (d *Directory) MarkEnriched(ctx context.Context, extIDs []string) error {
+	if d == nil || len(extIDs) == 0 {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.PrepareContext(ctx, `UPDATE merchants SET enriched_at=? WHERE ext_id=?`)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for _, id := range extIDs {
+		if _, err := stmt.ExecContext(ctx, now, id); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (d *Directory) ListToEnrich(ctx context.Context, limit int) ([]Merchant, error) {
+	if d == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 500
+	}
+	q := `SELECT ext_id, source, name, shop, country, city, homepage, phone FROM merchants
+		WHERE source='osm'
+		  AND homepage NOT LIKE '%openstreetmap.org%'
+		  AND homepage NOT LIKE '%gleif.org%'
+		  AND (enriched_at IS NULL OR enriched_at='')
+		ORDER BY id
+		LIMIT ?`
+	rows, err := d.scanMerchants(ctx, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	return d.attachProfiles(ctx, rows), nil
+}
+
+func (d *Directory) CountProfiles(ctx context.Context) (int, error) {
+	if d == nil {
+		return 0, nil
+	}
+	var n int
+	err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM merchant_profiles`).Scan(&n)
+	return n, err
+}
+
+func (d *Directory) CountVerifiedProfiles(ctx context.Context) (int, error) {
+	if d == nil {
+		return 0, nil
+	}
+	var n int
+	err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM merchant_profiles WHERE verified=1`).Scan(&n)
+	return n, err
 }
 
 func (d *Directory) beginBulk(ctx context.Context) error {
@@ -225,7 +438,7 @@ func (d *Directory) Search(ctx context.Context, keyword, country string, limit i
 	if len(out) > limit {
 		out = out[:limit]
 	}
-	return out, nil
+	return d.attachProfiles(ctx, out), nil
 }
 
 func (d *Directory) searchByShop(ctx context.Context, tags []string, country string, limit int) ([]Merchant, error) {
@@ -305,44 +518,114 @@ func merchantsToHits(rows []Merchant) []Hit {
 	out := make([]Hit, 0, len(rows))
 	for _, row := range rows {
 		home := strings.TrimSpace(row.Homepage)
-		if home == "" {
+		if home == "" && len(row.Profiles) == 0 {
 			continue
 		}
 		_, label := inferCountryFromText(row.Country, row.Country)
 		snippet := strings.TrimSpace(strings.Join([]string{row.Shop, "店铺", row.City, label, row.Source}, " · "))
-		plat := PlatformWebsite
 		hit := Hit{
 			ID:           row.Source + ":" + row.ExtID,
 			Kind:         KindPeople,
-			Platform:     plat,
+			Platform:     PlatformWebsite,
 			Name:         row.Name,
 			Title:        row.Name,
 			Snippet:      snippet,
 			HomepageURL:  home,
 			MessageURL:   home,
-			MessageHint:  "打开目录里的官网或地图页。系统不会代发。",
+			MessageHint:  "打开已验证的官网或社媒主页。系统不会代发。",
 			Score:        86,
 			Country:      strings.ToUpper(strings.TrimSpace(row.Country)),
 			CountryLabel: label,
-			Extra:        map[string]string{"src": row.Source, "shop": row.Shop, "match": "category"},
+			Extra:        map[string]string{"src": row.Source, "shop": row.Shop, "match": "category", "ext_id": row.ExtID},
 		}
 		if social, ok := ParseSocialURL(home, row.Name, snippet); ok {
 			social.Name = row.Name
 			social.Snippet = snippet
 			social.Country = hit.Country
 			social.CountryLabel = label
+			social.ID = hit.ID
 			if social.Extra == nil {
 				social.Extra = map[string]string{}
 			}
 			social.Extra["src"] = row.Source
 			social.Extra["shop"] = row.Shop
 			social.Extra["match"] = "category"
-			out = append(out, social)
+			social.Extra["ext_id"] = row.ExtID
+			hit = social
+		}
+		for _, p := range row.Profiles {
+			ph := profileToHit(row, p, snippet, label)
+			if ph.HomepageURL == "" {
+				continue
+			}
+			if strings.EqualFold(ph.HomepageURL, hit.HomepageURL) {
+				hit.Verified = hit.Verified || p.Verified
+				hit.Handle = firstNonEmpty(hit.Handle, p.Handle)
+				continue
+			}
+			hit.Profiles = append(hit.Profiles, ph)
+			if p.Verified {
+				hit.Score += 6
+			}
+		}
+		if hit.HomepageURL == "" && len(hit.Profiles) > 0 {
+			hit.HomepageURL = hit.Profiles[0].HomepageURL
+			hit.MessageURL = hit.Profiles[0].MessageURL
+			hit.Platform = hit.Profiles[0].Platform
+			hit.Handle = hit.Profiles[0].Handle
+			hit.Verified = hit.Profiles[0].Verified
+			hit.Profiles = hit.Profiles[1:]
+		}
+		if registryOnlyHomepage(hit.HomepageURL) && len(hit.Profiles) == 0 && row.Source == "gleif" {
 			continue
 		}
 		out = append(out, hit)
 	}
 	return out
+}
+
+func profileToHit(row Merchant, p Profile, snippet, label string) Hit {
+	h := Hit{
+		ID:           row.Source + ":" + row.ExtID + ":" + p.Platform,
+		Kind:         KindPeople,
+		Platform:     p.Platform,
+		Name:         row.Name,
+		Title:        row.Name,
+		Handle:       p.Handle,
+		Snippet:      snippet,
+		HomepageURL:  p.URL,
+		MessageURL:   p.URL,
+		MessageHint:  "打开已验证的社媒主页。系统不会代发。",
+		Score:        90,
+		Verified:     p.Verified,
+		Country:      strings.ToUpper(strings.TrimSpace(row.Country)),
+		CountryLabel: label,
+		Extra:        map[string]string{"src": row.Source, "shop": row.Shop, "match": "category", "ext_id": row.ExtID, "via": row.Homepage},
+	}
+	if social, ok := ParseSocialURL(p.URL, row.Name, snippet); ok {
+		social.ID = h.ID
+		social.Name = row.Name
+		social.Title = row.Name
+		social.Snippet = snippet
+		social.Verified = p.Verified
+		social.Country = h.Country
+		social.CountryLabel = label
+		if social.Extra == nil {
+			social.Extra = map[string]string{}
+		}
+		social.Extra["src"] = row.Source
+		social.Extra["shop"] = row.Shop
+		social.Extra["match"] = "category"
+		social.Extra["ext_id"] = row.ExtID
+		social.Extra["via"] = row.Homepage
+		return social
+	}
+	return h
+}
+
+func registryOnlyHomepage(raw string) bool {
+	u := strings.ToLower(raw)
+	return strings.Contains(u, "search.gleif.org") || strings.Contains(u, "goldencopy.gleif.org")
 }
 
 var (

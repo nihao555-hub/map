@@ -189,7 +189,7 @@ func TestSearchPeopleExpandsSisterSocials(t *testing.T) {
 		t.Fatal(err)
 	}
 	var sawFB, sawIG, sawTK bool
-	for _, h := range res.Hits {
+	mark := func(h Hit) {
 		if !isSocialHomepage(h) {
 			t.Fatalf("non-homepage %+v", h)
 		}
@@ -200,6 +200,12 @@ func TestSearchPeopleExpandsSisterSocials(t *testing.T) {
 			sawIG = true
 		case PlatformTikTok:
 			sawTK = true
+		}
+	}
+	for _, h := range res.Hits {
+		mark(h)
+		for _, p := range h.Profiles {
+			mark(p)
 		}
 	}
 	if !sawFB || !sawIG || !sawTK {
