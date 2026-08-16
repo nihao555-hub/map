@@ -650,13 +650,23 @@ body.is-landing .wmt-main { overflow: auto; background: #fff; }
 .eng-hero-search {
   margin-top: 16px;
   height: 48px;
-  max-width: 640px;
+  max-width: 720px;
   background: #fff;
   border-radius: 8px;
   display: flex;
   align-items: center;
-  padding: 0 6px 0 14px;
+  padding: 0 6px 0 8px;
   gap: 8px;
+}
+.eng-hero-country {
+  height: 36px;
+  border: 0;
+  background: #f5f6f8;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: var(--wmt-text);
+  font: inherit;
+  max-width: 132px;
 }
 .eng-hero-search input {
   flex: 1;

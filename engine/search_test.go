@@ -340,7 +340,7 @@ func TestMergeHitsKeepsQueryStampedEmptySnippet(t *testing.T) {
 
 func TestMergeHitsBuyerKeepsCompanyDropsPersonalShop(t *testing.T) {
 	out := mergeHits([]Hit{
-		{ID: "buy", Platform: PlatformDouyin, Name: "林芝雄海五金一站式采购", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAbuyer", Snippet: "机电物资"},
+		{ID: "buy", Platform: PlatformDouyin, Name: "林芝雄海电动工具一站式采购", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAbuyer", Snippet: "机电物资"},
 		{ID: "co", Platform: PlatformDouyin, Name: "江苏工佰汇五金工具有限公司", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAco", Snippet: "五金工具", Extra: map[string]string{"q": "site:douyin.com/user 电动工具"}},
 		{ID: "shop", Platform: PlatformDouyin, Name: "电动工具小王", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAshop", Snippet: "电动工具"},
 		{ID: "off", Platform: PlatformDouyin, Name: "盛隆绿巨人电动工具官方账号", HomepageURL: "https://www.douyin.com/user/MS4wLjABAAAAoff", Snippet: "官方旗舰"},
@@ -375,6 +375,23 @@ func TestMergeHitsDropsGenericProductName(t *testing.T) {
 	}, "LED灯", 0, RoleBuyer, "")
 	if len(out) != 1 || out[0].ID != "store" {
 		t.Fatalf("generic LED channel leaked %+v", out)
+	}
+}
+
+func TestMergeHitsDropsUnlabeledWhenCountrySelected(t *testing.T) {
+	out := mergeHits([]Hit{
+		{ID: "id", Platform: PlatformFacebook, Name: "Toko Listrik Jaya", Country: "ID", HomepageURL: "https://www.facebook.com/tokolistrikjaya", Snippet: "panel listrik importir Jakarta"},
+		{ID: "us", Platform: PlatformFacebook, Name: "Electrical Wholesalers", HomepageURL: "https://www.facebook.com/EWCTNewHaven", Snippet: "electrical wholesaler"},
+	}, "配电柜", 0, RoleBuyer, "ID")
+	if len(out) != 1 || out[0].ID != "id" {
+		t.Fatalf("want Indonesian buyer only, got %+v", out)
+	}
+}
+
+func TestSearchSplitsIndonesiaProductKeyword(t *testing.T) {
+	_, err := (&Client{DisablePublic: true}).Search(context.Background(), Query{Keyword: "印尼", Kind: KindPeople})
+	if err == nil {
+		t.Fatal("country-only keyword should be rejected")
 	}
 }
 

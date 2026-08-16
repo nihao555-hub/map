@@ -13,7 +13,7 @@ import (
 
 const (
 	maxLimit             = 20000
-	messagePolicyNote    = "系统不会代发。一家公司尽量挂上已验证存在的官网和社媒主页：本地库先出主体，公开索引用外贸常用 Google 公式（inurl/intitle、排除动态、官网露出的 facebook.com/）补漏。不是外贸通那种一次几万条的企业库。"
+	messagePolicyNote    = "系统不会代发。中文品类会译成当地采购词（例如配电柜→switchgear / panel listrik），按所选国家找进口商、经销商和工程商公开主页。不是外贸通那种一次几万条的企业库。"
 	marketingPolicyNote  = "系统不会代发。"
 	customsPolicyNote    = "系统不会代发。逐票企业来自多家公开海关源的实时检索（美国海关海运提单，Kirchner / ImportYeti）；金额和国家口径来自联合国 Comtrade 与世界银行。不是外贸通那种全球企业库，也没有联系人穿透。"
 	exhibitionPolicyNote = "系统不会代发。展会按关键词实时查 EventsEye（全球约 1.2 万场）、AUMA、Wikidata 和开源展会日历；参展商名单来自展会官网和公开名录，不是 50 万采购商库，也不做名片 OCR。"
@@ -28,11 +28,15 @@ func (c *Client) Search(ctx context.Context, q Query) (Result, error) {
 	q.Mode = strings.ToLower(strings.TrimSpace(q.Mode))
 	q.Channel = strings.ToLower(strings.TrimSpace(q.Channel))
 
+	q.Country = strings.ToUpper(strings.TrimSpace(q.Country))
+	q.Keyword, q.Country = SplitKeywordCountry(q.Keyword, q.Country)
+	if strings.TrimSpace(q.Keyword) == "" && q.Country != "" {
+		return Result{}, fmt.Errorf("请输入商品名称，国家请用筛选，例如「配电柜」")
+	}
 	if err := ValidateKeyword(q.Keyword, q.Precise); err != nil {
 		return Result{}, err
 	}
 
-	q.Country = strings.ToUpper(strings.TrimSpace(q.Country))
 	ctx = WithSearchCountry(ctx, q.Country)
 
 	if q.Mode == ModeMarketing || q.Kind == KindMarketing {
@@ -100,6 +104,7 @@ func finalizeResult(q Query, res Result, start time.Time) Result {
 	}
 	res.Keyword = q.Keyword
 	res.Kind = q.Kind
+	res.Country = q.Country
 	res.TookMS = time.Since(start).Milliseconds()
 	res.SearchedAt = time.Now().UTC()
 	if res.Note == "" && q.Kind == KindPeople {
@@ -143,6 +148,7 @@ func (c *Client) searchRealtime(ctx context.Context, q Query, start time.Time) (
 		return Result{
 			Keyword:    q.Keyword,
 			Kind:       q.Kind,
+			Country:    q.Country,
 			Note:       policyNoteFor(q.Kind),
 			TookMS:     time.Since(start).Milliseconds(),
 			SearchedAt: time.Now().UTC(),
@@ -175,6 +181,7 @@ func (c *Client) searchRealtime(ctx context.Context, q Query, start time.Time) (
 	return Result{
 		Keyword:    q.Keyword,
 		Kind:       q.Kind,
+		Country:    q.Country,
 		Hits:       nil,
 		Note:       policyNoteFor(q.Kind),
 		TookMS:     time.Since(start).Milliseconds(),
@@ -382,8 +389,10 @@ func mergeHits(items []Hit, keyword string, limit int, role, country string) []H
 		}
 		hit.Country, hit.CountryLabel = inferHitCountry(hit, country)
 		hit.Score += countryBonus(hit, country)
-		if selected := strings.ToUpper(strings.TrimSpace(country)); selected != "" && hit.Country != "" && hit.Country != selected {
-			continue
+		if selected := strings.ToUpper(strings.TrimSpace(country)); selected != "" {
+			if hit.Country == "" || hit.Country != selected {
+				continue
+			}
 		}
 		if prev, ok := seen[hit.ID]; ok {
 			if hit.Score > prev.Score {
@@ -452,7 +461,7 @@ func hitRoleBlob(hit Hit) string {
 }
 
 func hitMatchesKeyword(hit Hit, kw string) bool {
-	return blobMatchesKeyword(hitKeywordBlob(hit), kw)
+	return blobMatchesKeyword(hitPageBlob(hit), kw)
 }
 
 func blobMatchesKeyword(blob, kw string) bool {
@@ -594,7 +603,8 @@ func isGenericProductName(name, kw string) bool {
 		}
 	}
 	switch n {
-	case "led", "leds", "lighting", "light", "lights", "lamp", "lamps":
+	case "led", "leds", "lighting", "light", "lights", "lamp", "lamps",
+		"switchgear", "panel listrik", "lemari listrik":
 		return true
 	}
 
@@ -632,19 +642,29 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 	if isGenericProductName(hit.Name, kw) {
 		return true
 	}
+	role = strings.ToLower(strings.TrimSpace(role))
+	roleBlob := hitRoleBlob(hit)
+	pageMatch := kw == "" || blobMatchesKeyword(hitPageBlob(hit), kw)
+
 	if isDirectoryMerchant(hit) {
-		return looksLikeTutorial(hitRoleBlob(hit)+" "+foldSearchText(hit.HomepageURL)) || looksLikeClickbait(hit.Name)
+		if looksLikeTutorial(roleBlob+" "+foldSearchText(hit.HomepageURL)) || looksLikeClickbait(hit.Name) {
+			return true
+		}
+		if role == RoleBuyer && looksLikeGlobalBrandSeller(roleBlob) && !hasCustomerToken(roleBlob) {
+			return true
+		}
+		return false
 	}
 	if looksLikeClickbait(hit.Name) {
 		return true
 	}
-
-	roleBlob := hitRoleBlob(hit)
 	if looksLikeTutorial(roleBlob + " " + foldSearchText(hit.HomepageURL)) {
 		return true
 	}
-	role = strings.ToLower(strings.TrimSpace(role))
 	if role == RoleBuyer && looksLikeOfficialBrand(roleBlob) && !hasCustomerToken(roleBlob) {
+		return true
+	}
+	if role == RoleBuyer && looksLikeGlobalBrandSeller(roleBlob) && !hasCustomerToken(roleBlob) {
 		return true
 	}
 	if role == RoleBuyer && hasFactoryToken(roleBlob) && !hasBuyerToken(roleBlob) {
@@ -652,22 +672,11 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 			return true
 		}
 	}
-	pageMatch := kw == "" || blobMatchesKeyword(hitPageBlob(hit), kw)
+	if role == RoleBuyer && !pageMatch {
+		return true
+	}
 	if !pageMatch {
-		queryMatch := blobMatchesKeyword(hitKeywordBlob(hit), kw)
-		if queryMatch {
-			if role == RoleBuyer {
-				if !hasBuyerKeepToken(roleBlob) {
-					return true
-				}
-			} else if !hasMerchantToken(roleBlob) && !hasCompanyToken(roleBlob) {
-				return true
-			}
-		} else if role == RoleBuyer {
-			if !hasBuyerKeepToken(roleBlob) {
-				return true
-			}
-		} else if !hasMerchantToken(roleBlob) {
+		if !hasMerchantToken(roleBlob) && !hasCompanyToken(roleBlob) {
 			return true
 		}
 	} else if role == RoleBuyer && !strings.Contains(kw, "http") {
@@ -677,6 +686,14 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 	}
 
 	return false
+}
+
+func looksLikeGlobalBrandSeller(blob string) bool {
+	return containsAnyToken(blob, []string{
+		"schneider electric", "siemens", "general electric", "generalelectric",
+		"alstom", "signify", "philips lighting", "mitsubishi electric",
+		"legrand", "eaton corporation", "abb ltd", "honeywell",
+	})
 }
 
 func cleanHitName(hit Hit) Hit {
@@ -738,6 +755,7 @@ func hasBuyerToken(blob string) bool {
 		"procurement", "purchasing", "importing", "sourcing",
 		"นำเข้า", "ผู้นำเข้า", "จัดซื้อ",
 		"nhập khẩu", "pengimport", "importir",
+		"pengadaan", "kontraktor", "pemborong",
 	}
 	return containsAnyToken(blob, tokens)
 }
@@ -746,7 +764,7 @@ func hasResellerToken(blob string) bool {
 	tokens := []string{
 		"批发", "经销", "贸易", "商行",
 		"wholesaler", "wholesale", "distributor", "dealer",
-		"trading", "retailer",
+		"trading", "retailer", "agen", "toko",
 	}
 	return containsAnyToken(blob, tokens)
 }
@@ -795,7 +813,7 @@ func hasBuyerKeepToken(blob string) bool {
 func hasShopToken(blob string) bool {
 	tokens := []string{
 		"店铺", "商行", "贸易",
-		"trading", "retailer", "store", "shop",
+		"trading", "retailer", "store", "shop", "toko",
 	}
 	if containsAnyToken(blob, tokens) {
 		return true
@@ -813,6 +831,7 @@ func hasCompanyToken(blob string) bool {
 	tokens := []string{
 		"有限公司", "有限责任", "集团", " ltd", "llc", "gmbh", "pte",
 		"sdn bhd", " co.", "company", "corp",
+		" pt ", "pt.", " cv ", " ud ", " tbk", "persero",
 	}
 	return containsAnyToken(blob, tokens)
 }

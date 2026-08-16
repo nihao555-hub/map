@@ -59,6 +59,54 @@ func TestDirectorySearchByShopAndName(t *testing.T) {
 	}
 }
 
+func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
+	dir, err := OpenDirectory(filepath.Join(t.TempDir(), "merchants.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+
+	if _, err := dir.InsertBatch(context.Background(), []Merchant{
+		{ExtID: "gleif:id-buyer", Source: "gleif", Name: "PT Sumber Listrik Trading", Shop: "GENERAL", Country: "ID", City: "Jakarta", Homepage: "https://listrik-trading.example", Profiles: []Profile{
+			{ExtID: "gleif:id-buyer", Platform: PlatformFacebook, URL: "https://www.facebook.com/sumberlistrik", Handle: "sumberlistrik", Source: "website"},
+		}},
+		{ExtID: "osm:id-shop", Source: "osm", Name: "Toko Listrik Jaya", Shop: "electrical", Country: "ID", City: "Surabaya", Homepage: "https://toko-listrik.example", Profiles: []Profile{
+			{ExtID: "osm:id-shop", Platform: PlatformInstagram, URL: "https://www.instagram.com/tokolistrikjaya", Handle: "tokolistrikjaya", Source: "osm-tag"},
+		}},
+		{ExtID: "gleif:id-brand", Source: "gleif", Name: "PT Schneider Electric Switchgear Indonesia", Shop: "GENERAL", Country: "ID", City: "Jakarta", Homepage: "https://www.se.com"},
+		{ExtID: "osm:de-light", Source: "osm", Name: "Licht Kraus", Shop: "lighting", Country: "DE", City: "Berlin", Homepage: "https://licht-kraus.example"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := dir.Search(context.Background(), "配电柜", "ID", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, row := range rows {
+		got[row.Name] = true
+	}
+	if !got["PT Sumber Listrik Trading"] || !got["Toko Listrik Jaya"] {
+		t.Fatalf("indonesian electrical buyers missing: %+v", rows)
+	}
+	if got["Licht Kraus"] {
+		t.Fatalf("german lighting shop leaked: %+v", rows)
+	}
+
+	hits := mergeHits(merchantsToHits(rows), "配电柜", 0, RoleBuyer, "ID")
+	names := map[string]bool{}
+	for _, h := range hits {
+		names[h.Name] = true
+	}
+	if !names["PT Sumber Listrik Trading"] || !names["Toko Listrik Jaya"] {
+		t.Fatalf("buyer merge dropped local merchants: %+v", hits)
+	}
+	if names["PT Schneider Electric Switchgear Indonesia"] {
+		t.Fatalf("global brand seller leaked into buyer results: %+v", hits)
+	}
+}
+
 func TestPackCompanyHitsMergesSocials(t *testing.T) {
 	out := packCompanyHits([]Hit{
 		{ID: "web", Name: "Licht Kraus", Platform: PlatformWebsite, HomepageURL: "https://licht.example", Extra: map[string]string{"ext_id": "osm:node:1"}},

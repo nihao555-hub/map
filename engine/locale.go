@@ -54,6 +54,8 @@ func LangForCountry(countryCode string) string {
 type productLangTerms map[string][]string
 
 // productGlossary maps a folded Chinese/English product name onto local search phrases.
+// Keep phrases specific (switchgear, panel listrik) so directory FTS does not
+// match every company with "electric" or "power" in the legal name.
 var productGlossary = map[string]productLangTerms{
 	"电动工具": {
 		"en": {"power tools", "electric tools"},
@@ -61,6 +63,7 @@ var productGlossary = map[string]productLangTerms{
 		"vi": {"máy công cụ điện", "dụng cụ điện"},
 		"ms": {"alatan kuasa"},
 		"id": {"perkakas listrik"},
+		"zh": {"电动工具", "五金工具"},
 		"ja": {"電動工具"},
 		"ko": {"전동공구"},
 		"de": {"Elektrowerkzeuge"},
@@ -81,6 +84,7 @@ var productGlossary = map[string]productLangTerms{
 		"vi": {"đèn LED"},
 		"ms": {"lampu LED"},
 		"id": {"lampu LED"},
+		"zh": {"LED灯", "灯饰", "灯具"},
 	},
 	"led light": {
 		"en": {"LED light", "LED lamp", "LED lighting"},
@@ -98,9 +102,107 @@ var productGlossary = map[string]productLangTerms{
 		"th": {"เฟอร์นิเจอร์"},
 		"vi": {"nội thất"},
 	},
+	"配电柜":                switchgearTerms,
+	"配电箱":                switchgearTerms,
+	"配电盘":                switchgearTerms,
+	"配电":                 switchgearTerms,
+	"开关柜":                switchgearTerms,
+	"switchgear":         switchgearTerms,
+	"distribution board": switchgearTerms,
+	"电缆": {
+		"en": {"power cable", "electrical cable"},
+		"id": {"kabel listrik", "kabel power"},
+		"th": {"สายไฟ"},
+		"vi": {"cáp điện"},
+		"ms": {"kabel elektrik"},
+		"zh": {"电缆"},
+	},
+	"电线": {
+		"en": {"electric wire", "electrical wire"},
+		"id": {"kabel listrik"},
+		"th": {"สายไฟ"},
+		"vi": {"dây điện"},
+		"zh": {"电线"},
+	},
+	"太阳能": {
+		"en": {"solar panel", "solar energy"},
+		"id": {"panel surya", "tenaga surya"},
+		"th": {"โซลาร์เซลล์"},
+		"vi": {"tấm pin mặt trời"},
+		"ms": {"panel solar"},
+		"zh": {"太阳能"},
+	},
+	"光伏": {
+		"en": {"solar panel", "photovoltaic"},
+		"id": {"panel surya"},
+		"zh": {"光伏"},
+	},
+	"阀门": {
+		"en": {"industrial valve", "valve"},
+		"id": {"katup industri", "valve"},
+		"th": {"วาล์ว"},
+		"vi": {"van công nghiệp"},
+		"zh": {"阀门"},
+	},
+	"服装": {
+		"en": {"clothes", "garment"},
+		"id": {"pakaian", "garmen"},
+		"th": {"เสื้อผ้า"},
+		"vi": {"quần áo"},
+		"zh": {"服装"},
+	},
+	"衣服": {
+		"en": {"clothes", "garment"},
+		"id": {"pakaian"},
+		"zh": {"衣服"},
+	},
+	"鞋子": {
+		"en": {"shoes", "footwear"},
+		"id": {"sepatu"},
+		"th": {"รองเท้า"},
+		"vi": {"giày"},
+		"zh": {"鞋子"},
+	},
+	"鞋": {
+		"en": {"shoes", "footwear"},
+		"id": {"sepatu"},
+		"zh": {"鞋"},
+	},
+}
+
+var switchgearTerms = productLangTerms{
+	"en": {"switchgear", "distribution board", "electrical panel"},
+	"id": {"panel listrik", "lemari listrik", "panel distribusi", "listrik"},
+	"th": {"ตู้ไฟฟ้า", "สวิตช์เกียร์"},
+	"vi": {"tủ điện", "tủ phân phối"},
+	"ms": {"papan suis", "switchgear"},
+	"zh": {"配电柜", "配电箱"},
 }
 
 const maxLocalTerms = 8
+
+func lookupGlossary(keyword string) productLangTerms {
+	key := foldSearchText(keyword)
+	if key == "" {
+		return nil
+	}
+	if entry := productGlossary[key]; entry != nil {
+		return entry
+	}
+	best := ""
+	for k := range productGlossary {
+		if len(k) < 2 || !strings.Contains(key, k) {
+			continue
+		}
+		if len(k) > len(best) {
+			best = k
+		}
+	}
+	if best == "" {
+		return nil
+	}
+	return productGlossary[best]
+}
 
 // LocalSearchTerms expands a product keyword into phrases locals actually type.
 // It always keeps the original keyword and adds English + the target-country language.
@@ -112,7 +214,7 @@ func LocalSearchTerms(keyword, country string) []string {
 
 	lang := LangForCountry(country)
 	out := []string{keyword}
-	entry := productGlossary[foldSearchText(keyword)]
+	entry := lookupGlossary(keyword)
 	if entry != nil {
 		out = append(out, entry["en"]...)
 		if lang != "" && lang != "en" {
@@ -125,11 +227,11 @@ func LocalSearchTerms(keyword, country string) []string {
 		out = append(out, keyword)
 	}
 
-	return clipTerms(uniqueFoldedStrings(out), maxLocalTerms)
+	return orderTermsForMarket(clipTerms(uniqueFoldedStrings(out), maxLocalTerms), country)
 }
 
 func glossaryAliases(keyword string) []string {
-	entry := productGlossary[foldSearchText(keyword)]
+	entry := lookupGlossary(keyword)
 	if entry == nil {
 		return nil
 	}
@@ -139,6 +241,27 @@ func glossaryAliases(keyword string) []string {
 	}
 
 	return uniqueFoldedStrings(out)
+}
+
+// orderTermsForMarket puts English/local phrases first when the user picked
+// an overseas market, so Facebook/LinkedIn dorks do not lead with Chinese.
+func orderTermsForMarket(terms []string, country string) []string {
+	code := LookupCountry(country).Code
+	if code == "" || code == "CN" || len(terms) < 2 {
+		return terms
+	}
+	var local, cjk []string
+	for _, term := range terms {
+		if hasCJK(term) {
+			cjk = append(cjk, term)
+		} else {
+			local = append(local, term)
+		}
+	}
+	if len(local) == 0 {
+		return terms
+	}
+	return append(local, cjk...)
 }
 
 func localIntentWords(lang, role string) []string {

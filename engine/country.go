@@ -122,9 +122,12 @@ var countryPlaceAliases = map[string]string{
 	"dubai": "AE", "abu dhabi": "AE", "riyadh": "SA",
 	"mumbai": "IN", "delhi": "IN", "bangalore": "IN",
 	"jakarta": "ID", "surabaya": "ID", "bandung": "ID", "medan": "ID", "denpasar": "ID", "雅加达": "ID",
+	"印尼": "ID", "indonesia": "ID", "indonesian": "ID",
 	"hanoi": "VN", "ho chi minh": "VN", "saigon": "VN", "da nang": "VN", "河内": "VN", "胡志明": "VN", "岘港": "VN",
+	"越南":      "VN",
 	"bangkok": "TH", "chiang mai": "TH", "pattaya": "TH", "phuket": "TH", "曼谷": "TH", "清迈": "TH",
 	"kuala lumpur": "MY", "selangor": "MY", "johor": "MY", "penang": "MY",
+	"马来": "MY", "大马": "MY",
 	"phnom penh": "KH", "siem reap": "KH", "金边": "KH", "暹粒": "KH", "cambodia": "KH",
 	"vientiane": "LA", "万象": "LA", "laos": "LA",
 	"yangon": "MM", "mandalay": "MM", "仰光": "MM", "myanmar": "MM", "burma": "MM",
@@ -260,12 +263,68 @@ func inferHitCountry(hit Hit, selected string) (code, label string) {
 		return c.Code, c.Label
 	}
 
-	sel := LookupCountry(selected)
-	if sel.Code != "" {
-		return sel.Code, sel.Label
-	}
-
 	return "", ""
+}
+
+// SplitKeywordCountry peels a leading/trailing market name out of the keyword
+// ("印尼配电柜" → 配电柜 + ID). An explicit picker country wins.
+func SplitKeywordCountry(keyword, selected string) (clean, country string) {
+	keyword = NormalizeKeyword(keyword)
+	country = LookupCountry(selected).Code
+	if keyword == "" {
+		return "", country
+	}
+	folded := foldSearchText(keyword)
+	for _, tok := range countryTokenList() {
+		if tok.token == "" || !countryTokenMatches(folded, tok.token) {
+			continue
+		}
+		rest := stripCountryToken(keyword, tok.token)
+		rest = NormalizeKeyword(rest)
+		if rest == "" || foldSearchText(keyword) == tok.token {
+			if country == "" {
+				country = tok.code
+			}
+			return "", country
+		}
+		if country == "" {
+			country = tok.code
+		}
+		return rest, country
+	}
+	return keyword, country
+}
+
+func stripCountryToken(keyword, token string) string {
+	folded := foldSearchText(keyword)
+	tok := foldSearchText(token)
+	if tok == "" || !strings.Contains(folded, tok) {
+		return keyword
+	}
+	// Rebuild by cutting the same rune window from the original string.
+	src := []rune(keyword)
+	foldRunes := []rune(foldSearchText(string(src)))
+	tokRunes := []rune(tok)
+	if len(foldRunes) != len(src) {
+		return strings.ReplaceAll(folded, tok, " ")
+	}
+	for i := 0; i+len(tokRunes) <= len(foldRunes); i++ {
+		if string(foldRunes[i:i+len(tokRunes)]) != tok {
+			continue
+		}
+		if !hasCJK(tok) {
+			if i > 0 && isCountryWordChar(foldRunes[i-1]) {
+				continue
+			}
+			if i+len(tokRunes) < len(foldRunes) && isCountryWordChar(foldRunes[i+len(tokRunes)]) {
+				continue
+			}
+		}
+		out := append([]rune{}, src[:i]...)
+		out = append(out, src[i+len(tokRunes):]...)
+		return string(out)
+	}
+	return keyword
 }
 
 func countryBonus(hit Hit, selected string) int {

@@ -118,6 +118,7 @@ type Hit struct {
 type Result struct {
 	Keyword    string    `json:"keyword"`
 	Kind       string    `json:"kind"`
+	Country    string    `json:"country,omitempty"`
 	Hits       []Hit     `json:"hits"`
 	Warnings   []string  `json:"warnings,omitempty"`
 	Sources    []string  `json:"sources"`

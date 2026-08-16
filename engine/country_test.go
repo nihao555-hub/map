@@ -100,7 +100,30 @@ func TestInferHitCountry(t *testing.T) {
 		Platform: PlatformFacebook,
 		Name:     "LED Buyer",
 	}, "MY")
-	if code != "MY" || label != "马来西亚" {
-		t.Fatalf("selected fallback %s %s", code, label)
+	if code != "" || label != "" {
+		t.Fatalf("must not stamp selected country on unlabeled hit: %s %s", code, label)
+	}
+}
+
+func TestSplitKeywordCountry(t *testing.T) {
+	kw, cc := SplitKeywordCountry("印尼配电柜", "")
+	if kw != "配电柜" || cc != "ID" {
+		t.Fatalf("印尼配电柜 -> %q %q", kw, cc)
+	}
+	kw, cc = SplitKeywordCountry("配电柜", "ID")
+	if kw != "配电柜" || cc != "ID" {
+		t.Fatalf("picker wins -> %q %q", kw, cc)
+	}
+	kw, cc = SplitKeywordCountry("Indonesia switchgear", "")
+	if kw != "switchgear" || cc != "ID" {
+		t.Fatalf("Indonesia switchgear -> %q %q", kw, cc)
+	}
+	kw, cc = SplitKeywordCountry("印尼", "")
+	if kw != "" || cc != "ID" {
+		t.Fatalf("country-only -> %q %q", kw, cc)
+	}
+	kw, cc = SplitKeywordCountry("LED灯", "")
+	if kw != "LED灯" || cc != "" {
+		t.Fatalf("no country -> %q %q", kw, cc)
 	}
 }

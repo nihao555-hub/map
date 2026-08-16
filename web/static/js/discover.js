@@ -109,8 +109,17 @@
     const el = document.getElementById("country");
     if (!el) return;
     el.addEventListener("change", function () {
+      setCountryValue(el.value);
+      applyMarketPlatforms();
       if (keyword.value) doSearch(keyword.value);
     });
+    const landing = document.getElementById("landing-country");
+    if (landing) {
+      landing.addEventListener("change", function () {
+        setCountryValue(landing.value);
+        applyMarketPlatforms();
+      });
+    }
   }
 
   function fillCountrySelect(list) {
@@ -119,8 +128,38 @@
       const label = c.label || code || "不限";
       return '<option value="' + escapeAttr(code) + '">' + escapeHtml(label) + "</option>";
     }).join("");
-    const el = document.getElementById("country");
-    if (el) el.innerHTML = html;
+    ["country", "landing-country"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    });
+  }
+
+  function setCountryValue(code) {
+    code = String(code || "").toUpperCase();
+    ["country", "landing-country"].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const has = Array.prototype.some.call(el.options, function (o) { return o.value === code; });
+      el.value = has ? code : "";
+    });
+  }
+
+  const CN_PLATFORMS = { douyin: 1, xiaohongshu: 1, kuaishou: 1, weibo: 1, bilibili: 1 };
+
+  function applyMarketPlatforms() {
+    const cc = selectedCountry();
+    const chips = document.querySelectorAll("#platform-group .plat-chip");
+    if (!chips.length) return;
+    chips.forEach(function (el) {
+      const id = el.getAttribute("data-platform");
+      if (!cc || cc === "CN") {
+        return;
+      }
+      if (CN_PLATFORMS[id]) {
+        el.classList.remove("is-on");
+      }
+    });
+    updatePlatCount();
   }
 
   function loadCountries() {
@@ -163,11 +202,14 @@
       ev.preventDefault();
       const lk = document.getElementById("landing-keyword");
       const lp = document.getElementById("landing-precise");
+      const lc = document.getElementById("landing-country");
       if (lk) keyword.value = lk.value;
+      if (lc) setCountryValue(lc.value);
       if (lp) {
         const p = document.getElementById("precise");
         if (p) p.checked = lp.checked;
       }
+      applyMarketPlatforms();
       showResultsWorkbench();
       doSearch(keyword.value);
     });
@@ -366,6 +408,7 @@
         }
         catalog = out.j.platforms;
         renderChips(catalog);
+        applyMarketPlatforms();
       })
       .catch(function () { toast("无法连接搜索引擎"); });
   }
@@ -471,17 +514,18 @@
   }
 
   function applyDiscoverHits(data, kw) {
+    if (data && data.country) {
+      setCountryValue(data.country);
+    }
+    if (data && data.keyword && keyword && data.keyword !== keyword.value) {
+      keyword.value = data.keyword;
+      const lk = document.getElementById("landing-keyword");
+      if (lk) lk.value = data.keyword;
+    }
     lastHits = (data.hits || []).filter(isHomepageHit);
     if (mode === "marketing") {
       const want = selectedChannel();
       lastHits = lastHits.filter(function (h) { return !want || h.channel === want; });
-    }
-    if (isPrecise()) {
-      const needle = kw.toLowerCase();
-      lastHits = lastHits.filter(function (h) {
-        const blob = [h.name, h.handle, h.title, h.snippet, h.contact, h.homepage_url].join(" ").toLowerCase();
-        return blob.indexOf(needle) !== -1;
-      });
     }
     if (page > pageCount()) page = 1;
     const actions = document.getElementById("market-actions");
@@ -696,7 +740,7 @@
         ? "精确模式下没有命中，可关掉「精确」或换更具体的词再搜。"
         : (selectedRole() === "seller"
           ? "没有命中公开卖家主页。可换更具体的商品词，或勾选抖音、小红书后再搜。"
-          : "没有命中公开采购商主页。已按目标国语言展开检索词。公开索引不是企业库，一个国家几千家不会都出现在 Facebook/LinkedIn 第一页。");
+          : "没有命中该国公开采购商主页。可换更具体的中文品类或当地公司名，并确认已选国家。");
       foot.textContent = "";
       updatePager();
       results.innerHTML = "";

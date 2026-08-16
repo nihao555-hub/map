@@ -225,7 +225,7 @@ func TestPublicSearchQueriesAppendsCountry(t *testing.T) {
 	if !containsString(got, "site:facebook.com LED light Malaysia") {
 		t.Fatalf("missing english alias %+v", got)
 	}
-	if !containsString(got, "site:facebook.com LED灯 Malaysia") {
+	if !containsString(got, "site:facebook.com LED lighting Malaysia") {
 		t.Fatalf("missing facebook geo %+v", got)
 	}
 	for _, q := range qs {
@@ -243,7 +243,7 @@ func TestPublicSearchQueriesCJKThailandUsesPowerTools(t *testing.T) {
 		"site:facebook.com 电动工具",
 		"site:facebook.com power tools Thailand",
 		"site:facebook.com เครื่องมือไฟฟ้า",
-		"site:linkedin.com/company 电动工具 importer Thailand",
+		"site:linkedin.com/company power tools importer Thailand",
 	} {
 		if !containsString(got, want) {
 			t.Fatalf("missing %q in %+v", want, got)

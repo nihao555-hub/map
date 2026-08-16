@@ -293,7 +293,7 @@ func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]
 	}
 	engGeo := CountryQueryToken(country, false)
 	localGeo := CountryQueryToken(country, true)
-	terms = clipTerms(uniqueFoldedStrings(append([]string{keyword}, terms...)), publicQueryTermCap)
+	terms = orderTermsForMarket(clipTerms(uniqueFoldedStrings(append([]string{keyword}, terms...)), publicQueryTermCap), country)
 	if len(terms) == 0 || keyword == "" {
 		return out
 	}
