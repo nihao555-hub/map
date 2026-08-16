@@ -72,7 +72,7 @@ func parseWikidataCompanies(raw []byte, keyword, country string, wanted map[stri
 	out := make([]Hit, 0, len(doc.Results.Bindings))
 	for _, row := range doc.Results.Bindings {
 		name := strings.TrimSpace(row["itemLabel"].Value)
-		if name == "" || isGenericProductName(name, keyword) {
+		if name == "" || isGenericProductName(name, keyword) || looksLikeWikidataNonCompany(name) {
 			continue
 		}
 		cc, label := inferCountryFromText(row["countryLabel"].Value, country)
@@ -107,8 +107,8 @@ func parseWikidataCompanies(raw []byte, keyword, country string, wanted map[stri
 		addSocial(row["linkedin"].Value, "https://www.linkedin.com/company/")
 		addSocial(row["instagram"].Value, "https://www.instagram.com/")
 
-		home := firstNonEmpty(row["website"].Value, row["item"].Value)
-		if home == "" {
+		home := strings.TrimSpace(row["website"].Value)
+		if home == "" || strings.Contains(home, "wikidata.org") {
 			continue
 		}
 		out = append(out, Hit{
@@ -128,4 +128,17 @@ func parseWikidataCompanies(raw []byte, keyword, country string, wanted map[stri
 		})
 	}
 	return out, nil
+}
+
+func looksLikeWikidataNonCompany(name string) bool {
+	n := strings.ToLower(name)
+	for _, tok := range []string{
+		"apparatus", "device", "method", "treatment", "substrate",
+		"patent", "therapy", "composition", "lightpad", "illumination device",
+	} {
+		if strings.Contains(n, tok) {
+			return true
+		}
+	}
+	return false
 }

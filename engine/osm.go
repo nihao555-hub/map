@@ -12,11 +12,37 @@ import (
 
 const (
 	defaultOverpassURL = "https://overpass-api.de/api/interpreter"
-	osmHitCap          = 1200
+	osmHitCap          = 80
+	osmBoxCap          = 12
 )
+
+type osmBox struct {
+	country string
+	south   float64
+	west    float64
+	north   float64
+	east    float64
+}
+
+// City boxes keep public Overpass queries small enough to finish.
+var osmShopBoxes = []osmBox{
+	{"DE", 52.35, 13.10, 52.68, 13.77},     // Berlin
+	{"DE", 48.05, 11.40, 48.25, 11.72},     // Munich
+	{"DE", 53.45, 9.85, 53.65, 10.15},      // Hamburg
+	{"US", 40.65, -74.10, 40.85, -73.85},   // New York
+	{"US", 33.90, -118.50, 34.20, -118.10}, // Los Angeles
+	{"GB", 51.40, -0.25, 51.60, 0.05},      // London
+	{"FR", 48.80, 2.20, 48.95, 2.45},       // Paris
+	{"IT", 45.40, 9.10, 45.55, 9.30},       // Milan
+	{"CN", 31.10, 121.30, 31.40, 121.60},   // Shanghai
+	{"MY", 3.00, 101.50, 3.30, 101.85},     // Kuala Lumpur
+	{"TH", 13.60, 100.40, 13.90, 100.70},   // Bangkok
+	{"NL", 52.30, 4.80, 52.45, 5.00},       // Amsterdam
+}
 
 var overpassMirrors = []string{
 	defaultOverpassURL,
+	"https://overpass.openstreetmap.fr/api/interpreter",
 	"https://overpass.kumi.systems/api/interpreter",
 }
 
@@ -67,28 +93,48 @@ func (c *Client) searchOSMShops(ctx context.Context, keyword, country string, wa
 	if len(tags) == 0 {
 		return nil, nil
 	}
-	raw, err := c.fetchOverpass(ctx, overpassShopQuery(tags, country))
-	if err != nil {
-		return nil, err
+	var (
+		out  []Hit
+		last error
+	)
+	for _, box := range osmQueryBoxes(country) {
+		if ctx.Err() != nil {
+			break
+		}
+		raw, err := c.fetchOverpass(ctx, overpassShopQuery(tags, box))
+		if err != nil {
+			last = err
+			continue
+		}
+		out = append(out, parseOverpassShops(raw, keyword, box.country, wanted)...)
 	}
-	return parseOverpassShops(raw, keyword, country, wanted), nil
+	if len(out) == 0 {
+		return nil, last
+	}
+	return out, nil
 }
 
-func overpassShopQuery(tags []string, country string) string {
-	var b strings.Builder
-	b.WriteString("[out:json][timeout:25];\n")
-	area := strings.ToUpper(strings.TrimSpace(LookupCountry(country).Code))
-	if area != "" {
-		fmt.Fprintf(&b, `area["ISO3166-1"=%q][admin_level=2]->.a;`, area)
-		b.WriteByte('\n')
-	}
-	b.WriteString("(\n")
-	for _, tag := range tags {
-		if area != "" {
-			fmt.Fprintf(&b, `  node["shop"=%q]["name"](area.a);`+"\n", tag)
-		} else {
-			fmt.Fprintf(&b, `  node["shop"=%q]["name"];`+"\n", tag)
+func osmQueryBoxes(country string) []osmBox {
+	want := strings.ToUpper(strings.TrimSpace(LookupCountry(country).Code))
+	out := make([]osmBox, 0, osmBoxCap)
+	for _, box := range osmShopBoxes {
+		if want != "" && box.country != want {
+			continue
 		}
+		out = append(out, box)
+		if len(out) >= osmBoxCap {
+			break
+		}
+	}
+	return out
+}
+
+func overpassShopQuery(tags []string, box osmBox) string {
+	var b strings.Builder
+	b.WriteString("[out:json][timeout:10];\n(\n")
+	for _, tag := range tags {
+		fmt.Fprintf(&b, `  node["shop"=%q]["name"](%0.2f,%0.2f,%0.2f,%0.2f);`+"\n",
+			tag, box.south, box.west, box.north, box.east)
 	}
 	b.WriteString(");\n")
 	fmt.Fprintf(&b, "out tags %d;\n", osmHitCap)

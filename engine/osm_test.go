@@ -59,6 +59,13 @@ func TestMergeHitsKeepsOSMCategoryShop(t *testing.T) {
 	}
 }
 
+func TestOverpassShopQueryUsesCityBox(t *testing.T) {
+	q := overpassShopQuery([]string{"lighting"}, osmShopBoxes[0])
+	if !strings.Contains(q, `["shop"="lighting"]`) || !strings.Contains(q, "52.35") {
+		t.Fatalf("query=%s", q)
+	}
+}
+
 func TestSearchOSMShopsFromOverpass(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -73,11 +80,11 @@ func TestSearchOSMShopsFromOverpass(t *testing.T) {
 	defer srv.Close()
 
 	c := &Client{HTTP: srv.Client(), OverpassURL: srv.URL, DisablePublic: true}
-	hits, err := c.searchOSMShops(context.Background(), "LED灯", "", nil)
+	hits, err := c.searchOSMShops(context.Background(), "LED灯", "DE", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hits) != 1 || hits[0].Name != "Opple Lighting Showroom" || hits[0].Platform != PlatformWebsite {
+	if len(hits) == 0 || hits[0].Name != "Opple Lighting Showroom" || hits[0].Platform != PlatformWebsite {
 		t.Fatalf("hits=%+v", hits)
 	}
 }
@@ -85,7 +92,8 @@ func TestSearchOSMShopsFromOverpass(t *testing.T) {
 func TestParseWikidataCompanies(t *testing.T) {
 	raw := []byte(`{"results":{"bindings":[
 		{"itemLabel":{"value":"Signify"},"website":{"value":"https://www.signify.com"},"facebook":{"value":"Signify"},"countryLabel":{"value":"Netherlands"}},
-		{"itemLabel":{"value":"LED"},"website":{"value":"https://example.com/led"}}
+		{"itemLabel":{"value":"LED"},"website":{"value":"https://example.com/led"}},
+		{"itemLabel":{"value":"LED lighting apparatus"},"website":{"value":"https://patents.example/led"}}
 	]}}`)
 	hits, err := parseWikidataCompanies(raw, "LED灯", "", map[string]bool{PlatformFacebook: true})
 	if err != nil {
@@ -93,7 +101,7 @@ func TestParseWikidataCompanies(t *testing.T) {
 	}
 	var sawWeb, sawFB bool
 	for _, h := range hits {
-		if h.Name == "LED" {
+		if h.Name == "LED" || strings.Contains(strings.ToLower(h.Name), "apparatus") {
 			t.Fatalf("generic LED leaked %+v", h)
 		}
 		if h.Name == "Signify" && h.Platform == PlatformWebsite {
