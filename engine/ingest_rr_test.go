@@ -84,6 +84,25 @@ func TestMergeWikidataGlobalSocialAndLEI(t *testing.T) {
 	}
 }
 
+func TestMergeWikidataGlobalSocialWebsite(t *testing.T) {
+	raw := []byte(`{"results":{"bindings":[{
+		"item":{"value":"http://www.wikidata.org/entity/Q123"},
+		"itemLabel":{"value":"Signify"},
+		"lei":{"value":"549300PARENT00000001"},
+		"cc":{"value":"NL"},
+		"val":{"value":"https://www.signify.com"}
+	}]}}`)
+	byQID := map[string]*Merchant{}
+	leiByQID := map[string]string{}
+	n := mergeWikidataGlobalSocial(byQID, leiByQID, raw, "", PlatformWebsite)
+	if n != 1 || byQID["Q123"] == nil || !strings.Contains(byQID["Q123"].Homepage, "signify.com") {
+		t.Fatalf("n=%d by=%+v", n, byQID)
+	}
+	if leiByQID["Q123"] != "549300PARENT00000001" {
+		t.Fatalf("lei=%v", leiByQID)
+	}
+}
+
 func TestWikidataGlobalSocialSPARQLShards(t *testing.T) {
 	q := wikidataGlobalSocialSPARQL("P2013", "s", 0)
 	if !strings.Contains(q, "P2013") || !strings.Contains(q, `STRSTARTS(LCASE(STR(?val)), "s")`) {

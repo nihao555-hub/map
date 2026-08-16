@@ -125,6 +125,15 @@ ingest-sea: ## dump extra Southeast Asia OSM cities + Wikidata companies
 ingest-lei-socials: ## attach Wikidata website/socials onto GLEIF rows by LEI
 	go run ./cmd/ingest-merchants -db webdata/merchants.db -lei-socials
 
+ingest-public-socials: ## ROR dump + Wikidata P856 + same-name copy onto GLEIF
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -public-socials -attach-only
+
+ingest-public-max: ## Wikidata global socials, OSM contact:*, GLEIF parent inherit, ROR
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -public-max
+
+ingest-rr-only: ## same-country copy + GLEIF Level 2 parent social inherit
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -rr-only
+
 enrich-merchants: ## fetch OSM official sites and probe missing social homepages
 	go run ./cmd/enrich-merchants -db webdata/merchants.db -workers 12
 

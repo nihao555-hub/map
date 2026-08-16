@@ -127,6 +127,11 @@ func (c *Client) ingestMaxPublic(ctx context.Context, dir *Directory, opt Ingest
 	if c != nil && strings.TrimSpace(c.WikidataURL) != "" {
 		stats = append(stats, c.ingestWikidataGlobalSocials(ctx, dir))
 	}
+	stats = append(stats, c.ingestPublicSocials(ctx, dir, IngestOptions{
+		PublicSocials: true,
+		AttachOnly:    true,
+		RORZip:        opt.RORZip,
+	})...)
 	if !opt.SkipOSM {
 		stats = append(stats, c.ingestOSMContacts(ctx, dir))
 	}

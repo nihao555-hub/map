@@ -14,12 +14,14 @@ var wikidataGlobalSocials = []struct {
 	prefix   string
 	platform string
 }{
+	{"P856", "", PlatformWebsite},
 	{"P2013", "https://www.facebook.com/", PlatformFacebook},
 	{"P2003", "https://www.instagram.com/", PlatformInstagram},
 	{"P4264", "https://www.linkedin.com/company/", PlatformLinkedIn},
 	{"P7085", "https://www.tiktok.com/@", PlatformTikTok},
 	{"P2397", "https://www.youtube.com/channel/", PlatformYouTube},
 	{"P2002", "https://x.com/", PlatformX},
+	{"P3836", "https://www.pinterest.com/", PlatformPinterest},
 }
 
 const (
@@ -200,13 +202,6 @@ func mergeWikidataGlobalSocial(byQID map[string]*Merchant, leiByQID map[string]s
 		if val == "" {
 			continue
 		}
-		if prefix != "" && !strings.Contains(val, "://") {
-			val = prefix + val
-		}
-		hit, ok := ParseSocialURL(val, name, "")
-		if !ok {
-			continue
-		}
 		m := byQID[qid]
 		if m == nil {
 			m = &Merchant{
@@ -226,6 +221,29 @@ func mergeWikidataGlobalSocial(byQID map[string]*Merchant, leiByQID map[string]s
 		}
 		if lei := strings.ToUpper(strings.TrimSpace(row["lei"].Value)); len(lei) >= 18 && len(lei) <= 20 {
 			leiByQID[qid] = lei
+		}
+		if platform == PlatformWebsite {
+			if strings.Contains(val, "wikidata.org") || !isRealHomepage(val) {
+				continue
+			}
+			if m.Homepage == "" || registryOnlyHomepage(m.Homepage) {
+				m.Homepage = val
+			}
+			m.Profiles = append(m.Profiles, Profile{
+				ExtID:    m.ExtID,
+				Platform: PlatformWebsite,
+				URL:      val,
+				Source:   "wikidata-social",
+			})
+			added++
+			continue
+		}
+		if prefix != "" && !strings.Contains(val, "://") {
+			val = prefix + val
+		}
+		hit, ok := ParseSocialURL(val, name, "")
+		if !ok {
+			continue
 		}
 		m.Profiles = append(m.Profiles, Profile{
 			ExtID:    m.ExtID,
