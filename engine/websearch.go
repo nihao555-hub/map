@@ -91,6 +91,8 @@ func isRateLimitedErr(err error) bool {
 
 func indexGap(name string) time.Duration {
 	switch name {
+	case "google":
+		return 700 * time.Millisecond
 	case "brave":
 		return 800 * time.Millisecond
 	case "duckduckgo":
@@ -164,7 +166,16 @@ func (c *Client) searchPublicProfiles(ctx context.Context, q Query, wanted map[s
 				return nil
 			}
 
-			batch, src, err := c.searchOneIndex(gctx, pq.query, pq.platform)
+			var (
+				batch []Hit
+				src   string
+				err   error
+			)
+			if pq.preferGoogle {
+				batch, src, err = c.searchOneIndexExtractOrder(gctx, pq.query, extractProfilesFromHTML, []string{"google", "bing", "duckduckgo", "brave"}, pq.platform)
+			} else {
+				batch, src, err = c.searchOneIndex(gctx, pq.query, pq.platform)
+			}
 			if err != nil {
 				return nil
 			}
@@ -207,8 +218,9 @@ func (c *Client) searchPublicProfiles(ctx context.Context, q Query, wanted map[s
 }
 
 type publicQuery struct {
-	platform string
-	query    string
+	platform     string
+	query        string
+	preferGoogle bool
 }
 
 var platformSearchDomain = map[string]string{
@@ -240,7 +252,7 @@ var publicSearchOrder = []string{
 }
 
 const (
-	maxPublicQueries   = 200
+	maxPublicQueries   = 240
 	publicQueryTermCap = 8
 )
 
@@ -306,6 +318,16 @@ func publicSearchQueriesTerms(keyword string, terms []string, wanted map[string]
 		}
 		seen[key] = true
 		out = append(out, publicQuery{platform: platform, query: query})
+	}
+
+	// 外贸大神公式优先：inurl/intitle、排除动态、官网露出的社媒链接。
+	for _, dq := range tradeGuruQueries(terms, wanted, country, role) {
+		key := dq.platform + "\t" + dq.query
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, dq)
 	}
 
 	intentExtra := map[string]bool{
@@ -613,7 +635,7 @@ func (c *Client) waitIndexCooldown(ctx context.Context) error {
 	}
 	now := time.Now()
 	var soonest time.Time
-	for _, until := range []*atomic.Int64{&c.ddgUntil, &c.bingUntil, &c.braveUntil} {
+	for _, until := range []*atomic.Int64{&c.ddgUntil, &c.bingUntil, &c.braveUntil, &c.googleUntil} {
 		t := time.Unix(0, until.Load())
 		if t.After(now) && (soonest.IsZero() || t.Before(soonest)) {
 			soonest = t
@@ -651,12 +673,16 @@ type indexAttempt struct {
 
 func indexAttempts(c *Client, names []string) []indexAttempt {
 	all := []indexAttempt{
+		{"google", c.fetchGoogle},
 		{"duckduckgo", c.fetchDuckDuckGo},
 		{"bing", c.fetchBing},
 		{"brave", c.fetchBrave},
 	}
 	filtered := make([]indexAttempt, 0, len(all))
 	for _, a := range all {
+		if a.name == "google" && c.googleSkipped() {
+			continue
+		}
 		if a.name == "brave" && c.braveSkipped() {
 			continue
 		}
@@ -722,6 +748,8 @@ func (c *Client) fetchIndexHTML(ctx context.Context, query string, names []strin
 
 func (c *Client) fetchIndexPage(ctx context.Context, name, query string, page int) ([]byte, error) {
 	switch name {
+	case "google":
+		return c.fetchGooglePage(ctx, query, page)
 	case "duckduckgo":
 		return c.fetchDuckDuckGoPage(ctx, query, page)
 	case "bing":
@@ -775,6 +803,35 @@ func (c *Client) fetchBravePage(ctx context.Context, query string, page int) ([]
 		rawURL += "&offset=" + strconv.Itoa(page*10)
 	}
 	return c.getHTMLReferer(ctx, rawURL, "https://search.brave.com/")
+}
+
+func (c *Client) fetchGoogle(ctx context.Context, query string) ([]byte, error) {
+	return c.fetchGooglePage(ctx, query, 0)
+}
+
+func (c *Client) fetchGooglePage(ctx context.Context, query string, page int) ([]byte, error) {
+	rawURL := "https://www.google.com/search?gbv=1&num=20&q=" + url.QueryEscape(query)
+	hl, gl := googleLocale(ctx, query)
+	if hl != "" {
+		rawURL += "&hl=" + hl
+	}
+	if gl != "" {
+		rawURL += "&gl=" + gl
+	}
+	if page > 0 {
+		rawURL += "&start=" + strconv.Itoa(page*10)
+	}
+	return c.getHTMLReferer(ctx, rawURL, "https://www.google.com/")
+}
+
+func googleLocale(ctx context.Context, query string) (hl, gl string) {
+	if hasCJK(query) {
+		return "zh-CN", "US"
+	}
+	if r := searchCountry(ctx); r.BingCC != "" {
+		return "en", r.BingCC
+	}
+	return "en", ""
 }
 
 func (c *Client) fetchBing(ctx context.Context, query string) ([]byte, error) {
@@ -867,7 +924,7 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 		addAnchors := func(sel *goquery.Selection) {
 			sel.Each(func(_ int, s *goquery.Selection) {
 				href, _ := s.Attr("href")
-				href = decodeBingRedirect(href)
+				href = decodeGoogleRedirect(decodeBingRedirect(href))
 				title := strings.TrimSpace(s.Text())
 				snippet := strings.TrimSpace(s.Parent().Text())
 				if len(snippet) > 240 {
@@ -877,7 +934,7 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 			})
 		}
 
-		cards := doc.Find("a.result__a, li.b_algo h2 a, #b_results h2 a")
+		cards := doc.Find("a.result__a, li.b_algo h2 a, #b_results h2 a, div#search a, div.g a, a[href*='/url?']")
 		addAnchors(cards)
 		addAnchors(doc.Find("a[href]"))
 		doc.Find("cite").Each(func(_ int, s *goquery.Selection) {
@@ -894,6 +951,12 @@ func extractProfilesFromHTML(raw []byte, source string) []Hit {
 
 	blob := html + "\n" + decoded
 	if targets := decodeBingRedirectsBlob(html); len(targets) > 0 {
+		blob += "\n" + strings.Join(targets, "\n")
+		for _, target := range targets {
+			add(ParseSocialURL(target, "", ""))
+		}
+	}
+	if targets := decodeGoogleRedirectsBlob(html); len(targets) > 0 {
 		blob += "\n" + strings.Join(targets, "\n")
 		for _, target := range targets {
 			add(ParseSocialURL(target, "", ""))
@@ -975,7 +1038,11 @@ func looksLikeChallenge(raw []byte) bool {
 		return true
 	}
 	if strings.Contains(s, "sorry, you have been rate limited") ||
-		strings.Contains(s, "too many requests made") {
+		strings.Contains(s, "too many requests made") ||
+		strings.Contains(s, "/sorry/") ||
+		strings.Contains(s, "google.com/sorry") ||
+		strings.Contains(s, "consent.google.com") ||
+		strings.Contains(s, "before you continue to google") {
 		return true
 	}
 	return false

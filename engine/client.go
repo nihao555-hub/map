@@ -30,10 +30,11 @@ const (
 	defaultFairCalendarURL = "https://raw.githubusercontent.com/LensmorOfficial/trade-show-calendar/main/data/trade_shows.json"
 	browserUA              = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
-	ddgCooldown   = 12 * time.Second
-	bingCooldown  = 10 * time.Second
-	braveCooldown = 15 * time.Second
-	maxCooldown   = 45 * time.Second
+	ddgCooldown    = 12 * time.Second
+	bingCooldown   = 10 * time.Second
+	braveCooldown  = 15 * time.Second
+	googleCooldown = 20 * time.Second
+	maxCooldown    = 45 * time.Second
 )
 
 // Client talks to public web indexes and cloned high-star OSS sidecars.
@@ -78,11 +79,12 @@ type Client struct {
 	// OverpassURL is the OpenStreetMap Overpass interpreter (shop POIs).
 	OverpassURL string
 	// MerchantDB is a local SQLite dump of OSM shops + GLEIF legal entities.
-	MerchantDB string
-	dir        *Directory
-	braveUntil atomic.Int64
-	ddgUntil   atomic.Int64
-	bingUntil  atomic.Int64
+	MerchantDB  string
+	dir         *Directory
+	braveUntil  atomic.Int64
+	ddgUntil    atomic.Int64
+	bingUntil   atomic.Int64
+	googleUntil atomic.Int64
 }
 
 // OptionsFromEnv wires sidecar base URLs.
@@ -236,8 +238,20 @@ func (c *Client) bingSkipped() bool {
 	return c != nil && cooldownActive(&c.bingUntil)
 }
 
+func (c *Client) markGoogleLimited() {
+	if c != nil {
+		setCooldown(&c.googleUntil, googleCooldown)
+	}
+}
+
+func (c *Client) googleSkipped() bool {
+	return c != nil && cooldownActive(&c.googleUntil)
+}
+
 func (c *Client) markIndexLimited(name string) {
 	switch name {
+	case "google":
+		c.markGoogleLimited()
 	case "duckduckgo":
 		c.markDDGLimited()
 	case "bing":
@@ -268,6 +282,11 @@ func (c *Client) markHostLimited(host string, retryAfter time.Duration) {
 			retryAfter = bingCooldown
 		}
 		setCooldown(&c.bingUntil, retryAfter)
+	case strings.Contains(h, "google"):
+		if retryAfter <= 0 {
+			retryAfter = googleCooldown
+		}
+		setCooldown(&c.googleUntil, retryAfter)
 	}
 }
 

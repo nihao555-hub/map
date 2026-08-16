@@ -13,7 +13,7 @@ import (
 
 const (
 	maxLimit             = 20000
-	messagePolicyNote    = "系统不会代发。一家公司尽量挂上已验证存在的官网和社媒主页：本地库（OSM 全品类店 + GLEIF）先出主体，再抓官网外链并探活。公开索引仍会补漏，但不是外贸通那种一次几万条的企业库。"
+	messagePolicyNote    = "系统不会代发。一家公司尽量挂上已验证存在的官网和社媒主页：本地库先出主体，公开索引用外贸常用 Google 公式（inurl/intitle、排除动态、官网露出的 facebook.com/）补漏。不是外贸通那种一次几万条的企业库。"
 	marketingPolicyNote  = "系统不会代发。"
 	customsPolicyNote    = "系统不会代发。逐票企业来自多家公开海关源的实时检索（美国海关海运提单，Kirchner / ImportYeti）；金额和国家口径来自联合国 Comtrade 与世界银行。不是外贸通那种全球企业库，也没有联系人穿透。"
 	exhibitionPolicyNote = "系统不会代发。展会按关键词实时查 EventsEye（全球约 1.2 万场）、AUMA、Wikidata 和开源展会日历；参展商名单来自展会官网和公开名录，不是 50 万采购商库，也不做名片 OCR。"
