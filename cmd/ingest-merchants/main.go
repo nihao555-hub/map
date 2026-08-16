@@ -23,12 +23,16 @@ func main() {
 	publicSocials := flag.Bool("public-socials", false, "用 ROR / Wikidata 官网 / 同名同国已验证主页给 GLEIF 补主页")
 	maxPublic := flag.Bool("public-max", false, "把剩下的公开源用尽：Wikidata 全量社媒、OSM contact:*、GLEIF 父子继承")
 	rrOnly := flag.Bool("rr-only", false, "只做同名同国对拷 + GLEIF Level 2 父子继承")
-	moreSocials := flag.Bool("more-socials", false, "补还没跑过的公开源：拆开 OSM 框、Wikidata 母公司、SEC 官网、已有官网刮社媒")
+	moreSocials := flag.Bool("more-socials", false, "补还没跑过的公开源：拆开 OSM 框、Wikidata 母公司、SEC 官网、已有官网刮社媒、Sherlock 同名探测")
 	attachOnly := flag.Bool("attach-only", false, "只做 ROR/P856/同名对拷，不再拉 Wikidata 国家公司")
 	rorZip := flag.String("ror-zip", "", "已下载的 ROR dump zip；空则自动下载")
 	rrZip := flag.String("rr-zip", "", "已下载的 GLEIF Relationship csv.zip；空则自动下载")
 	websiteLimit := flag.Int("website-limit", 0, "官网刮社媒最多抓多少家，0=默认 30000")
 	websiteWorkers := flag.Int("website-workers", 16, "官网刮社媒并发数")
+	sherlock := flag.Bool("sherlock", false, "用 Sherlock 站点表：官网/已有 handle 探姐妹社媒，独特法律名需 LinkedIn 公司页或双平台")
+	sherlockLimit := flag.Int("sherlock-limit", 0, "Sherlock 已有官网/社媒最多探多少家，0=默认 15000")
+	sherlockNameLimit := flag.Int("sherlock-names", 0, "Sherlock 独特法律名最多探多少家，0=默认 8000")
+	sherlockWorkers := flag.Int("sherlock-workers", 12, "Sherlock 探测并发")
 	sea := flag.Bool("sea", false, "只补东南亚城市店铺 + Wikidata 公司")
 	osmLimit := flag.Int("osm-limit", 2000, "每个城市最多拉多少家店")
 	flag.Parse()
@@ -39,28 +43,32 @@ func main() {
 	client := engine.OptionsFromEnv()
 	if client.HTTP != nil {
 		client.HTTP.Timeout = 90 * time.Second
-		if *publicSocials || *maxPublic || *moreSocials {
+		if *publicSocials || *maxPublic || *moreSocials || *sherlock {
 			client.HTTP.Timeout = 180 * time.Second
 		}
 	}
 	opt := engine.IngestOptions{
-		DBPath:          *db,
-		GLEIFZip:        *gleifZip,
-		GLEIFLimit:      *gleifLimit,
-		SkipGLEIF:       *skipGLEIF,
-		SkipOSM:         *skipOSM,
-		SkipWikidata:    *skipWikidata,
-		PublicSocials:   *publicSocials,
-		MaxPublic:       *maxPublic,
-		RROnly:          *rrOnly,
-		MoreSocials:     *moreSocials,
-		AttachOnly:      *attachOnly,
-		RORZip:          *rorZip,
-		RRZip:           *rrZip,
-		WebsiteLimit:    *websiteLimit,
-		WebsiteWorkers:  *websiteWorkers,
-		Overpass:        !*skipOSM,
-		OSMLimitPerCity: *osmLimit,
+		DBPath:            *db,
+		GLEIFZip:          *gleifZip,
+		GLEIFLimit:        *gleifLimit,
+		SkipGLEIF:         *skipGLEIF,
+		SkipOSM:           *skipOSM,
+		SkipWikidata:      *skipWikidata,
+		PublicSocials:     *publicSocials,
+		MaxPublic:         *maxPublic,
+		RROnly:            *rrOnly,
+		MoreSocials:       *moreSocials,
+		AttachOnly:        *attachOnly,
+		RORZip:            *rorZip,
+		RRZip:             *rrZip,
+		WebsiteLimit:      *websiteLimit,
+		WebsiteWorkers:    *websiteWorkers,
+		Sherlock:          *sherlock,
+		SherlockLimit:     *sherlockLimit,
+		SherlockNameLimit: *sherlockNameLimit,
+		SherlockWorkers:   *sherlockWorkers,
+		Overpass:          !*skipOSM,
+		OSMLimitPerCity:   *osmLimit,
 	}
 	if *sea {
 		opt.SkipGLEIF = true
@@ -100,6 +108,16 @@ func main() {
 		opt.Overpass = false
 		opt.SkipWikidata = true
 		opt.RROnly = true
+	}
+	if *sherlock {
+		opt.SkipGLEIF = true
+		opt.SkipOSM = true
+		opt.Overpass = false
+		opt.SkipWikidata = true
+		opt.PublicSocials = false
+		opt.MaxPublic = false
+		opt.MoreSocials = false
+		opt.Sherlock = true
 	}
 	if *moreSocials {
 		opt.SkipGLEIF = true

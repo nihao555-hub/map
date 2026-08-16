@@ -297,7 +297,7 @@ func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 				"stars":   "8.9万/3.6万",
 				"license": "MIT",
 				"pushed":  "2026",
-				"use":     "Sherlock 按用户名扫 400+ 站（你说的「三百多个社媒」就是它）；Maigret 是它的加强版，3000+ 站。只对官网域名/已有社媒 handle 做同名探测，不拿 340 万法律名去撞 Chess/Spotify",
+				"use":     "Sherlock 站点表：官网域名和已有社媒 handle 探姐妹主页；足够独特且全球唯一的法律名还要能对上 LinkedIn 公司页或两个核心平台。不拿短名/重名去撞 400 站",
 			},
 		},
 		"skipped": []map[string]string{

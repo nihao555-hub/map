@@ -26,25 +26,29 @@ func (s IngestStats) String() string {
 
 // IngestOptions controls a full merchant dump (all shop types, not one category).
 type IngestOptions struct {
-	DBPath          string
-	GLEIFZip        string
-	GLEIFLimit      int
-	SkipGLEIF       bool
-	SkipOSM         bool
-	SkipWikidata    bool
-	WikidataLEI     bool
-	PublicSocials   bool
-	AttachOnly      bool
-	MaxPublic       bool
-	RROnly          bool
-	MoreSocials     bool
-	RORZip          string
-	RRZip           string
-	Overpass        bool
-	OSMBoxes        []ingestBox
-	OSMLimitPerCity int
-	WebsiteLimit    int
-	WebsiteWorkers  int
+	DBPath            string
+	GLEIFZip          string
+	GLEIFLimit        int
+	SkipGLEIF         bool
+	SkipOSM           bool
+	SkipWikidata      bool
+	WikidataLEI       bool
+	PublicSocials     bool
+	AttachOnly        bool
+	MaxPublic         bool
+	RROnly            bool
+	MoreSocials       bool
+	RORZip            string
+	RRZip             string
+	Overpass          bool
+	OSMBoxes          []ingestBox
+	OSMLimitPerCity   int
+	WebsiteLimit      int
+	WebsiteWorkers    int
+	Sherlock          bool
+	SherlockLimit     int
+	SherlockNameLimit int
+	SherlockWorkers   int
 }
 
 // DefaultIngestOptions dumps GLEIF Golden Copy plus OSM shops in major cities.
@@ -119,6 +123,9 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	if opt.MoreSocials {
 		stats = append(stats, c.ingestMoreSocials(ctx, dir, opt)...)
 	}
+	if opt.Sherlock {
+		stats = append(stats, c.ingestSherlock(ctx, dir, opt))
+	}
 	return stats, nil
 }
 
@@ -167,6 +174,7 @@ func (c *Client) ingestMoreSocials(ctx context.Context, dir *Directory, opt Inge
 	}
 	stats = append(stats, c.ingestSECTickers(ctx, dir))
 	stats = append(stats, c.ingestWebsiteSocials(ctx, dir, opt))
+	stats = append(stats, c.ingestSherlock(ctx, dir, opt))
 	stats = append(stats, dir.attachUniqueNameSocials(ctx))
 	stats = append(stats, c.ingestGLEIFRelationships(ctx, dir, opt.RRZip))
 	return stats

@@ -141,6 +141,10 @@ ingest-more-socials: ## split OSM boxes, Wikidata parent, SEC websites, scrape o
 		-rr-zip /tmp/merchant-ingest/gleif-rr.csv.zip \
 		-website-workers 16
 
+ingest-sherlock: ## Sherlock site list on official handles + distinctive unique names
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -sherlock \
+		-sherlock-workers 12
+
 enrich-merchants: ## fetch OSM official sites and probe missing social homepages
 	go run ./cmd/enrich-merchants -db webdata/merchants.db -workers 12
 
