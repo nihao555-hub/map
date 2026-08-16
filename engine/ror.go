@@ -15,7 +15,7 @@ import (
 
 const (
 	// DefaultRORDump is the latest CC0 ROR registry dump (Zenodo, 2026-08-03).
-	DefaultRORDump = "https://zenodo.org/records/16736416/files/v2.11-2026-08-03-ror-data.zip?download=1"
+	DefaultRORDump = "https://zenodo.org/api/records/21773148/files/v2.11-2026-08-03-ror-data.zip/content"
 	rorUserAgent   = "google-maps-scraper-engine/1.0 (https://github.com/gosom/google-maps-scraper)"
 )
 
