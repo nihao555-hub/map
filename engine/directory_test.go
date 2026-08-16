@@ -144,6 +144,52 @@ func TestListUnverifiedProfiles(t *testing.T) {
 	}
 }
 
+func TestParseWikidataLEIMerchants(t *testing.T) {
+	raw := []byte(`{"results":{"bindings":[
+		{"lei":{"value":"001GPB6A9XPE8XJICC14"},
+		 "itemLabel":{"value":"Signify"},
+		 "website":{"value":"https://www.signify.com"},
+		 "facebook":{"value":"Signify"}}
+	]}}`)
+	rows := parseWikidataLEIMerchants(raw, "NL")
+	if len(rows) != 1 || rows[0].ExtID != "gleif:001GPB6A9XPE8XJICC14" || !strings.Contains(rows[0].Homepage, "signify.com") {
+		t.Fatalf("%+v", rows)
+	}
+	if len(rows[0].Profiles) == 0 {
+		t.Fatalf("missing facebook %+v", rows[0])
+	}
+}
+
+func TestAttachExistingUpdatesGLEIF(t *testing.T) {
+	dir, err := OpenDirectory(filepath.Join(t.TempDir(), "m.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if _, err := dir.InsertBatch(context.Background(), []Merchant{
+		{ExtID: "gleif:001GPB6A9XPE8XJICC14", Source: "gleif", Name: "Signify Holding B.V.", Country: "NL", Homepage: "https://search.gleif.org/#/record/001GPB6A9XPE8XJICC14"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	n, p, err := dir.attachExisting(context.Background(), parseWikidataLEIMerchants([]byte(`{"results":{"bindings":[
+		{"lei":{"value":"001GPB6A9XPE8XJICC14"},
+		 "itemLabel":{"value":"Signify"},
+		 "website":{"value":"https://www.signify.com"},
+		 "linkedin":{"value":"signify"}}
+	]}}`), "NL"))
+	if err != nil || n != 1 || p == 0 {
+		t.Fatalf("n=%d p=%d err=%v", n, p, err)
+	}
+	hits := merchantsToHits([]Merchant{{
+		ExtID: "gleif:001GPB6A9XPE8XJICC14", Source: "gleif", Name: "Signify Holding B.V.",
+		Homepage: "https://www.signify.com",
+		Profiles: []Profile{{ExtID: "gleif:001GPB6A9XPE8XJICC14", Platform: PlatformLinkedIn, URL: "https://www.linkedin.com/company/signify", Verified: true}},
+	}})
+	if len(hits) == 0 {
+		t.Fatal("gleif with social should appear in 找人")
+	}
+}
+
 func TestGLEIFWithoutSocialDroppedFromHits(t *testing.T) {
 	hits := merchantsToHits([]Merchant{{
 		ExtID: "gleif:1", Source: "gleif", Name: "Some Fund", Homepage: "https://search.gleif.org/#/record/1",

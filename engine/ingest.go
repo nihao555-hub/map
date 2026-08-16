@@ -32,6 +32,7 @@ type IngestOptions struct {
 	SkipGLEIF       bool
 	SkipOSM         bool
 	SkipWikidata    bool
+	WikidataLEI     bool
 	Overpass        bool
 	OSMBoxes        []ingestBox
 	OSMLimitPerCity int
@@ -64,8 +65,12 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	}
 	defer dir.Close()
 
-	if err := dir.beginBulk(ctx); err != nil {
-		return nil, err
+	needBulk := !opt.SkipGLEIF || (opt.Overpass && !opt.SkipOSM) ||
+		(!opt.SkipWikidata && c != nil && strings.TrimSpace(c.WikidataURL) != "")
+	if needBulk {
+		if err := dir.beginBulk(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	var stats []IngestStats
@@ -79,8 +84,13 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 		stats = append(stats, c.ingestWikidataSEA(ctx, dir))
 	}
 
-	if err := dir.endBulk(ctx); err != nil {
-		return stats, fmt.Errorf("rebuild fts: %w", err)
+	if needBulk {
+		if err := dir.endBulk(ctx); err != nil {
+			return stats, fmt.Errorf("rebuild fts: %w", err)
+		}
+	}
+	if opt.WikidataLEI && c != nil && strings.TrimSpace(c.WikidataURL) != "" {
+		stats = append(stats, c.ingestWikidataLEI(ctx, dir))
 	}
 	return stats, nil
 }

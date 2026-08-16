@@ -122,6 +122,9 @@ ingest-merchants: ## dump GLEIF + OSM all-shop cities into local SQLite
 ingest-sea: ## dump extra Southeast Asia OSM cities + Wikidata companies
 	go run ./cmd/ingest-merchants -db webdata/merchants.db -sea -osm-limit 2000
 
+ingest-lei-socials: ## attach Wikidata website/socials onto GLEIF rows by LEI
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -lei-socials
+
 enrich-merchants: ## fetch OSM official sites and probe missing social homepages
 	go run ./cmd/enrich-merchants -db webdata/merchants.db -workers 12
 

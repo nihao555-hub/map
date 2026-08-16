@@ -18,6 +18,7 @@ func main() {
 	skipGLEIF := flag.Bool("skip-gleif", false, "跳过 GLEIF")
 	skipOSM := flag.Bool("skip-osm", false, "跳过 OSM 全品类城市店铺")
 	skipWikidata := flag.Bool("skip-wikidata", false, "跳过 Wikidata 东南亚公司")
+	leiSocials := flag.Bool("lei-socials", false, "只用 Wikidata LEI 给已入库的 GLEIF 补官网/社媒")
 	sea := flag.Bool("sea", false, "只补东南亚城市店铺 + Wikidata 公司")
 	osmLimit := flag.Int("osm-limit", 2000, "每个城市最多拉多少家店")
 	flag.Parse()
@@ -45,6 +46,13 @@ func main() {
 		if *osmLimit == 2000 {
 			opt.OSMLimitPerCity = 2000
 		}
+	}
+	if *leiSocials {
+		opt.SkipGLEIF = true
+		opt.SkipOSM = true
+		opt.Overpass = false
+		opt.SkipWikidata = true
+		opt.WikidataLEI = true
 	}
 	started := time.Now()
 	fmt.Printf("开始入库 db=%s sea=%v cities=%d\n", *db, *sea, len(opt.OSMBoxes))

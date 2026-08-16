@@ -330,7 +330,7 @@ func (d *Directory) ListToEnrich(ctx context.Context, limit int) ([]Merchant, er
 		limit = 500
 	}
 	q := `SELECT ext_id, source, name, shop, country, city, homepage, phone FROM merchants
-		WHERE source IN ('osm', 'wikidata')
+		WHERE source IN ('osm', 'wikidata', 'gleif')
 		  AND homepage NOT LIKE '%openstreetmap.org%'
 		  AND homepage NOT LIKE '%gleif.org%'
 		  AND homepage NOT LIKE '%wikidata.org%'
@@ -408,6 +408,26 @@ LIMIT ?`, limit)
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+func (d *Directory) HasExtID(ctx context.Context, extID string) (bool, error) {
+	if d == nil || strings.TrimSpace(extID) == "" {
+		return false, nil
+	}
+	var n int
+	err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM merchants WHERE ext_id=?`, extID).Scan(&n)
+	return n > 0, err
+}
+
+func (d *Directory) SetHomepage(ctx context.Context, extID, home string) error {
+	if d == nil || strings.TrimSpace(extID) == "" || strings.TrimSpace(home) == "" {
+		return nil
+	}
+	_, err := d.db.ExecContext(ctx, `
+UPDATE merchants SET homepage=?
+WHERE ext_id=? AND (homepage IS NULL OR homepage='' OR homepage LIKE '%gleif.org%' OR homepage LIKE '%wikidata.org%')`,
+		home, extID)
+	return err
 }
 
 func (d *Directory) MarkProbed(ctx context.Context, extIDs []string) error {
