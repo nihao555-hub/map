@@ -451,7 +451,7 @@ body.is-landing #results-view {
   max-width: 36px;
   overflow: visible;
 }
-.wmt-table td.col-plat { width: 96px; }
+.wmt-table td.col-plat { width: 168px; }
 .wmt-table td.col-country { width: 88px; color: var(--wmt-sub); }
 .wmt-table td.col-role { width: 72px; }
 .wmt-table td.col-snip { color: var(--wmt-sub); }
@@ -497,8 +497,22 @@ body.is-landing #results-view {
 .hit-plats {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
 }
+.hit-plats-empty { color: var(--wmt-sub); }
+.hit-soc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  text-decoration: none;
+}
+.hit-soc .plat-logo { width: 16px; height: 16px; }
+.hit-soc:hover { background: #eef3ff; }
+.hit-soc.is-ok { box-shadow: inset 0 0 0 1px #86efac; }
 .hit-badge.is-ok { outline: 1px solid #86efac; border-radius: 4px; padding: 1px 4px; }
 .hit-mail { color: var(--wmt-text); }
 .hit-badge {

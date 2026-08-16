@@ -35,7 +35,14 @@
     telegram: { color: "#26A5E4", path: "M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" },
     reddit: { color: "#FF4500", path: "M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.334-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.368-2.69 4.201-6.037 4.201-3.346 0-6.037-1.833-6.037-4.201 0-.176.014-.351.042-.524-.575-.28-1.01-.898-1.01-1.614 0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.841.841 2.484.913 2.961.913.477 0 2.105-.072 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.807-2.526.807-.842 0-1.979-.274-2.526-.807a.329.329 0 0 0-.232-.095z" },
     twitch: { color: "#9146FF", path: "M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z" },
+    website: { color: "#1677ff", path: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" },
   };
+
+  const SOCIAL_ORDER = [
+    "facebook", "instagram", "linkedin", "youtube", "tiktok", "x",
+    "xiaohongshu", "douyin", "kuaishou", "weibo", "bilibili",
+    "pinterest", "threads", "telegram", "reddit", "twitch",
+  ];
 
   function toast(msg) {
     toastEl.textContent = msg;
@@ -252,6 +259,7 @@
   }
 
   function platformLabel(id) {
+    if (id === "website") return "官网";
     for (let i = 0; i < catalog.length; i++) {
       if (catalog[i].id === id) return catalog[i].label;
     }
@@ -373,7 +381,7 @@
       thead.innerHTML = marketing
         ? "<tr><th style=\"width:36px\"></th><th>" + (channel === "whatsapp" ? "WhatsApp" : "邮箱") +
           "</th><th>网页标题</th><th>来源链接</th><th style=\"width:120px\">操作</th></tr>"
-        : "<tr><th>名称</th><th style=\"width:72px\">类型</th><th style=\"width:88px\">国家</th><th style=\"width:130px\">平台</th><th>主页</th><th>简介</th><th style=\"width:160px\">操作</th></tr>";
+        : "<tr><th>名称</th><th style=\"width:72px\">类型</th><th style=\"width:88px\">国家</th><th style=\"width:168px\">社媒</th><th>主页</th><th>简介</th><th style=\"width:160px\">操作</th></tr>";
     }
     if (prev !== mode && keyword.value) {
       doSearch(keyword.value);
@@ -710,19 +718,49 @@
     return out;
   }
 
+  function isRegistryHomepage(url) {
+    const u = String(url || "").toLowerCase();
+    return !u || u.indexOf("openstreetmap.org") >= 0 || u.indexOf("gleif.org") >= 0;
+  }
+
+  function collectSocials(h) {
+    const byPlat = {};
+    function add(p) {
+      if (!p || !p.homepage_url) return;
+      const plat = String(p.platform || "").toLowerCase() || "website";
+      const url = p.homepage_url;
+      if (plat === "website" && isRegistryHomepage(url)) return;
+      const prev = byPlat[plat];
+      if (prev && (prev.verified || prev.url === url)) return;
+      if (prev && p.verified) {
+        byPlat[plat] = { platform: plat, url: url, verified: true };
+        return;
+      }
+      if (!prev) {
+        byPlat[plat] = { platform: plat, url: url, verified: !!p.verified };
+      }
+    }
+    add(h);
+    (h && h.profiles || []).forEach(add);
+    const socials = SOCIAL_ORDER.filter(function (id) { return byPlat[id]; }).map(function (id) { return byPlat[id]; });
+    Object.keys(byPlat).forEach(function (id) {
+      if (id !== "website" && SOCIAL_ORDER.indexOf(id) < 0) socials.push(byPlat[id]);
+    });
+    if (byPlat.website) socials.push(byPlat.website);
+    return socials;
+  }
+
   function renderProfileBadges(h) {
-    const items = allProfiles(h);
+    const items = collectSocials(h);
     if (!items.length) {
-      const plat = (h.platform || "").toLowerCase();
-      return '<span class="hit-badge">' + platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></span>";
+      return '<span class="hit-plats-empty">—</span>';
     }
     return '<div class="hit-plats">' + items.map(function (p) {
-      const plat = (p.platform || "").toLowerCase();
-      const url = p.homepage_url || "";
+      const label = platformLabel(p.platform);
       const ok = p.verified ? " is-ok" : "";
-      return '<a class="hit-badge' + ok + '" target="_blank" rel="noopener" href="' + escapeAttr(url) +
-        '" title="' + escapeAttr(platformLabel(plat) + (p.verified ? " · 已验证" : "") + " " + url) + '">' +
-        platformSvg(plat) + "<span>" + escapeHtml(platformLabel(plat)) + "</span></a>";
+      return '<a class="hit-soc' + ok + '" target="_blank" rel="noopener" href="' + escapeAttr(p.url) +
+        '" title="' + escapeAttr(label + (p.verified ? " · 已验证" : "") + " " + p.url) +
+        '" aria-label="' + escapeAttr(label) + '">' + platformSvg(p.platform) + "</a>";
     }).join("") + "</div>";
   }
 
@@ -753,8 +791,10 @@
     results.innerHTML = rows.map(function (h) {
       const plat = (h.platform || "").toLowerCase();
       const handle = h.handle || "";
-      const home = h.homepage_url || "";
-      const msg = h.message_url || home;
+      const socials = collectSocials(h);
+      const home = (socials[0] && socials[0].url) || (!isRegistryHomepage(h.homepage_url) ? (h.homepage_url || "") : "");
+      const homePlat = (socials[0] && socials[0].platform) || plat;
+      const msg = h.message_url && !isRegistryHomepage(h.message_url) ? h.message_url : home;
       const src = home.replace(/^https?:\/\/(www\.)?/, "");
       const name = h.name || handle || "—";
       const snip = shortSnippet(h.snippet || h.title || "");
@@ -781,7 +821,7 @@
           '<td class="col-plat">' + renderProfileBadges(h) + "</td>" +
           "<td>" + (home
             ? '<a class="hit-home" target="_blank" rel="noopener" href="' + escapeAttr(home) + '" title="' + escapeAttr(src) + '">' +
-                platformSvg(plat) + "<span>" + escapeHtml(src) + "</span></a>"
+                platformSvg(homePlat) + "<span>" + escapeHtml(src) + "</span></a>"
             : "—") + "</td>" +
           cell(snip, "col-snip") +
           '<td class="row-actions">' +

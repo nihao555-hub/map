@@ -73,7 +73,7 @@ func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/preview/frame", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel", "expanded", "data.cached", "data.refreshing", "geo-chip", "country-facets"} {
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/preview/frame", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel", "expanded", "data.cached", "data.refreshing", "geo-chip", "country-facets", "hit-soc", "collectSocials"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}
