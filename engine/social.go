@@ -460,6 +460,8 @@ func isSocialHomepage(hit Hit) bool {
 	case PlatformInstagram, PlatformFacebook, PlatformX, PlatformTelegram,
 		PlatformThreads, PlatformPinterest, PlatformReddit, PlatformTwitch:
 		return true
+	case PlatformWebsite:
+		return strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://")
 	default:
 		return false
 	}

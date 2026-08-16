@@ -75,6 +75,8 @@ type Client struct {
 	EventsEyeURL string
 	// AUMAFairURL is AUMA FairFinder, a live trade-fair calendar.
 	AUMAFairURL string
+	// OverpassURL is the OpenStreetMap Overpass interpreter (shop POIs).
+	OverpassURL string
 	braveUntil  atomic.Int64
 	ddgUntil    atomic.Int64
 	bingUntil   atomic.Int64
@@ -98,6 +100,7 @@ type Client struct {
 //	ENGINE_FAIR_MAP_URL        optional JSON fair map, off by default
 //	ENGINE_EVENTSEYE_URL       EventsEye directory (default https://www.eventseye.com)
 //	ENGINE_AUMA_FAIR_URL       AUMA FairFinder (default https://www.auma.de/en/find-your-fair/)
+//	ENGINE_OVERPASS_URL        OpenStreetMap Overpass (default https://overpass-api.de/api/interpreter)
 //	TIKHUB_API_TOKEN           optional paid API when Douyin keyword search is needed
 func OptionsFromEnv() *Client {
 	timeout := defaultHTTPTimeout
@@ -147,6 +150,7 @@ func OptionsFromEnv() *Client {
 		FairMapURL:       envServiceURL("ENGINE_FAIR_MAP_URL", ""),
 		EventsEyeURL:     envServiceURL("ENGINE_EVENTSEYE_URL", defaultEventsEyeURL),
 		AUMAFairURL:      envServiceURL("ENGINE_AUMA_FAIR_URL", defaultAUMAFairURL),
+		OverpassURL:      envServiceURL("ENGINE_OVERPASS_URL", defaultOverpassURL),
 	}
 }
 

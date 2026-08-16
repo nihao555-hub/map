@@ -25,6 +25,7 @@ const (
 	PlatformTwitch      = "twitch"
 	PlatformExhibition  = "exhibition"
 	PlatformCustoms     = "customs"
+	PlatformWebsite     = "website"
 )
 
 // DefaultPeoplePlatforms is the set used when the UI sends no platforms.

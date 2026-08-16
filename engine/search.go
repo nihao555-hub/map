@@ -13,7 +13,7 @@ import (
 
 const (
 	maxLimit             = 20000
-	messagePolicyNote    = "系统不会代发。公开网页索引按品类找店铺/公司/采购商主页，不是外贸通那种一次几万条的企业库。"
+	messagePolicyNote    = "系统不会代发。品类店铺来自 OpenStreetMap（ODbL）和 Wikidata，社媒主页仍走公开网页索引。不是外贸通那种一次几万条的企业库。"
 	marketingPolicyNote  = "系统不会代发。"
 	customsPolicyNote    = "系统不会代发。逐票企业来自多家公开海关源的实时检索（美国海关海运提单，Kirchner / ImportYeti）；金额和国家口径来自联合国 Comtrade 与世界银行。不是外贸通那种全球企业库，也没有联系人穿透。"
 	exhibitionPolicyNote = "系统不会代发。展会按关键词实时查 EventsEye（全球约 1.2 万场）、AUMA、Wikidata 和开源展会日历；参展商名单来自展会官网和公开名录，不是 50 万采购商库，也不做名片 OCR。"
@@ -209,28 +209,29 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 
 	add := func(items []Hit, src string, warn string, err error) {
 		mu.Lock()
-		defer mu.Unlock()
-
 		if err != nil {
 			warnings = append(warnings, err.Error())
 		}
-
 		if warn != "" {
 			warnings = append(warnings, warn)
 		}
-
 		if src != "" && len(items) > 0 {
 			sources = append(sources, src)
 		}
-
 		hits = append(hits, items...)
+		snapshot := append([]Hit(nil), hits...)
+		mu.Unlock()
+		publishPeopleProgress(q, snapshot)
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
 		items, warns, srcs, terms := c.searchPublicProfiles(gctx, q, wanted, func(partial []Hit) {
-			publishPeopleProgress(q, partial)
+			mu.Lock()
+			combined := append(append([]Hit(nil), hits...), partial...)
+			mu.Unlock()
+			publishPeopleProgress(q, combined)
 		})
 		src := strings.Join(srcs, "+")
 		warn := strings.Join(warns, "; ")
@@ -239,6 +240,18 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 		expanded = terms
 		mu.Unlock()
 
+		return nil
+	})
+
+	g.Go(func() error {
+		items, err := c.searchOSMShops(gctx, q.Keyword, q.Country, wanted)
+		add(items, "openstreetmap", "", err)
+		return nil
+	})
+
+	g.Go(func() error {
+		items, err := c.searchWikidataCompanies(gctx, q.Keyword, q.Country, wanted)
+		add(items, "wikidata", "", err)
 		return nil
 	})
 
@@ -575,6 +588,14 @@ func isGenericProductName(name, kw string) bool {
 	return false
 }
 
+func isDirectoryMerchant(hit Hit) bool {
+	if hit.Extra == nil {
+		return false
+	}
+	src := hit.Extra["src"]
+	return (src == "osm" || src == "wikidata") && hit.Extra["match"] == "category"
+}
+
 func genericSocialLabel(name string) bool {
 	n := strings.ToLower(strings.TrimSpace(name))
 	n = strings.TrimSuffix(n, "...")
@@ -597,6 +618,9 @@ func isNoiseHit(hit Hit, kw, role string) bool {
 	}
 	if isGenericProductName(hit.Name, kw) {
 		return true
+	}
+	if isDirectoryMerchant(hit) {
+		return looksLikeTutorial(hitRoleBlob(hit)+" "+foldSearchText(hit.HomepageURL)) || looksLikeClickbait(hit.Name)
 	}
 	if looksLikeClickbait(hit.Name) {
 		return true

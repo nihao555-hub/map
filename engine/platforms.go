@@ -84,6 +84,8 @@ func PeoplePlatformLabel(id string) string {
 		return "Reddit"
 	case PlatformTwitch:
 		return "Twitch"
+	case PlatformWebsite:
+		return "官网"
 	default:
 		return id
 	}
