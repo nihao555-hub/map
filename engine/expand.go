@@ -218,21 +218,6 @@ func isRealHomepage(home string) bool {
 	return strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://")
 }
 
-func compactLatinHandle(name string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-			continue
-		}
-		if r == ' ' || r == '-' || r == '_' || r == '.' {
-			continue
-		}
-		return ""
-	}
-	return probeableHandle(b.String())
-}
-
 func handleFromHomepage(home string) string {
 	if !isRealHomepage(home) {
 		return ""
@@ -267,12 +252,10 @@ func merchantProbeHandles(row Merchant) []string {
 		seen[key] = struct{}{}
 		out = append(out, h)
 	}
+	// Exact Latin shop name, or the official-site domain label.
+	// Do not squeeze "Licht Kraus" into lichtkraus — that invents handles and false-positives.
 	add(row.Name)
-	add(compactLatinHandle(row.Name))
 	add(handleFromHomepage(row.Homepage))
-	if len(out) > 2 {
-		out = out[:2]
-	}
 	return out
 }
 
@@ -393,6 +376,8 @@ func (c *Client) probeProfileExists(ctx context.Context, rawURL string) bool {
 	if c == nil || rawURL == "" {
 		return false
 	}
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
 	doc, err := c.fetchDocument(ctx, rawURL)
 	if err != nil || doc == nil {
 		return false

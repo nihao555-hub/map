@@ -46,7 +46,10 @@ func TestMerchantProbeHandles(t *testing.T) {
 	got = merchantProbeHandles(Merchant{Name: "Licht Kraus", Homepage: "https://www.licht-kraus.de"})
 	joined := strings.Join(got, ",")
 	if !strings.Contains(strings.ToLower(joined), "lichtkraus") {
-		t.Fatalf("expected slug or domain handle, got %v", got)
+		t.Fatalf("expected domain handle, got %v", got)
+	}
+	if len(merchantProbeHandles(Merchant{Name: "Licht Kraus", Homepage: "https://www.openstreetmap.org/node/1"})) != 0 {
+		t.Fatal("multi-word map-only name must not invent a handle")
 	}
 	if len(merchantProbeHandles(Merchant{Name: "老王灯具", Homepage: "https://www.openstreetmap.org/node/2"})) != 0 {
 		t.Fatal("CJK map-only must not be probed")
