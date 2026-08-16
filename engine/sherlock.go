@@ -44,7 +44,7 @@ func parseSherlockSocials(raw []byte) []sherlockTemplate {
 			tmpl = "https://www.linkedin.com/company/{}"
 		}
 		hit, ok := ParseSocialURL(strings.ReplaceAll(tmpl, "{}", "signify"), "", "")
-		if !ok || !isSocialHomepage(hit) || hit.Platform == PlatformWebsite {
+		if !ok || !isSocialHomepage(hit) || !sherlockKeepPlatform[hit.Platform] {
 			continue
 		}
 		if _, exists := byPlat[hit.Platform]; exists && hit.Platform != PlatformLinkedIn {
@@ -54,7 +54,7 @@ func parseSherlockSocials(raw []byte) []sherlockTemplate {
 	}
 	for _, raw := range sameHandleURLs("signify") {
 		hit, ok := ParseSocialURL(raw, "", "")
-		if !ok || hit.Platform == "" {
+		if !ok || !sherlockKeepPlatform[hit.Platform] {
 			continue
 		}
 		if _, exists := byPlat[hit.Platform]; exists {
@@ -136,22 +136,38 @@ func distinctiveNameHandle(name string) string {
 }
 
 func distinctiveNeedsLinkedIn(handle string) bool {
-	return utf8.RuneCountInString(handle) < 8
+	return true
+}
+
+var sherlockKeepPlatform = map[string]bool{
+	PlatformFacebook:  true,
+	PlatformInstagram: true,
+	PlatformLinkedIn:  true,
+	PlatformYouTube:   true,
+	PlatformX:         true,
 }
 
 func filterSherlockHits(got []Profile, needLinkedIn bool) []Profile {
 	if len(got) == 0 {
 		return nil
 	}
+	keep := got[:0]
 	hasLI := false
 	core := 0
 	for _, p := range got {
+		if !sherlockKeepPlatform[p.Platform] {
+			continue
+		}
+		if p.Handle == "u" || p.Handle == "U" || strings.HasSuffix(strings.ToLower(p.URL), "x.com/u") {
+			continue
+		}
+		keep = append(keep, p)
 		switch p.Platform {
 		case PlatformLinkedIn:
 			if strings.Contains(strings.ToLower(p.URL), "/company/") {
 				hasLI = true
 			}
-		case PlatformFacebook, PlatformInstagram, PlatformTikTok, PlatformYouTube, PlatformX:
+		case PlatformFacebook, PlatformInstagram, PlatformYouTube:
 			core++
 		}
 	}
@@ -161,5 +177,5 @@ func filterSherlockHits(got []Profile, needLinkedIn bool) []Profile {
 	if !hasLI && core < 2 {
 		return nil
 	}
-	return got
+	return keep
 }

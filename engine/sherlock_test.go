@@ -22,8 +22,11 @@ func TestParseSherlockSocialsRewritesLinkedInCompany(t *testing.T) {
 	if !strings.Contains(by[PlatformLinkedIn], "/company/") {
 		t.Fatalf("linkedin=%q", by[PlatformLinkedIn])
 	}
-	if by[PlatformTikTok] == "" {
-		t.Fatal("tiktok missing")
+	if by[PlatformTikTok] != "" {
+		t.Fatal("tiktok should not be kept")
+	}
+	if by[PlatformFacebook] == "" && by[PlatformYouTube] == "" {
+		t.Fatal("core social missing")
 	}
 	if _, ok := by["chess"]; ok {
 		t.Fatal("non-social leaked")
@@ -45,8 +48,8 @@ func TestDistinctiveNameHandleSkipsShortAndGeneric(t *testing.T) {
 	if got := distinctiveNameHandle("Signify Holding B.V."); got != "signify" {
 		t.Fatalf("got %q", got)
 	}
-	if !distinctiveNeedsLinkedIn("signify") || distinctiveNeedsLinkedIn("osdinlighting") {
-		t.Fatal("length gate")
+	if !distinctiveNeedsLinkedIn("signify") || !distinctiveNeedsLinkedIn("osdinlighting") {
+		t.Fatal("name-derived handles always need a LinkedIn company page")
 	}
 }
 
@@ -75,7 +78,7 @@ func TestFilterSherlockHitsRequiresConsensus(t *testing.T) {
 		{Platform: PlatformInstagram, URL: "https://www.instagram.com/osdinlighting", Handle: "osdinlighting"},
 	}
 	if len(filterSherlockHits(two, false)) != 2 {
-		t.Fatalf("%+v", filterSherlockHits(two, false))
+		t.Fatalf("trusted two-core=%+v", filterSherlockHits(two, false))
 	}
 	if filterSherlockHits(two, true) != nil {
 		t.Fatal("short handle without LinkedIn company should drop")
