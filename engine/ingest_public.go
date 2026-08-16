@@ -40,10 +40,12 @@ func (c *Client) ingestROR(ctx context.Context, dir *Directory, zipPath string) 
 		return st
 	}
 	rows := make([]Merchant, 0, len(orgs))
+	leiOrgs := 0
 	for _, org := range orgs {
 		if org.LEI == "" || !isRealHomepage(org.Website) {
 			continue
 		}
+		leiOrgs++
 		extID := "gleif:" + org.LEI
 		rows = append(rows, Merchant{
 			ExtID:    extID,
@@ -57,19 +59,76 @@ func (c *Client) ingestROR(ctx context.Context, dir *Directory, zipPath string) 
 			}},
 		})
 	}
+	// Current ROR dumps do not populate LEI; still copy unique name+country websites.
+	if extra, err := rorNameMatchRows(ctx, dir, orgs); err != nil {
+		st := IngestStats{Source: "ror", Took: time.Since(started), Err: err.Error()}
+		_ = dir.RecordRun(ctx, "ror", started, 0, st.Err)
+		return st
+	} else {
+		rows = append(rows, extra...)
+	}
 	matched, profiles, err := dir.attachExisting(ctx, rows)
 	st := IngestStats{
 		Source: "ror",
 		Rows:   matched,
 		Took:   time.Since(started),
-		Note:   fmt.Sprintf("LEI+website dump, %d orgs, %d profiles", len(orgs), profiles),
+		Note:   fmt.Sprintf("dump orgs=%d lei=%d profiles=%d", len(orgs), leiOrgs, profiles),
 	}
 	if err != nil {
 		st.Err = err.Error()
 	}
 	_ = dir.RecordRun(ctx, "ror", started, matched, st.Note)
-	logIngest("ROR attached %d GLEIF (%d orgs with LEI+site)", matched, len(orgs))
+	logIngest("ROR attached %d GLEIF (dump=%d lei=%d)", matched, len(orgs), leiOrgs)
 	return st
+}
+
+func rorNameMatchRows(ctx context.Context, dir *Directory, orgs []ROROrg) ([]Merchant, error) {
+	if dir == nil || len(orgs) == 0 {
+		return nil, nil
+	}
+	targets, err := dir.loadBareGLEIFKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	type slot struct {
+		org      ROROrg
+		conflict bool
+	}
+	byKey := map[string]*slot{}
+	for _, org := range orgs {
+		if !isRealHomepage(org.Website) {
+			continue
+		}
+		key := nameCountryKey(org.Name, org.Country)
+		if key == "" {
+			continue
+		}
+		if cur, ok := byKey[key]; ok {
+			cur.conflict = true
+			continue
+		}
+		org := org
+		byKey[key] = &slot{org: org}
+	}
+	var rows []Merchant
+	for key, extID := range targets {
+		slot, ok := byKey[key]
+		if !ok || slot.conflict {
+			continue
+		}
+		rows = append(rows, Merchant{
+			ExtID:    extID,
+			Source:   "gleif",
+			Homepage: slot.org.Website,
+			Profiles: []Profile{{
+				ExtID:    extID,
+				Platform: PlatformWebsite,
+				URL:      slot.org.Website,
+				Source:   "ror-name",
+			}},
+		})
+	}
+	return rows, nil
 }
 
 func (c *Client) ingestWikidataOfficialSites(ctx context.Context, dir *Directory) IngestStats {

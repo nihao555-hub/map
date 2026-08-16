@@ -50,9 +50,11 @@ func (c *Client) ingestWikidataCountries(ctx context.Context, dir *Directory, so
 			_ = dir.RecordRun(ctx, source, started, inserted, st.Err)
 			return st
 		}
+		// One VALUES-class query per country. Splitting large markets by
+		// class + LIMIT 4000 regularly 504s on query.wikidata.org.
 		queries := []string{wikidataMarketCompanySPARQL(cc.QID, 2500, "")}
 		if splitLarge && largeWikidataMarkets[cc.Code] {
-			queries = wikidataLargeMarketQueries(cc.QID)
+			queries = []string{wikidataMarketCompanySPARQL(cc.QID, 3000, "")}
 		}
 		countryAdded := 0
 		for _, sparql := range queries {
@@ -118,16 +120,6 @@ var extraWikidataCountries = []wikidataCountry{
 var largeWikidataMarkets = map[string]bool{
 	"US": true, "CN": true, "JP": true, "DE": true, "GB": true, "FR": true,
 	"IT": true, "IN": true, "KR": true, "BR": true, "CA": true, "AU": true,
-}
-
-var wikidataCompanyClasses = []string{"Q4830453", "Q6881511", "Q891723", "Q783794"}
-
-func wikidataLargeMarketQueries(countryQID string) []string {
-	out := make([]string, 0, len(wikidataCompanyClasses))
-	for _, class := range wikidataCompanyClasses {
-		out = append(out, wikidataMarketCompanySPARQL(countryQID, 4000, class))
-	}
-	return out
 }
 
 func wikidataSEACompanySPARQL(countryQID string) string {

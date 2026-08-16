@@ -132,12 +132,8 @@ func parseRORDump(path string) ([]ROROrg, error) {
 		if err := dec.Decode(&rec); err != nil {
 			return nil, err
 		}
-		lei := rorLEI(rec)
-		if lei == "" {
-			continue
-		}
 		org := ROROrg{
-			LEI:     lei,
+			LEI:     rorLEI(rec),
 			Name:    rorDisplayName(rec),
 			Website: rorWebsite(rec),
 			Country: rorCountry(rec),

@@ -58,7 +58,16 @@ func TestParseRORDumpKeepsLEIAndWebsite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(orgs) != 1 || orgs[0].LEI != "001GPB6A9XPE8XJICC14" || !strings.Contains(orgs[0].Website, "signify.com") {
+	if len(orgs) != 2 {
+		t.Fatalf("want website orgs including no-LEI, got %+v", orgs)
+	}
+	var sawLEI bool
+	for _, org := range orgs {
+		if org.LEI == "001GPB6A9XPE8XJICC14" && strings.Contains(org.Website, "signify.com") {
+			sawLEI = true
+		}
+	}
+	if !sawLEI {
 		t.Fatalf("%+v", orgs)
 	}
 }
@@ -138,5 +147,25 @@ func TestIngestRORAttachesExistingGLEIF(t *testing.T) {
 	st := (*Client)(nil).ingestROR(context.Background(), dir, zipPath)
 	if st.Err != "" || st.Rows != 1 {
 		t.Fatalf("%+v", st)
+	}
+}
+
+func TestRORNameMatchAttachesUniqueGLEIF(t *testing.T) {
+	dir, err := OpenDirectory(filepath.Join(t.TempDir(), "m.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if _, err := dir.InsertBatch(context.Background(), []Merchant{
+		{ExtID: "gleif:abc", Source: "gleif", Name: "Delft University of Technology", Country: "NL",
+			Homepage: "https://search.gleif.org/#/record/abc"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := rorNameMatchRows(context.Background(), dir, []ROROrg{
+		{Name: "Delft University of Technology", Country: "NL", Website: "https://www.tudelft.nl"},
+	})
+	if err != nil || len(rows) != 1 || rows[0].ExtID != "gleif:abc" {
+		t.Fatalf("rows=%+v err=%v", rows, err)
 	}
 }

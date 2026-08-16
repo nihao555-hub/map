@@ -34,6 +34,7 @@ type IngestOptions struct {
 	SkipWikidata    bool
 	WikidataLEI     bool
 	PublicSocials   bool
+	AttachOnly      bool
 	RORZip          string
 	Overpass        bool
 	OSMBoxes        []ingestBox
@@ -69,7 +70,7 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 
 	needBulk := !opt.SkipGLEIF || (opt.Overpass && !opt.SkipOSM) ||
 		(!opt.SkipWikidata && c != nil && strings.TrimSpace(c.WikidataURL) != "") ||
-		(opt.PublicSocials && c != nil && strings.TrimSpace(c.WikidataURL) != "")
+		(opt.PublicSocials && !opt.AttachOnly && c != nil && strings.TrimSpace(c.WikidataURL) != "")
 	if needBulk {
 		if err := dir.beginBulk(ctx); err != nil {
 			return nil, err
@@ -86,7 +87,7 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	if !opt.SkipWikidata && c != nil && strings.TrimSpace(c.WikidataURL) != "" {
 		stats = append(stats, c.ingestWikidataSEA(ctx, dir))
 	}
-	if opt.PublicSocials && c != nil && strings.TrimSpace(c.WikidataURL) != "" {
+	if opt.PublicSocials && !opt.AttachOnly && c != nil && strings.TrimSpace(c.WikidataURL) != "" {
 		stats = append(stats, c.ingestWikidataMarkets(ctx, dir))
 	}
 
