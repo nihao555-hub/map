@@ -13,12 +13,26 @@ import (
 
 func main() {
 	db := flag.String("db", engine.DefaultMerchantDB, "SQLite 路径")
-	limit := flag.Int("limit", 20000, "最多补全多少家有官网的店")
-	workers := flag.Int("workers", 8, "并发抓取数")
+	limit := flag.Int("limit", 50000, "最多补全/探测多少家店")
+	workers := flag.Int("workers", 12, "并发抓取数")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+
+	dir, err := engine.OpenDirectory(*db)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "打开库失败: %v\n", err)
+		os.Exit(1)
+	}
+	inv, err := dir.Inventory(ctx)
+	_ = dir.Close()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "统计失败: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("库存 db=%s merchants=%d gleif=%d osm=%d profiles=%d verified=%d osm_with_social=%d\n",
+		*db, inv.Merchants, inv.GLEIF, inv.OSM, inv.Profiles, inv.VerifiedProfiles, inv.OSMWithSocial)
 
 	client := engine.OptionsFromEnv()
 	if client.HTTP != nil {
@@ -36,5 +50,14 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "补全失败: %v\n", err)
 		os.Exit(1)
+	}
+
+	dir, err = engine.OpenDirectory(*db)
+	if err == nil {
+		if inv, err := dir.Inventory(ctx); err == nil {
+			fmt.Printf("补全后 merchants=%d gleif=%d osm=%d profiles=%d verified=%d osm_with_social=%d\n",
+				inv.Merchants, inv.GLEIF, inv.OSM, inv.Profiles, inv.VerifiedProfiles, inv.OSMWithSocial)
+		}
+		_ = dir.Close()
 	}
 }

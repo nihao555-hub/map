@@ -81,6 +81,69 @@ func TestSortHitsByCountry(t *testing.T) {
 	}
 }
 
+func TestListToProbeSkipsCJKAndExistingSocial(t *testing.T) {
+	dir, err := OpenDirectory(filepath.Join(t.TempDir(), "merchants.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+
+	if _, err := dir.InsertBatch(context.Background(), []Merchant{
+		{ExtID: "osm:node:10", Source: "osm", Name: "Backwerk", Shop: "bakery", Country: "DE", Homepage: "https://www.openstreetmap.org/node/10"},
+		{ExtID: "osm:node:11", Source: "osm", Name: "老王灯具", Shop: "lighting", Country: "CN", Homepage: "https://www.openstreetmap.org/node/11"},
+		{ExtID: "osm:node:12", Source: "osm", Name: "Licht Kraus", Shop: "lighting", Country: "DE", Homepage: "https://licht-kraus.example", Profiles: []Profile{
+			{ExtID: "osm:node:12", Platform: PlatformWebsite, URL: "https://licht-kraus.example", Verified: true, Source: "website"},
+		}},
+		{ExtID: "osm:node:13", Source: "osm", Name: "Aldi", Shop: "supermarket", Country: "DE", Homepage: "https://www.openstreetmap.org/node/13", Profiles: []Profile{
+			{ExtID: "osm:node:13", Platform: PlatformFacebook, URL: "https://www.facebook.com/aldi", Handle: "aldi", Verified: true, Source: "osm-tag"},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := dir.ListToProbe(context.Background(), 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, row := range rows {
+		got[row.Name] = true
+	}
+	if !got["Backwerk"] {
+		t.Fatalf("map-only latin handle missing: %+v", rows)
+	}
+	if !got["Licht Kraus"] {
+		t.Fatalf("website domain handle missing: %+v", rows)
+	}
+	if got["老王灯具"] {
+		t.Fatalf("CJK name leaked: %+v", rows)
+	}
+	if got["Aldi"] {
+		t.Fatalf("already has social: %+v", rows)
+	}
+}
+
+func TestListUnverifiedProfiles(t *testing.T) {
+	dir, err := OpenDirectory(filepath.Join(t.TempDir(), "merchants.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if err := dir.UpsertProfiles(context.Background(), []Profile{
+		{ExtID: "osm:1", Platform: PlatformInstagram, URL: "https://www.instagram.com/demo/", Handle: "demo", Verified: false, Source: "osm-tag"},
+		{ExtID: "osm:1", Platform: PlatformFacebook, URL: "https://www.facebook.com/demo", Handle: "demo", Verified: true, Source: "osm-tag"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := dir.ListUnverifiedProfiles(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Platform != PlatformInstagram || rows[0].Verified {
+		t.Fatalf("%+v", rows)
+	}
+}
+
 func TestGLEIFWithoutSocialDroppedFromHits(t *testing.T) {
 	hits := merchantsToHits([]Merchant{{
 		ExtID: "gleif:1", Source: "gleif", Name: "Some Fund", Homepage: "https://search.gleif.org/#/record/1",

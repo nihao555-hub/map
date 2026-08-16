@@ -72,6 +72,7 @@ func (d *Directory) migrate() {
 		return
 	}
 	_, _ = d.db.Exec(`ALTER TABLE merchants ADD COLUMN enriched_at TEXT`)
+	_, _ = d.db.Exec(`ALTER TABLE merchants ADD COLUMN probed_at TEXT`)
 }
 
 const directorySchema = `
@@ -340,6 +341,152 @@ func (d *Directory) ListToEnrich(ctx context.Context, limit int) ([]Merchant, er
 		return nil, err
 	}
 	return d.attachProfiles(ctx, rows), nil
+}
+
+// ListToProbe returns OSM merchants that still have no social homepage so we
+// can try same-handle / domain-handle probes. Website-only rows are included
+// once; map-only shops need a Latin handle-like name.
+func (d *Directory) ListToProbe(ctx context.Context, limit int) ([]Merchant, error) {
+	if d == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 500
+	}
+	q := `SELECT m.ext_id, m.source, m.name, m.shop, m.country, m.city, m.homepage, m.phone
+		FROM merchants m
+		WHERE m.source='osm'
+		  AND (m.probed_at IS NULL OR m.probed_at='')
+		  AND NOT EXISTS (
+		    SELECT 1 FROM merchant_profiles p
+		    WHERE p.ext_id=m.ext_id AND p.platform != 'website'
+		  )`
+	rows, err := d.scanMerchants(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	var out []Merchant
+	for _, row := range rows {
+		if len(merchantProbeHandles(row)) == 0 {
+			continue
+		}
+		out = append(out, row)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return d.attachProfiles(ctx, out), nil
+}
+
+// ListUnverifiedProfiles returns stored social URLs that have not passed a live probe.
+func (d *Directory) ListUnverifiedProfiles(ctx context.Context, limit int) ([]Profile, error) {
+	if d == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 500
+	}
+	rows, err := d.db.QueryContext(ctx, `
+SELECT ext_id, platform, url, handle, verified, source
+FROM merchant_profiles
+WHERE verified=0 AND platform != 'website'
+ORDER BY id
+LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Profile
+	for rows.Next() {
+		var p Profile
+		var verified int
+		if err := rows.Scan(&p.ExtID, &p.Platform, &p.URL, &p.Handle, &verified, &p.Source); err != nil {
+			return nil, err
+		}
+		p.Verified = verified == 1
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (d *Directory) MarkProbed(ctx context.Context, extIDs []string) error {
+	if d == nil || len(extIDs) == 0 {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.PrepareContext(ctx, `UPDATE merchants SET probed_at=? WHERE ext_id=?`)
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for _, id := range extIDs {
+		if _, err := stmt.ExecContext(ctx, now, id); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// DirectoryInventory is a snapshot of the local 智能引擎 dump.
+type DirectoryInventory struct {
+	Merchants        int            `json:"merchants"`
+	GLEIF            int            `json:"gleif"`
+	OSM              int            `json:"osm"`
+	Profiles         int            `json:"profiles"`
+	VerifiedProfiles int            `json:"verified_profiles"`
+	OSMWithSocial    int            `json:"osm_with_social"`
+	ByPlatform       map[string]int `json:"by_platform,omitempty"`
+}
+
+func (d *Directory) Inventory(ctx context.Context) (DirectoryInventory, error) {
+	var inv DirectoryInventory
+	if d == nil {
+		return inv, nil
+	}
+	var err error
+	if inv.Merchants, err = d.Count(ctx); err != nil {
+		return inv, err
+	}
+	if inv.GLEIF, err = d.CountSource(ctx, "gleif"); err != nil {
+		return inv, err
+	}
+	if inv.OSM, err = d.CountSource(ctx, "osm"); err != nil {
+		return inv, err
+	}
+	if inv.Profiles, err = d.CountProfiles(ctx); err != nil {
+		return inv, err
+	}
+	if inv.VerifiedProfiles, err = d.CountVerifiedProfiles(ctx); err != nil {
+		return inv, err
+	}
+	err = d.db.QueryRowContext(ctx, `
+SELECT COUNT(DISTINCT m.ext_id) FROM merchants m
+JOIN merchant_profiles p ON p.ext_id=m.ext_id
+WHERE m.source='osm' AND p.platform != 'website'`).Scan(&inv.OSMWithSocial)
+	if err != nil {
+		return inv, err
+	}
+	rows, err := d.db.QueryContext(ctx, `SELECT platform, COUNT(*) FROM merchant_profiles GROUP BY platform`)
+	if err != nil {
+		return inv, err
+	}
+	defer rows.Close()
+	inv.ByPlatform = map[string]int{}
+	for rows.Next() {
+		var plat string
+		var n int
+		if err := rows.Scan(&plat, &n); err != nil {
+			return inv, err
+		}
+		inv.ByPlatform[plat] = n
+	}
+	return inv, rows.Err()
 }
 
 func (d *Directory) CountProfiles(ctx context.Context) (int, error) {

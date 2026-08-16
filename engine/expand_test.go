@@ -38,6 +38,21 @@ func TestPickExpandSeedsPrefersLatinHandles(t *testing.T) {
 	}
 }
 
+func TestMerchantProbeHandles(t *testing.T) {
+	got := merchantProbeHandles(Merchant{Name: "Backwerk", Homepage: "https://www.openstreetmap.org/node/1"})
+	if len(got) == 0 || got[0] != "Backwerk" {
+		t.Fatalf("name handle: %v", got)
+	}
+	got = merchantProbeHandles(Merchant{Name: "Licht Kraus", Homepage: "https://www.licht-kraus.de"})
+	joined := strings.Join(got, ",")
+	if !strings.Contains(strings.ToLower(joined), "lichtkraus") {
+		t.Fatalf("expected slug or domain handle, got %v", got)
+	}
+	if len(merchantProbeHandles(Merchant{Name: "老王灯具", Homepage: "https://www.openstreetmap.org/node/2"})) != 0 {
+		t.Fatal("CJK map-only must not be probed")
+	}
+}
+
 func TestSameHandleURLs(t *testing.T) {
 	urls := sameHandleURLs("osdinlighting")
 	joined := strings.Join(urls, " ")

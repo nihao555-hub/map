@@ -206,6 +206,76 @@ var genericProbeHandles = map[string]bool{
 	"company": true, "business": true, "market": true, "plus": true,
 }
 
+func isRealHomepage(home string) bool {
+	home = strings.TrimSpace(home)
+	if home == "" {
+		return false
+	}
+	low := strings.ToLower(home)
+	if strings.Contains(low, "openstreetmap.org") || strings.Contains(low, "gleif.org") {
+		return false
+	}
+	return strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://")
+}
+
+func compactLatinHandle(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			continue
+		}
+		if r == ' ' || r == '-' || r == '_' || r == '.' {
+			continue
+		}
+		return ""
+	}
+	return probeableHandle(b.String())
+}
+
+func handleFromHomepage(home string) string {
+	if !isRealHomepage(home) {
+		return ""
+	}
+	host := strings.TrimPrefix(hostOf(home), "www.")
+	if host == "" || isSocialHost(host) {
+		return ""
+	}
+	label := host
+	if i := strings.Index(host, "."); i > 0 {
+		label = host[:i]
+	}
+	compact := strings.NewReplacer("-", "", "_", "").Replace(label)
+	if h := probeableHandle(compact); h != "" {
+		return h
+	}
+	return probeableHandle(label)
+}
+
+func merchantProbeHandles(row Merchant) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(h string) {
+		h = probeableHandle(h)
+		if h == "" {
+			return
+		}
+		key := strings.ToLower(h)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, h)
+	}
+	add(row.Name)
+	add(compactLatinHandle(row.Name))
+	add(handleFromHomepage(row.Homepage))
+	if len(out) > 2 {
+		out = out[:2]
+	}
+	return out
+}
+
 func probeableHandle(s string) string {
 	s = strings.TrimSpace(strings.TrimPrefix(s, "@"))
 	if s == "" || strings.HasPrefix(s, "MS4wLjAB") {

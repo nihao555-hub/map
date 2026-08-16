@@ -53,9 +53,28 @@ func (c *Client) EnrichMerchants(ctx context.Context, opt EnrichOptions) (Enrich
 	}
 	defer dir.Close()
 
-	rows, err := dir.ListToEnrich(ctx, opt.Limit)
+	seen := map[string]struct{}{}
+	var rows []Merchant
+	pending, err := dir.ListToEnrich(ctx, opt.Limit)
 	if err != nil {
 		return EnrichStats{Took: time.Since(started), Err: err.Error()}, err
+	}
+	for _, row := range pending {
+		seen[row.ExtID] = struct{}{}
+		rows = append(rows, row)
+	}
+	if len(rows) < opt.Limit {
+		probes, err := dir.ListToProbe(ctx, opt.Limit-len(rows))
+		if err != nil {
+			return EnrichStats{Took: time.Since(started), Err: err.Error()}, err
+		}
+		for _, row := range probes {
+			if _, ok := seen[row.ExtID]; ok {
+				continue
+			}
+			seen[row.ExtID] = struct{}{}
+			rows = append(rows, row)
+		}
 	}
 
 	var (
@@ -73,20 +92,19 @@ func (c *Client) EnrichMerchants(ctx context.Context, opt EnrichOptions) (Enrich
 			}
 			tried.Add(1)
 			got := c.enrichMerchant(gctx, row)
-			if len(got) == 0 {
-				_ = dir.MarkEnriched(gctx, []string{row.ExtID})
-				return nil
-			}
-			if err := dir.UpsertProfiles(gctx, got); err != nil {
-				return err
-			}
-			_ = dir.MarkEnriched(gctx, []string{row.ExtID})
-			profiles.Add(int64(len(got)))
-			for _, p := range got {
-				if p.Verified {
-					verified.Add(1)
+			if len(got) > 0 {
+				if err := dir.UpsertProfiles(gctx, got); err != nil {
+					return err
+				}
+				profiles.Add(int64(len(got)))
+				for _, p := range got {
+					if p.Verified {
+						verified.Add(1)
+					}
 				}
 			}
+			_ = dir.MarkEnriched(gctx, []string{row.ExtID})
+			_ = dir.MarkProbed(gctx, []string{row.ExtID})
 			n := tried.Load()
 			if n%200 == 0 {
 				fmt.Fprintf(os.Stderr, "%s enrich %d/%d profiles=%d\n",
@@ -96,6 +114,13 @@ func (c *Client) EnrichMerchants(ctx context.Context, opt EnrichOptions) (Enrich
 		})
 	}
 	waitErr := g.Wait()
+	if waitErr == nil {
+		if n, err := c.reprobeUnverified(ctx, dir, 5000, opt.Workers); err != nil {
+			waitErr = err
+		} else {
+			verified.Add(int64(n))
+		}
+	}
 	st := EnrichStats{
 		Tried:    int(tried.Load()),
 		Profiles: int(profiles.Load()),
@@ -107,6 +132,44 @@ func (c *Client) EnrichMerchants(ctx context.Context, opt EnrichOptions) (Enrich
 	}
 	_ = dir.RecordRun(ctx, "enrich", started, st.Verified, st.String())
 	return st, waitErr
+}
+
+func (c *Client) reprobeUnverified(ctx context.Context, dir *Directory, limit, workers int) (int, error) {
+	rows, err := dir.ListUnverifiedProfiles(ctx, limit)
+	if err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	fmt.Fprintf(os.Stderr, "%s re-probe unverified=%d\n", time.Now().Format("15:04:05"), len(rows))
+	var flipped atomic.Int64
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(workers)
+	for i := range rows {
+		p := rows[i]
+		g.Go(func() error {
+			if gctx.Err() != nil {
+				return nil
+			}
+			if !c.probeProfileExists(gctx, p.URL) {
+				return nil
+			}
+			p.Verified = true
+			p.Source = "reprobe"
+			if err := dir.UpsertProfiles(gctx, []Profile{p}); err != nil {
+				return err
+			}
+			flipped.Add(1)
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return int(flipped.Load()), err
+	}
+	n := int(flipped.Load())
+	fmt.Fprintf(os.Stderr, "%s re-probe flipped_verified=%d\n", time.Now().Format("15:04:05"), n)
+	return n, nil
 }
 
 func (c *Client) enrichHits(ctx context.Context, hits []Hit, limit int) []Hit {
@@ -235,7 +298,14 @@ func (c *Client) enrichMerchant(ctx context.Context, row Merchant) []Profile {
 		}
 	}
 	home := strings.TrimSpace(row.Homepage)
-	if home != "" && !registryOnlyHomepage(home) && !strings.Contains(strings.ToLower(home), "openstreetmap.org") {
+	hasWebsite := false
+	for _, p := range row.Profiles {
+		if p.Platform == PlatformWebsite && p.Verified {
+			hasWebsite = true
+			break
+		}
+	}
+	if isRealHomepage(home) && !hasWebsite {
 		if social, ok := ParseSocialURL(home, row.Name, ""); ok {
 			if c.probeProfileExists(ctx, social.HomepageURL) {
 				add(Profile{Platform: social.Platform, URL: social.HomepageURL, Handle: social.Handle, Verified: true, Source: "homepage"})
@@ -250,24 +320,23 @@ func (c *Client) enrichMerchant(ctx context.Context, row Merchant) []Profile {
 					add(Profile{Platform: h.Platform, URL: h.HomepageURL, Handle: h.Handle, Verified: true, Source: "website"})
 				}
 			}
-			handle := probeableHandle(row.Name)
-			if handle != "" {
-				for i, raw := range sameHandleURLs(handle) {
-					if i >= 4 || ctx.Err() != nil {
-						break
-					}
-					h, ok := ParseSocialURL(raw, row.Name, "")
-					if !ok {
-						continue
-					}
-					key := h.Platform + "|" + strings.ToLower(h.HomepageURL)
-					if _, ok := seen[key]; ok {
-						continue
-					}
-					if c.probeProfileExists(ctx, h.HomepageURL) {
-						add(Profile{Platform: h.Platform, URL: h.HomepageURL, Handle: h.Handle, Verified: true, Source: "probe"})
-					}
-				}
+		}
+	}
+	for _, handle := range merchantProbeHandles(row) {
+		for i, raw := range sameHandleURLs(handle) {
+			if i >= maxHandleProbePlat || ctx.Err() != nil {
+				break
+			}
+			h, ok := ParseSocialURL(raw, row.Name, "")
+			if !ok {
+				continue
+			}
+			key := h.Platform + "|" + strings.ToLower(h.HomepageURL)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			if c.probeProfileExists(ctx, h.HomepageURL) {
+				add(Profile{Platform: h.Platform, URL: h.HomepageURL, Handle: h.Handle, Verified: true, Source: "probe"})
 			}
 		}
 	}
