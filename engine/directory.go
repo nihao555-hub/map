@@ -387,7 +387,36 @@ func (d *Directory) ListToEnrich(ctx context.Context, limit int) ([]Merchant, er
 		  AND homepage NOT LIKE '%gleif.org%'
 		  AND homepage NOT LIKE '%wikidata.org%'
 		  AND (enriched_at IS NULL OR enriched_at='')
-		ORDER BY id
+		ORDER BY CASE source WHEN 'gleif' THEN 0 WHEN 'wikidata' THEN 1 ELSE 2 END, id
+		LIMIT ?`
+	rows, err := d.scanMerchants(ctx, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	return d.attachProfiles(ctx, rows), nil
+}
+
+// ListHomepagesMissingSocials returns merchants that already have a real
+// official site but no Facebook/Instagram/LinkedIn/etc. homepage yet.
+func (d *Directory) ListHomepagesMissingSocials(ctx context.Context, limit int) ([]Merchant, error) {
+	if d == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 500
+	}
+	q := `SELECT m.ext_id, m.source, m.name, m.shop, m.country, m.city, m.homepage, m.phone
+		FROM merchants m
+		WHERE m.homepage != ''
+		  AND m.homepage NOT LIKE '%openstreetmap.org%'
+		  AND m.homepage NOT LIKE '%gleif.org%'
+		  AND m.homepage NOT LIKE '%wikidata.org%'
+		  AND (m.enriched_at IS NULL OR m.enriched_at='')
+		  AND NOT EXISTS (
+		    SELECT 1 FROM merchant_profiles p
+		    WHERE p.ext_id=m.ext_id AND p.platform != 'website'
+		  )
+		ORDER BY CASE m.source WHEN 'gleif' THEN 0 WHEN 'wikidata' THEN 1 ELSE 2 END, m.id
 		LIMIT ?`
 	rows, err := d.scanMerchants(ctx, q, limit)
 	if err != nil {

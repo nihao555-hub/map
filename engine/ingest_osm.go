@@ -17,6 +17,7 @@ type ingestBox struct {
 	west    float64
 	north   float64
 	east    float64
+	rich    bool
 }
 
 func (b ingestBox) bbox() string {

@@ -23,9 +23,12 @@ func main() {
 	publicSocials := flag.Bool("public-socials", false, "用 ROR / Wikidata 官网 / 同名同国已验证主页给 GLEIF 补主页")
 	maxPublic := flag.Bool("public-max", false, "把剩下的公开源用尽：Wikidata 全量社媒、OSM contact:*、GLEIF 父子继承")
 	rrOnly := flag.Bool("rr-only", false, "只做同名同国对拷 + GLEIF Level 2 父子继承")
+	moreSocials := flag.Bool("more-socials", false, "补还没跑过的公开源：拆开 OSM 框、Wikidata 母公司、SEC 官网、已有官网刮社媒")
 	attachOnly := flag.Bool("attach-only", false, "只做 ROR/P856/同名对拷，不再拉 Wikidata 国家公司")
 	rorZip := flag.String("ror-zip", "", "已下载的 ROR dump zip；空则自动下载")
 	rrZip := flag.String("rr-zip", "", "已下载的 GLEIF Relationship csv.zip；空则自动下载")
+	websiteLimit := flag.Int("website-limit", 0, "官网刮社媒最多抓多少家，0=默认 30000")
+	websiteWorkers := flag.Int("website-workers", 16, "官网刮社媒并发数")
 	sea := flag.Bool("sea", false, "只补东南亚城市店铺 + Wikidata 公司")
 	osmLimit := flag.Int("osm-limit", 2000, "每个城市最多拉多少家店")
 	flag.Parse()
@@ -36,7 +39,7 @@ func main() {
 	client := engine.OptionsFromEnv()
 	if client.HTTP != nil {
 		client.HTTP.Timeout = 90 * time.Second
-		if *publicSocials || *maxPublic {
+		if *publicSocials || *maxPublic || *moreSocials {
 			client.HTTP.Timeout = 180 * time.Second
 		}
 	}
@@ -50,9 +53,12 @@ func main() {
 		PublicSocials:   *publicSocials,
 		MaxPublic:       *maxPublic,
 		RROnly:          *rrOnly,
+		MoreSocials:     *moreSocials,
 		AttachOnly:      *attachOnly,
 		RORZip:          *rorZip,
 		RRZip:           *rrZip,
+		WebsiteLimit:    *websiteLimit,
+		WebsiteWorkers:  *websiteWorkers,
 		Overpass:        !*skipOSM,
 		OSMLimitPerCity: *osmLimit,
 	}
@@ -94,6 +100,17 @@ func main() {
 		opt.Overpass = false
 		opt.SkipWikidata = true
 		opt.RROnly = true
+	}
+	if *moreSocials {
+		opt.SkipGLEIF = true
+		opt.Overpass = false
+		opt.SkipWikidata = true
+		opt.PublicSocials = false
+		opt.MaxPublic = false
+		opt.MoreSocials = true
+		if strings.Contains(client.WikidataURL, "query.wikidata.org") {
+			client.WikidataURL = engine.QleverWikidataSPARQL
+		}
 	}
 	started := time.Now()
 	fmt.Printf("开始入库 db=%s sea=%v cities=%d\n", *db, *sea, len(opt.OSMBoxes))

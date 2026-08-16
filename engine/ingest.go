@@ -37,11 +37,14 @@ type IngestOptions struct {
 	AttachOnly      bool
 	MaxPublic       bool
 	RROnly          bool
+	MoreSocials     bool
 	RORZip          string
 	RRZip           string
 	Overpass        bool
 	OSMBoxes        []ingestBox
 	OSMLimitPerCity int
+	WebsiteLimit    int
+	WebsiteWorkers  int
 }
 
 // DefaultIngestOptions dumps GLEIF Golden Copy plus OSM shops in major cities.
@@ -113,6 +116,9 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	if opt.MaxPublic {
 		stats = append(stats, c.ingestMaxPublic(ctx, dir, opt)...)
 	}
+	if opt.MoreSocials {
+		stats = append(stats, c.ingestMoreSocials(ctx, dir, opt)...)
+	}
 	return stats, nil
 }
 
@@ -141,7 +147,26 @@ func (c *Client) ingestMaxPublic(ctx context.Context, dir *Directory, opt Ingest
 	if err := dir.endBulk(ctx); err != nil {
 		stats = append(stats, IngestStats{Source: "public-max-fts", Err: err.Error()})
 	}
-	// After new donors exist, copy to same-country siblings and GLEIF children.
+	stats = append(stats, c.ingestMoreSocials(ctx, dir, IngestOptions{
+		SkipOSM:        true,
+		RORZip:         opt.RORZip,
+		RRZip:          opt.RRZip,
+		WebsiteLimit:   opt.WebsiteLimit,
+		WebsiteWorkers: opt.WebsiteWorkers,
+	})...)
+	return stats
+}
+
+func (c *Client) ingestMoreSocials(ctx context.Context, dir *Directory, opt IngestOptions) []IngestStats {
+	var stats []IngestStats
+	if !opt.SkipOSM {
+		stats = append(stats, c.ingestOSMContacts(ctx, dir))
+	}
+	if c != nil && strings.TrimSpace(c.WikidataURL) != "" {
+		stats = append(stats, c.ingestWikidataParentSocials(ctx, dir))
+	}
+	stats = append(stats, c.ingestSECTickers(ctx, dir))
+	stats = append(stats, c.ingestWebsiteSocials(ctx, dir, opt))
 	stats = append(stats, dir.attachUniqueNameSocials(ctx))
 	stats = append(stats, c.ingestGLEIFRelationships(ctx, dir, opt.RRZip))
 	return stats

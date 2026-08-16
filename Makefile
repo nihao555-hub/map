@@ -136,6 +136,11 @@ ingest-public-max: ## Wikidata global socials, OSM contact:*, GLEIF parent inher
 ingest-rr-only: ## same-country copy + GLEIF Level 2 parent social inherit
 	go run ./cmd/ingest-merchants -db webdata/merchants.db -rr-only
 
+ingest-more-socials: ## split OSM boxes, Wikidata parent, SEC websites, scrape official sites
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -more-socials \
+		-rr-zip /tmp/merchant-ingest/gleif-rr.csv.zip \
+		-website-workers 16
+
 enrich-merchants: ## fetch OSM official sites and probe missing social homepages
 	go run ./cmd/enrich-merchants -db webdata/merchants.db -workers 12
 

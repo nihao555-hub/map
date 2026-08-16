@@ -55,7 +55,7 @@ func (c *Client) EnrichMerchants(ctx context.Context, opt EnrichOptions) (Enrich
 
 	seen := map[string]struct{}{}
 	var rows []Merchant
-	pending, err := dir.ListToEnrich(ctx, opt.Limit)
+	pending, err := dir.ListHomepagesMissingSocials(ctx, opt.Limit)
 	if err != nil {
 		return EnrichStats{Took: time.Since(started), Err: err.Error()}, err
 	}
