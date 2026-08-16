@@ -103,6 +103,25 @@ func TestMergeWikidataGlobalSocialWebsite(t *testing.T) {
 	}
 }
 
+func TestEnsureWikidataSPARQLPrefixes(t *testing.T) {
+	got := ensureWikidataSPARQLPrefixes("SELECT ?x WHERE { ?x wdt:P856 ?v }")
+	if !strings.Contains(got, "PREFIX wdt:") || !strings.Contains(got, "SELECT ?x") {
+		t.Fatal(got)
+	}
+	if ensureWikidataSPARQLPrefixes("PREFIX wdt: <x>\nSELECT ?x") != "PREFIX wdt: <x>\nSELECT ?x" {
+		t.Fatal("should keep existing prefix")
+	}
+}
+
+func TestShouldShardWikidataSocial(t *testing.T) {
+	if !shouldShardWikidataSocial(0, 0) {
+		t.Fatal("empty first page should shard")
+	}
+	if shouldShardWikidataSocial(10, 0) || shouldShardWikidataSocial(0, 80000) {
+		t.Fatal("later empty pages should not shard")
+	}
+}
+
 func TestWikidataGlobalSocialSPARQLShards(t *testing.T) {
 	q := wikidataGlobalSocialSPARQL("P2013", "s", 0)
 	if strings.Contains(q, "P856") {

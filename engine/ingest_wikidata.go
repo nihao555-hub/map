@@ -88,8 +88,24 @@ func (c *Client) ingestWikidataCountries(ctx context.Context, dir *Directory, so
 	return st
 }
 
+const wikidataSPARQLPrefixes = `PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wikibase: <http://wikiba.se/ontology#>
+PREFIX bd: <http://www.bigdata.com/rdf#>
+`
+
+func ensureWikidataSPARQLPrefixes(sparql string) string {
+	upper := strings.ToUpper(sparql)
+	if strings.Contains(upper, "PREFIX WDT:") {
+		return sparql
+	}
+	return wikidataSPARQLPrefixes + "\n" + sparql
+}
+
 func (c *Client) fetchWikidataSPARQL(ctx context.Context, sparql string) ([]byte, error) {
 	if strings.Contains(strings.ToLower(c.WikidataURL), "qlever") {
+		sparql = ensureWikidataSPARQLPrefixes(sparql)
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.WikidataURL, strings.NewReader(sparql))
 		if err != nil {
 			return nil, err

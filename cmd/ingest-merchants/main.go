@@ -80,7 +80,6 @@ func main() {
 	}
 	if *maxPublic {
 		opt.SkipGLEIF = true
-		opt.SkipOSM = false
 		opt.Overpass = false
 		opt.SkipWikidata = true
 		opt.PublicSocials = false

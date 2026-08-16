@@ -214,7 +214,8 @@ const leiWebsiteChunkLimit = 20000
 
 func wikidataLEIWebsiteSPARQL(prefix string) string {
 	prefix = strings.ToUpper(strings.TrimSpace(prefix))
-	return fmt.Sprintf(`SELECT ?lei ?val WHERE {
+	return fmt.Sprintf(`PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+SELECT ?lei ?val WHERE {
   ?item wdt:P1278 ?lei ;
         wdt:P856 ?val .
   FILTER(STRSTARTS(STR(?lei), "%s"))

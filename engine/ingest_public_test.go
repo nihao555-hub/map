@@ -108,7 +108,7 @@ func TestAttachUniqueNameSocialsCopiesVerifiedHomepages(t *testing.T) {
 
 func TestWikidataLEIWebsiteSPARQLChunks(t *testing.T) {
 	q := wikidataLEIWebsiteSPARQL("54")
-	if !strings.Contains(q, `STRSTARTS(STR(?lei), "54")`) || !strings.Contains(q, "P856") {
+	if !strings.Contains(q, `STRSTARTS(STR(?lei), "54")`) || !strings.Contains(q, "P856") || !strings.Contains(q, "PREFIX wdt:") {
 		t.Fatalf("%s", q)
 	}
 	if got := leiStartPrefixes(1); len(got) != 36 || got[0] != "0" || got[10] != "A" {

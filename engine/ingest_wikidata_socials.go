@@ -112,6 +112,9 @@ func (c *Client) fetchWikidataSocialAll(ctx context.Context, byQID map[string]*M
 		n := mergeWikidataGlobalSocial(byQID, leiByQID, raw, prefix, platform)
 		total += n
 		logIngest("Wikidata socials %s offset=%d +%d (orgs=%d)", prop, offset, n, len(byQID))
+		if shouldShardWikidataSocial(n, offset) {
+			return c.fetchWikidataSocialSharded(ctx, byQID, leiByQID, prop, prefix, platform)
+		}
 		if n < wikidataSocialChunkLimit {
 			return total, nil
 		}
@@ -142,6 +145,10 @@ func (c *Client) fetchWikidataSocialSharded(ctx context.Context, byQID map[strin
 		return 0, last
 	}
 	return total, nil
+}
+
+func shouldShardWikidataSocial(n, offset int) bool {
+	return offset == 0 && n == 0
 }
 
 func wikidataGlobalSocialSPARQL(prop, valuePrefix string, offset int) string {
