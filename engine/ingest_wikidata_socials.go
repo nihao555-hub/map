@@ -39,16 +39,8 @@ func (c *Client) ingestWikidataGlobalSocials(ctx context.Context, dir *Directory
 			_ = dir.RecordRun(ctx, "wikidata-socials", started, 0, st.Err)
 			return st
 		}
-		n, hitLimit, err := c.fetchWikidataSocialPrefix(ctx, byQID, leiByQID, q.prop, q.prefix, q.platform, "")
-		if err != nil {
-			failed++
-			logIngest("Wikidata socials %s fail: %v", q.prop, err)
-			continue
-		}
-		added += n
-		if !hitLimit {
-			continue
-		}
+		// Unprefixed property dumps 504 on query.wikidata.org; always shard by value.
+		hitAny := false
 		for _, prefix := range socialValuePrefixes() {
 			if err := ctx.Err(); err != nil {
 				break
@@ -59,7 +51,11 @@ func (c *Client) ingestWikidataGlobalSocials(ctx context.Context, dir *Directory
 				logIngest("Wikidata socials %s %s fail: %v", q.prop, prefix, err)
 				continue
 			}
+			hitAny = true
 			added += n2
+		}
+		if !hitAny {
+			logIngest("Wikidata socials %s no shards", q.prop)
 		}
 	}
 	rows := make([]Merchant, 0, len(byQID))
@@ -122,14 +118,12 @@ func wikidataGlobalSocialSPARQL(prop, valuePrefix string) string {
 		filter = fmt.Sprintf(`FILTER(STRSTARTS(LCASE(STR(?val)), "%s"))`, strings.ToLower(valuePrefix))
 	}
 	return fmt.Sprintf(`SELECT ?item ?itemLabel ?lei ?cc ?val WHERE {
-  ?item wdt:P31 ?class ;
-        wdt:%s ?val .
-  VALUES ?class { wd:Q4830453 wd:Q6881511 wd:Q891723 wd:Q783794 wd:Q43229 }
+  ?item wdt:%s ?val .
   FILTER NOT EXISTS { ?item wdt:P31 wd:Q5 }
   %s
   OPTIONAL { ?item wdt:P1278 ?lei }
   OPTIONAL { ?item wdt:P17 ?country . ?country wdt:P297 ?cc }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en,de,fr,es,zh,ja,ko,pt". }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }
 LIMIT %d`, prop, filter, wikidataSocialChunkLimit)
 }

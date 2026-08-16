@@ -84,6 +84,16 @@ func TestMergeWikidataGlobalSocialAndLEI(t *testing.T) {
 	}
 }
 
+func TestWikidataGlobalSocialSPARQLShards(t *testing.T) {
+	q := wikidataGlobalSocialSPARQL("P2013", "s")
+	if !strings.Contains(q, "P2013") || !strings.Contains(q, `STRSTARTS(LCASE(STR(?val)), "s")`) {
+		t.Fatal(q)
+	}
+	if strings.Contains(wikidataGlobalSocialSPARQL("P2013", ""), "STRSTARTS") {
+		t.Fatal("empty prefix should not shard")
+	}
+}
+
 func TestOSMContactQueryUsesContactTags(t *testing.T) {
 	q := osmContactQuery(ingestBox{city: "t", country: "DE", south: 1, west: 2, north: 3, east: 4})
 	for _, want := range []string{"contact:facebook", "contact:instagram", "contact:linkedin", "1.0000,2.0000,3.0000,4.0000"} {

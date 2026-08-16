@@ -34,7 +34,7 @@ func main() {
 	client := engine.OptionsFromEnv()
 	if client.HTTP != nil {
 		client.HTTP.Timeout = 90 * time.Second
-		if *publicSocials {
+		if *publicSocials || *maxPublic {
 			client.HTTP.Timeout = 180 * time.Second
 		}
 	}

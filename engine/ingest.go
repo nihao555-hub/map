@@ -112,8 +112,11 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 
 func (c *Client) ingestMaxPublic(ctx context.Context, dir *Directory, opt IngestOptions) []IngestStats {
 	var stats []IngestStats
+	// Same-country GLEIF siblings and Level 2 parents first: no SPARQL, immediate yield.
+	stats = append(stats, dir.attachUniqueNameSocials(ctx))
+	stats = append(stats, c.ingestGLEIFRelationships(ctx, dir, opt.RRZip))
 	if err := dir.beginBulk(ctx); err != nil {
-		return []IngestStats{{Source: "public-max", Err: err.Error()}}
+		return append(stats, IngestStats{Source: "public-max", Err: err.Error()})
 	}
 	if c != nil && strings.TrimSpace(c.WikidataURL) != "" {
 		stats = append(stats, c.ingestWikidataGlobalSocials(ctx, dir))
