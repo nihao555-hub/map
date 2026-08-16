@@ -337,6 +337,12 @@ func groupExpandedHits(hits []Hit) []Hit {
 	return out
 }
 
+// sameHandleURLs is the Sherlock-style sister-profile list we actually keep:
+// only platforms ParseSocialURL can verify, and LinkedIn company pages
+// (Sherlock's data.json uses linkedin.com/in/, which is a person, not a firm).
+// sherlock-project/sherlock (~9万 star, 400+ 站) and soxoj/maigret (3000+ 站)
+// need a username. We only call this with a handle from an official site or
+// an already-found social homepage — not a GLEIF legal name.
 func sameHandleURLs(handle string) []string {
 	h := strings.Trim(handle, "/")
 	return []string{
@@ -349,6 +355,8 @@ func sameHandleURLs(handle string) []string {
 		"https://www.threads.net/@" + h,
 		"https://t.me/" + h,
 		"https://www.pinterest.com/" + h + "/",
+		"https://www.reddit.com/user/" + h,
+		"https://www.twitch.tv/" + h,
 	}
 }
 

@@ -84,7 +84,7 @@ func TestMerchantProbeHandles(t *testing.T) {
 func TestSameHandleURLs(t *testing.T) {
 	urls := sameHandleURLs("osdinlighting")
 	joined := strings.Join(urls, " ")
-	for _, want := range []string{"instagram.com/osdinlighting", "tiktok.com/@osdinlighting", "youtube.com/@osdinlighting"} {
+	for _, want := range []string{"instagram.com/osdinlighting", "tiktok.com/@osdinlighting", "youtube.com/@osdinlighting", "reddit.com/user/osdinlighting", "linkedin.com/company/osdinlighting"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing %s in %v", want, urls)
 		}
