@@ -15,7 +15,18 @@ func (c *Client) ingestOSMContacts(ctx context.Context, dir *Directory) IngestSt
 	if c == nil {
 		return IngestStats{Source: "osm-contacts", Took: time.Since(started), Note: "skipped"}
 	}
-	boxes := osmContactBoxes()
+	return c.ingestOSMContactBoxes(ctx, dir, osmContactBoxes())
+}
+
+func (c *Client) ingestOSMContactGaps(ctx context.Context, dir *Directory) IngestStats {
+	return c.ingestOSMContactBoxes(ctx, dir, osmContactGapBoxes())
+}
+
+func (c *Client) ingestOSMContactBoxes(ctx context.Context, dir *Directory, boxes []ingestBox) IngestStats {
+	started := time.Now()
+	if c == nil {
+		return IngestStats{Source: "osm-contacts", Took: time.Since(started), Note: "skipped"}
+	}
 	inserted := 0
 	failed := 0
 	for i, box := range boxes {
@@ -83,6 +94,11 @@ func osmContactQuery(box ingestBox) string {
 // Country-scale boxes for regions that already complete, plus smaller splits
 // for EU / India / US-east / Canada / LatAm that timed out as one rectangle.
 func osmContactBoxes() []ingestBox {
+	out := append([]ingestBox(nil), osmContactCoreBoxes()...)
+	return append(out, osmContactGapBoxes()...)
+}
+
+func osmContactCoreBoxes() []ingestBox {
 	return []ingestBox{
 		{city: "sea-th-my-sg", country: "TH", south: 1.1, west: 99.5, north: 20.6, east: 105.8},
 		{city: "sea-vn-kh-la", country: "VN", south: 8.3, west: 102.0, north: 23.5, east: 109.6},
@@ -94,7 +110,11 @@ func osmContactBoxes() []ingestBox {
 		{city: "us-central", country: "US", south: 25.0, west: -106.0, north: 49.5, east: -88.0},
 		{city: "us-west", country: "US", south: 31.0, west: -125.0, north: 49.5, east: -106.0},
 		{city: "africa", country: "ZA", south: -35.5, west: -18.0, north: 38.0, east: 52.0},
+	}
+}
 
+func osmContactGapBoxes() []ingestBox {
+	return []ingestBox{
 		{city: "de-north", country: "DE", south: 51.0, west: 5.8, north: 55.1, east: 15.1, rich: true},
 		{city: "de-south", country: "DE", south: 47.2, west: 5.8, north: 51.0, east: 15.1, rich: true},
 		{city: "fr-north", country: "FR", south: 46.5, west: -5.2, north: 51.2, east: 8.3, rich: true},

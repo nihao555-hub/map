@@ -160,7 +160,7 @@ func (c *Client) ingestMaxPublic(ctx context.Context, dir *Directory, opt Ingest
 func (c *Client) ingestMoreSocials(ctx context.Context, dir *Directory, opt IngestOptions) []IngestStats {
 	var stats []IngestStats
 	if !opt.SkipOSM {
-		stats = append(stats, c.ingestOSMContacts(ctx, dir))
+		stats = append(stats, c.ingestOSMContactGaps(ctx, dir))
 	}
 	if c != nil && strings.TrimSpace(c.WikidataURL) != "" {
 		stats = append(stats, c.ingestWikidataParentSocials(ctx, dir))

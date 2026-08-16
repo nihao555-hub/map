@@ -80,6 +80,14 @@ func TestOSMContactBoxesSplitTimedOutRegions(t *testing.T) {
 			t.Fatalf("missing split box %s", want)
 		}
 	}
+	for _, box := range osmContactGapBoxes() {
+		if box.city == "sea-th-my-sg" || box.city == "cn-kr-jp-tw" {
+			t.Fatalf("gap list should skip already-ingested core box %s", box.city)
+		}
+		if !box.rich {
+			t.Fatalf("gap box %s should request extra contact tags", box.city)
+		}
+	}
 }
 
 func TestIngestWikidataParentAttachesExistingGLEIF(t *testing.T) {
