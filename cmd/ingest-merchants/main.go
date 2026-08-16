@@ -19,6 +19,8 @@ func main() {
 	skipOSM := flag.Bool("skip-osm", false, "跳过 OSM 全品类城市店铺")
 	skipWikidata := flag.Bool("skip-wikidata", false, "跳过 Wikidata 东南亚公司")
 	leiSocials := flag.Bool("lei-socials", false, "只用 Wikidata LEI 给已入库的 GLEIF 补官网/社媒")
+	publicSocials := flag.Bool("public-socials", false, "用 ROR / Wikidata 官网 / 同名同国已验证主页给 GLEIF 补主页")
+	rorZip := flag.String("ror-zip", "", "已下载的 ROR dump zip；空则自动下载")
 	sea := flag.Bool("sea", false, "只补东南亚城市店铺 + Wikidata 公司")
 	osmLimit := flag.Int("osm-limit", 2000, "每个城市最多拉多少家店")
 	flag.Parse()
@@ -29,6 +31,9 @@ func main() {
 	client := engine.OptionsFromEnv()
 	if client.HTTP != nil {
 		client.HTTP.Timeout = 90 * time.Second
+		if *publicSocials {
+			client.HTTP.Timeout = 180 * time.Second
+		}
 	}
 	opt := engine.IngestOptions{
 		DBPath:          *db,
@@ -37,6 +42,8 @@ func main() {
 		SkipGLEIF:       *skipGLEIF,
 		SkipOSM:         *skipOSM,
 		SkipWikidata:    *skipWikidata,
+		PublicSocials:   *publicSocials,
+		RORZip:          *rorZip,
 		Overpass:        !*skipOSM,
 		OSMLimitPerCity: *osmLimit,
 	}
@@ -53,6 +60,13 @@ func main() {
 		opt.Overpass = false
 		opt.SkipWikidata = true
 		opt.WikidataLEI = true
+	}
+	if *publicSocials {
+		opt.SkipGLEIF = true
+		opt.SkipOSM = true
+		opt.Overpass = false
+		opt.SkipWikidata = true
+		opt.PublicSocials = true
 	}
 	started := time.Now()
 	fmt.Printf("开始入库 db=%s sea=%v cities=%d\n", *db, *sea, len(opt.OSMBoxes))

@@ -9,11 +9,13 @@ import (
 	"time"
 )
 
-// ASEAN markets we dump from Wikidata (companies that already list a website or social).
-var seaWikidataCountries = []struct {
+type wikidataCountry struct {
 	Code string
 	QID  string
-}{
+}
+
+// ASEAN markets we dump from Wikidata (companies that already list a website or social).
+var seaWikidataCountries = []wikidataCountry{
 	{"TH", "Q869"},
 	{"VN", "Q881"},
 	{"MY", "Q833"},
@@ -28,41 +30,58 @@ var seaWikidataCountries = []struct {
 }
 
 func (c *Client) ingestWikidataSEA(ctx context.Context, dir *Directory) IngestStats {
+	return c.ingestWikidataCountries(ctx, dir, "wikidata", seaWikidataCountries, false)
+}
+
+func (c *Client) ingestWikidataMarkets(ctx context.Context, dir *Directory) IngestStats {
+	return c.ingestWikidataCountries(ctx, dir, "wikidata-markets", extraWikidataCountries, true)
+}
+
+func (c *Client) ingestWikidataCountries(ctx context.Context, dir *Directory, source string, countries []wikidataCountry, splitLarge bool) IngestStats {
 	started := time.Now()
 	if c == nil || strings.TrimSpace(c.WikidataURL) == "" {
-		return IngestStats{Source: "wikidata", Took: time.Since(started), Note: "skipped"}
+		return IngestStats{Source: source, Took: time.Since(started), Note: "skipped"}
 	}
 	inserted := 0
 	failed := 0
-	for _, cc := range seaWikidataCountries {
+	for _, cc := range countries {
 		if err := ctx.Err(); err != nil {
-			st := IngestStats{Source: "wikidata", Rows: inserted, Took: time.Since(started), Err: err.Error()}
-			_ = dir.RecordRun(ctx, "wikidata", started, inserted, st.Err)
+			st := IngestStats{Source: source, Rows: inserted, Took: time.Since(started), Err: err.Error()}
+			_ = dir.RecordRun(ctx, source, started, inserted, st.Err)
 			return st
 		}
-		raw, err := c.fetchWikidataSPARQL(ctx, wikidataSEACompanySPARQL(cc.QID))
-		if err != nil {
-			time.Sleep(2 * time.Second)
-			raw, err = c.fetchWikidataSPARQL(ctx, wikidataSEACompanySPARQL(cc.QID))
+		queries := []string{wikidataMarketCompanySPARQL(cc.QID, 2500, "")}
+		if splitLarge && largeWikidataMarkets[cc.Code] {
+			queries = wikidataLargeMarketQueries(cc.QID)
 		}
-		if err != nil {
-			failed++
-			logIngest("Wikidata %s fail: %v", cc.Code, err)
-			continue
+		countryAdded := 0
+		for _, sparql := range queries {
+			raw, err := c.fetchWikidataSPARQL(ctx, sparql)
+			if err != nil {
+				time.Sleep(2 * time.Second)
+				raw, err = c.fetchWikidataSPARQL(ctx, sparql)
+			}
+			if err != nil {
+				failed++
+				logIngest("Wikidata %s fail: %v", cc.Code, err)
+				continue
+			}
+			rows := parseWikidataSEAMerchants(raw, cc.Code)
+			n, err := dir.InsertBatch(ctx, rows)
+			if err != nil {
+				st := IngestStats{Source: source, Rows: inserted, Took: time.Since(started), Err: err.Error()}
+				_ = dir.RecordRun(ctx, source, started, inserted, st.Err)
+				return st
+			}
+			countryAdded += n
+			inserted += n
+			time.Sleep(600 * time.Millisecond)
 		}
-		rows := parseWikidataSEAMerchants(raw, cc.Code)
-		n, err := dir.InsertBatch(ctx, rows)
-		if err != nil {
-			st := IngestStats{Source: "wikidata", Rows: inserted, Took: time.Since(started), Err: err.Error()}
-			_ = dir.RecordRun(ctx, "wikidata", started, inserted, st.Err)
-			return st
-		}
-		inserted += n
-		logIngest("Wikidata %s +%d (total %d)", cc.Code, n, inserted)
+		logIngest("Wikidata %s +%d (total %d)", cc.Code, countryAdded, inserted)
 	}
-	note := fmt.Sprintf("SEA companies, %d failed", failed)
-	st := IngestStats{Source: "wikidata", Rows: inserted, Took: time.Since(started), Note: note}
-	_ = dir.RecordRun(ctx, "wikidata", started, inserted, note)
+	note := fmt.Sprintf("companies with website/social, %d failed", failed)
+	st := IngestStats{Source: source, Rows: inserted, Took: time.Since(started), Note: note}
+	_ = dir.RecordRun(ctx, source, started, inserted, note)
 	return st
 }
 
@@ -81,11 +100,52 @@ func (c *Client) fetchWikidataSPARQL(ctx context.Context, sparql string) ([]byte
 	})
 }
 
+var extraWikidataCountries = []wikidataCountry{
+	{"US", "Q30"}, {"CN", "Q148"}, {"JP", "Q17"}, {"DE", "Q183"}, {"GB", "Q145"},
+	{"FR", "Q142"}, {"IT", "Q38"}, {"ES", "Q29"}, {"NL", "Q55"}, {"BE", "Q31"},
+	{"AT", "Q40"}, {"CH", "Q39"}, {"SE", "Q34"}, {"DK", "Q35"}, {"NO", "Q20"},
+	{"FI", "Q33"}, {"PL", "Q36"}, {"CZ", "Q213"}, {"IE", "Q27"}, {"PT", "Q45"},
+	{"GR", "Q41"}, {"HU", "Q28"}, {"RO", "Q218"}, {"BG", "Q219"}, {"HR", "Q224"},
+	{"SK", "Q214"}, {"SI", "Q215"}, {"LT", "Q37"}, {"LV", "Q211"}, {"EE", "Q191"},
+	{"LU", "Q32"}, {"RU", "Q159"}, {"TR", "Q43"}, {"UA", "Q212"}, {"KZ", "Q232"},
+	{"AU", "Q408"}, {"NZ", "Q664"}, {"CA", "Q16"}, {"MX", "Q96"}, {"BR", "Q155"},
+	{"AR", "Q414"}, {"CL", "Q298"}, {"CO", "Q739"}, {"PE", "Q419"}, {"IN", "Q668"},
+	{"PK", "Q843"}, {"BD", "Q902"}, {"KR", "Q884"}, {"TW", "Q865"}, {"HK", "Q8646"},
+	{"AE", "Q878"}, {"SA", "Q851"}, {"QA", "Q846"}, {"KW", "Q817"}, {"IL", "Q801"},
+	{"EG", "Q79"}, {"MA", "Q1028"}, {"NG", "Q1033"}, {"ZA", "Q258"}, {"KE", "Q114"},
+}
+
+var largeWikidataMarkets = map[string]bool{
+	"US": true, "CN": true, "JP": true, "DE": true, "GB": true, "FR": true,
+	"IT": true, "IN": true, "KR": true, "BR": true, "CA": true, "AU": true,
+}
+
+var wikidataCompanyClasses = []string{"Q4830453", "Q6881511", "Q891723", "Q783794"}
+
+func wikidataLargeMarketQueries(countryQID string) []string {
+	out := make([]string, 0, len(wikidataCompanyClasses))
+	for _, class := range wikidataCompanyClasses {
+		out = append(out, wikidataMarketCompanySPARQL(countryQID, 4000, class))
+	}
+	return out
+}
+
 func wikidataSEACompanySPARQL(countryQID string) string {
+	return wikidataMarketCompanySPARQL(countryQID, 2000, "")
+}
+
+func wikidataMarketCompanySPARQL(countryQID string, limit int, class string) string {
+	if limit <= 0 {
+		limit = 2000
+	}
+	classClause := `?item wdt:P31 ?class .
+  VALUES ?class { wd:Q4830453 wd:Q6881511 wd:Q891723 wd:Q783794 }`
+	if class != "" {
+		classClause = `?item wdt:P31 wd:` + class + ` .`
+	}
 	return fmt.Sprintf(`SELECT ?item ?itemLabel ?website ?facebook ?instagram ?twitter ?linkedin ?tiktok WHERE {
   ?item wdt:P17 wd:%s .
-  ?item wdt:P31 ?class .
-  VALUES ?class { wd:Q4830453 wd:Q6881511 wd:Q891723 wd:Q783794 }
+  %s
   OPTIONAL { ?item wdt:P856 ?website. }
   OPTIONAL { ?item wdt:P2013 ?facebook. }
   OPTIONAL { ?item wdt:P2003 ?instagram. }
@@ -93,9 +153,9 @@ func wikidataSEACompanySPARQL(countryQID string) string {
   OPTIONAL { ?item wdt:P4264 ?linkedin. }
   OPTIONAL { ?item wdt:P7085 ?tiktok. }
   FILTER(BOUND(?website) || BOUND(?facebook) || BOUND(?instagram) || BOUND(?twitter) || BOUND(?linkedin) || BOUND(?tiktok))
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en,th,vi,id,ms,zh". }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en,th,vi,id,ms,zh,de,fr,ja,ko,es,pt". }
 }
-LIMIT 2000`, countryQID)
+LIMIT %d`, countryQID, classClause, limit)
 }
 
 func parseWikidataSEAMerchants(raw []byte, country string) []Merchant {

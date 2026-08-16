@@ -33,6 +33,8 @@ type IngestOptions struct {
 	SkipOSM         bool
 	SkipWikidata    bool
 	WikidataLEI     bool
+	PublicSocials   bool
+	RORZip          string
 	Overpass        bool
 	OSMBoxes        []ingestBox
 	OSMLimitPerCity int
@@ -66,7 +68,8 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	defer dir.Close()
 
 	needBulk := !opt.SkipGLEIF || (opt.Overpass && !opt.SkipOSM) ||
-		(!opt.SkipWikidata && c != nil && strings.TrimSpace(c.WikidataURL) != "")
+		(!opt.SkipWikidata && c != nil && strings.TrimSpace(c.WikidataURL) != "") ||
+		(opt.PublicSocials && c != nil && strings.TrimSpace(c.WikidataURL) != "")
 	if needBulk {
 		if err := dir.beginBulk(ctx); err != nil {
 			return nil, err
@@ -83,6 +86,9 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	if !opt.SkipWikidata && c != nil && strings.TrimSpace(c.WikidataURL) != "" {
 		stats = append(stats, c.ingestWikidataSEA(ctx, dir))
 	}
+	if opt.PublicSocials && c != nil && strings.TrimSpace(c.WikidataURL) != "" {
+		stats = append(stats, c.ingestWikidataMarkets(ctx, dir))
+	}
 
 	if needBulk {
 		if err := dir.endBulk(ctx); err != nil {
@@ -91,6 +97,9 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	}
 	if opt.WikidataLEI && c != nil && strings.TrimSpace(c.WikidataURL) != "" {
 		stats = append(stats, c.ingestWikidataLEI(ctx, dir))
+	}
+	if opt.PublicSocials {
+		stats = append(stats, c.ingestPublicSocials(ctx, dir, opt)...)
 	}
 	return stats, nil
 }
