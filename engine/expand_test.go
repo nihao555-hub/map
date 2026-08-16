@@ -38,6 +38,31 @@ func TestPickExpandSeedsPrefersLatinHandles(t *testing.T) {
 	}
 }
 
+func TestExpandMerchantSocialsDedupedSeedsDoNotPanic(t *testing.T) {
+	// pickExpandSeeds collapses duplicate URLs, so the seed list can be
+	// shorter than maxExpandSeeds. The expand loop must use the collapsed length.
+	same := "https://www.facebook.com/osdinlighting"
+	hits := make([]Hit, maxExpandSeeds+4)
+	for i := range hits {
+		hits[i] = Hit{Name: "Osdin Lighting", Handle: "osdinlighting", Platform: PlatformFacebook, HomepageURL: same}
+	}
+	c := &Client{SkipExpand: false, DisablePublic: true}
+	got := c.expandMerchantSocials(context.Background(), hits, nil)
+	if got != nil {
+		t.Fatalf("disabled public should skip expand, got %+v", got)
+	}
+	c.DisablePublic = false
+	c.HTTP = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`<html><title>Osdin Lighting</title><body>shop</body></html>`)),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})}
+	_ = c.expandMerchantSocials(context.Background(), hits, map[string]bool{PlatformFacebook: true, PlatformInstagram: true})
+}
+
 func TestMerchantProbeHandles(t *testing.T) {
 	got := merchantProbeHandles(Merchant{Name: "Backwerk", Homepage: "https://www.openstreetmap.org/node/1"})
 	if len(got) == 0 || got[0] != "Backwerk" {

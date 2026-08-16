@@ -32,6 +32,10 @@ func (c *Client) expandMerchantSocials(ctx context.Context, seeds []Hit, wanted 
 		n = len(seeds)
 	}
 	seeds = pickExpandSeeds(seeds, n)
+	n = len(seeds)
+	if n == 0 {
+		return nil
+	}
 
 	expandCtx, cancel := context.WithTimeout(ctx, expandBudget)
 	defer cancel()
