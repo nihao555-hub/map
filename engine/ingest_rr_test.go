@@ -85,12 +85,15 @@ func TestMergeWikidataGlobalSocialAndLEI(t *testing.T) {
 }
 
 func TestWikidataGlobalSocialSPARQLShards(t *testing.T) {
-	q := wikidataGlobalSocialSPARQL("P2013", "s")
+	q := wikidataGlobalSocialSPARQL("P2013", "s", 0)
 	if !strings.Contains(q, "P2013") || !strings.Contains(q, `STRSTARTS(LCASE(STR(?val)), "s")`) {
 		t.Fatal(q)
 	}
-	if strings.Contains(wikidataGlobalSocialSPARQL("P2013", ""), "STRSTARTS") {
+	if strings.Contains(wikidataGlobalSocialSPARQL("P2013", "", 80000), "STRSTARTS") {
 		t.Fatal("empty prefix should not shard")
+	}
+	if !strings.Contains(wikidataGlobalSocialSPARQL("P2013", "", 80000), "OFFSET 80000") {
+		t.Fatal("missing offset")
 	}
 }
 

@@ -36,6 +36,7 @@ type IngestOptions struct {
 	PublicSocials   bool
 	AttachOnly      bool
 	MaxPublic       bool
+	RROnly          bool
 	RORZip          string
 	RRZip           string
 	Overpass        bool
@@ -103,6 +104,11 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	}
 	if opt.PublicSocials {
 		stats = append(stats, c.ingestPublicSocials(ctx, dir, opt)...)
+	}
+	if opt.RROnly {
+		stats = append(stats, dir.attachUniqueNameSocials(ctx))
+		stats = append(stats, c.ingestGLEIFRelationships(ctx, dir, opt.RRZip))
+		return stats, nil
 	}
 	if opt.MaxPublic {
 		stats = append(stats, c.ingestMaxPublic(ctx, dir, opt)...)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -88,6 +89,16 @@ func (c *Client) ingestWikidataCountries(ctx context.Context, dir *Directory, so
 }
 
 func (c *Client) fetchWikidataSPARQL(ctx context.Context, sparql string) ([]byte, error) {
+	if strings.Contains(strings.ToLower(c.WikidataURL), "qlever") {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.WikidataURL, strings.NewReader(sparql))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/sparql-results+json")
+		req.Header.Set("Content-Type", "application/sparql-query")
+		req.Header.Set("User-Agent", "map-engine/wikidata (https://github.com/nihao555-hub/map)")
+		return c.do(req)
+	}
 	u, err := url.Parse(c.WikidataURL)
 	if err != nil {
 		return nil, err
