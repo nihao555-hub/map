@@ -152,6 +152,18 @@ func TestMergeWikidataLEIProp(t *testing.T) {
 	if n != 1 || by["001GPB6A9XPE8XJICC14"] == nil || !strings.Contains(by["001GPB6A9XPE8XJICC14"].Homepage, "signify.com") {
 		t.Fatalf("n=%d by=%+v", n, by)
 	}
+	if len(by["001GPB6A9XPE8XJICC14"].Profiles) != 1 || by["001GPB6A9XPE8XJICC14"].Profiles[0].Platform != PlatformWebsite {
+		t.Fatalf("website profile %+v", by["001GPB6A9XPE8XJICC14"].Profiles)
+	}
+}
+
+func TestWikidataLEIPropSPARQLPaginated(t *testing.T) {
+	q := wikidataLEIPropSPARQL("P856", 80000)
+	for _, want := range []string{"PREFIX wdt:", "P1278", "P856", "LIMIT 80000", "OFFSET 80000"} {
+		if !strings.Contains(q, want) {
+			t.Fatalf("missing %s in %s", want, q)
+		}
+	}
 }
 
 func TestParseWikidataLEIMerchants(t *testing.T) {

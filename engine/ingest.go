@@ -118,26 +118,30 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 
 func (c *Client) ingestMaxPublic(ctx context.Context, dir *Directory, opt IngestOptions) []IngestStats {
 	var stats []IngestStats
-	// Same-country GLEIF siblings and Level 2 parents first: no SPARQL, immediate yield.
-	stats = append(stats, dir.attachUniqueNameSocials(ctx))
-	stats = append(stats, c.ingestGLEIFRelationships(ctx, dir, opt.RRZip))
 	if err := dir.beginBulk(ctx); err != nil {
-		return append(stats, IngestStats{Source: "public-max", Err: err.Error()})
+		return []IngestStats{{Source: "public-max", Err: err.Error()}}
 	}
+	// LEI-keyed Wikidata first: highest-precision GLEIF join.
 	if c != nil && strings.TrimSpace(c.WikidataURL) != "" {
-		stats = append(stats, c.ingestWikidataGlobalSocials(ctx, dir))
+		stats = append(stats, c.ingestWikidataLEI(ctx, dir))
 	}
+	// ROR websites + Wikidata P856 + unique same-name copy.
 	stats = append(stats, c.ingestPublicSocials(ctx, dir, IngestOptions{
 		PublicSocials: true,
 		AttachOnly:    true,
 		RORZip:        opt.RORZip,
 	})...)
+	// Global social identifiers (no unfiltered P856 — that dump is noisy).
+	if c != nil && strings.TrimSpace(c.WikidataURL) != "" {
+		stats = append(stats, c.ingestWikidataGlobalSocials(ctx, dir))
+	}
 	if !opt.SkipOSM {
 		stats = append(stats, c.ingestOSMContacts(ctx, dir))
 	}
 	if err := dir.endBulk(ctx); err != nil {
 		stats = append(stats, IngestStats{Source: "public-max-fts", Err: err.Error()})
 	}
+	// After new donors exist, copy to same-country siblings and GLEIF children.
 	stats = append(stats, dir.attachUniqueNameSocials(ctx))
 	stats = append(stats, c.ingestGLEIFRelationships(ctx, dir, opt.RRZip))
 	return stats

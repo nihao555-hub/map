@@ -14,7 +14,6 @@ var wikidataGlobalSocials = []struct {
 	prefix   string
 	platform string
 }{
-	{"P856", "", PlatformWebsite},
 	{"P2013", "https://www.facebook.com/", PlatformFacebook},
 	{"P2003", "https://www.instagram.com/", PlatformInstagram},
 	{"P4264", "https://www.linkedin.com/company/", PlatformLinkedIn},

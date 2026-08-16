@@ -252,6 +252,8 @@ var leiContactQueries = []struct {
 	{"P2002", "https://x.com/", PlatformX},
 	{"P4264", "https://www.linkedin.com/company/", PlatformLinkedIn},
 	{"P7085", "https://www.tiktok.com/@", PlatformTikTok},
+	{"P2397", "https://www.youtube.com/channel/", PlatformYouTube},
+	{"P3836", "https://www.pinterest.com/", PlatformPinterest},
 }
 
 func (c *Client) ingestWikidataLEI(ctx context.Context, dir *Directory) IngestStats {
@@ -267,17 +269,12 @@ func (c *Client) ingestWikidataLEI(ctx context.Context, dir *Directory) IngestSt
 			_ = dir.RecordRun(ctx, "gleif-lei", started, 0, st.Err)
 			return st
 		}
-		raw, err := c.fetchWikidataSPARQL(ctx, wikidataLEIPropSPARQL(q.prop))
-		if err != nil {
-			time.Sleep(2 * time.Second)
-			raw, err = c.fetchWikidataSPARQL(ctx, wikidataLEIPropSPARQL(q.prop))
-		}
+		n, err := c.fetchWikidataLEIPropAll(ctx, byLEI, q.prop, q.prefix, q.platform)
 		if err != nil {
 			failed++
 			logIngest("Wikidata LEI %s fail: %v", q.prop, err)
 			continue
 		}
-		n := mergeWikidataLEIProp(byLEI, raw, q.prefix, q.platform)
 		logIngest("Wikidata LEI %s +%d (entities=%d)", q.prop, n, len(byLEI))
 	}
 	rows := make([]Merchant, 0, len(byLEI))
@@ -293,12 +290,43 @@ func (c *Client) ingestWikidataLEI(ctx context.Context, dir *Directory) IngestSt
 	return st
 }
 
-func wikidataLEIPropSPARQL(prop string) string {
-	return fmt.Sprintf(`SELECT ?lei ?val WHERE {
+const leiPropChunkLimit = 80000
+
+func (c *Client) fetchWikidataLEIPropAll(ctx context.Context, byLEI map[string]*Merchant, prop, prefix, platform string) (int, error) {
+	total := 0
+	for offset := 0; offset < 400000; offset += leiPropChunkLimit {
+		if err := ctx.Err(); err != nil {
+			return total, err
+		}
+		raw, err := c.fetchWikidataSPARQL(ctx, wikidataLEIPropSPARQL(prop, offset))
+		if err != nil {
+			time.Sleep(2 * time.Second)
+			raw, err = c.fetchWikidataSPARQL(ctx, wikidataLEIPropSPARQL(prop, offset))
+		}
+		if err != nil {
+			return total, err
+		}
+		n := mergeWikidataLEIProp(byLEI, raw, prefix, platform)
+		total += n
+		logIngest("Wikidata LEI %s offset=%d +%d (entities=%d)", prop, offset, n, len(byLEI))
+		if n < leiPropChunkLimit {
+			return total, nil
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return total, nil
+}
+
+func wikidataLEIPropSPARQL(prop string, offset int) string {
+	if offset < 0 {
+		offset = 0
+	}
+	return fmt.Sprintf(`PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+SELECT ?lei ?val WHERE {
   ?item wdt:P1278 ?lei ;
         wdt:%s ?val .
 }
-LIMIT 30000`, prop)
+LIMIT %d OFFSET %d`, prop, leiPropChunkLimit, offset)
 }
 
 func mergeWikidataLEIProp(byLEI map[string]*Merchant, raw []byte, prefix, platform string) int {
@@ -325,10 +353,19 @@ func mergeWikidataLEIProp(byLEI map[string]*Merchant, raw []byte, prefix, platfo
 			byLEI[lei] = m
 		}
 		if platform == PlatformWebsite {
-			if !strings.Contains(val, "wikidata.org") && (m.Homepage == "" || registryOnlyHomepage(m.Homepage)) {
-				m.Homepage = val
-				added++
+			if strings.Contains(val, "wikidata.org") || !isRealHomepage(val) {
+				continue
 			}
+			if m.Homepage == "" || registryOnlyHomepage(m.Homepage) {
+				m.Homepage = val
+			}
+			m.Profiles = append(m.Profiles, Profile{
+				ExtID:    m.ExtID,
+				Platform: PlatformWebsite,
+				URL:      val,
+				Source:   "wikidata-lei",
+			})
+			added++
 			continue
 		}
 		if prefix != "" && !strings.Contains(val, "://") {

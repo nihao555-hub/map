@@ -129,7 +129,9 @@ ingest-public-socials: ## ROR dump + Wikidata P856 + same-name copy onto GLEIF
 	go run ./cmd/ingest-merchants -db webdata/merchants.db -public-socials -attach-only
 
 ingest-public-max: ## Wikidata global socials, OSM contact:*, GLEIF parent inherit, ROR
-	go run ./cmd/ingest-merchants -db webdata/merchants.db -public-max
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -public-max \
+		-rr-zip /tmp/merchant-ingest/gleif-rr.csv.zip \
+		-ror-zip /tmp/merchant-ingest/ror-data.zip
 
 ingest-rr-only: ## same-country copy + GLEIF Level 2 parent social inherit
 	go run ./cmd/ingest-merchants -db webdata/merchants.db -rr-only

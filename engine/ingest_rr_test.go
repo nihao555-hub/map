@@ -105,6 +105,9 @@ func TestMergeWikidataGlobalSocialWebsite(t *testing.T) {
 
 func TestWikidataGlobalSocialSPARQLShards(t *testing.T) {
 	q := wikidataGlobalSocialSPARQL("P2013", "s", 0)
+	if strings.Contains(q, "P856") {
+		t.Fatal("global social dump should not include unfiltered websites")
+	}
 	if !strings.Contains(q, "P2013") || !strings.Contains(q, `STRSTARTS(LCASE(STR(?val)), "s")`) {
 		t.Fatal(q)
 	}
