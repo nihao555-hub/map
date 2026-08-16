@@ -77,9 +77,12 @@ type Client struct {
 	AUMAFairURL string
 	// OverpassURL is the OpenStreetMap Overpass interpreter (shop POIs).
 	OverpassURL string
-	braveUntil  atomic.Int64
-	ddgUntil    atomic.Int64
-	bingUntil   atomic.Int64
+	// MerchantDB is a local SQLite dump of OSM shops + GLEIF legal entities.
+	MerchantDB string
+	dir        *Directory
+	braveUntil atomic.Int64
+	ddgUntil   atomic.Int64
+	bingUntil  atomic.Int64
 }
 
 // OptionsFromEnv wires sidecar base URLs.
@@ -101,6 +104,7 @@ type Client struct {
 //	ENGINE_EVENTSEYE_URL       EventsEye directory (default https://www.eventseye.com)
 //	ENGINE_AUMA_FAIR_URL       AUMA FairFinder (default https://www.auma.de/en/find-your-fair/)
 //	ENGINE_OVERPASS_URL        OpenStreetMap Overpass (default https://overpass-api.de/api/interpreter)
+//	ENGINE_MERCHANT_DB         local merchant SQLite (default webdata/merchants.db)
 //	TIKHUB_API_TOKEN           optional paid API when Douyin keyword search is needed
 func OptionsFromEnv() *Client {
 	timeout := defaultHTTPTimeout
@@ -151,6 +155,7 @@ func OptionsFromEnv() *Client {
 		EventsEyeURL:     envServiceURL("ENGINE_EVENTSEYE_URL", defaultEventsEyeURL),
 		AUMAFairURL:      envServiceURL("ENGINE_AUMA_FAIR_URL", defaultAUMAFairURL),
 		OverpassURL:      envServiceURL("ENGINE_OVERPASS_URL", defaultOverpassURL),
+		MerchantDB:       firstNonEmpty(os.Getenv("ENGINE_MERCHANT_DB"), DefaultMerchantDB),
 	}
 }
 
@@ -311,13 +316,20 @@ func (c *Client) postJSON(ctx context.Context, rawURL string, payload any, extra
 }
 
 func (c *Client) do(req *http.Request) ([]byte, error) {
+	return c.doLimit(req, maxBodyBytes)
+}
+
+func (c *Client) doLimit(req *http.Request, limit int64) ([]byte, error) {
+	if limit <= 0 {
+		limit = maxBodyBytes
+	}
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, limit))
 	if err != nil {
 		return nil, err
 	}

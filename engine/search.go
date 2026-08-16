@@ -227,6 +227,12 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 	g, gctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
+		items, err := c.searchDirectory(gctx, q.Keyword, q.Country)
+		add(items, "merchant-db", "", err)
+		return nil
+	})
+
+	g.Go(func() error {
 		items, warns, srcs, terms := c.searchPublicProfiles(gctx, q, wanted, func(partial []Hit) {
 			mu.Lock()
 			combined := append(append([]Hit(nil), hits...), partial...)
@@ -593,7 +599,7 @@ func isDirectoryMerchant(hit Hit) bool {
 		return false
 	}
 	src := hit.Extra["src"]
-	return (src == "osm" || src == "wikidata") && hit.Extra["match"] == "category"
+	return (src == "osm" || src == "wikidata" || src == "gleif") && hit.Extra["match"] == "category"
 }
 
 func genericSocialLabel(name string) bool {

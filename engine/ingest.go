@@ -1,0 +1,85 @@
+package engine
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
+)
+
+// IngestStats is one source's full-dump timing.
+type IngestStats struct {
+	Source string        `json:"source"`
+	Rows   int           `json:"rows"`
+	Took   time.Duration `json:"took"`
+	Note   string        `json:"note,omitempty"`
+	Err    string        `json:"error,omitempty"`
+}
+
+func (s IngestStats) String() string {
+	if s.Err != "" {
+		return fmt.Sprintf("%s: FAIL %s (%s)", s.Source, s.Err, s.Took.Round(time.Millisecond))
+	}
+	return fmt.Sprintf("%s: %d rows in %s %s", s.Source, s.Rows, s.Took.Round(time.Millisecond), s.Note)
+}
+
+// IngestOptions controls a full merchant dump (all shop types, not one category).
+type IngestOptions struct {
+	DBPath          string
+	GLEIFZip        string
+	GLEIFLimit      int
+	SkipGLEIF       bool
+	SkipOSM         bool
+	Overpass        bool
+	OSMBoxes        []ingestBox
+	OSMLimitPerCity int
+}
+
+// DefaultIngestOptions dumps GLEIF Golden Copy plus OSM shops in major cities.
+func DefaultIngestOptions() IngestOptions {
+	return IngestOptions{
+		DBPath:          DefaultMerchantDB,
+		Overpass:        true,
+		OSMBoxes:        ingestShopBoxes,
+		OSMLimitPerCity: 1500,
+	}
+}
+
+// IngestMerchants writes every connected public source into the local directory.
+func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]IngestStats, error) {
+	if opt.DBPath == "" {
+		opt.DBPath = DefaultMerchantDB
+	}
+	if len(opt.OSMBoxes) == 0 {
+		opt.OSMBoxes = ingestShopBoxes
+	}
+	if opt.OSMLimitPerCity <= 0 {
+		opt.OSMLimitPerCity = 1500
+	}
+	dir, err := OpenDirectory(opt.DBPath)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+
+	if err := dir.beginBulk(ctx); err != nil {
+		return nil, err
+	}
+
+	var stats []IngestStats
+	if !opt.SkipGLEIF {
+		stats = append(stats, c.ingestGLEIF(ctx, dir, opt))
+	}
+	if opt.Overpass && !opt.SkipOSM {
+		stats = append(stats, c.ingestOSMAllShops(ctx, dir, opt))
+	}
+
+	if err := dir.endBulk(ctx); err != nil {
+		return stats, fmt.Errorf("rebuild fts: %w", err)
+	}
+	return stats, nil
+}
+
+func logIngest(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, time.Now().Format("15:04:05")+" "+format+"\n", args...)
+}

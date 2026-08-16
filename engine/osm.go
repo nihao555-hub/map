@@ -142,6 +142,10 @@ func overpassShopQuery(tags []string, box osmBox) string {
 }
 
 func (c *Client) fetchOverpass(ctx context.Context, query string) ([]byte, error) {
+	return c.fetchOverpassLimit(ctx, query, maxBodyBytes)
+}
+
+func (c *Client) fetchOverpassLimit(ctx context.Context, query string, limit int64) ([]byte, error) {
 	endpoints := []string{c.OverpassURL}
 	if c.OverpassURL == defaultOverpassURL {
 		endpoints = append(endpoints, overpassMirrors...)
@@ -152,11 +156,11 @@ func (c *Client) fetchOverpass(ctx context.Context, query string) ([]byte, error
 		if strings.TrimSpace(ep) == "" {
 			continue
 		}
-		raw, err := c.postFormRaw(ctx, ep, form, map[string]string{
+		raw, err := c.postFormRawLimit(ctx, ep, form, map[string]string{
 			"Content-Type": "application/x-www-form-urlencoded",
 			"Accept":       "application/json",
 			"User-Agent":   "map-engine/osm (https://github.com/nihao555-hub/map)",
-		})
+		}, limit)
 		if err != nil {
 			last = err
 			continue
@@ -174,6 +178,10 @@ func (c *Client) fetchOverpass(ctx context.Context, query string) ([]byte, error
 }
 
 func (c *Client) postFormRaw(ctx context.Context, rawURL, form string, extra map[string]string) ([]byte, error) {
+	return c.postFormRawLimit(ctx, rawURL, form, extra, maxBodyBytes)
+}
+
+func (c *Client) postFormRawLimit(ctx context.Context, rawURL, form string, extra map[string]string, limit int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, strings.NewReader(form))
 	if err != nil {
 		return nil, err
@@ -183,7 +191,7 @@ func (c *Client) postFormRaw(ctx context.Context, rawURL, form string, extra map
 	for k, v := range extra {
 		req.Header.Set(k, v)
 	}
-	return c.do(req)
+	return c.doLimit(req, limit)
 }
 
 type overpassDoc struct {
