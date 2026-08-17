@@ -339,6 +339,8 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 	if opt.Wayback {
 		wb := c.ingestWaybackTikTok(ctx, dir)
 		logIngest("short-video wayback %s", wb)
+		dy := c.ingestWaybackDouyin(ctx, dir)
+		logIngest("short-video wayback-douyin %s", dy)
 		if !opt.Sidecar && !opt.Fast {
 			return finish(nil)
 		}

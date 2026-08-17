@@ -23,7 +23,7 @@ func main() {
 	fast := flag.Bool("fast", false, "两小时窗口：先灌 Wikidata 全量 TikTok/抖音号，再按东南亚→中东→欧美扫")
 	seedOnly := flag.Bool("seed-only", false, "只灌 Wikidata 已标注的 TikTok/抖音号，不跑公开检索")
 	sidecar := flag.Bool("sidecar", false, "用 TikTok-Api/f2 按词搜用户，默认东南亚，跳过公开检索")
-	wayback := flag.Bool("wayback", false, "从 Internet Archive CDX 灌 tiktok.com/@ 去重主页（公开索引，不是平台全库）")
+	wayback := flag.Bool("wayback", false, "从 Internet Archive CDX 灌 tiktok.com/@ 与 douyin.com/user/ 去重主页（公开索引，不是平台全库）")
 	publicAll := flag.Bool("public-all", false, "把公开源能枚举的 TikTok/抖音主页一次灌完（Wikidata 含名人 + 官网 + Wayback + OSM + Common Crawl）")
 	regions := flag.String("regions", "", "sea,me,west；空则 sidecar 默认 sea，fast 默认 sea,me,west")
 	deadline := flag.Duration("deadline", 0, "最长跑多久，例如 110m")

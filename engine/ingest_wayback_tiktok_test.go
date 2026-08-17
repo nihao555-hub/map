@@ -52,3 +52,14 @@ func TestValidDouyinUserID(t *testing.T) {
 		t.Fatal("douyin id rules")
 	}
 }
+
+func TestWaybackDouyinShardsSplitMS4w(t *testing.T) {
+	t.Parallel()
+	got := waybackDouyinShards()
+	if containsString(got, "m") {
+		t.Fatal("lone m bucket would truncate CDX")
+	}
+	if !containsString(got, "MS4wLjABAAAA6") || !containsString(got, "MS4wLjABAAAA_") {
+		t.Fatalf("%v", got)
+	}
+}

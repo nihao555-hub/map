@@ -31,6 +31,23 @@ func waybackTikTokTargets() []waybackSocialTarget {
 	}}
 }
 
+// waybackDouyinShards skips the giant "m" bucket (MS4w…) and splits
+// the common Douyin sec_uid prefix so CDX pagination is not truncated.
+func waybackDouyinShards() []string {
+	out := make([]string, 0, 128)
+	for _, p := range socialValuePrefixes() {
+		if p != "m" {
+			out = append(out, p)
+		}
+	}
+	const stem = "MS4wLjABAAAA"
+	extra := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-"
+	for i := 0; i < len(extra); i++ {
+		out = append(out, stem+extra[i:i+1])
+	}
+	return out
+}
+
 func waybackDouyinTargets() []waybackSocialTarget {
 	return []waybackSocialTarget{{
 		Source: "wayback-douyin", Platform: PlatformDouyin, Shop: "douyin",
@@ -58,13 +75,21 @@ func (c *Client) ingestWaybackSocial(ctx context.Context, dir *Directory, source
 	inserted := 0
 	pages := 0
 	for _, target := range targets {
-		for _, prefix := range socialValuePrefixes() {
+		prefixes := socialValuePrefixes()
+		if target.Platform == PlatformDouyin {
+			prefixes = waybackDouyinShards()
+		}
+		maxPages := waybackTikTokMaxPages
+		if target.Platform == PlatformDouyin {
+			maxPages = 16
+		}
+		for _, prefix := range prefixes {
 			if err := ctx.Err(); err != nil {
 				st := IngestStats{Source: source, Rows: inserted, Took: time.Since(started), Err: err.Error()}
 				_ = dir.RecordRun(ctx, source, started, inserted, st.Err)
 				return st
 			}
-			for page := 0; page < waybackTikTokMaxPages; page++ {
+			for page := 0; page < maxPages; page++ {
 				raw, err := c.fetchWaybackSocialPage(ctx, target.URLPrefix+prefix, page)
 				if err != nil {
 					logIngest("wayback %s %s%s page=%d: %v", source, target.URLPrefix, prefix, page, err)
