@@ -75,6 +75,7 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.viewJob(w, r)
 	})
 	mux.HandleFunc("/discover", ans.discoverPage)
+	mux.HandleFunc("/directory", ans.directoryPage)
 	mux.HandleFunc("/customs", ans.customsPage)
 	mux.HandleFunc("/exhibition", ans.exhibitionPage)
 	mux.HandleFunc("/outreach", ans.outreachPage)
@@ -139,6 +140,7 @@ func New(svc *Service, addr string) (*Server, error) {
 	mux.HandleFunc("/api/v1/discover/platforms", ans.apiDiscoverPlatforms)
 	mux.HandleFunc("/api/v1/discover/countries", ans.apiDiscoverCountries)
 	mux.HandleFunc("/api/v1/discover/sources", ans.apiDiscoverSources)
+	mux.HandleFunc("/api/v1/discover/directory", ans.apiDiscoverDirectory)
 	mux.HandleFunc("/api/v1/discover/customs/profile", ans.apiCustomsProfile)
 	mux.HandleFunc("/api/v1/discover/exhibition/exhibitors", ans.apiExhibitionExhibitors)
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
@@ -164,6 +166,7 @@ func New(svc *Service, addr string) (*Server, error) {
 	tmplsKeys := []string{
 		"static/templates/index.html",
 		"static/templates/discover.html",
+		"static/templates/directory.html",
 		"static/templates/customs.html",
 		"static/templates/exhibition.html",
 		"static/templates/outreach.html",
@@ -176,12 +179,14 @@ func New(svc *Service, addr string) (*Server, error) {
 	pagesWithRail := map[string]struct{}{
 		"static/templates/index.html":      {},
 		"static/templates/discover.html":   {},
+		"static/templates/directory.html":  {},
 		"static/templates/customs.html":    {},
 		"static/templates/exhibition.html": {},
 		"static/templates/outreach.html":   {},
 	}
 	pagesWithDataNav := map[string]struct{}{
 		"static/templates/discover.html":   {},
+		"static/templates/directory.html":  {},
 		"static/templates/customs.html":    {},
 		"static/templates/exhibition.html": {},
 	}

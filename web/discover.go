@@ -9,6 +9,48 @@ import (
 	"github.com/gosom/google-maps-scraper/engine"
 )
 
+func (s *Server) directoryPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	tmpl, ok := s.tmpl["static/templates/directory.html"]
+	if !ok {
+		http.Error(w, "missing tpl", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = tmpl.Execute(w, nil)
+}
+
+func (s *Server) apiDiscoverDirectory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		renderJSON(w, http.StatusMethodNotAllowed, apiError{
+			Code:    http.StatusMethodNotAllowed,
+			Message: "Method not allowed",
+		})
+		return
+	}
+	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	offset, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("offset")))
+	page, err := s.engine.BrowseDirectory(r.Context(), engine.DirectoryBrowseQuery{
+		Filter:  strings.TrimSpace(r.URL.Query().Get("filter")),
+		Source:  strings.TrimSpace(r.URL.Query().Get("source")),
+		Country: strings.TrimSpace(r.URL.Query().Get("country")),
+		Name:    strings.TrimSpace(r.URL.Query().Get("q")),
+		Limit:   limit,
+		Offset:  offset,
+	})
+	if err != nil {
+		renderJSON(w, http.StatusBadRequest, apiError{
+			Code:    http.StatusBadRequest,
+			Message: err.Error(),
+		})
+		return
+	}
+	renderJSON(w, http.StatusOK, page)
+}
+
 func (s *Server) discoverPage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

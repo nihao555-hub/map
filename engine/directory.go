@@ -44,30 +44,33 @@ func ResolveMerchantDB(explicit string) string {
 
 // Merchant is one row in the local directory (OSM shops, GLEIF legal entities).
 type Merchant struct {
-	ExtID    string
-	Source   string
-	Name     string
-	Shop     string
-	Country  string
-	City     string
-	Homepage string
-	Phone    string
-	Profiles []Profile
+	ExtID    string    `json:"ext_id"`
+	Source   string    `json:"source"`
+	Name     string    `json:"name"`
+	Shop     string    `json:"shop,omitempty"`
+	Country  string    `json:"country,omitempty"`
+	City     string    `json:"city,omitempty"`
+	Homepage string    `json:"homepage,omitempty"`
+	Phone    string    `json:"phone,omitempty"`
+	Profiles []Profile `json:"profiles,omitempty"`
 }
 
 // Profile is one verified or claimed homepage belonging to a merchant.
 type Profile struct {
-	ExtID    string
-	Platform string
-	URL      string
-	Handle   string
-	Verified bool
-	Source   string
+	ExtID    string `json:"ext_id,omitempty"`
+	Platform string `json:"platform"`
+	URL      string `json:"url"`
+	Handle   string `json:"handle,omitempty"`
+	Verified bool   `json:"verified,omitempty"`
+	Source   string `json:"source,omitempty"`
 }
 
 // Directory is a local SQLite merchant dump used by 智能引擎.
 type Directory struct {
-	db *sql.DB
+	db    *sql.DB
+	covMu sync.Mutex
+	cov   DirectoryCoverage
+	covAt time.Time
 }
 
 func OpenDirectory(path string) (*Directory, error) {
@@ -1036,6 +1039,14 @@ var (
 	directoryOnce sync.Once
 	directoryInst *Directory
 )
+
+// UseDirectory injects an already-open dump (tests and one-off tools).
+func (c *Client) UseDirectory(d *Directory) {
+	if c == nil {
+		return
+	}
+	c.dir = d
+}
 
 func (c *Client) directory() *Directory {
 	if c == nil {

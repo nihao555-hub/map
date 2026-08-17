@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,48 @@ import (
 
 	"github.com/gosom/google-maps-scraper/engine"
 )
+
+func TestDirectoryPageRenders(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/directory", nil)
+	rec := httptest.NewRecorder()
+	srv.directoryPage(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"本地企业库", "dir-form", "/static/js/directory.js", "GLEIF 法律名", "TikTok", "抖音"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
+func TestDirectoryAPIUsesLocalDump(t *testing.T) {
+	dir, err := engine.OpenDirectory(t.TempDir() + "/m.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if _, err := dir.InsertBatch(context.Background(), []engine.Merchant{
+		{ExtID: "tiktok:boschpowertools", Source: "tiktok", Name: "Bosch Power Tools", Shop: "tools", Country: "US", Homepage: "https://www.tiktok.com/@boschpowertools", Profiles: []engine.Profile{
+			{ExtID: "tiktok:boschpowertools", Platform: engine.PlatformTikTok, URL: "https://www.tiktok.com/@boschpowertools", Handle: "boschpowertools"},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv := newTestServer(t, t.TempDir())
+	srv.engine.UseDirectory(dir)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/directory?filter=with_social&source=tiktok", nil)
+	rec := httptest.NewRecorder()
+	srv.apiDiscoverDirectory(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "boschpowertools") || !strings.Contains(rec.Body.String(), "legal_name_only") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
 
 func TestDiscoverPageRenders(t *testing.T) {
 	srv := newTestServer(t, t.TempDir())

@@ -33,6 +33,7 @@ func main() {
 	sherlockLimit := flag.Int("sherlock-limit", 0, "Sherlock 已有官网/社媒最多探多少家，0=默认 15000")
 	sherlockNameLimit := flag.Int("sherlock-names", 0, "Sherlock 独特法律名最多探多少家，0=默认 8000")
 	sherlockWorkers := flag.Int("sherlock-workers", 12, "Sherlock 探测并发")
+	worldCompanies := flag.Bool("world-companies", false, "Wikidata 全球带官网的企业（business/enterprise，走 QLever）")
 	attachSocials := flag.Bool("attach-socials", false, "全库缺社媒：官网刮取 + OSM contact + 店名检索 FB/IG/LI + Sherlock 姐妹页，可断点续跑")
 	attachLimit := flag.Int("attach-limit", 0, "全库补社媒最多处理多少家，0=全部还没探过的")
 	attachWorkers := flag.Int("attach-workers", 10, "全库补社媒并发")
@@ -46,7 +47,7 @@ func main() {
 	client := engine.OptionsFromEnv()
 	if client.HTTP != nil {
 		client.HTTP.Timeout = 90 * time.Second
-		if *publicSocials || *maxPublic || *moreSocials || *sherlock || *attachSocials {
+		if *publicSocials || *maxPublic || *moreSocials || *sherlock || *attachSocials || *worldCompanies {
 			client.HTTP.Timeout = 180 * time.Second
 		}
 	}
@@ -70,6 +71,7 @@ func main() {
 		SherlockLimit:     *sherlockLimit,
 		SherlockNameLimit: *sherlockNameLimit,
 		SherlockWorkers:   *sherlockWorkers,
+		WorldCompanies:    *worldCompanies,
 		AttachSocials:     *attachSocials,
 		AttachLimit:       *attachLimit,
 		AttachWorkers:     *attachWorkers,
@@ -124,6 +126,16 @@ func main() {
 		opt.MaxPublic = false
 		opt.MoreSocials = false
 		opt.Sherlock = true
+	}
+	if *worldCompanies {
+		opt.SkipGLEIF = true
+		opt.SkipOSM = true
+		opt.Overpass = false
+		opt.SkipWikidata = true
+		opt.WorldCompanies = true
+		if strings.Contains(client.WikidataURL, "query.wikidata.org") {
+			client.WikidataURL = engine.QleverWikidataSPARQL
+		}
 	}
 	if *attachSocials {
 		opt.SkipGLEIF = true

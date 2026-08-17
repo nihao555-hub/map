@@ -45,6 +45,7 @@ type IngestOptions struct {
 	OSMLimitPerCity   int
 	WebsiteLimit      int
 	WebsiteWorkers    int
+	WorldCompanies    bool
 	Sherlock          bool
 	SherlockLimit     int
 	SherlockNameLimit int
@@ -120,6 +121,9 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 		stats = append(stats, c.ingestGLEIFRelationships(ctx, dir, opt.RRZip))
 		return stats, nil
 	}
+	if opt.WorldCompanies {
+		stats = append(stats, c.ingestWikidataWorldCompanies(ctx, dir))
+	}
 	if opt.MaxPublic {
 		stats = append(stats, c.ingestMaxPublic(ctx, dir, opt)...)
 	}
@@ -150,6 +154,11 @@ func (c *Client) ingestMaxPublic(ctx context.Context, dir *Directory, opt Ingest
 		AttachOnly:    true,
 		RORZip:        opt.RORZip,
 	})...)
+	// Companies with an official website (P856), class-filtered. Unfiltered
+	// P856 is noisy (museums, people); this keeps business/enterprise only.
+	if c != nil && strings.TrimSpace(c.WikidataURL) != "" {
+		stats = append(stats, c.ingestWikidataWorldCompanies(ctx, dir))
+	}
 	// Global social identifiers (no unfiltered P856 — that dump is noisy).
 	if c != nil && strings.TrimSpace(c.WikidataURL) != "" {
 		stats = append(stats, c.ingestWikidataGlobalSocials(ctx, dir))

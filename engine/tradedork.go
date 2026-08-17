@@ -70,6 +70,12 @@ func tradeGuruQueries(terms []string, wanted map[string]bool, country, role stri
 		if wanted[PlatformTikTok] {
 			add(PlatformTikTok, "site:tiktok.com/@ "+qt)
 		}
+		if wanted[PlatformDouyin] {
+			code := strings.ToUpper(strings.TrimSpace(LookupCountry(country).Code))
+			if code == "" || code == "CN" {
+				add(PlatformDouyin, "site:douyin.com/user "+qt)
+			}
+		}
 		if wanted[PlatformYouTube] {
 			add(PlatformYouTube, "site:youtube.com/@ "+qt)
 		}

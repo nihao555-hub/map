@@ -19,6 +19,7 @@ func main() {
 	workers := flag.Int("workers", 6, "同时跑多少个品类×国家")
 	queryLimit := flag.Int("query-limit", 0, "品类模式：每个品类×国家最多几条公式；公司名模式：最多查多少家")
 	names := flag.Bool("names", false, "按已入库 GLEIF 公司全名搜社媒（比按品类扫更准）")
+	shortVideo := flag.Bool("short-video", false, "只收抖音/TikTok 企业号主页（TikTok-Api / f2 + 公开索引）")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -45,7 +46,10 @@ func main() {
 		st  engine.HarvestStats
 		err error
 	)
-	if *names {
+	if *shortVideo {
+		fmt.Printf("开始抖音/TikTok 企业号收割 db=%s keywords=%v\n", *db, firstOr(opt.Keywords, engine.DefaultShortVideoKeywords))
+		st, err = client.HarvestShortVideo(ctx, opt)
+	} else if *names {
 		fmt.Printf("开始公司名公式收割 db=%s limit=%d\n", *db, *queryLimit)
 		st, err = client.HarvestNameDorks(ctx, opt)
 	} else {

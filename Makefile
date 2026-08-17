@@ -130,6 +130,12 @@ ingest-lei-socials: ## attach Wikidata website/socials onto GLEIF rows by LEI
 ingest-public-socials: ## ROR dump + Wikidata P856 + same-name copy onto GLEIF
 	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -public-socials -attach-only
 
+ingest-short-video: ## 抖音/TikTok 企业号主页（TikTok-Api / f2 sidecar + 公开索引）
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -workers 4
+
+ingest-world-companies: ## Wikidata 全球带官网的企业（QLever，不灌 Facebook 全库）
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -world-companies
+
 ingest-public-max: ## Wikidata global socials, OSM contact:*, GLEIF parent inherit, ROR
 	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -public-max \
 		-rr-zip /tmp/merchant-ingest/gleif-rr.csv.zip \
