@@ -142,6 +142,49 @@ func (u *Uploader) Upload(ctx context.Context, bucketName, key string, body io.R
 	return err
 }
 
+func isAliyun(opt Options) bool {
+	blob := strings.ToLower(opt.Endpoint + " " + opt.Region)
+	return strings.Contains(blob, "aliyuncs.com") || strings.Contains(blob, "oss-cn-") || strings.Contains(blob, "oss-us-") || strings.Contains(blob, "oss-ap-")
+}
+
+// UploadLocalFile sends a file to OSS or S3. Aliyun uses the official SDK
+// because AWS trailing checksums are rejected.
+func UploadLocalFile(ctx context.Context, opt Options, localPath string) error {
+	if isAliyun(opt) {
+		return uploadAliyunFile(opt, localPath)
+	}
+	up := NewWithOptions(opt)
+	if up == nil {
+		return io.ErrClosedPipe
+	}
+	f, err := os.Open(localPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return up.Upload(ctx, opt.Bucket, opt.Key, f)
+}
+
+func DownloadToFile(ctx context.Context, opt Options, destPath string) (int64, error) {
+	if isAliyun(opt) {
+		return downloadAliyunFile(opt, destPath)
+	}
+	up := NewWithOptions(opt)
+	if up == nil {
+		return 0, io.ErrClosedPipe
+	}
+	f, err := os.Create(destPath)
+	if err != nil {
+		return 0, err
+	}
+	n, err := up.Download(ctx, opt.Bucket, opt.Key, f)
+	closeErr := f.Close()
+	if err != nil {
+		return n, err
+	}
+	return n, closeErr
+}
+
 func (u *Uploader) Download(ctx context.Context, bucketName, key string, dest io.Writer) (int64, error) {
 	if u == nil || u.client == nil {
 		return 0, io.ErrClosedPipe

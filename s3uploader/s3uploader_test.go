@@ -4,6 +4,15 @@ import (
 	"testing"
 )
 
+func TestAliyunEndpointFromRegion(t *testing.T) {
+	if !isAliyun(Options{Region: "oss-cn-shanghai"}) {
+		t.Fatal("shanghai should use official OSS SDK")
+	}
+	if got := aliyunEndpoint(Options{Region: "oss-cn-shanghai"}); got != "oss-cn-shanghai.aliyuncs.com" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestNormalizeEndpoint(t *testing.T) {
 	if got := normalizeEndpoint("oss-cn-hangzhou.aliyuncs.com"); got != "https://oss-cn-hangzhou.aliyuncs.com" {
 		t.Fatalf("got %q", got)

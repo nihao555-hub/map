@@ -42,21 +42,15 @@ func main() {
 		os.Exit(2)
 	}
 
-	up := s3uploader.NewWithOptions(opt)
-	if up == nil {
-		fmt.Fprintln(os.Stderr, "无法创建 OSS/S3 客户端")
-		os.Exit(1)
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
 	started := time.Now()
 	var err error
 	if *upload {
-		err = uploadDB(ctx, up, opt, *db)
+		err = uploadDB(ctx, opt, *db)
 	} else {
-		err = downloadDB(ctx, up, opt, *db)
+		err = downloadDB(ctx, opt, *db)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "同步失败: %v\n", err)
@@ -65,7 +59,7 @@ func main() {
 	fmt.Printf("ok db=%s oss=%s/%s %s\n", *db, opt.Bucket, opt.Key, time.Since(started).Round(time.Millisecond))
 }
 
-func uploadDB(ctx context.Context, up *s3uploader.Uploader, opt s3uploader.Options, dbPath string) error {
+func uploadDB(ctx context.Context, opt s3uploader.Options, dbPath string) error {
 	dbPath = strings.TrimSpace(dbPath)
 	if _, err := os.Stat(dbPath); err != nil {
 		return fmt.Errorf("本地库: %w", err)
@@ -75,42 +69,24 @@ func uploadDB(ctx context.Context, up *s3uploader.Uploader, opt s3uploader.Optio
 		return err
 	}
 	defer os.Remove(snap)
-	f, err := os.Open(snap)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	st, err := f.Stat()
+	st, err := os.Stat(snap)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("上传 %s (%d bytes) -> %s/%s\n", snap, st.Size(), opt.Bucket, opt.Key)
-	return up.Upload(ctx, opt.Bucket, opt.Key, f)
+	return s3uploader.UploadLocalFile(ctx, opt, snap)
 }
 
-func downloadDB(ctx context.Context, up *s3uploader.Uploader, opt s3uploader.Options, dbPath string) error {
+func downloadDB(ctx context.Context, opt s3uploader.Options, dbPath string) error {
 	dbPath = strings.TrimSpace(dbPath)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil && filepath.Dir(dbPath) != "." {
 		return err
 	}
 	tmp := dbPath + ".part"
-	f, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-	n, err := up.Download(ctx, opt.Bucket, opt.Key, f)
-	closeErr := f.Close()
+	n, err := s3uploader.DownloadToFile(ctx, opt, tmp)
 	if err != nil {
 		_ = os.Remove(tmp)
 		return err
-	}
-	if closeErr != nil {
-		_ = os.Remove(tmp)
-		return closeErr
-	}
-	if n < 1024 {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("下载只有 %d bytes，不像商户库", n)
 	}
 	fmt.Printf("下载 %s/%s (%d bytes) -> %s\n", opt.Bucket, opt.Key, n, dbPath)
 	return os.Rename(tmp, dbPath)
