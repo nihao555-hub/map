@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	defaultYellowPageWorkers = 32
-	defaultYellowPageLimit   = 8000
+	defaultYellowPageWorkers = 48
+	defaultYellowPageLimit   = 20000
 )
 
 // HarvestYellowPages is the directory → website/phone → socials pipeline.
@@ -29,7 +29,7 @@ func (c *Client) HarvestYellowPages(ctx context.Context, opt HarvestOptions) (Ha
 		opt.Keywords = append([]string{}, DefaultHarvestKeywords...)
 	}
 	if len(opt.Countries) == 0 {
-		opt.Countries = []string{"ID", "TH", "MY", "VN", "SG", "PH"}
+		opt.Countries = []string{"ID", "TH", "MY", "VN", "SG", "PH", "DE"}
 	}
 	if opt.Workers <= 0 {
 		opt.Workers = defaultYellowPageWorkers
@@ -45,13 +45,22 @@ func (c *Client) HarvestYellowPages(ctx context.Context, opt HarvestOptions) (Ha
 	}
 	defer dir.Close()
 
+	direct := yellowPageDirectURLs(opt.Keywords, opt.Countries)
 	queries := yellowPageQueries(opt.Keywords, opt.Countries)
-	if opt.QueryLimit > 0 && len(queries) > opt.QueryLimit {
-		queries = queries[:opt.QueryLimit]
+	if opt.QueryLimit > 0 {
+		if len(direct) > opt.QueryLimit {
+			direct = direct[:opt.QueryLimit]
+		}
+		if len(queries) > opt.QueryLimit {
+			queries = queries[:opt.QueryLimit]
+		}
 	}
-	logIngest("yellow-pages discover queries=%d workers=%d", len(queries), opt.Workers)
-	listingURLs, nq := c.discoverYellowPageURLs(ctx, queries, minInt(opt.Workers, 8))
-	logIngest("yellow-pages listings=%d from %d queries", len(listingURLs), nq)
+	logIngest("yellow-pages direct-pages=%d index-queries=%d workers=%d", len(direct), len(queries), opt.Workers)
+	listingURLs := c.collectYellowPageListings(ctx, direct, opt.Workers)
+	logIngest("yellow-pages listings=%d from directory pages", len(listingURLs))
+	more, nq := c.discoverYellowPageURLs(ctx, queries, minInt(opt.Workers, 8))
+	listingURLs = mergeYellowPageURLs(listingURLs, more)
+	logIngest("yellow-pages listings=%d after index (%d queries)", len(listingURLs), nq)
 
 	rows := c.fetchYellowPageListings(ctx, listingURLs, opt.Workers)
 	inserted, err := dir.InsertBatch(ctx, rows)
@@ -77,6 +86,68 @@ func (c *Client) HarvestYellowPages(ctx context.Context, opt HarvestOptions) (Ha
 	logIngest("yellow-pages done listings=%d inserted=%d scraped=%d profiles=%d phones=%d in %s",
 		len(rows), inserted, scraped, profiles, phones, st.Took.Round(time.Millisecond))
 	return st, nil
+}
+
+func mergeYellowPageURLs(sets ...[]string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, set := range sets {
+		for _, u := range set {
+			u = strings.TrimSpace(u)
+			if u == "" {
+				continue
+			}
+			if _, ok := seen[u]; ok {
+				continue
+			}
+			seen[u] = struct{}{}
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+func (c *Client) collectYellowPageListings(ctx context.Context, searchPages []string, workers int) []string {
+	if workers <= 0 {
+		workers = defaultYellowPageWorkers
+	}
+	var (
+		mu   sync.Mutex
+		seen = map[string]struct{}{}
+		out  []string
+	)
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(workers)
+	for _, raw := range searchPages {
+		raw := raw
+		g.Go(func() error {
+			if gctx.Err() != nil {
+				return nil
+			}
+			doc, err := c.fetchDocument(gctx, raw)
+			if err != nil || doc == nil || len(doc.Body) == 0 {
+				return nil
+			}
+			page := firstNonEmpty(doc.FinalURL, raw)
+			urls := extractYellowPageURLsFrom(page, doc.Body)
+			mu.Lock()
+			for _, u := range urls {
+				if _, ok := seen[u]; ok {
+					continue
+				}
+				seen[u] = struct{}{}
+				out = append(out, u)
+			}
+			n := len(out)
+			mu.Unlock()
+			if n > 0 && n%400 == 0 {
+				logIngest("yellow-pages directory listings=%d", n)
+			}
+			return nil
+		})
+	}
+	_ = g.Wait()
+	return out
 }
 
 func (c *Client) discoverYellowPageURLs(ctx context.Context, queries []string, workers int) ([]string, int) {
@@ -134,7 +205,7 @@ func (c *Client) fetchYellowPageListings(ctx context.Context, urls []string, wor
 	for _, raw := range urls {
 		raw := raw
 		g.Go(func() error {
-			if gctx.Err() != nil {
+			if gctx.Err() != nil || isYellowPageSearchURL(raw) {
 				return nil
 			}
 			doc, err := c.fetchDocument(gctx, raw)
@@ -162,7 +233,7 @@ func (c *Client) scrapeDirectoryHomepages(ctx context.Context, dir *Directory, w
 	if limit <= 0 {
 		limit = defaultYellowPageLimit
 	}
-	rows, err := dir.ListHomepagesMissingSocials(ctx, limit)
+	rows, err := dir.ListHomepagesForYellowPageScrape(ctx, limit)
 	if err != nil {
 		logIngest("yellow-pages scrape list: %v", err)
 		return 0, 0, 0

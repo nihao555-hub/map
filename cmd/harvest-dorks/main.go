@@ -76,7 +76,7 @@ func main() {
 	)
 	if *yellowPages {
 		if *workers == 0 {
-			opt.Workers = 32
+			opt.Workers = 48
 		}
 		fmt.Printf("开始黄页流水线 官网+电话→官网抽社媒 workers=%d db=%s\n", opt.Workers, *db)
 		st, err = client.HarvestYellowPages(ctx, opt)

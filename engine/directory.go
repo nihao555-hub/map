@@ -513,6 +513,46 @@ func (d *Directory) ListHomepagesMissingSocials(ctx context.Context, limit int) 
 	return d.attachProfiles(ctx, rows), nil
 }
 
+// ListHomepagesForYellowPageScrape puts directory shops on the official-site
+// pipeline: new yellow-page rows, every OSM shop with a real homepage, and
+// Wikidata orgs that still have no TikTok/抖音. Previously marked enriched
+// rows still go through so /contact and phone can be filled.
+func (d *Directory) ListHomepagesForYellowPageScrape(ctx context.Context, limit int) ([]Merchant, error) {
+	if d == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = defaultYellowPageLimit
+	}
+	q := `SELECT m.ext_id, m.source, m.name, m.shop, m.country, m.city, m.homepage, m.phone
+		FROM merchants m
+		WHERE m.homepage != ''
+		  AND m.homepage NOT LIKE '%openstreetmap.org%'
+		  AND m.homepage NOT LIKE '%gleif.org%'
+		  AND m.homepage NOT LIKE '%wikidata.org%'
+		  AND (
+		    m.source IN ('yellowpages', 'osm')
+		    OR (
+		      m.source = 'wikidata'
+		      AND NOT EXISTS (
+		        SELECT 1 FROM merchant_profiles p
+		        WHERE p.ext_id=m.ext_id AND p.platform IN ('tiktok', 'douyin')
+		      )
+		    )
+		  )
+		ORDER BY CASE m.source
+			WHEN 'yellowpages' THEN 0
+			WHEN 'osm' THEN 1
+			WHEN 'wikidata' THEN 2
+			ELSE 3 END, m.id
+		LIMIT ?`
+	rows, err := d.scanMerchants(ctx, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	return d.attachProfiles(ctx, rows), nil
+}
+
 // ListToProbe returns OSM merchants that still have no social homepage so we
 // can try same-handle / domain-handle probes. Website-only rows are included
 // once; map-only shops need a Latin handle-like name.

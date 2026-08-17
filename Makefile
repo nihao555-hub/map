@@ -146,7 +146,7 @@ ingest-social-search: ## 去 TikTok 搜索页/话题/相关账号扫企业号（
 	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -social-search -regions sea,me -deadline 90m -workers 2
 
 ingest-yellow-pages: ## 黄页找官网和电话，再高并发去官网抽社媒
-	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -yellow-pages -workers 32 -deadline 90m
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -yellow-pages -workers 48 -deadline 90m
 
 ingest-wayback-tiktok: ## Internet Archive CDX 里能枚举的 tiktok.com/@ 与抖音主页
 	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -wayback -deadline 90m

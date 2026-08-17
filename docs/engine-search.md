@@ -32,7 +32,7 @@ export TIKHUB_API_TOKEN=...          # 抖音「关键词搜人」f2 仍为 🔵
 
 打开 `/discover`。智能引擎、本地企业库、海关数据、展会获客共用深色窄栏 + 白底「数据获客」子菜单；地图获客仍是顶栏模块导航，不加窄侧栏、不加海关/展会入口。
 
-黄页流水线（`make ingest-yellow-pages`）：先从 Europages / 东南亚 Yellow Pages / Hotfrog / Cylex 公开目录抽官网和电话，再高并发打开官网（含 `/contact`）抽社媒。已入库的 OSM / Wikidata 带官网的也进同一条刮取队列，优先于 GLEIF 法律名。
+黄页流水线（`make ingest-yellow-pages`，默认 48 并发）：先直打开黄页分类/搜索页（GelbeSeiten / 11880 能出列表 HTML；Europages 分类页常是前端渲染；东南亚 Yellow Pages 常被拦或解析不到，再补公开索引 `site:`），抽出名录页上的官网和电话，再高并发打开官网（含 `/contact`）抽社媒。新灌的黄页行、已入库 OSM 带官网的店、以及还没有 TikTok/抖音的 Wikidata 公司，全部进同一条刮取队列。不绕过 Cloudflare / WAF。
 
 `/directory` 翻看本地库：GLEIF 法律名（无官网/社媒）和已入库的抖音/TikTok 企业号主页分开统计。要灌短视频企业号：`make ingest-short-video`；两小时窗口用 `make ingest-short-video-fast`（Wikidata 组织号 + 东南亚→中东→欧美）。公开源一次灌完用 `make ingest-short-video-public`（Wikidata 含名人、官网 P856、Wayback TikTok/抖音、OSM `contact:tiktok`、Common Crawl）。都不是平台全库。
 

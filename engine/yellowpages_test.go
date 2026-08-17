@@ -117,6 +117,105 @@ func TestSetPhoneAndYellowPagesOrder(t *testing.T) {
 	}
 }
 
+func TestYellowPageDirectURLs(t *testing.T) {
+	t.Parallel()
+	got := yellowPageDirectURLs([]string{"家具"}, []string{"ID", "DE"})
+	var sawGS, saw11880, sawEP bool
+	for _, u := range got {
+		if strings.Contains(u, "gelbeseiten.de/suche/furniture") {
+			sawGS = true
+		}
+		if strings.Contains(u, "11880.com/suche/furniture") {
+			saw11880 = true
+		}
+		if strings.Contains(u, "europages.co.uk/companies/indonesia/furniture.html") {
+			sawEP = true
+		}
+	}
+	if !sawGS || !saw11880 || !sawEP {
+		t.Fatalf("direct urls missing dirs: %v", got)
+	}
+}
+
+func TestExtractYellowPageURLsResolvesListings(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`<html>
+	  <a href="/gsbiz/aaaa-bbbb-cccc">Firma</a>
+	  <a href="https://www.11880.com/branchenbuch/berlin/1/acme.html">Acme</a>
+	  <a href="/suche/furniture/bundesweit">skip search</a>
+	  <script type="application/ld+json">{"@type":"LocalBusiness","name":"Acme","url":"https://www.11880.com/branchenbuch/koeln/2/beta.html","telephone":"+492211234567"}</script>
+	</html>`)
+	got := extractYellowPageURLsFrom("https://www.gelbeseiten.de/suche/furniture/bundesweit", raw)
+	if !containsString(got, "https://www.gelbeseiten.de/gsbiz/aaaa-bbbb-cccc") ||
+		!containsString(got, "https://www.11880.com/branchenbuch/berlin/1/acme.html") ||
+		!containsString(got, "https://www.11880.com/branchenbuch/koeln/2/beta.html") {
+		t.Fatalf("%v", got)
+	}
+	for _, u := range got {
+		if strings.Contains(u, "/suche/") {
+			t.Fatalf("search leaked: %v", got)
+		}
+	}
+}
+
+func TestParseYellowPageListingJSONLDAndEmailSite(t *testing.T) {
+	t.Parallel()
+	html := []byte(`<html><head><title>Furniture Möbel Trends | 11880</title></head>
+	<body>
+	  <h1>Furniture Möbel Trends</h1>
+	  <a href="tel:+4915167062670">call</a>
+	  <a href="https://furnituremoebeltrends.de">Website</a>
+	  <script type="application/ld+json">{"@type":"LocalBusiness","name":"Furniture Möbel Trends","telephone":"+4915167062670","email":"info@furnituremoebeltrends.de"}</script>
+	</body></html>`)
+	got := parseYellowPageListing("https://www.11880.com/branchenbuch/hiddenhausen/1/furniture-moebel-trends.html", html)
+	if got.Name != "Furniture Möbel Trends" || got.Phone != "+4915167062670" {
+		t.Fatalf("%+v", got)
+	}
+	if !strings.Contains(got.Homepage, "furnituremoebeltrends.de") {
+		t.Fatalf("home=%q", got.Homepage)
+	}
+}
+
+func TestWebsiteFromEmail(t *testing.T) {
+	t.Parallel()
+	if websiteFromEmail("info@lampujaya.co.id") != "https://lampujaya.co.id" {
+		t.Fatal(websiteFromEmail("info@lampujaya.co.id"))
+	}
+	if websiteFromEmail("sales@gmail.com") != "" || websiteFromEmail("x@gelbeseiten.de") != "" {
+		t.Fatal("public mail accepted")
+	}
+}
+
+func TestListHomepagesForYellowPageScrapeIncludesOSM(t *testing.T) {
+	dir, err := OpenDirectory(filepath.Join(t.TempDir(), "m.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if _, err := dir.InsertBatch(context.Background(), []Merchant{
+		{ExtID: "osm:1", Source: "osm", Name: "Shop", Country: "ID", Homepage: "https://shop.example",
+			Profiles: []Profile{{ExtID: "osm:1", Platform: PlatformFacebook, URL: "https://www.facebook.com/shop", Source: "osm"}}},
+		{ExtID: "gleif:bare", Source: "gleif", Name: "Bare Co", Country: "NL", Homepage: "https://bare.example"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dir.MarkEnriched(context.Background(), []string{"osm:1"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := dir.ListHomepagesForYellowPageScrape(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) == 0 || rows[0].ExtID != "osm:1" {
+		t.Fatalf("OSM shop should stay on the pipeline: %+v", rows)
+	}
+	for _, row := range rows {
+		if row.ExtID == "gleif:bare" {
+			t.Fatalf("GLEIF should not join yellow-page scrape: %+v", rows)
+		}
+	}
+}
+
 func TestProfilesFromOfficialHTMLPlusPhone(t *testing.T) {
 	t.Parallel()
 	html := []byte(`<a href="https://www.instagram.com/lampujaya">ig</a> Call <a href="tel:+62215551234">p</a>`)

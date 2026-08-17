@@ -162,7 +162,7 @@ func main() {
 		opt.AttachSocials = false
 		opt.YellowPages = true
 		if *websiteWorkers == 16 {
-			opt.WebsiteWorkers = 32
+			opt.WebsiteWorkers = 48
 		}
 	}
 	if *moreSocials {
