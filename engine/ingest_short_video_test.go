@@ -157,6 +157,21 @@ func TestUniqueShortVideoTermsSEA(t *testing.T) {
 	}
 }
 
+func TestSEACitySidecarKeywords(t *testing.T) {
+	t.Parallel()
+	got := seaCitySidecarKeywords()
+	if len(got) < 80 {
+		t.Fatalf("too few city terms: %d", len(got))
+	}
+	if !containsString(got, "toko listrik jakarta") || !containsString(got, "furniture shop bangkok") {
+		t.Fatalf("%v", got[:8])
+	}
+	plan := resolveShortVideoRegions(HarvestOptions{Regions: []string{"sea"}})
+	if !containsString(plan[0].Extra, "LED shop manila") {
+		t.Fatal("SEA region should include city fan-out")
+	}
+}
+
 func TestSidecarHarvestUsesTikTokAPIForIndonesia(t *testing.T) {
 	var sawQ []string
 	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

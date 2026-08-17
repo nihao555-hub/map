@@ -80,7 +80,10 @@ def _headed() -> bool:
 async def _users_from_search_page(page, keyword: str, count: int) -> list[dict]:
     url = "https://www.tiktok.com/search/user?q=" + quote(keyword)
     await page.goto(url, wait_until="domcontentloaded", timeout=90000)
-    await asyncio.sleep(5)
+    await asyncio.sleep(4)
+    for _ in range(5):
+        await page.mouse.wheel(0, 3200)
+        await asyncio.sleep(1.1)
     raw = await page.evaluate(
         """() => {
           const out = [];

@@ -60,6 +60,31 @@ var seaShortVideoKeywords = []string{
 	"power tools shop", "LED lighting shop", "furniture store",
 }
 
+// seaCitySidecarKeywords is city × shop phrase. TikTok user search only
+// returns the first result page, so city terms are how we fan out in SEA.
+var seaCities = []string{
+	"jakarta", "surabaya", "bandung", "medan",
+	"bangkok", "chiang mai",
+	"kuala lumpur", "penang",
+	"ho chi minh", "hanoi",
+	"manila", "cebu", "singapore",
+}
+
+var seaCitySeeds = []string{
+	"toko listrik", "toko lampu", "furniture shop", "LED shop",
+	"auto parts", "shoe shop", "clothing wholesale", "hardware store",
+}
+
+func seaCitySidecarKeywords() []string {
+	out := make([]string, 0, len(seaCities)*len(seaCitySeeds))
+	for _, city := range seaCities {
+		for _, seed := range seaCitySeeds {
+			out = append(out, seed+" "+city)
+		}
+	}
+	return out
+}
+
 var meShortVideoKeywords = []string{
 	"lighting dubai", "furniture dubai", "auto parts dubai",
 	"أدوات كهربائية", "أثاث",
@@ -80,7 +105,7 @@ type shortVideoRegion struct {
 
 func defaultShortVideoRegions() []shortVideoRegion {
 	return []shortVideoRegion{
-		{Name: "sea", Countries: []string{"ID", "TH", "MY", "VN", "SG", "PH"}, Extra: seaShortVideoKeywords},
+		{Name: "sea", Countries: []string{"ID", "TH", "MY", "VN", "SG", "PH"}, Extra: append(append([]string{}, seaShortVideoKeywords...), seaCitySidecarKeywords()...)},
 		{Name: "me", Countries: []string{"AE", "SA", "TR", "EG", "QA"}, Extra: meShortVideoKeywords},
 		{Name: "west", Countries: []string{"US", "DE", "GB", "FR", "NL", "IT"}},
 	}
