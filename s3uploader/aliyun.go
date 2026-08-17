@@ -18,8 +18,16 @@ func aliyunEndpoint(opt Options) string {
 	return strings.TrimRight(ep, "/")
 }
 
+func newAliyunClient(opt Options) (*oss.Client, error) {
+	ep := aliyunEndpoint(opt)
+	if !strings.Contains(ep, "://") {
+		ep = "https://" + ep
+	}
+	return oss.New(ep, opt.AccessKey, opt.SecretKey, oss.Timeout(30, 600))
+}
+
 func uploadAliyunFile(opt Options, localPath string) error {
-	client, err := oss.New(aliyunEndpoint(opt), opt.AccessKey, opt.SecretKey)
+	client, err := newAliyunClient(opt)
 	if err != nil {
 		return err
 	}
@@ -27,11 +35,11 @@ func uploadAliyunFile(opt Options, localPath string) error {
 	if err != nil {
 		return err
 	}
-	return bucket.UploadFile(opt.Key, localPath, 8*1024*1024, oss.Routines(3))
+	return bucket.UploadFile(opt.Key, localPath, 16*1024*1024, oss.Routines(3))
 }
 
 func downloadAliyunFile(opt Options, destPath string) (int64, error) {
-	client, err := oss.New(aliyunEndpoint(opt), opt.AccessKey, opt.SecretKey)
+	client, err := newAliyunClient(opt)
 	if err != nil {
 		return 0, err
 	}
