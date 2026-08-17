@@ -145,6 +145,10 @@ ingest-sherlock: ## Sherlock site list on official handles + distinctive unique 
 	go run ./cmd/ingest-merchants -db webdata/merchants.db -sherlock \
 		-sherlock-workers 12
 
+ingest-attach-socials: ## 全库缺社媒：官网刮取 + OSM contact + 店名检索 FB/IG/LI + Sherlock 姐妹页
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -attach-socials \
+		-attach-workers 10
+
 enrich-merchants: ## fetch OSM official sites and probe missing social homepages
 	go run ./cmd/enrich-merchants -db webdata/merchants.db -workers 12
 

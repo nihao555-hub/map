@@ -74,6 +74,8 @@ func (d *Directory) migrate() {
 	}
 	_, _ = d.db.Exec(`ALTER TABLE merchants ADD COLUMN enriched_at TEXT`)
 	_, _ = d.db.Exec(`ALTER TABLE merchants ADD COLUMN probed_at TEXT`)
+	_, _ = d.db.Exec(`CREATE INDEX IF NOT EXISTS merchants_probed ON merchants(probed_at)`)
+	_, _ = d.db.Exec(`CREATE INDEX IF NOT EXISTS merchants_source_probed ON merchants(source, probed_at)`)
 }
 
 const directorySchema = `
@@ -396,6 +398,60 @@ func (d *Directory) ListToEnrich(ctx context.Context, limit int) ([]Merchant, er
 	return d.attachProfiles(ctx, rows), nil
 }
 
+// ListMerchantsMissingSocials returns directory rows that still have no
+// Facebook/Instagram/LinkedIn/etc. profile and have not been name-probed.
+// phase picks the next yield bucket: homepage, osm, wikidata, other, or empty for all.
+func (d *Directory) ListMerchantsMissingSocials(ctx context.Context, limit int, phase string) ([]Merchant, error) {
+	if d == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 80
+	}
+	q := `SELECT m.ext_id, m.source, m.name, m.shop, m.country, m.city, m.homepage, m.phone
+		FROM merchants m
+		WHERE (m.probed_at IS NULL OR m.probed_at='')
+		  AND NOT EXISTS (
+		    SELECT 1 FROM merchant_profiles p
+		    WHERE p.ext_id=m.ext_id AND p.platform != 'website'
+		  )`
+	switch strings.ToLower(strings.TrimSpace(phase)) {
+	case "homepage":
+		q += ` AND m.homepage != ''
+		  AND m.homepage NOT LIKE '%openstreetmap.org%'
+		  AND m.homepage NOT LIKE '%gleif.org%'
+		  AND m.homepage NOT LIKE '%wikidata.org%'`
+	case "osm":
+		q += ` AND m.source='osm'`
+	case "wikidata":
+		q += ` AND m.source='wikidata'`
+	case "other", "gleif":
+		q += ` AND m.source NOT IN ('osm', 'wikidata')`
+	}
+	q += ` ORDER BY m.id LIMIT ?`
+	rows, err := d.scanMerchants(ctx, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	return d.attachProfiles(ctx, rows), nil
+}
+
+// CountMerchantsMissingSocials is how many rows still need a social probe.
+func (d *Directory) CountMerchantsMissingSocials(ctx context.Context) (int, error) {
+	if d == nil {
+		return 0, nil
+	}
+	var n int
+	err := d.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM merchants m
+WHERE (m.probed_at IS NULL OR m.probed_at='')
+  AND NOT EXISTS (
+    SELECT 1 FROM merchant_profiles p
+    WHERE p.ext_id=m.ext_id AND p.platform != 'website'
+  )`).Scan(&n)
+	return n, err
+}
+
 // ListHomepagesMissingSocials returns merchants that already have a real
 // official site but no Facebook/Instagram/LinkedIn/etc. homepage yet.
 func (d *Directory) ListHomepagesMissingSocials(ctx context.Context, limit int) ([]Merchant, error) {
@@ -509,6 +565,26 @@ UPDATE merchants SET homepage=?
 WHERE ext_id=? AND (homepage IS NULL OR homepage='' OR homepage LIKE '%gleif.org%' OR homepage LIKE '%wikidata.org%')`,
 		home, extID)
 	return err
+}
+
+// MarkProbedIfHasSocial stamps rows that already have a non-website profile
+// so the full attach pass can walk probed_at IS NULL without rescanning them.
+func (d *Directory) MarkProbedIfHasSocial(ctx context.Context) (int64, error) {
+	if d == nil {
+		return 0, nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := d.db.ExecContext(ctx, `
+UPDATE merchants SET probed_at=?
+WHERE (probed_at IS NULL OR probed_at='')
+  AND EXISTS (
+    SELECT 1 FROM merchant_profiles p
+    WHERE p.ext_id=merchants.ext_id AND p.platform != 'website'
+  )`, now)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func (d *Directory) MarkProbed(ctx context.Context, extIDs []string) error {

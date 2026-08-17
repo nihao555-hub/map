@@ -122,6 +122,18 @@ func (c *Client) lookupMerchantSocials(ctx context.Context, hit Hit, wanted map[
 		}
 		out = append(out, p)
 	}
+	for _, p := range hit.Profiles {
+		if p.Platform == "" || p.Platform == PlatformWebsite || strings.TrimSpace(p.HomepageURL) == "" {
+			continue
+		}
+		add(Profile{
+			Platform: p.Platform,
+			URL:      p.HomepageURL,
+			Handle:   p.Handle,
+			Verified: p.Verified,
+			Source:   firstNonEmpty(hitExtra(p, "src"), "existing"),
+		})
+	}
 
 	if strings.HasPrefix(extID, "osm:") {
 		for _, p := range c.lookupOSMContactProfiles(ctx, extID, hit.Name) {
@@ -227,7 +239,7 @@ func parseOSMExtID(extID string) (kind string, id int64, ok bool) {
 
 func (c *Client) searchMerchantNameSocials(ctx context.Context, hit Hit) []Hit {
 	name := strings.TrimSpace(hit.Name)
-	if name == "" || c == nil {
+	if name == "" || c == nil || utf8.RuneCountInString(name) < 4 || foldSearchText(name) == "" {
 		return nil
 	}
 	geo := strings.TrimSpace(firstNonEmpty(hitExtra(hit, "city"), CountryQueryToken(hit.Country, false)))

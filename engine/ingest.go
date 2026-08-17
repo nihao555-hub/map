@@ -49,6 +49,9 @@ type IngestOptions struct {
 	SherlockLimit     int
 	SherlockNameLimit int
 	SherlockWorkers   int
+	AttachSocials     bool
+	AttachLimit       int
+	AttachWorkers     int
 }
 
 // DefaultIngestOptions dumps GLEIF Golden Copy plus OSM shops in major cities.
@@ -125,6 +128,9 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	}
 	if opt.Sherlock {
 		stats = append(stats, c.ingestSherlock(ctx, dir, opt))
+	}
+	if opt.AttachSocials {
+		stats = append(stats, c.ingestAttachSocials(ctx, dir, opt))
 	}
 	return stats, nil
 }

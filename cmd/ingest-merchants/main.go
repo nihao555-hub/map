@@ -33,6 +33,9 @@ func main() {
 	sherlockLimit := flag.Int("sherlock-limit", 0, "Sherlock 已有官网/社媒最多探多少家，0=默认 15000")
 	sherlockNameLimit := flag.Int("sherlock-names", 0, "Sherlock 独特法律名最多探多少家，0=默认 8000")
 	sherlockWorkers := flag.Int("sherlock-workers", 12, "Sherlock 探测并发")
+	attachSocials := flag.Bool("attach-socials", false, "全库缺社媒：官网刮取 + OSM contact + 店名检索 FB/IG/LI + Sherlock 姐妹页，可断点续跑")
+	attachLimit := flag.Int("attach-limit", 0, "全库补社媒最多处理多少家，0=全部还没探过的")
+	attachWorkers := flag.Int("attach-workers", 10, "全库补社媒并发")
 	sea := flag.Bool("sea", false, "只补东南亚城市店铺 + Wikidata 公司")
 	osmLimit := flag.Int("osm-limit", 2000, "每个城市最多拉多少家店")
 	flag.Parse()
@@ -43,7 +46,7 @@ func main() {
 	client := engine.OptionsFromEnv()
 	if client.HTTP != nil {
 		client.HTTP.Timeout = 90 * time.Second
-		if *publicSocials || *maxPublic || *moreSocials || *sherlock {
+		if *publicSocials || *maxPublic || *moreSocials || *sherlock || *attachSocials {
 			client.HTTP.Timeout = 180 * time.Second
 		}
 	}
@@ -67,6 +70,9 @@ func main() {
 		SherlockLimit:     *sherlockLimit,
 		SherlockNameLimit: *sherlockNameLimit,
 		SherlockWorkers:   *sherlockWorkers,
+		AttachSocials:     *attachSocials,
+		AttachLimit:       *attachLimit,
+		AttachWorkers:     *attachWorkers,
 		Overpass:          !*skipOSM,
 		OSMLimitPerCity:   *osmLimit,
 	}
@@ -118,6 +124,17 @@ func main() {
 		opt.MaxPublic = false
 		opt.MoreSocials = false
 		opt.Sherlock = true
+	}
+	if *attachSocials {
+		opt.SkipGLEIF = true
+		opt.SkipOSM = true
+		opt.Overpass = false
+		opt.SkipWikidata = true
+		opt.PublicSocials = false
+		opt.MaxPublic = false
+		opt.MoreSocials = false
+		opt.Sherlock = false
+		opt.AttachSocials = true
 	}
 	if *moreSocials {
 		opt.SkipGLEIF = true
