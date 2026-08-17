@@ -299,6 +299,13 @@ func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 				"pushed":  "2026",
 				"use":     "Sherlock 站点表：官网域名和已有社媒 handle 探姐妹主页；足够独特且全球唯一的法律名还要能对上 LinkedIn 公司页或两个核心平台。不拿短名/重名去撞 400 站",
 			},
+			{
+				"name":    "laramies/theHarvester + OpenStreetMap Overpass",
+				"stars":   "13k / OSM",
+				"license": "GPL-2.0 / ODbL",
+				"pushed":  "2026",
+				"use":     "结果缺社媒时：按店名公开检索 Facebook/Instagram/LinkedIn（theHarvester 同源），并回查 OSM contact:* 标签，再对已有 handle 走 Sherlock 姐妹页",
+			},
 		},
 		"skipped": []map[string]string{
 			{

@@ -249,7 +249,7 @@ func TestDiscoverSourcesListsOSS(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "davidteather/TikTok-Api") || !strings.Contains(body, "Johnserf-Seed/f2") || !strings.Contains(body, "public-websearch") || !strings.Contains(body, "s0md3v/Photon") || !strings.Contains(body, "sherlock-project/sherlock") {
+	if !strings.Contains(body, "davidteather/TikTok-Api") || !strings.Contains(body, "Johnserf-Seed/f2") || !strings.Contains(body, "public-websearch") || !strings.Contains(body, "s0md3v/Photon") || !strings.Contains(body, "sherlock-project/sherlock") || !strings.Contains(body, "laramies/theHarvester") {
 		t.Fatalf("body=%s", body)
 	}
 }

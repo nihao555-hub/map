@@ -309,13 +309,18 @@ func (c *Client) searchPeople(ctx context.Context, q Query) (Result, error) {
 	merged := mergeHits(hits, q.Keyword, q.Limit, q.Role, q.Country)
 	if len(merged) > 0 {
 		before := profileCount(merged)
+		merged = c.attachMissingSocials(ctx, merged, wanted)
+		if profileCount(merged) > before {
+			sources = append(sources, "name-socials")
+		}
+		before = profileCount(merged)
 		merged = c.enrichHits(ctx, merged, 12)
 		if profileCount(merged) > before {
 			sources = append(sources, "enrich")
 		}
 		extra := c.expandMerchantSocials(ctx, merged, wanted)
 		if len(extra) > 0 {
-			merged = mergeHits(append(merged, extra...), q.Keyword, q.Limit, q.Role, q.Country)
+			merged = packCompanyHits(append(merged, extra...))
 			sources = append(sources, "expand-socials")
 		}
 		merged = packCompanyHits(merged)

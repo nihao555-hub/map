@@ -785,7 +785,7 @@ func merchantsToHits(rows []Merchant) []Hit {
 			Score:        86,
 			Country:      strings.ToUpper(strings.TrimSpace(row.Country)),
 			CountryLabel: label,
-			Extra:        map[string]string{"src": row.Source, "shop": row.Shop, "match": "category", "ext_id": row.ExtID},
+			Extra:        map[string]string{"src": row.Source, "shop": row.Shop, "match": "category", "ext_id": row.ExtID, "city": row.City},
 		}
 		if social, ok := ParseSocialURL(home, row.Name, snippet); ok {
 			social.Name = row.Name
@@ -800,6 +800,7 @@ func merchantsToHits(rows []Merchant) []Hit {
 			social.Extra["shop"] = row.Shop
 			social.Extra["match"] = "category"
 			social.Extra["ext_id"] = row.ExtID
+			social.Extra["city"] = row.City
 			hit = social
 		}
 		for _, p := range row.Profiles {
