@@ -15,7 +15,9 @@ const (
 	attachSocialBatch          = 80
 )
 
-var attachSocialPhases = []string{"homepage", "osm", "wikidata", "other"}
+// homepage → OSM → Wikidata only. Do not name-search millions of GLEIF
+// legal entities: public indexes return junk Twitch/Pinterest for those.
+var attachSocialPhases = []string{"homepage", "osm", "wikidata"}
 
 func (c *Client) ingestAttachSocials(ctx context.Context, dir *Directory, opt IngestOptions) IngestStats {
 	started := time.Now()

@@ -115,7 +115,7 @@ func TestIngestAttachSocialsFillsAndMarksProbed(t *testing.T) {
 	if st.Err != "" {
 		t.Fatal(st.Err)
 	}
-	if st.Rows < 2 {
+	if st.Rows < 1 {
 		t.Fatalf("attached=%d note=%s", st.Rows, st.Note)
 	}
 
@@ -126,16 +126,16 @@ func TestIngestAttachSocialsFillsAndMarksProbed(t *testing.T) {
 	if !hasPlatform(byID["osm:node:99"], PlatformFacebook) {
 		t.Fatalf("osm profiles=%+v", byID["osm:node:99"])
 	}
-	if !hasPlatform(byID["gleif:reg"], PlatformFacebook) {
-		t.Fatalf("gleif profiles=%+v", byID["gleif:reg"])
+	if hasPlatform(byID["gleif:reg"], PlatformFacebook) {
+		t.Fatalf("registry-only GLEIF must not be name-probed: %+v", byID["gleif:reg"])
 	}
 
 	left, err := dir.ListMerchantsMissingSocials(context.Background(), 20, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(left) != 0 {
-		t.Fatalf("should be probed or filled: %+v", left)
+	if len(left) != 1 || left[0].ExtID != "gleif:reg" {
+		t.Fatalf("registry-only GLEIF should remain unprobed: %+v", left)
 	}
 }
 
