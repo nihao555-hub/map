@@ -187,11 +187,12 @@ func wikidataGlobalSocialSPARQL(prop, valuePrefix string, offset int) string {
 	return fmt.Sprintf(`PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX wd: <http://www.wikidata.org/entity/>
-SELECT ?item ?itemLabel ?lei ?cc ?val WHERE {
+SELECT ?item ?itemLabel ?zhLabel ?lei ?cc ?val WHERE {
   ?item wdt:%s ?val .
   FILTER NOT EXISTS { ?item wdt:P31 wd:Q5 }
   %s
   OPTIONAL { ?item rdfs:label ?itemLabel . FILTER(LANG(?itemLabel) = "en") }
+  OPTIONAL { ?item rdfs:label ?zhLabel . FILTER(LANG(?zhLabel) = "zh") }
   OPTIONAL { ?item wdt:P1278 ?lei }
   OPTIONAL { ?item wdt:P17 ?country . ?country wdt:P297 ?cc }
 }
@@ -225,7 +226,11 @@ func mergeWikidataGlobalSocial(byQID map[string]*Merchant, leiByQID map[string]s
 		if i := strings.LastIndex(item, "/"); i >= 0 {
 			qid = item[i+1:]
 		}
-		name := strings.TrimSpace(row["itemLabel"].Value)
+		name := firstNonEmpty(
+			strings.TrimSpace(row["itemLabel"].Value),
+			strings.TrimSpace(row["zhLabel"].Value),
+			socialFallbackName(row["val"].Value, qid),
+		)
 		if qid == "" || name == "" || looksLikeWikidataNonCompany(name) {
 			continue
 		}
@@ -289,4 +294,16 @@ func mergeWikidataGlobalSocial(byQID map[string]*Merchant, leiByQID map[string]s
 		added++
 	}
 	return added
+}
+
+func socialFallbackName(val, qid string) string {
+	v := strings.TrimSpace(val)
+	if i := strings.LastIndex(v, "/"); i >= 0 {
+		v = strings.TrimSpace(v[i+1:])
+	}
+	v = strings.TrimPrefix(v, "@")
+	if v != "" {
+		return v
+	}
+	return strings.TrimSpace(qid)
 }

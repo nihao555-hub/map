@@ -21,7 +21,7 @@ func TestDirectoryPageRenders(t *testing.T) {
 		t.Fatalf("code=%d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"本地企业库", "dir-form", "/static/js/directory.js", "GLEIF 法律名", "TikTok", "抖音"} {
+	for _, want := range []string{"本地企业库", "dir-form", "/static/js/directory.js", "GLEIF 法律名", "TikTok 主页", "抖音主页"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q", want)
 		}

@@ -57,6 +57,8 @@ type DirectoryCoverage struct {
 	NoSocialButHomepage int            `json:"no_social_but_homepage"`
 	ByPlatform          map[string]int `json:"by_platform,omitempty"`
 	UsefulByPlatform    map[string]int `json:"useful_by_platform,omitempty"`
+	TikTokUnique        int            `json:"tiktok_unique"`
+	DouyinUnique        int            `json:"douyin_unique"`
 	LegalByCountry      []CountPair    `json:"legal_by_country,omitempty"`
 	LegalByCategory     []CountPair    `json:"legal_by_category,omitempty"`
 	Note                string         `json:"note"`
@@ -189,6 +191,17 @@ WHERE `+sqlRealHomepage+` AND `+sqlNoSocial).Scan(&cov.NoSocialButHomepage)
 	}
 	_ = platRows.Close()
 
+	if err := d.db.QueryRowContext(ctx, `
+SELECT COUNT(DISTINCT LOWER(COALESCE(NULLIF(TRIM(handle),''), url)))
+FROM merchant_profiles WHERE platform='tiktok'`).Scan(&cov.TikTokUnique); err != nil {
+		return cov, err
+	}
+	if err := d.db.QueryRowContext(ctx, `
+SELECT COUNT(DISTINCT LOWER(COALESCE(NULLIF(TRIM(handle),''), url)))
+FROM merchant_profiles WHERE platform='douyin'`).Scan(&cov.DouyinUnique); err != nil {
+		return cov, err
+	}
+
 	cov.LegalByCountry, err = d.countPairs(ctx, `
 SELECT country, COUNT(*) FROM merchants WHERE source='gleif' AND country!=''
 GROUP BY country ORDER BY 2 DESC LIMIT 15`)
@@ -207,8 +220,8 @@ GROUP BY shop ORDER BY 2 DESC`)
 
 func directoryCoverageNote(cov DirectoryCoverage) string {
 	return fmt.Sprintf(
-		"库里 %s 条里，约 %s 条是 GLEIF 法律登记名（只有国别/城市和 LEI 页，没有官网和社媒）。真正能当店铺/公司用的大约 %s 条；其中约 %s 条挂了 Facebook / Instagram / LinkedIn / YouTube / X / TikTok / 抖音。公开源补不齐那 300 多万条空法律名，也灌不进各平台全量企业号。",
-		formatInt(cov.Merchants), formatInt(cov.LegalNameOnly), formatInt(cov.Operating), formatInt(cov.WithUsefulSocial),
+		"库里 %s 条里，约 %s 条是 GLEIF 法律登记名。TikTok 去重主页 %s 条，抖音 %s 条。公开能一次拉全的只有 Wikidata 已标注号（TikTok 非人名约 14,410，含名人约 36,195；抖音非人名约 182，含名人约 311）。平台本身没有企业号全库。",
+		formatInt(cov.Merchants), formatInt(cov.LegalNameOnly), formatInt(cov.TikTokUnique), formatInt(cov.DouyinUnique),
 	)
 }
 
@@ -314,8 +327,14 @@ func browseWhere(q DirectoryBrowseQuery) (string, []any) {
 		parts = append(parts, sqlUsefulSocial)
 	case "operating":
 		parts = append(parts, `(m.source IN ('osm','wikidata') OR (`+sqlRealHomepage+`))`)
+	case "tiktok", "douyin":
+		parts = append(parts, `EXISTS (SELECT 1 FROM merchant_profiles p WHERE p.ext_id=m.ext_id AND p.platform=?)`)
+		args = append(args, q.Filter)
 	}
-	if q.Source != "" && q.Source != "all" {
+	if q.Source == PlatformTikTok || q.Source == PlatformDouyin {
+		parts = append(parts, `EXISTS (SELECT 1 FROM merchant_profiles p WHERE p.ext_id=m.ext_id AND p.platform=?)`)
+		args = append(args, q.Source)
+	} else if q.Source != "" && q.Source != "all" {
 		parts = append(parts, `m.source=?`)
 		args = append(args, q.Source)
 	}
@@ -342,6 +361,10 @@ func browseNote(filter string) string {
 		return "已挂上 Facebook / Instagram / LinkedIn / YouTube / X / TikTok / 抖音的行。短视频企业号来自公开检索和 TikTok-Api / f2 sidecar。"
 	case "operating":
 		return "OSM 店铺、Wikidata 公司和带真实官网的行。搜配电柜这类品类时，引擎优先用这一层，而不是 300 万条法律名。"
+	case "tiktok":
+		return "库里挂了 TikTok 主页的行。公开全量只有 Wikidata P7085：非人名约 14,410，含名人约 36,195。平台没有企业号全库。"
+	case "douyin":
+		return "库里挂了抖音主页的行。公开全量只有 Wikidata P7120：非人名约 182，含名人约 311。平台没有企业号全库。"
 	default:
 		return "本地公开源目录，不是 Facebook/LinkedIn 全量企业号，也不是海关逐票库。"
 	}

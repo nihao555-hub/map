@@ -20,6 +20,9 @@ func TestDirectoryCoverageSplitsLegalNames(t *testing.T) {
 			{ExtID: "osm:shop", Platform: PlatformFacebook, URL: "https://www.facebook.com/tokolistrikjaya", Handle: "tokolistrikjaya", Source: "osm-tag"},
 		}},
 		{ExtID: "wd:Q1", Source: "wikidata", Name: "Mycron Steel Berhad", Shop: "company", Country: "MY", Homepage: "https://www.mycronsteel.com"},
+		{ExtID: "wd:Q2", Source: "wikidata", Name: "Bosch", Shop: "company", Country: "DE", Homepage: "https://www.tiktok.com/@boschpowertools", Profiles: []Profile{
+			{ExtID: "wd:Q2", Platform: PlatformTikTok, URL: "https://www.tiktok.com/@boschpowertools", Handle: "boschpowertools", Source: "wikidata-social"},
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -28,17 +31,24 @@ func TestDirectoryCoverageSplitsLegalNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cov.Merchants != 3 || cov.LegalNameOnly != 1 || cov.Operating != 2 {
+	if cov.Merchants != 4 || cov.LegalNameOnly != 1 || cov.Operating != 3 {
 		t.Fatalf("coverage=%+v", cov)
 	}
-	if cov.WithUsefulSocial != 1 || cov.NoSocial != 2 || cov.NoSocialButHomepage != 1 {
+	if cov.WithUsefulSocial != 2 || cov.NoSocial != 2 || cov.NoSocialButHomepage != 1 {
 		t.Fatalf("socials=%+v", cov)
+	}
+	if cov.TikTokUnique != 1 || cov.DouyinUnique != 0 {
+		t.Fatalf("short-video unique=%+v", cov)
 	}
 	if cov.BySource["gleif"] != 1 || cov.UsefulByPlatform[PlatformFacebook] != 1 {
 		t.Fatalf("maps=%+v %+v", cov.BySource, cov.UsefulByPlatform)
 	}
-	if cov.Note == "" || !strings.Contains(cov.Note, "GLEIF") || !strings.Contains(cov.Note, "法律") {
+	if cov.Note == "" || !strings.Contains(cov.Note, "GLEIF") || !strings.Contains(cov.Note, "TikTok") {
 		t.Fatalf("note=%s", cov.Note)
+	}
+	tt, err := dir.Browse(context.Background(), DirectoryBrowseQuery{Filter: "tiktok"})
+	if err != nil || tt.Total != 1 || tt.Rows[0].Name != "Bosch" {
+		t.Fatalf("tiktok=%+v err=%v", tt, err)
 	}
 
 	legal, err := dir.Browse(context.Background(), DirectoryBrowseQuery{Filter: "legal_name"})
@@ -50,7 +60,7 @@ func TestDirectoryCoverageSplitsLegalNames(t *testing.T) {
 		t.Fatalf("homepage=%+v err=%v", home, err)
 	}
 	useful, err := dir.Browse(context.Background(), DirectoryBrowseQuery{Filter: "with_social"})
-	if err != nil || useful.Total != 1 || useful.Rows[0].Name != "Toko Listrik Jaya" {
+	if err != nil || useful.Total != 2 {
 		t.Fatalf("useful=%+v err=%v", useful, err)
 	}
 	named, err := dir.Browse(context.Background(), DirectoryBrowseQuery{Filter: "legal_name", Name: "Oakmark", Country: "US"})

@@ -21,6 +21,9 @@
   gap: 10px;
   margin-bottom: 16px;
 }
+@media (max-width: 900px) {
+  .dir-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .dir-card {
   border: 1px solid var(--wmt-line);
   border-radius: 8px;

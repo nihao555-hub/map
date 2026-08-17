@@ -28,8 +28,8 @@
     const items = [
       [cov.merchants, "库内全部"],
       [cov.legal_name_only, "只有法律名"],
-      [cov.operating, "经营主体"],
-      [cov.with_useful_social, "有用社媒"],
+      [cov.tiktok_unique, "TikTok 去重主页"],
+      [cov.douyin_unique, "抖音 去重主页"],
     ];
     cards.innerHTML = items.map(function (it) {
       return "<div class=\"dir-card\"><b>" + fmt(it[0]) + "</b><span>" + it[1] + "</span></div>";

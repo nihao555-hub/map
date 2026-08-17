@@ -136,6 +136,26 @@ func TestWikidataGlobalSocialSPARQLShards(t *testing.T) {
 	if !strings.Contains(wikidataGlobalSocialSPARQL("P2013", "", 80000), "OFFSET 80000") {
 		t.Fatal("missing offset")
 	}
+	if !strings.Contains(q, "zhLabel") {
+		t.Fatal("missing Chinese label fallback")
+	}
+}
+
+func TestMergeWikidataSocialFallbackName(t *testing.T) {
+	raw := []byte(`{"results":{"bindings":[{
+		"item":{"value":"http://www.wikidata.org/entity/Q9"},
+		"zhLabel":{"value":"东成电动工具"},
+		"cc":{"value":"CN"},
+		"val":{"value":"dongcheng"}
+	}]}}`)
+	byQID := map[string]*Merchant{}
+	n := mergeWikidataGlobalSocial(byQID, map[string]string{}, raw, "https://www.tiktok.com/@", PlatformTikTok)
+	if n != 1 || byQID["Q9"] == nil || byQID["Q9"].Name != "东成电动工具" {
+		t.Fatalf("n=%d by=%+v", n, byQID)
+	}
+	if socialFallbackName("https://www.tiktok.com/@bosch", "Q1") != "bosch" {
+		t.Fatal(socialFallbackName("https://www.tiktok.com/@bosch", "Q1"))
+	}
 }
 
 func TestOSMContactQueryUsesContactTags(t *testing.T) {

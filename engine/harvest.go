@@ -33,6 +33,8 @@ type HarvestOptions struct {
 	Regions []string
 	// Deadline stops a fast harvest so a 2-hour window can finish.
 	Deadline time.Duration
+	// SeedOnly stops after the Wikidata TikTok/抖音 dump.
+	SeedOnly bool
 }
 
 // HarvestStats is one batch run's timing and unique social pages.

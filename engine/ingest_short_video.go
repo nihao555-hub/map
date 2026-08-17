@@ -249,7 +249,7 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 		return st, err
 	}
 
-	if opt.Fast {
+	if opt.Fast || opt.SeedOnly {
 		orig := ""
 		if c != nil {
 			orig = c.WikidataURL
@@ -259,6 +259,9 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 			wd := c.ingestWikidataShortVideo(ctx, dir)
 			logIngest("short-video wikidata seed %s", wd)
 			c.WikidataURL = orig
+		}
+		if opt.SeedOnly {
+			return finish(nil)
 		}
 	}
 

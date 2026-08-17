@@ -21,6 +21,7 @@ func main() {
 	names := flag.Bool("names", false, "按已入库 GLEIF 公司全名搜社媒（比按品类扫更准）")
 	shortVideo := flag.Bool("short-video", false, "只收抖音/TikTok 企业号主页（TikTok-Api / f2 + 公开索引）")
 	fast := flag.Bool("fast", false, "两小时窗口：先灌 Wikidata 全量 TikTok/抖音号，再按东南亚→中东→欧美扫")
+	seedOnly := flag.Bool("seed-only", false, "只灌 Wikidata 已标注的 TikTok/抖音号，不跑公开检索")
 	regions := flag.String("regions", "", "sea,me,west；空则 fast 默认这个顺序")
 	deadline := flag.Duration("deadline", 0, "最长跑多久，例如 110m")
 	flag.Parse()
@@ -34,6 +35,7 @@ func main() {
 		QueryLimit: *queryLimit,
 		Role:       engine.RoleBuyer,
 		Fast:       *fast,
+		SeedOnly:   *seedOnly,
 		Deadline:   *deadline,
 	}
 	if s := strings.TrimSpace(*regions); s != "" {
@@ -55,10 +57,10 @@ func main() {
 		err error
 	)
 	if *shortVideo {
-		if *fast && (client.WikidataURL == "" || strings.Contains(client.WikidataURL, "query.wikidata.org")) {
+		if (*fast || *seedOnly) && (client.WikidataURL == "" || strings.Contains(client.WikidataURL, "query.wikidata.org")) {
 			client.WikidataURL = engine.QleverWikidataSPARQL
 		}
-		fmt.Printf("开始抖音/TikTok 企业号收割 fast=%v db=%s\n", *fast, *db)
+		fmt.Printf("开始抖音/TikTok 企业号收割 fast=%v seed-only=%v db=%s\n", *fast, *seedOnly, *db)
 		st, err = client.HarvestShortVideo(ctx, opt)
 	} else if *names {
 		fmt.Printf("开始公司名公式收割 db=%s limit=%d\n", *db, *queryLimit)
