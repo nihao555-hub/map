@@ -52,8 +52,7 @@ _SKIP_HANDLES = {
 
 _loop: asyncio.AbstractEventLoop | None = None
 _api = None
-_rr = 0
-_rr_lock: asyncio.Lock | None = None
+_pages: asyncio.Queue | None = None
 _api_lock: asyncio.Lock | None = None
 
 
@@ -154,11 +153,11 @@ async def _open_and_scroll(page, url: str, scrolls: int) -> None:
 
 
 async def _ensure_api():
-    global _api
+    global _api, _pages
     if TikTokApi is None:
         raise RuntimeError("TikTokApi is not installed; pip install TikTokApi")
     async with _api_lock:
-        if _api is not None and getattr(_api, "sessions", None):
+        if _api is not None and getattr(_api, "sessions", None) and _pages is not None:
             return _api
         if _api is not None:
             try:
@@ -179,18 +178,21 @@ async def _ensure_api():
             timeout=90000,
             executable_path=chrome,
         )
+        _pages = asyncio.Queue()
+        for sess in api.sessions:
+            await _pages.put(sess.page)
         _api = api
         print(f"tiktok session ready sessions={len(api.sessions)} headed={_headed()}")
         return api
 
 
-async def _next_page():
-    global _rr
-    api = await _ensure_api()
-    async with _rr_lock:
-        i = _rr % max(1, len(api.sessions))
-        _rr += 1
-        return api.sessions[i].page
+async def _with_page(fn):
+    await _ensure_api()
+    page = await _pages.get()
+    try:
+        return await fn(page)
+    finally:
+        await _pages.put(page)
 
 
 async def search_users(keyword: str, count: int) -> list[dict]:
@@ -210,9 +212,11 @@ async def search_users(keyword: str, count: int) -> list[dict]:
                     return users
         except Exception as exc:  # noqa: BLE001
             print("tiktok api search fallback:", exc)
-    page = await _next_page()
-    await _open_and_scroll(page, "https://www.tiktok.com/search/user?q=" + quote(keyword), 10)
-    for payload in await _extract_handles(page, count, "tiktok-api-page"):
+    async def _page_search(page):
+        await _open_and_scroll(page, "https://www.tiktok.com/search/user?q=" + quote(keyword), 10)
+        return await _extract_handles(page, count, "tiktok-api-page")
+
+    for payload in await _with_page(_page_search):
         handle = (payload.get("uniqueId") or "").lower()
         if not handle or handle in seen:
             continue
@@ -227,18 +231,24 @@ async def search_tag(keyword: str, count: int) -> list[dict]:
     slug = "".join(ch for ch in keyword.lower() if ch.isalnum() or ch in "._")
     if not slug:
         return []
-    page = await _next_page()
-    await _open_and_scroll(page, "https://www.tiktok.com/tag/" + quote(slug), 8)
-    return await _extract_handles(page, count, "tiktok-api-tag")
+
+    async def _page_tag(page):
+        await _open_and_scroll(page, "https://www.tiktok.com/tag/" + quote(slug), 8)
+        return await _extract_handles(page, count, "tiktok-api-tag")
+
+    return await _with_page(_page_tag)
 
 
 async def search_related(handle: str, count: int) -> list[dict]:
     handle = handle.strip().lstrip("@")
     if not handle:
         return []
-    page = await _next_page()
-    await _open_and_scroll(page, "https://www.tiktok.com/@" + quote(handle), 6)
-    return await _extract_handles(page, count, "tiktok-api-related", skip={handle})
+
+    async def _page_related(page):
+        await _open_and_scroll(page, "https://www.tiktok.com/@" + quote(handle), 6)
+        return await _extract_handles(page, count, "tiktok-api-related", skip={handle})
+
+    return await _with_page(_page_related)
 
 
 def _run(coro, timeout: float = 120):
@@ -318,8 +328,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 async def _setup() -> None:
-    global _rr_lock, _api_lock
-    _rr_lock = asyncio.Lock()
+    global _api_lock
     _api_lock = asyncio.Lock()
     await _ensure_api()
 
