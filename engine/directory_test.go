@@ -73,6 +73,7 @@ func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
 		{ExtID: "osm:id-shop", Source: "osm", Name: "Toko Listrik Jaya", Shop: "electrical", Country: "ID", City: "Surabaya", Homepage: "https://toko-listrik.example", Profiles: []Profile{
 			{ExtID: "osm:id-shop", Platform: PlatformInstagram, URL: "https://www.instagram.com/tokolistrikjaya", Handle: "tokolistrikjaya", Source: "osm-tag"},
 		}},
+		{ExtID: "osm:id-electronics", Source: "osm", Name: "Toko Listrik Cihapit", Shop: "electronics", Country: "ID", City: "Bandung", Homepage: "https://www.openstreetmap.org/node/13795250644"},
 		{ExtID: "gleif:id-brand", Source: "gleif", Name: "PT Schneider Electric Switchgear Indonesia", Shop: "GENERAL", Country: "ID", City: "Jakarta", Homepage: "https://www.se.com"},
 		{ExtID: "osm:de-light", Source: "osm", Name: "Licht Kraus", Shop: "lighting", Country: "DE", City: "Berlin", Homepage: "https://licht-kraus.example"},
 	}); err != nil {
@@ -87,7 +88,7 @@ func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
 	for _, row := range rows {
 		got[row.Name] = true
 	}
-	if !got["PT Sumber Panel Listrik Trading"] || !got["Toko Listrik Jaya"] {
+	if !got["PT Sumber Panel Listrik Trading"] || !got["Toko Listrik Jaya"] || !got["Toko Listrik Cihapit"] {
 		t.Fatalf("indonesian electrical buyers missing: %+v", rows)
 	}
 	if got["Licht Kraus"] {
@@ -99,7 +100,7 @@ func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
 	for _, h := range hits {
 		names[h.Name] = true
 	}
-	if !names["PT Sumber Panel Listrik Trading"] || !names["Toko Listrik Jaya"] {
+	if !names["PT Sumber Panel Listrik Trading"] || !names["Toko Listrik Jaya"] || !names["Toko Listrik Cihapit"] {
 		t.Fatalf("buyer merge dropped local merchants: %+v", hits)
 	}
 	if names["PT Schneider Electric Switchgear Indonesia"] {

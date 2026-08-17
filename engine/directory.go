@@ -777,6 +777,13 @@ func (d *Directory) Search(ctx context.Context, keyword, country string, limit i
 		}
 		add(shopRows)
 	}
+	if names := osmNameNeedles(keyword); len(names) > 0 && len(out) < limit {
+		nameRows, err := d.searchByNameNeedles(ctx, names, country, limit-len(out))
+		if err != nil {
+			return nil, err
+		}
+		add(nameRows)
+	}
 	if len(out) < limit {
 		ftsRows, err := d.searchFTS(ctx, terms, country, limit-len(out))
 		if err != nil {
@@ -798,6 +805,33 @@ func (d *Directory) searchByShop(ctx context.Context, tags []string, country str
 		args = append(args, tag)
 	}
 	q := `SELECT ext_id, source, name, shop, country, city, homepage, phone FROM merchants WHERE shop IN (` + strings.Join(pholders, ",") + `)`
+	if code := strings.ToUpper(strings.TrimSpace(LookupCountry(country).Code)); code != "" {
+		q += ` AND country=?`
+		args = append(args, code)
+	}
+	q += ` LIMIT ?`
+	args = append(args, limit)
+	return d.scanMerchants(ctx, q, args...)
+}
+
+func (d *Directory) searchByNameNeedles(ctx context.Context, names []string, country string, limit int) ([]Merchant, error) {
+	if len(names) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	conds := make([]string, 0, len(names))
+	args := make([]any, 0, len(names)+2)
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" || hasCJK(name) {
+			continue
+		}
+		conds = append(conds, "lower(name) LIKE ?")
+		args = append(args, "%"+strings.ToLower(name)+"%")
+	}
+	if len(conds) == 0 {
+		return nil, nil
+	}
+	q := `SELECT ext_id, source, name, shop, country, city, homepage, phone FROM merchants WHERE (` + strings.Join(conds, " OR ") + `)`
 	if code := strings.ToUpper(strings.TrimSpace(LookupCountry(country).Code)); code != "" {
 		q += ` AND country=?`
 		args = append(args, code)
