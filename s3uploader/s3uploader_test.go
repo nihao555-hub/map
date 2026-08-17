@@ -8,8 +8,13 @@ func TestAliyunEndpointFromRegion(t *testing.T) {
 	if !isAliyun(Options{Region: "oss-cn-shanghai"}) {
 		t.Fatal("shanghai should use official OSS SDK")
 	}
+	t.Setenv("ENGINE_OSS_ACCELERATE", "0")
 	if got := aliyunEndpoint(Options{Region: "oss-cn-shanghai"}); got != "oss-cn-shanghai.aliyuncs.com" {
 		t.Fatalf("got %q", got)
+	}
+	t.Setenv("ENGINE_OSS_ACCELERATE", "")
+	if got := aliyunEndpoint(Options{Region: "oss-cn-shanghai"}); got != "https://oss-accelerate.aliyuncs.com" {
+		t.Fatalf("accelerate=%q", got)
 	}
 }
 

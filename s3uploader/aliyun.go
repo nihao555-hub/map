@@ -9,6 +9,9 @@ import (
 )
 
 func aliyunEndpoint(opt Options) string {
+	if strings.ToLower(strings.TrimSpace(os.Getenv("ENGINE_OSS_ACCELERATE"))) != "0" {
+		return "https://oss-accelerate.aliyuncs.com"
+	}
 	ep := strings.TrimSpace(opt.Endpoint)
 	if ep == "" && strings.HasPrefix(strings.TrimSpace(opt.Region), "oss-") {
 		ep = strings.TrimSpace(opt.Region) + ".aliyuncs.com"

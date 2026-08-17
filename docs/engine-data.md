@@ -40,18 +40,26 @@ export ENGINE_MERCHANT_DB="$PWD/store/merchants.db"
 库约 1GB，不要进 git。阿里云 OSS 走 S3 兼容接口（也可用 AWS S3 / MinIO / R2）：
 
 ```bash
-export ENGINE_OSS_ENDPOINT=oss-cn-hangzhou.aliyuncs.com   # 或你的地域
-export ENGINE_OSS_REGION=oss-cn-hangzhou
-export ENGINE_OSS_BUCKET=你的桶名
-export ENGINE_OSS_ACCESS_KEY=...
-export ENGINE_OSS_SECRET_KEY=...
-export ENGINE_OSS_KEY=engine/merchants.db                 # 可选
+export OSS_REGION=oss-cn-shanghai
+export OSS_BUCKET=你的桶名
+export OSS_ACCESS_KEY_ID=...
+export OSS_ACCESS_KEY_SECRET=...
+export ENGINE_OSS_ENDPOINT=oss-cn-shanghai.aliyuncs.com
+# 海外机器默认走传输加速 oss-accelerate.aliyuncs.com；设 ENGINE_OSS_ACCELERATE=0 可关掉
 
 make upload-merchants     # 先 VACUUM 出一致快照再上传，不打断正在跑的补社媒
 make restore-merchants    # 新环境拉回 store/merchants.db
 ```
 
-也认 `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` / `OSS_BUCKET` / `OSS_ENDPOINT`。密钥只放环境变量，不写进仓库。
+当前已上传的对象：`oss://sora-easy-video-refs/engine/merchants.db.gz`（gzip，约 292MB）。新环境：
+
+```bash
+# 配好同一套 OSS_* 后
+python3 -c "import oss2,os,gzip,shutil; b=oss2.Bucket(oss2.Auth(os.environ['OSS_ACCESS_KEY_ID'], os.environ['OSS_ACCESS_KEY_SECRET']),'https://oss-accelerate.aliyuncs.com',os.environ['OSS_BUCKET']); b.get_object_to_file('engine/merchants.db.gz','store/merchants.db.gz')"
+gzip -d -c store/merchants.db.gz > store/merchants.db
+```
+
+也认 `ENGINE_OSS_*`。密钥只放环境变量，不写进仓库。
 
 公开源补不齐约 330 万条「只有法律名、没有官网」的 GLEIF 行。Sherlock 不得对这类名字盲探（会刷出空的 Twitch/Pinterest）。只在已有官网或已验证 handle 时探姐妹页。
 
