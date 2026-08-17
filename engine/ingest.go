@@ -57,7 +57,7 @@ type IngestOptions struct {
 // DefaultIngestOptions dumps GLEIF Golden Copy plus OSM shops in major cities.
 func DefaultIngestOptions() IngestOptions {
 	return IngestOptions{
-		DBPath:          DefaultMerchantDB,
+		DBPath:          ResolveMerchantDB(""),
 		Overpass:        true,
 		OSMBoxes:        allIngestShopBoxes(),
 		OSMLimitPerCity: 1500,
@@ -67,7 +67,7 @@ func DefaultIngestOptions() IngestOptions {
 // IngestMerchants writes every connected public source into the local directory.
 func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]IngestStats, error) {
 	if opt.DBPath == "" {
-		opt.DBPath = DefaultMerchantDB
+		opt.DBPath = ResolveMerchantDB("")
 	}
 	if len(opt.OSMBoxes) == 0 {
 		opt.OSMBoxes = allIngestShopBoxes()

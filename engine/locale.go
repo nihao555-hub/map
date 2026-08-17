@@ -172,7 +172,7 @@ var productGlossary = map[string]productLangTerms{
 
 var switchgearTerms = productLangTerms{
 	"en": {"switchgear", "distribution board", "electrical panel"},
-	"id": {"panel listrik", "lemari listrik", "panel distribusi", "listrik"},
+	"id": {"panel listrik", "lemari listrik", "panel distribusi"},
 	"th": {"ตู้ไฟฟ้า", "สวิตช์เกียร์"},
 	"vi": {"tủ điện", "tủ phân phối"},
 	"ms": {"papan suis", "switchgear"},

@@ -13,10 +13,34 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// DefaultMerchantDB is the on-disk dump used by 智能引擎 after full ingest.
-const DefaultMerchantDB = "webdata/merchants.db"
+// DefaultMerchantDB is the preferred on-disk dump. store/ stays in this
+// workspace; /tmp and a fresh Cloud Agent checkout do not keep the file.
+const DefaultMerchantDB = "store/merchants.db"
 
-const defaultMerchantDB = DefaultMerchantDB
+// merchantDBFallbacks are older locations opened when the preferred file
+// is missing, so a leftover webdata/ or /tmp dump still works.
+var merchantDBFallbacks = []string{
+	DefaultMerchantDB,
+	"webdata/merchants.db",
+	"/tmp/gmaps-webdata/merchants.db",
+}
+
+// ResolveMerchantDB picks an explicit path, then ENGINE_MERCHANT_DB, then
+// the first existing dump, then DefaultMerchantDB for a fresh ingest.
+func ResolveMerchantDB(explicit string) string {
+	if p := strings.TrimSpace(explicit); p != "" {
+		return p
+	}
+	if p := strings.TrimSpace(os.Getenv("ENGINE_MERCHANT_DB")); p != "" {
+		return p
+	}
+	for _, p := range merchantDBFallbacks {
+		if st, err := os.Stat(p); err == nil && st.Size() > 0 {
+			return p
+		}
+	}
+	return DefaultMerchantDB
+}
 
 // Merchant is one row in the local directory (OSM shops, GLEIF legal entities).
 type Merchant struct {
@@ -49,7 +73,7 @@ type Directory struct {
 func OpenDirectory(path string) (*Directory, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		path = defaultMerchantDB
+		path = ResolveMerchantDB("")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil && filepath.Dir(path) != "." {
 		return nil, err
@@ -966,7 +990,7 @@ func (c *Client) directory() *Directory {
 	if c.dir != nil {
 		return c.dir
 	}
-	path := strings.TrimSpace(c.MerchantDB)
+	path := ResolveMerchantDB(c.MerchantDB)
 	if path == "" {
 		return nil
 	}

@@ -21,6 +21,14 @@ func TestShopTagsForKeyword(t *testing.T) {
 	if tags := shopTagsForKeyword("unknown widget"); len(tags) != 0 {
 		t.Fatalf("unknown tags=%v", tags)
 	}
+	if tags := shopTagsForKeyword("配电柜"); len(tags) != 1 || tags[0] != "electrical" {
+		t.Fatalf("配电柜 tags=%v", tags)
+	}
+	for _, tag := range shopTagsForKeyword("switchgear") {
+		if tag == "hardware" {
+			t.Fatal("hardware is too broad for switchgear (Ace Hardware etc.)")
+		}
+	}
 }
 
 func TestParseOverpassShopsKeepsNamedLightingStore(t *testing.T) {
@@ -59,6 +67,18 @@ func TestMergeHitsKeepsOSMCategoryShop(t *testing.T) {
 	}}, "LED灯", 0, RoleBuyer, "")
 	if len(out) != 1 || out[0].Name != "Licht Kraus" {
 		t.Fatalf("OSM lighting shop dropped %+v", out)
+	}
+}
+
+func TestOSMQueryBoxesIndonesiaHasMetros(t *testing.T) {
+	boxes := osmQueryBoxes("ID")
+	if len(boxes) < 5 {
+		t.Fatalf("indonesia live search too thin: %+v", boxes)
+	}
+	for _, box := range boxes {
+		if box.country != "ID" {
+			t.Fatalf("non-ID box leaked: %+v", box)
+		}
 	}
 }
 

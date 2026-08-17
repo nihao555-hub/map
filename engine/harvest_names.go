@@ -142,7 +142,7 @@ func nameMatchTokens(folded string) []string {
 func (c *Client) HarvestNameDorks(ctx context.Context, opt HarvestOptions) (HarvestStats, error) {
 	started := time.Now()
 	if opt.DBPath == "" {
-		opt.DBPath = DefaultMerchantDB
+		opt.DBPath = ResolveMerchantDB("")
 	}
 	if opt.Workers <= 0 {
 		opt.Workers = 8

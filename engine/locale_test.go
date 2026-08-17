@@ -32,6 +32,11 @@ func TestLocalSearchTermsIndonesiaSwitchgear(t *testing.T) {
 	if hasCJK(got[0]) {
 		t.Fatalf("overseas market should lead with local/English term, got %s", joined)
 	}
+	for _, term := range got {
+		if foldSearchText(term) == "listrik" {
+			t.Fatalf("bare listrik is too broad for switchgear, got %s", joined)
+		}
+	}
 }
 
 func TestParseAITermList(t *testing.T) {

@@ -65,7 +65,7 @@ func harvestWanted() map[string]bool {
 func (c *Client) HarvestTradeDorks(ctx context.Context, opt HarvestOptions) (HarvestStats, error) {
 	started := time.Now()
 	if opt.DBPath == "" {
-		opt.DBPath = DefaultMerchantDB
+		opt.DBPath = ResolveMerchantDB("")
 	}
 	if len(opt.Keywords) == 0 {
 		opt.Keywords = append([]string{}, DefaultHarvestKeywords...)

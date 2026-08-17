@@ -58,3 +58,7 @@ f2 README 把 `fetch_search_users` 标成 🔵（未完成）。本仓库 **不�
 
 - 传入抖音主页 URL / `sec_uid`，走 f2 `fetch_user_profile`
 - 配置 `TIKHUB_API_TOKEN`（f2 作者团队的商业 API）
+
+## 本地商户库
+
+GLEIF / OSM / Wikidata 入库后的 SQLite 默认写 `store/merchants.db`（可用 `ENGINE_MERCHANT_DB` 覆盖）。**不要提交进 git**，也不要只放 `/tmp`——Cloud Agent 换环境会丢。换机器或新 Agent 的恢复步骤见 [engine-data.md](engine-data.md)。

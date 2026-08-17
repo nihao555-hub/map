@@ -67,7 +67,7 @@ func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
 	defer dir.Close()
 
 	if _, err := dir.InsertBatch(context.Background(), []Merchant{
-		{ExtID: "gleif:id-buyer", Source: "gleif", Name: "PT Sumber Listrik Trading", Shop: "GENERAL", Country: "ID", City: "Jakarta", Homepage: "https://listrik-trading.example", Profiles: []Profile{
+		{ExtID: "gleif:id-buyer", Source: "gleif", Name: "PT Sumber Panel Listrik Trading", Shop: "GENERAL", Country: "ID", City: "Jakarta", Homepage: "https://listrik-trading.example", Profiles: []Profile{
 			{ExtID: "gleif:id-buyer", Platform: PlatformFacebook, URL: "https://www.facebook.com/sumberlistrik", Handle: "sumberlistrik", Source: "website"},
 		}},
 		{ExtID: "osm:id-shop", Source: "osm", Name: "Toko Listrik Jaya", Shop: "electrical", Country: "ID", City: "Surabaya", Homepage: "https://toko-listrik.example", Profiles: []Profile{
@@ -87,7 +87,7 @@ func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
 	for _, row := range rows {
 		got[row.Name] = true
 	}
-	if !got["PT Sumber Listrik Trading"] || !got["Toko Listrik Jaya"] {
+	if !got["PT Sumber Panel Listrik Trading"] || !got["Toko Listrik Jaya"] {
 		t.Fatalf("indonesian electrical buyers missing: %+v", rows)
 	}
 	if got["Licht Kraus"] {
@@ -99,11 +99,56 @@ func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
 	for _, h := range hits {
 		names[h.Name] = true
 	}
-	if !names["PT Sumber Listrik Trading"] || !names["Toko Listrik Jaya"] {
+	if !names["PT Sumber Panel Listrik Trading"] || !names["Toko Listrik Jaya"] {
 		t.Fatalf("buyer merge dropped local merchants: %+v", hits)
 	}
 	if names["PT Schneider Electric Switchgear Indonesia"] {
 		t.Fatalf("global brand seller leaked into buyer results: %+v", hits)
+	}
+}
+
+func TestDirectorySearchSwitchgearDropsHardwareStore(t *testing.T) {
+	dir, err := OpenDirectory(filepath.Join(t.TempDir(), "merchants.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+
+	if _, err := dir.InsertBatch(context.Background(), []Merchant{
+		{ExtID: "osm:us-ace", Source: "osm", Name: "Ace Hardware", Shop: "hardware", Country: "US", City: "Chicago", Homepage: "https://www.acehardware.com"},
+		{ExtID: "osm:us-panel", Source: "osm", Name: "Midwest Switchgear Supply", Shop: "electrical", Country: "US", City: "Chicago", Homepage: "https://midwest-switchgear.example"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := dir.Search(context.Background(), "配电柜", "US", 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, row := range rows {
+		got[row.Name] = true
+	}
+	if got["Ace Hardware"] {
+		t.Fatalf("hardware store leaked into switchgear search: %+v", rows)
+	}
+	if !got["Midwest Switchgear Supply"] {
+		t.Fatalf("electrical switchgear shop missing: %+v", rows)
+	}
+}
+
+func TestResolveMerchantDBPrefersExistingDump(t *testing.T) {
+	t.Setenv("ENGINE_MERCHANT_DB", "")
+	if got := ResolveMerchantDB("/tmp/explicit.db"); got != "/tmp/explicit.db" {
+		t.Fatalf("explicit=%q", got)
+	}
+	t.Setenv("ENGINE_MERCHANT_DB", "/tmp/from-env.db")
+	if got := ResolveMerchantDB(""); got != "/tmp/from-env.db" {
+		t.Fatalf("env=%q", got)
+	}
+	t.Setenv("ENGINE_MERCHANT_DB", "")
+	if got := ResolveMerchantDB(""); got != DefaultMerchantDB {
+		t.Fatalf("fresh ingest should write %s, got %s", DefaultMerchantDB, got)
 	}
 }
 

@@ -39,7 +39,7 @@ Requires Docker and Node.js on macOS, Linux, or Windows through WSL. See [how th
 | Get leads into CSV/JSON | [Command Line](#command-line) |
 | Ask an AI coding agent to run a scrape | [AI Agent Skill](#ai-agent-skill) |
 | Run a browser UI locally | [Web UI](#web-ui) |
-| TikTok / 抖音关键词找人（复用高 star OSS） | [智能引擎搜索](docs/engine-search.md) |
+| TikTok / 抖音关键词找人（复用高 star OSS） | [智能引擎搜索](docs/engine-search.md) · [商户库路径](docs/engine-data.md) |
 | Automate scraping from your app | [REST API](#rest-api) |
 | Run a multi-user scraping platform | [SaaS Edition](docs/saas.md) |
 | Follow common workflows | [Recipes](docs/recipes.md) |

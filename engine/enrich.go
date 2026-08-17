@@ -39,7 +39,7 @@ func (s EnrichStats) String() string {
 func (c *Client) EnrichMerchants(ctx context.Context, opt EnrichOptions) (EnrichStats, error) {
 	started := time.Now()
 	if opt.DBPath == "" {
-		opt.DBPath = DefaultMerchantDB
+		opt.DBPath = ResolveMerchantDB("")
 	}
 	if opt.Workers <= 0 {
 		opt.Workers = 8

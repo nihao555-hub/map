@@ -13,7 +13,7 @@ import (
 const (
 	defaultOverpassURL = "https://overpass-api.de/api/interpreter"
 	osmHitCap          = 80
-	osmBoxCap          = 12
+	osmBoxCap          = 16
 )
 
 type osmBox struct {
@@ -40,6 +40,12 @@ var osmShopBoxes = []osmBox{
 	{"NL", 52.30, 4.80, 52.45, 5.00},       // Amsterdam
 	{"SG", 1.22, 103.60, 1.47, 104.04},     // Singapore
 	{"ID", -6.35, 106.70, -6.10, 106.98},   // Jakarta
+	{"ID", -7.32, 112.70, -7.22, 112.80},   // Surabaya
+	{"ID", -6.95, 107.57, -6.87, 107.65},   // Bandung
+	{"ID", 3.55, 98.64, 3.63, 98.72},       // Medan
+	{"ID", -8.72, 115.17, -8.63, 115.26},   // Denpasar
+	{"ID", -7.02, 110.38, -6.95, 110.46},   // Semarang
+	{"ID", -5.18, 119.38, -5.10, 119.46},   // Makassar
 	{"VN", 10.75, 106.65, 10.83, 106.75},   // Ho Chi Minh
 	{"VN", 21.00, 105.80, 21.08, 105.90},   // Hanoi
 	{"PH", 14.55, 120.96, 14.70, 121.10},   // Manila
@@ -55,31 +61,34 @@ var overpassMirrors = []string{
 // productShopTags maps a folded product keyword onto OSM shop=* values.
 // Counts come from taginfo (lighting ~5.7k, furniture ~101k, shoes ~82k).
 var productShopTags = map[string][]string{
-	"led灯":             {"lighting"},
-	"led light":        {"lighting"},
-	"led lamp":         {"lighting"},
-	"led lighting":     {"lighting"},
-	"照明":               {"lighting"},
-	"灯饰":               {"lighting"},
-	"furniture":        {"furniture"},
-	"家具":               {"furniture"},
-	"shoes":            {"shoes"},
-	"鞋":                {"shoes"},
-	"鞋子":               {"shoes"},
-	"电动工具":             {"doityourself", "hardware"},
-	"power tools":      {"doityourself", "hardware"},
-	"配电柜":              {"electrical", "hardware"},
-	"配电箱":              {"electrical", "hardware"},
-	"配电盘":              {"electrical", "hardware"},
-	"配电":               {"electrical", "hardware"},
-	"开关柜":              {"electrical", "hardware"},
-	"switchgear":       {"electrical", "hardware"},
-	"electrical panel": {"electrical", "hardware"},
-	"便利店":              {"convenience"},
-	"超市":               {"supermarket"},
-	"服装":               {"clothes"},
-	"衣服":               {"clothes"},
-	"clothes":          {"clothes"},
+	"led灯":               {"lighting"},
+	"led light":          {"lighting"},
+	"led lamp":           {"lighting"},
+	"led lighting":       {"lighting"},
+	"照明":                 {"lighting"},
+	"灯饰":                 {"lighting"},
+	"furniture":          {"furniture"},
+	"家具":                 {"furniture"},
+	"shoes":              {"shoes"},
+	"鞋":                  {"shoes"},
+	"鞋子":                 {"shoes"},
+	"电动工具":               {"doityourself", "hardware"},
+	"power tools":        {"doityourself", "hardware"},
+	"配电柜":                {"electrical"},
+	"配电箱":                {"electrical"},
+	"配电盘":                {"electrical"},
+	"配电":                 {"electrical"},
+	"开关柜":                {"electrical"},
+	"switchgear":         {"electrical"},
+	"electrical panel":   {"electrical"},
+	"distribution board": {"electrical"},
+	"panel listrik":      {"electrical"},
+	"lemari listrik":     {"electrical"},
+	"便利店":                {"convenience"},
+	"超市":                 {"supermarket"},
+	"服装":                 {"clothes"},
+	"衣服":                 {"clothes"},
+	"clothes":            {"clothes"},
 }
 
 func shopTagsForKeyword(keyword string) []string {

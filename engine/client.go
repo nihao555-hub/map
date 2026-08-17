@@ -106,7 +106,7 @@ type Client struct {
 //	ENGINE_EVENTSEYE_URL       EventsEye directory (default https://www.eventseye.com)
 //	ENGINE_AUMA_FAIR_URL       AUMA FairFinder (default https://www.auma.de/en/find-your-fair/)
 //	ENGINE_OVERPASS_URL        OpenStreetMap Overpass (default https://overpass-api.de/api/interpreter)
-//	ENGINE_MERCHANT_DB         local merchant SQLite (default webdata/merchants.db)
+//	ENGINE_MERCHANT_DB         local merchant SQLite (default store/merchants.db)
 //	TIKHUB_API_TOKEN           optional paid API when Douyin keyword search is needed
 func OptionsFromEnv() *Client {
 	timeout := defaultHTTPTimeout
@@ -157,7 +157,7 @@ func OptionsFromEnv() *Client {
 		EventsEyeURL:     envServiceURL("ENGINE_EVENTSEYE_URL", defaultEventsEyeURL),
 		AUMAFairURL:      envServiceURL("ENGINE_AUMA_FAIR_URL", defaultAUMAFairURL),
 		OverpassURL:      envServiceURL("ENGINE_OVERPASS_URL", defaultOverpassURL),
-		MerchantDB:       firstNonEmpty(os.Getenv("ENGINE_MERCHANT_DB"), DefaultMerchantDB),
+		MerchantDB:       ResolveMerchantDB(""),
 	}
 }
 
