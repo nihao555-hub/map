@@ -62,6 +62,15 @@ func TestKeepShortVideoBusiness(t *testing.T) {
 	if keepShortVideoBusiness(vlog, "电动工具") {
 		t.Fatal("personal vlog kept")
 	}
+	randHandle := Hit{
+		Platform:    PlatformTikTok,
+		Name:        "audiencebetween",
+		Handle:      "audiencebetween",
+		HomepageURL: "https://www.tiktok.com/@audiencebetween",
+	}
+	if keepShortVideoBusiness(randHandle, "五金") {
+		t.Fatal("random latin handle kept")
+	}
 }
 
 func TestHarvestShortVideoInsertsHomepages(t *testing.T) {

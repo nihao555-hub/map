@@ -363,11 +363,11 @@ func looksLikeBrandHandle(handle string) bool {
 	}
 	for _, tok := range []string{
 		"official", "shop", "store", "factory", "tools", "light", "led",
-		"brand", "co", "inc", "mall", "trade", "supply",
+		"brand", "mall", "trade", "supply", "wholesale", "import",
 	} {
 		if strings.Contains(h, tok) {
 			return true
 		}
 	}
-	return letters >= 8 && !strings.Contains(h, "user")
+	return false
 }
