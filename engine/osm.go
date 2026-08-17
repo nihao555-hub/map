@@ -409,6 +409,7 @@ func osmTagProfiles(extID, name string, tags map[string]string) []Profile {
 		{firstNonEmpty(tags["contact:twitter"], tags["twitter"], tags["contact:x"]), "x.com"},
 		{firstNonEmpty(tags["contact:youtube"], tags["youtube"]), "www.youtube.com"},
 		{firstNonEmpty(tags["contact:tiktok"], tags["tiktok"]), "www.tiktok.com"},
+		{firstNonEmpty(tags["contact:douyin"], tags["douyin"]), "www.douyin.com/user"},
 	}
 	var out []Profile
 	seen := map[string]struct{}{}
@@ -419,7 +420,7 @@ func osmTagProfiles(extID, name string, tags map[string]string) []Profile {
 		}
 		candidates := []string{normalizeOSMContact(raw)}
 		if !strings.Contains(raw, "://") && !strings.Contains(raw, "/") {
-			candidates = append(candidates, "https://"+p.site+"/"+strings.TrimPrefix(raw, "@"))
+			candidates = append(candidates, osmBareContactURL(p.site, raw))
 		}
 		for _, cand := range candidates {
 			hit, ok := ParseSocialURL(cand, name, "")
@@ -442,6 +443,18 @@ func osmTagProfiles(extID, name string, tags map[string]string) []Profile {
 		}
 	}
 	return out
+}
+
+func osmBareContactURL(site, raw string) string {
+	handle := strings.TrimPrefix(strings.TrimSpace(raw), "@")
+	switch {
+	case strings.Contains(site, "tiktok.com"):
+		return "https://www.tiktok.com/@" + handle
+	case strings.Contains(site, "douyin.com"):
+		return "https://www.douyin.com/user/" + handle
+	default:
+		return "https://" + site + "/" + handle
+	}
 }
 
 func normalizeOSMContact(raw string) string {

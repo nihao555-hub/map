@@ -139,6 +139,14 @@ func TestWikidataGlobalSocialSPARQLShards(t *testing.T) {
 	if !strings.Contains(q, "zhLabel") {
 		t.Fatal("missing Chinese label fallback")
 	}
+	all := wikidataSocialSPARQL("P7085", "", 0, false)
+	if strings.Contains(all, "FILTER NOT EXISTS") || !strings.Contains(all, "P7085") {
+		t.Fatal(all)
+	}
+	official := wikidataOfficialShortVideoSPARQL()
+	if !strings.Contains(official, "P856") || !strings.Contains(official, "tiktok.com/@") || !strings.Contains(official, "douyin.com/user/") {
+		t.Fatal(official)
+	}
 }
 
 func TestMergeWikidataSocialFallbackName(t *testing.T) {

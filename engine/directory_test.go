@@ -456,9 +456,19 @@ func TestOSMTagProfiles(t *testing.T) {
 	got := osmTagProfiles("osm:node:1", "Licht Kraus", map[string]string{
 		"contact:facebook":  "LichtKraus",
 		"contact:instagram": "https://www.instagram.com/lichtkraus/",
+		"contact:tiktok":    "lichtkraus",
 	})
-	if len(got) != 2 {
+	if len(got) != 3 {
 		t.Fatalf("got=%+v", got)
+	}
+	var sawTT bool
+	for _, p := range got {
+		if p.Platform == PlatformTikTok && p.Handle == "lichtkraus" && strings.Contains(p.URL, "/@lichtkraus") {
+			sawTT = true
+		}
+	}
+	if !sawTT {
+		t.Fatalf("tiktok handle not parsed: %+v", got)
 	}
 }
 

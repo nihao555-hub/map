@@ -22,6 +22,7 @@ make ingest-attach-socials      # 缺社媒断点续跑
 make ingest-short-video         # 抖音/TikTok 企业号主页（只要链接）
 make ingest-short-video-fast    # 两小时：Wikidata 全量号 + 东南亚→中东→欧美
 make ingest-sea-tiktok          # 东南亚 TikTok：TikTok-Api / f2 按词搜（要 sidecar）
+make ingest-short-video-public  # 公开源能枚举的 TikTok/抖音主页（含名人、Wayback、OSM）
 ```
 
 抖音/TikTok **没有**公开的「全部企业号」数据包。GitHub 高 star 项目也没有这份包——它们是「给一个词/一条链接，去平台搜或下载」，不是目录。
@@ -46,7 +47,18 @@ make ingest-sea-tiktok          # 东南亚 TikTok：TikTok-Api / f2 按词搜�
 
 两小时内最接近全量的办法：先灌 Wikidata 非人名清单，再按 **东南亚 → 中东 → 欧美** 扫本地词。要再往上堆，只能把已接的 TikTok-Api / f2 sidecar 跑起来（cookie），那是按品类抽样，不是第二份全库。
 
-Internet Archive CDX 还能枚举一批历史上抓到的 `tiktok.com/@`（`make ingest-wayback-tiktok`）。这是第二份公开索引，不是平台账号库，垃圾 URL 会被丢掉。
+公开源一次灌完（`make ingest-short-video-public`）：
+
+| 源 | 能枚举什么 | 不是什么 |
+|---|---|---|
+| Wikidata P7085 / P7120 **含名人** | 已标注账号，TikTok 约 3.6 万、抖音约 311 | 平台账号库 |
+| Wikidata P856 官网正好是主页 | 漏填 P7085 的公司 | 很少 |
+| Internet Archive CDX `tiktok.com/@` | 历史抓到的主页 | 平台全库；垃圾 URL 会丢掉 |
+| Internet Archive CDX `douyin.com/user/` | 同上，抖音 | 同上 |
+| OSM `contact:tiktok` / `contact:douyin` | 地图上主动填了标签的店 | 全球大约几百到几千 |
+| Common Crawl 最新几期 CDX | 公开网页库里的主页 | 平台拦爬虫，经常 0 页 |
+
+这是公开索引的上限，不是东南亚「全部企业号」。
 
 1. Wikidata QLever：公开能拿到的最全一份公司账号标识
 2. [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api) sidecar（关键词搜用户）

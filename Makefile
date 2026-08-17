@@ -145,6 +145,9 @@ ingest-sea-tiktok: ## 东南亚 TikTok 企业号：TikTok-Api / f2 sidecar 按�
 ingest-wayback-tiktok: ## Internet Archive CDX 里能枚举的 tiktok.com/@ 主页
 	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -wayback -deadline 90m
 
+ingest-short-video-public: ## 公开源能枚举的 TikTok/抖音主页（不是平台全库）
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -public-all -deadline 180m
+
 ingest-world-companies: ## Wikidata 全球带官网的企业（QLever，不灌 Facebook 全库）
 	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -world-companies
 

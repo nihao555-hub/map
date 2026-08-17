@@ -39,6 +39,10 @@ type HarvestOptions struct {
 	Sidecar bool
 	// Wayback dumps unique tiktok.com/@ handles from the Internet Archive CDX.
 	Wayback bool
+	// PublicAll exhausts enumerable public indexes (Wikidata all labels,
+	// official websites, Wayback TikTok/Douyin, OSM contact:tiktok).
+	// It is not TikTok/Douyin's account graph.
+	PublicAll bool
 }
 
 // HarvestStats is one batch run's timing and unique social pages.

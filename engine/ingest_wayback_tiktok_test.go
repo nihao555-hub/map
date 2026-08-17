@@ -27,3 +27,28 @@ func TestValidTikTokHandle(t *testing.T) {
 		t.Fatal("handle rules")
 	}
 }
+
+func TestParseWaybackDouyinHandles(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`[
+	  ["original"],
+	  ["https://www.douyin.com/user/MS4wLjABAAAAFactory"],
+	  ["https://www.douyin.com/video/7642369989815868323"],
+	  ["https://www.douyin.com/user/%22junk"],
+	  ["https://www.douyin.com/user/ab"]
+	]`)
+	got := parseWaybackDouyinHandles(raw)
+	if !containsString(got, "MS4wLjABAAAAFactory") {
+		t.Fatalf("%v", got)
+	}
+	if containsString(got, "ab") || containsString(got, `"junk`) {
+		t.Fatalf("junk kept: %v", got)
+	}
+}
+
+func TestValidDouyinUserID(t *testing.T) {
+	t.Parallel()
+	if !validDouyinUserID("MS4wLjABAAAAFactory") || validDouyinUserID("ab") || validDouyinUserID("a/b") {
+		t.Fatal("douyin id rules")
+	}
+}

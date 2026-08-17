@@ -44,6 +44,63 @@ func (c *Client) ingestWikidataShortVideo(ctx context.Context, dir *Directory) I
 	return c.ingestWikidataSocialList(ctx, dir, "wikidata-short-video", wikidataShortVideoSocials)
 }
 
+func (c *Client) ingestWikidataShortVideoAll(ctx context.Context, dir *Directory) IngestStats {
+	return c.ingestWikidataSocialList(ctx, dir, "wikidata-short-video-all", wikidataShortVideoSocials)
+}
+
+// ingestWikidataOfficialShortVideo dumps P856 official websites that are
+// already a TikTok or Douyin homepage (often missing from P7085/P7120).
+func (c *Client) ingestWikidataOfficialShortVideo(ctx context.Context, dir *Directory) IngestStats {
+	started := time.Now()
+	if c == nil || strings.TrimSpace(c.WikidataURL) == "" {
+		return IngestStats{Source: "wikidata-official-short-video", Took: time.Since(started), Note: "skipped"}
+	}
+	byQID := map[string]*Merchant{}
+	leiByQID := map[string]string{}
+	raw, err := c.fetchWikidataSPARQL(ctx, wikidataOfficialShortVideoSPARQL())
+	if err != nil {
+		time.Sleep(2 * time.Second)
+		raw, err = c.fetchWikidataSPARQL(ctx, wikidataOfficialShortVideoSPARQL())
+	}
+	if err != nil {
+		st := IngestStats{Source: "wikidata-official-short-video", Took: time.Since(started), Err: err.Error()}
+		_ = dir.RecordRun(ctx, st.Source, started, 0, st.Err)
+		return st
+	}
+	added := mergeWikidataGlobalSocial(byQID, leiByQID, raw, "", "")
+	rows := make([]Merchant, 0, len(byQID))
+	for _, m := range byQID {
+		rows = append(rows, *m)
+	}
+	inserted, err := dir.InsertBatch(ctx, rows)
+	st := IngestStats{
+		Source: "wikidata-official-short-video",
+		Rows:   inserted,
+		Took:   time.Since(started),
+		Note:   fmt.Sprintf("orgs=%d bindings=%d", len(byQID), added),
+	}
+	if err != nil {
+		st.Err = err.Error()
+	}
+	_ = dir.RecordRun(ctx, st.Source, started, inserted, st.Note)
+	logIngest("Wikidata official short-video inserted %d (orgs=%d)", inserted, len(byQID))
+	return st
+}
+
+func wikidataOfficialShortVideoSPARQL() string {
+	return fmt.Sprintf(`PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+SELECT ?item ?itemLabel ?zhLabel ?lei ?cc ?val WHERE {
+  ?item wdt:P856 ?val .
+  FILTER(CONTAINS(LCASE(STR(?val)), "tiktok.com/@") || CONTAINS(LCASE(STR(?val)), "douyin.com/user/"))
+  OPTIONAL { ?item rdfs:label ?itemLabel . FILTER(LANG(?itemLabel) = "en") }
+  OPTIONAL { ?item rdfs:label ?zhLabel . FILTER(LANG(?zhLabel) = "zh") }
+  OPTIONAL { ?item wdt:P1278 ?lei }
+  OPTIONAL { ?item wdt:P17 ?country . ?country wdt:P297 ?cc }
+}
+LIMIT %d`, wikidataSocialChunkLimit)
+}
+
 func (c *Client) ingestWikidataGlobalSocials(ctx context.Context, dir *Directory) IngestStats {
 	return c.ingestWikidataSocialList(ctx, dir, "wikidata-socials", wikidataGlobalSocials)
 }
@@ -70,7 +127,7 @@ func (c *Client) ingestWikidataSocialList(ctx context.Context, dir *Directory, s
 			_ = dir.RecordRun(ctx, source, started, 0, st.Err)
 			return st
 		}
-		n, err := c.fetchWikidataSocialAll(ctx, byQID, leiByQID, q.prop, q.prefix, q.platform)
+		n, err := c.fetchWikidataSocialAll(ctx, byQID, leiByQID, q.prop, q.prefix, q.platform, source != "wikidata-short-video-all")
 		if err != nil {
 			failed++
 			logIngest("Wikidata socials %s fail: %v", q.prop, err)
@@ -117,20 +174,20 @@ func (c *Client) ingestWikidataSocialList(ctx context.Context, dir *Directory, s
 	return st
 }
 
-func (c *Client) fetchWikidataSocialAll(ctx context.Context, byQID map[string]*Merchant, leiByQID map[string]string, prop, prefix, platform string) (int, error) {
+func (c *Client) fetchWikidataSocialAll(ctx context.Context, byQID map[string]*Merchant, leiByQID map[string]string, prop, prefix, platform string, excludePerson bool) (int, error) {
 	total := 0
 	for offset := 0; offset < 400000; offset += wikidataSocialChunkLimit {
 		if err := ctx.Err(); err != nil {
 			return total, err
 		}
-		raw, err := c.fetchWikidataSPARQL(ctx, wikidataGlobalSocialSPARQL(prop, "", offset))
+		raw, err := c.fetchWikidataSPARQL(ctx, wikidataSocialSPARQL(prop, "", offset, excludePerson))
 		if err != nil {
 			time.Sleep(2 * time.Second)
-			raw, err = c.fetchWikidataSPARQL(ctx, wikidataGlobalSocialSPARQL(prop, "", offset))
+			raw, err = c.fetchWikidataSPARQL(ctx, wikidataSocialSPARQL(prop, "", offset, excludePerson))
 		}
 		if err != nil {
 			if offset == 0 {
-				return c.fetchWikidataSocialSharded(ctx, byQID, leiByQID, prop, prefix, platform)
+				return c.fetchWikidataSocialSharded(ctx, byQID, leiByQID, prop, prefix, platform, excludePerson)
 			}
 			return total, err
 		}
@@ -138,7 +195,7 @@ func (c *Client) fetchWikidataSocialAll(ctx context.Context, byQID map[string]*M
 		total += n
 		logIngest("Wikidata socials %s offset=%d +%d (orgs=%d)", prop, offset, n, len(byQID))
 		if shouldShardWikidataSocial(n, offset) {
-			return c.fetchWikidataSocialSharded(ctx, byQID, leiByQID, prop, prefix, platform)
+			return c.fetchWikidataSocialSharded(ctx, byQID, leiByQID, prop, prefix, platform, excludePerson)
 		}
 		if n < wikidataSocialChunkLimit {
 			return total, nil
@@ -148,14 +205,14 @@ func (c *Client) fetchWikidataSocialAll(ctx context.Context, byQID map[string]*M
 	return total, nil
 }
 
-func (c *Client) fetchWikidataSocialSharded(ctx context.Context, byQID map[string]*Merchant, leiByQID map[string]string, prop, prefix, platform string) (int, error) {
+func (c *Client) fetchWikidataSocialSharded(ctx context.Context, byQID map[string]*Merchant, leiByQID map[string]string, prop, prefix, platform string, excludePerson bool) (int, error) {
 	total := 0
 	var last error
 	for _, shard := range socialValuePrefixes() {
 		if err := ctx.Err(); err != nil {
 			return total, err
 		}
-		raw, err := c.fetchWikidataSPARQL(ctx, wikidataGlobalSocialSPARQL(prop, shard, 0))
+		raw, err := c.fetchWikidataSPARQL(ctx, wikidataSocialSPARQL(prop, shard, 0, excludePerson))
 		if err != nil {
 			last = err
 			logIngest("Wikidata socials %s %s fail: %v", prop, shard, err)
@@ -177,9 +234,17 @@ func shouldShardWikidataSocial(n, offset int) bool {
 }
 
 func wikidataGlobalSocialSPARQL(prop, valuePrefix string, offset int) string {
+	return wikidataSocialSPARQL(prop, valuePrefix, offset, true)
+}
+
+func wikidataSocialSPARQL(prop, valuePrefix string, offset int, excludePerson bool) string {
 	filter := ""
 	if valuePrefix != "" {
 		filter = fmt.Sprintf(`FILTER(STRSTARTS(LCASE(STR(?val)), "%s"))`, strings.ToLower(valuePrefix))
+	}
+	person := ""
+	if excludePerson {
+		person = `FILTER NOT EXISTS { ?item wdt:P31 wd:Q5 }`
 	}
 	if offset < 0 {
 		offset = 0
@@ -189,14 +254,14 @@ PREFIX wdt: <http://www.wikidata.org/prop/direct/>
 PREFIX wd: <http://www.wikidata.org/entity/>
 SELECT ?item ?itemLabel ?zhLabel ?lei ?cc ?val WHERE {
   ?item wdt:%s ?val .
-  FILTER NOT EXISTS { ?item wdt:P31 wd:Q5 }
+  %s
   %s
   OPTIONAL { ?item rdfs:label ?itemLabel . FILTER(LANG(?itemLabel) = "en") }
   OPTIONAL { ?item rdfs:label ?zhLabel . FILTER(LANG(?zhLabel) = "zh") }
   OPTIONAL { ?item wdt:P1278 ?lei }
   OPTIONAL { ?item wdt:P17 ?country . ?country wdt:P297 ?cc }
 }
-LIMIT %d OFFSET %d`, prop, filter, wikidataSocialChunkLimit, offset)
+LIMIT %d OFFSET %d`, prop, person, filter, wikidataSocialChunkLimit, offset)
 }
 
 func socialValuePrefixes() []string {

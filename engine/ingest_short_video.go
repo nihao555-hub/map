@@ -316,6 +316,11 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 		return st, err
 	}
 
+	if opt.PublicAll {
+		n, err := c.ingestPublicShortVideoIndexes(ctx, dir)
+		inserted += n
+		return finish(err)
+	}
 	if opt.Fast || opt.SeedOnly {
 		orig := ""
 		if c != nil {
