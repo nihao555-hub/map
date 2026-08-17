@@ -23,6 +23,7 @@ func main() {
 	fast := flag.Bool("fast", false, "两小时窗口：先灌 Wikidata 全量 TikTok/抖音号，再按东南亚→中东→欧美扫")
 	seedOnly := flag.Bool("seed-only", false, "只灌 Wikidata 已标注的 TikTok/抖音号，不跑公开检索")
 	sidecar := flag.Bool("sidecar", false, "用 TikTok-Api/f2 按词搜用户，默认东南亚，跳过公开检索")
+	wayback := flag.Bool("wayback", false, "从 Internet Archive CDX 灌 tiktok.com/@ 去重主页（公开索引，不是平台全库）")
 	regions := flag.String("regions", "", "sea,me,west；空则 sidecar 默认 sea，fast 默认 sea,me,west")
 	deadline := flag.Duration("deadline", 0, "最长跑多久，例如 110m")
 	flag.Parse()
@@ -38,6 +39,7 @@ func main() {
 		Fast:       *fast,
 		SeedOnly:   *seedOnly,
 		Sidecar:    *sidecar,
+		Wayback:    *wayback,
 		Deadline:   *deadline,
 	}
 	if s := strings.TrimSpace(*regions); s != "" {
@@ -52,7 +54,7 @@ func main() {
 
 	client := engine.OptionsFromEnv()
 	if client.HTTP != nil {
-		if *sidecar {
+		if *sidecar || *wayback {
 			client.HTTP.Timeout = 90 * time.Second
 		} else {
 			client.HTTP.Timeout = 25 * time.Second
@@ -66,7 +68,7 @@ func main() {
 		if (*fast || *seedOnly) && (client.WikidataURL == "" || strings.Contains(client.WikidataURL, "query.wikidata.org")) {
 			client.WikidataURL = engine.QleverWikidataSPARQL
 		}
-		fmt.Printf("开始抖音/TikTok 企业号收割 fast=%v seed-only=%v sidecar=%v db=%s\n", *fast, *seedOnly, *sidecar, *db)
+		fmt.Printf("开始抖音/TikTok 企业号收割 fast=%v seed-only=%v sidecar=%v wayback=%v db=%s\n", *fast, *seedOnly, *sidecar, *wayback, *db)
 		st, err = client.HarvestShortVideo(ctx, opt)
 	} else if *names {
 		fmt.Printf("开始公司名公式收割 db=%s limit=%d\n", *db, *queryLimit)

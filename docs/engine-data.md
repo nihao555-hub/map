@@ -46,6 +46,8 @@ make ingest-sea-tiktok          # 东南亚 TikTok：TikTok-Api / f2 按词搜�
 
 两小时内最接近全量的办法：先灌 Wikidata 非人名清单，再按 **东南亚 → 中东 → 欧美** 扫本地词。要再往上堆，只能把已接的 TikTok-Api / f2 sidecar 跑起来（cookie），那是按品类抽样，不是第二份全库。
 
+Internet Archive CDX 还能枚举一批历史上抓到的 `tiktok.com/@`（`make ingest-wayback-tiktok`）。这是第二份公开索引，不是平台账号库，垃圾 URL 会被丢掉。
+
 1. Wikidata QLever：公开能拿到的最全一份公司账号标识
 2. [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api) sidecar（关键词搜用户）
 3. [Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2) sidecar（TikTok 搜作品抽作者；抖音只解析已有主页 URL）

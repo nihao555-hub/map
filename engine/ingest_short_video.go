@@ -331,6 +331,13 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 			return finish(nil)
 		}
 	}
+	if opt.Wayback {
+		wb := c.ingestWaybackTikTok(ctx, dir)
+		logIngest("short-video wayback %s", wb)
+		if !opt.Sidecar && !opt.Fast {
+			return finish(nil)
+		}
+	}
 
 	regions := resolveShortVideoRegions(opt)
 	sidecarUp := c != nil && (c.sidecarAlive(ctx, c.TikTokURL) || c.sidecarAlive(ctx, c.F2URL))

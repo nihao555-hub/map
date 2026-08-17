@@ -37,6 +37,8 @@ type HarvestOptions struct {
 	SeedOnly bool
 	// Sidecar uses TikTok-Api / f2 keyword search and skips public dorks.
 	Sidecar bool
+	// Wayback dumps unique tiktok.com/@ handles from the Internet Archive CDX.
+	Wayback bool
 }
 
 // HarvestStats is one batch run's timing and unique social pages.
