@@ -26,6 +26,7 @@ func main() {
 	wayback := flag.Bool("wayback", false, "从 Internet Archive CDX 灌 tiktok.com/@ 与 douyin.com/user/ 去重主页（公开索引，不是平台全库）")
 	publicAll := flag.Bool("public-all", false, "把公开源能枚举的 TikTok/抖音主页一次灌完（Wikidata 含名人 + 官网 + Wayback + OSM + Common Crawl）")
 	socialSearch := flag.Bool("social-search", false, "去 TikTok 公开搜索页/话题页/相关账号搜企业号（常驻浏览器，比每次新开快）")
+	yellowPages := flag.Bool("yellow-pages", false, "黄页找官网和电话，再高并发去官网抽社媒（已有 OSM/Wikidata 带官网的也进这条流水线）")
 	regions := flag.String("regions", "", "sea,me,west；空则 sidecar 默认 sea，fast 默认 sea,me,west")
 	deadline := flag.Duration("deadline", 0, "最长跑多久，例如 110m")
 	flag.Parse()
@@ -44,6 +45,7 @@ func main() {
 		Wayback:      *wayback,
 		PublicAll:    *publicAll,
 		SocialSearch: *socialSearch,
+		YellowPages:  *yellowPages,
 		Deadline:     *deadline,
 	}
 	if s := strings.TrimSpace(*regions); s != "" {
@@ -60,6 +62,8 @@ func main() {
 	if client.HTTP != nil {
 		if *publicAll {
 			client.HTTP.Timeout = 200 * time.Second
+		} else if *yellowPages {
+			client.HTTP.Timeout = 25 * time.Second
 		} else if *sidecar || *socialSearch || *wayback {
 			client.HTTP.Timeout = 120 * time.Second
 		} else {
@@ -70,7 +74,13 @@ func main() {
 		st  engine.HarvestStats
 		err error
 	)
-	if *shortVideo {
+	if *yellowPages {
+		if *workers == 0 {
+			opt.Workers = 32
+		}
+		fmt.Printf("开始黄页流水线 官网+电话→官网抽社媒 workers=%d db=%s\n", opt.Workers, *db)
+		st, err = client.HarvestYellowPages(ctx, opt)
+	} else if *shortVideo {
 		if (*fast || *seedOnly || *publicAll) && (client.WikidataURL == "" || strings.Contains(client.WikidataURL, "query.wikidata.org")) {
 			client.WikidataURL = engine.QleverWikidataSPARQL
 		}

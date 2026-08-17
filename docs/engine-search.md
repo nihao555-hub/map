@@ -32,6 +32,8 @@ export TIKHUB_API_TOKEN=...          # 抖音「关键词搜人」f2 仍为 🔵
 
 打开 `/discover`。智能引擎、本地企业库、海关数据、展会获客共用深色窄栏 + 白底「数据获客」子菜单；地图获客仍是顶栏模块导航，不加窄侧栏、不加海关/展会入口。
 
+黄页流水线（`make ingest-yellow-pages`）：先从 Europages / 东南亚 Yellow Pages / Hotfrog / Cylex 公开目录抽官网和电话，再高并发打开官网（含 `/contact`）抽社媒。已入库的 OSM / Wikidata 带官网的也进同一条刮取队列，优先于 GLEIF 法律名。
+
 `/directory` 翻看本地库：GLEIF 法律名（无官网/社媒）和已入库的抖音/TikTok 企业号主页分开统计。要灌短视频企业号：`make ingest-short-video`；两小时窗口用 `make ingest-short-video-fast`（Wikidata 组织号 + 东南亚→中东→欧美）。公开源一次灌完用 `make ingest-short-video-public`（Wikidata 含名人、官网 P856、Wayback TikTok/抖音、OSM `contact:tiktok`、Common Crawl）。都不是平台全库。
 
 智能引擎按网易外贸通复刻：空搜是深蓝落地页（WhatsApp / 邮箱 + 精准搜索），搜完后是「邮箱 / 网页标题 / 来源链接」结果表。数据走公开网页索引，不是他们的企业库。营销模式按 [s0md3v/Photon](https://github.com/s0md3v/Photon)（GPL，不链进 Go）的 intel 流程抽公开邮箱 / WhatsApp。「一键营销」只打开系统窗口，**不会代发**。

@@ -24,6 +24,7 @@ make ingest-short-video-fast    # 两小时：Wikidata 全量号 + 东南亚→�
 make ingest-sea-tiktok          # 东南亚 TikTok：TikTok-Api / f2 按词搜（要 sidecar）
 make ingest-short-video-public  # 公开源能枚举的 TikTok/抖音主页（含名人、Wayback、OSM）
 make ingest-social-search       # 去 TikTok 搜索页/话题/相关账号扫（常驻浏览器）
+make ingest-yellow-pages        # 黄页找官网+电话，再高并发刮官网社媒
 ```
 
 抖音/TikTok **没有**公开的「全部企业号」数据包。GitHub 高 star 项目也没有这份包——它们是「给一个词/一条链接，去平台搜或下载」，不是目录。

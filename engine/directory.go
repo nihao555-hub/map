@@ -499,7 +499,12 @@ func (d *Directory) ListHomepagesMissingSocials(ctx context.Context, limit int) 
 		    SELECT 1 FROM merchant_profiles p
 		    WHERE p.ext_id=m.ext_id AND p.platform != 'website'
 		  )
-		ORDER BY CASE m.source WHEN 'gleif' THEN 0 WHEN 'wikidata' THEN 1 ELSE 2 END, m.id
+		ORDER BY CASE m.source
+			WHEN 'yellowpages' THEN 0
+			WHEN 'osm' THEN 1
+			WHEN 'wikidata' THEN 2
+			WHEN 'gleif' THEN 3
+			ELSE 4 END, m.id
 		LIMIT ?`
 	rows, err := d.scanMerchants(ctx, q, limit)
 	if err != nil {
@@ -581,6 +586,16 @@ func (d *Directory) HasExtID(ctx context.Context, extID string) (bool, error) {
 	var n int
 	err := d.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM merchants WHERE ext_id=?`, extID).Scan(&n)
 	return n > 0, err
+}
+
+func (d *Directory) SetPhone(ctx context.Context, extID, phone string) error {
+	if d == nil || strings.TrimSpace(extID) == "" || strings.TrimSpace(phone) == "" {
+		return nil
+	}
+	_, err := d.db.ExecContext(ctx, `
+UPDATE merchants SET phone=?
+WHERE ext_id=? AND (phone IS NULL OR phone='')`, phone, extID)
+	return err
 }
 
 func (d *Directory) SetHomepage(ctx context.Context, extID, home string) error {

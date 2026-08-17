@@ -37,6 +37,7 @@ func main() {
 	attachSocials := flag.Bool("attach-socials", false, "全库缺社媒：官网刮取 + OSM contact + 店名检索 FB/IG/LI + Sherlock 姐妹页，可断点续跑")
 	attachLimit := flag.Int("attach-limit", 0, "全库补社媒最多处理多少家，0=全部还没探过的")
 	attachWorkers := flag.Int("attach-workers", 10, "全库补社媒并发")
+	yellowPages := flag.Bool("yellow-pages", false, "黄页找官网和电话，再高并发去官网抽社媒")
 	sea := flag.Bool("sea", false, "只补东南亚城市店铺 + Wikidata 公司")
 	osmLimit := flag.Int("osm-limit", 2000, "每个城市最多拉多少家店")
 	flag.Parse()
@@ -47,7 +48,7 @@ func main() {
 	client := engine.OptionsFromEnv()
 	if client.HTTP != nil {
 		client.HTTP.Timeout = 90 * time.Second
-		if *publicSocials || *maxPublic || *moreSocials || *sherlock || *attachSocials || *worldCompanies {
+		if *publicSocials || *maxPublic || *moreSocials || *sherlock || *attachSocials || *worldCompanies || *yellowPages {
 			client.HTTP.Timeout = 180 * time.Second
 		}
 	}
@@ -75,6 +76,7 @@ func main() {
 		AttachSocials:     *attachSocials,
 		AttachLimit:       *attachLimit,
 		AttachWorkers:     *attachWorkers,
+		YellowPages:       *yellowPages,
 		Overpass:          !*skipOSM,
 		OSMLimitPerCity:   *osmLimit,
 	}
@@ -147,6 +149,21 @@ func main() {
 		opt.MoreSocials = false
 		opt.Sherlock = false
 		opt.AttachSocials = true
+	}
+	if *yellowPages {
+		opt.SkipGLEIF = true
+		opt.SkipOSM = true
+		opt.Overpass = false
+		opt.SkipWikidata = true
+		opt.PublicSocials = false
+		opt.MaxPublic = false
+		opt.MoreSocials = false
+		opt.Sherlock = false
+		opt.AttachSocials = false
+		opt.YellowPages = true
+		if *websiteWorkers == 16 {
+			opt.WebsiteWorkers = 32
+		}
 	}
 	if *moreSocials {
 		opt.SkipGLEIF = true

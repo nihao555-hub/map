@@ -46,6 +46,10 @@ type HarvestOptions struct {
 	// SocialSearch uses the TikTok public search / tag / related pages
 	// (via the sidecar) instead of dumps or Google dorks.
 	SocialSearch bool
+	// YellowPages finds official websites and phones on public directories,
+	// then scrapes those sites for socials. Existing OSM/Wikidata rows
+	// with a homepage join the same scrape pass.
+	YellowPages bool
 }
 
 // HarvestStats is one batch run's timing and unique social pages.

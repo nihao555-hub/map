@@ -53,6 +53,7 @@ type IngestOptions struct {
 	AttachSocials     bool
 	AttachLimit       int
 	AttachWorkers     int
+	YellowPages       bool
 }
 
 // DefaultIngestOptions dumps GLEIF Golden Copy plus OSM shops in major cities.
@@ -135,6 +136,17 @@ func (c *Client) IngestMerchants(ctx context.Context, opt IngestOptions) ([]Inge
 	}
 	if opt.AttachSocials {
 		stats = append(stats, c.ingestAttachSocials(ctx, dir, opt))
+	}
+	if opt.YellowPages {
+		st, err := c.HarvestYellowPages(ctx, HarvestOptions{
+			DBPath:  opt.DBPath,
+			Workers: opt.WebsiteWorkers,
+		})
+		note := st.String()
+		if err != nil && st.Err == "" {
+			st.Err = err.Error()
+		}
+		stats = append(stats, IngestStats{Source: "yellow-pages", Rows: st.Inserted, Took: st.Took, Note: note, Err: st.Err})
 	}
 	return stats, nil
 }

@@ -30,7 +30,7 @@ func TestProfilesFromOfficialHTMLKeepsSocialHomepages(t *testing.T) {
 	}
 }
 
-func TestListHomepagesMissingSocialsPrefersGLEIF(t *testing.T) {
+func TestListHomepagesMissingSocialsPrefersShops(t *testing.T) {
 	dir, err := OpenDirectory(filepath.Join(t.TempDir(), "m.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -49,8 +49,8 @@ func TestListHomepagesMissingSocialsPrefersGLEIF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) == 0 || rows[0].ExtID != "gleif:bare" {
-		t.Fatalf("%+v", rows)
+	if len(rows) == 0 || rows[0].ExtID != "osm:1" {
+		t.Fatalf("want shop/OSM before GLEIF legal names, got %+v", rows)
 	}
 	for _, row := range rows {
 		if row.ExtID == "gleif:has" || row.ExtID == "gleif:reg" {
