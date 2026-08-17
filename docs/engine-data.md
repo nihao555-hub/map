@@ -47,18 +47,18 @@ make ingest-short-video-public  # 公开源能枚举的 TikTok/抖音主页（�
 
 两小时内最接近全量的办法：先灌 Wikidata 非人名清单，再按 **东南亚 → 中东 → 欧美** 扫本地词。要再往上堆，只能把已接的 TikTok-Api / f2 sidecar 跑起来（cookie），那是按品类抽样，不是第二份全库。
 
-公开源一次灌完（`make ingest-short-video-public`）：
+公开源一次灌完（`make ingest-short-video-public`）。本机跑完后的去重主页大约是：
 
-| 源 | 能枚举什么 | 不是什么 |
+| 源 | 本轮结果 | 不是什么 |
 |---|---|---|
-| Wikidata P7085 / P7120 **含名人** | 已标注账号，TikTok 约 3.6 万、抖音约 311 | 平台账号库 |
-| Wikidata P856 官网正好是主页 | 漏填 P7085 的公司 | 很少 |
-| Internet Archive CDX `tiktok.com/@` | 历史抓到的主页 | 平台全库；垃圾 URL 会丢掉 |
-| Internet Archive CDX `douyin.com/user/` | 同上，抖音 | 同上 |
-| OSM `contact:tiktok` / `contact:douyin` | 地图上主动填了标签的店 | 全球大约几百到几千 |
-| Common Crawl 最新几期 CDX | 公开网页库里的主页 | 平台拦爬虫，经常 0 页 |
+| Wikidata P7085 / P7120 **含名人** | 约 3.58 万实体（TikTok 标注约 3.6 万、抖音约 312） | 平台账号库 |
+| Wikidata P856 官网正好是主页 | 14 条 | 很少 |
+| Internet Archive CDX `tiktok.com/@` | 17,586 个去重 `@` | 平台全库 |
+| Internet Archive CDX `douyin.com/user/` | 约 12.6 万去重 `MS4w…`（按字头细拆） | 平台全库 |
+| OSM `contact:tiktok` | 全球 14,212 个对象 / 约 3,306 个不同号；入库 11,893 行 | 没填标签的店 |
+| Common Crawl CDX | TikTok 0 页；抖音约 599 | 平台拦爬虫 |
 
-这是公开索引的上限，不是东南亚「全部企业号」。
+库内去重主页大约 **TikTok 5.9 万、抖音 12.7 万**。这是公开索引的上限，不是东南亚「全部企业号」，更不是平台全量。
 
 1. Wikidata QLever：公开能拿到的最全一份公司账号标识
 2. [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api) sidecar（关键词搜用户）

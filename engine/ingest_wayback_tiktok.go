@@ -41,7 +41,8 @@ func waybackDouyinShards() []string {
 		}
 	}
 	const stem = "MS4wLjABAAAA"
-	extra := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-"
+	// CDX urlkey is case-folded; A-Z already covers a-z.
+	extra := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_-"
 	for i := 0; i < len(extra); i++ {
 		out = append(out, stem+extra[i:i+1])
 	}

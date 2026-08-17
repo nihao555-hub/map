@@ -56,8 +56,8 @@ func TestValidDouyinUserID(t *testing.T) {
 func TestWaybackDouyinShardsSplitMS4w(t *testing.T) {
 	t.Parallel()
 	got := waybackDouyinShards()
-	if containsString(got, "m") {
-		t.Fatal("lone m bucket would truncate CDX")
+	if containsString(got, "m") || containsString(got, "MS4wLjABAAAAq") {
+		t.Fatal("lone m / lowercase shards waste CDX (urlkey is folded)")
 	}
 	if !containsString(got, "MS4wLjABAAAA6") || !containsString(got, "MS4wLjABAAAA_") {
 		t.Fatalf("%v", got)
