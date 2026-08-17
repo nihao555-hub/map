@@ -21,6 +21,7 @@ make ingest-public-max          # 公开源社媒
 make ingest-attach-socials      # 缺社媒断点续跑
 make ingest-short-video         # 抖音/TikTok 企业号主页（只要链接）
 make ingest-short-video-fast    # 两小时：Wikidata 全量号 + 东南亚→中东→欧美
+make ingest-sea-tiktok          # 东南亚 TikTok：TikTok-Api / f2 按词搜（要 sidecar）
 ```
 
 抖音/TikTok **没有**公开的「全部企业号」数据包。GitHub 高 star 项目也没有这份包——它们是「给一个词/一条链接，去平台搜或下载」，不是目录。
@@ -35,8 +36,8 @@ make ingest-short-video-fast    # 两小时：Wikidata 全量号 + 东南亚→�
 | 项目 | star / 许可 | 能干什么 | 本仓库 |
 |---|---|---|---|
 | Wikidata P7085 / P7120 | 公开知识库 / CC0 | 已标注账号全量导出 | **主方案**，`make ingest-short-video-seed` |
-| [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api) | 6.5k MIT | 关键词搜 TikTok 用户 | 已接 sidecar `:8091`，要 Chromium / msToken |
-| [Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2) | 2.6k Apache-2.0 | TikTok 搜作品抽作者；抖音只解析已有主页 | 已接 sidecar `:8092`；搜用户仍 🔵 |
+| [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api) | 6.5k MIT | 关键词搜 TikTok 用户 | 已接 sidecar `:8091`。机房 IP 上签名接口常空，会回退到公开搜索页抽 `@handle` |
+| [Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2) | 2.6k Apache-2.0 | TikTok 搜作品抽作者；抖音只解析已有主页 | 已接 sidecar `:8092`；没 `F2_TIKTOK_COOKIE` 时 import 就会要 msToken，搜用户仍 🔵 |
 | 公开网页索引 | — | `site:tiktok.com/@` / `site:douyin.com/user` | 已接，常被限流 |
 | [NanmiCoder/MediaCrawler](https://github.com/NanmiCoder/MediaCrawler) | 6万+ 非商业 | 多平台采集 | **不接** |
 | [Evil0ctal/Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) | 1.9万 | 解析已有主页/作品 | 无搜人、无全库，不接 |

@@ -16,13 +16,14 @@ func main() {
 	db := flag.String("db", engine.DefaultMerchantDB, "SQLite 路径")
 	keywords := flag.String("keywords", "", "逗号分隔品类；空则用内置外贸清单")
 	countries := flag.String("countries", "", "逗号分隔国家码，空表示不限+东南亚/美/德")
-	workers := flag.Int("workers", 6, "同时跑多少个品类×国家")
+	workers := flag.Int("workers", 0, "并发数；0 用引擎默认（sidecar=2，fast=8）")
 	queryLimit := flag.Int("query-limit", 0, "品类模式：每个品类×国家最多几条公式；公司名模式：最多查多少家")
 	names := flag.Bool("names", false, "按已入库 GLEIF 公司全名搜社媒（比按品类扫更准）")
 	shortVideo := flag.Bool("short-video", false, "只收抖音/TikTok 企业号主页（TikTok-Api / f2 + 公开索引）")
 	fast := flag.Bool("fast", false, "两小时窗口：先灌 Wikidata 全量 TikTok/抖音号，再按东南亚→中东→欧美扫")
 	seedOnly := flag.Bool("seed-only", false, "只灌 Wikidata 已标注的 TikTok/抖音号，不跑公开检索")
-	regions := flag.String("regions", "", "sea,me,west；空则 fast 默认这个顺序")
+	sidecar := flag.Bool("sidecar", false, "用 TikTok-Api/f2 按词搜用户，默认东南亚，跳过公开检索")
+	regions := flag.String("regions", "", "sea,me,west；空则 sidecar 默认 sea，fast 默认 sea,me,west")
 	deadline := flag.Duration("deadline", 0, "最长跑多久，例如 110m")
 	flag.Parse()
 
@@ -36,6 +37,7 @@ func main() {
 		Role:       engine.RoleBuyer,
 		Fast:       *fast,
 		SeedOnly:   *seedOnly,
+		Sidecar:    *sidecar,
 		Deadline:   *deadline,
 	}
 	if s := strings.TrimSpace(*regions); s != "" {
@@ -50,7 +52,11 @@ func main() {
 
 	client := engine.OptionsFromEnv()
 	if client.HTTP != nil {
-		client.HTTP.Timeout = 25 * time.Second
+		if *sidecar {
+			client.HTTP.Timeout = 90 * time.Second
+		} else {
+			client.HTTP.Timeout = 25 * time.Second
+		}
 	}
 	var (
 		st  engine.HarvestStats
@@ -60,7 +66,7 @@ func main() {
 		if (*fast || *seedOnly) && (client.WikidataURL == "" || strings.Contains(client.WikidataURL, "query.wikidata.org")) {
 			client.WikidataURL = engine.QleverWikidataSPARQL
 		}
-		fmt.Printf("开始抖音/TikTok 企业号收割 fast=%v seed-only=%v db=%s\n", *fast, *seedOnly, *db)
+		fmt.Printf("开始抖音/TikTok 企业号收割 fast=%v seed-only=%v sidecar=%v db=%s\n", *fast, *seedOnly, *sidecar, *db)
 		st, err = client.HarvestShortVideo(ctx, opt)
 	} else if *names {
 		fmt.Printf("开始公司名公式收割 db=%s limit=%d\n", *db, *queryLimit)

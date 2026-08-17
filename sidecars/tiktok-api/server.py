@@ -11,7 +11,7 @@ import asyncio
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 try:
     from TikTokApi import TikTokApi
@@ -53,6 +53,86 @@ def _user_payload(user) -> dict:
     }
 
 
+_SKIP_HANDLES = {
+    "",
+    "foryou",
+    "following",
+    "live",
+    "search",
+    "explore",
+    "login",
+    "signup",
+    "about",
+    "privacy",
+    "tiktok",
+    "discover",
+    "music",
+    "tag",
+}
+
+
+def _headed() -> bool:
+    return os.environ.get("TIKTOK_HEADED", "").strip() in {"1", "true", "yes"} or bool(
+        os.environ.get("DISPLAY")
+    )
+
+
+async def _users_from_search_page(page, keyword: str, count: int) -> list[dict]:
+    url = "https://www.tiktok.com/search/user?q=" + quote(keyword)
+    await page.goto(url, wait_until="domcontentloaded", timeout=90000)
+    await asyncio.sleep(5)
+    raw = await page.evaluate(
+        """() => {
+          const out = [];
+          const seen = new Set();
+          for (const a of document.querySelectorAll("a[href*='/@']")) {
+            const href = a.getAttribute("href") || "";
+            const m = href.match(/\\/@([A-Za-z0-9._]+)/);
+            if (!m) continue;
+            const handle = m[1];
+            const key = handle.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const text = (a.innerText || a.textContent || "").trim();
+            const lines = text.split(/\\n+/).map(s => s.trim()).filter(Boolean);
+            out.push({
+              uniqueId: handle,
+              nickname: lines[0] || handle,
+              signature: lines.slice(1).join(" ").slice(0, 160)
+            });
+          }
+          return out;
+        }"""
+    )
+    users: list[dict] = []
+    seen: set[str] = set()
+    for row in raw or []:
+        handle = str(row.get("uniqueId") or "").strip()
+        key = handle.lower()
+        if key in seen or key in _SKIP_HANDLES:
+            continue
+        seen.add(key)
+        users.append(
+            {
+                "platform": "tiktok",
+                "username": handle,
+                "uniqueId": handle,
+                "nickname": row.get("nickname") or handle,
+                "signature": row.get("signature") or "",
+                "secUid": "",
+                "id": "",
+                "verified": False,
+                "followerCount": 0,
+                "avatar": "",
+                "homepageUrl": f"https://www.tiktok.com/@{handle}",
+                "source": "tiktok-api-page",
+            }
+        )
+        if len(users) >= count:
+            break
+    return users
+
+
 async def search_users(keyword: str, count: int) -> list[dict]:
     if TikTokApi is None:
         raise RuntimeError("TikTokApi is not installed; pip install TikTokApi")
@@ -60,22 +140,39 @@ async def search_users(keyword: str, count: int) -> list[dict]:
     users: list[dict] = []
     seen: set[str] = set()
     tokens = [MS_TOKEN] if MS_TOKEN else None
+    chrome = os.environ.get("TIKTOK_CHROME", "").strip() or None
     async with TikTokApi() as api:
         await api.create_sessions(
             ms_tokens=tokens,
             num_sessions=1,
             sleep_after=3,
             browser=BROWSER,
+            headless=not _headed(),
+            timeout=90000,
+            executable_path=chrome,
         )
-        async for user in api.search.users(keyword, count=count):
-            payload = _user_payload(user)
-            handle = (payload.get("uniqueId") or "").lower()
-            if not handle or handle in seen:
-                continue
-            seen.add(handle)
-            users.append(payload)
-            if len(users) >= count:
-                break
+        try:
+            async for user in api.search.users(keyword, count=count):
+                payload = _user_payload(user)
+                handle = (payload.get("uniqueId") or "").lower()
+                if not handle or handle in seen:
+                    continue
+                seen.add(handle)
+                users.append(payload)
+                if len(users) >= count:
+                    break
+        except Exception as exc:  # noqa: BLE001
+            print("tiktok api search fallback:", exc)
+        if len(users) < count and api.sessions:
+            page_users = await _users_from_search_page(api.sessions[0].page, keyword, count)
+            for payload in page_users:
+                handle = (payload.get("uniqueId") or "").lower()
+                if not handle or handle in seen:
+                    continue
+                seen.add(handle)
+                users.append(payload)
+                if len(users) >= count:
+                    break
     return users
 
 

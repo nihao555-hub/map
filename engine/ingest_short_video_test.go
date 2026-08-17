@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestShortVideoQueriesCompanyIntents(t *testing.T) {
@@ -142,6 +143,60 @@ func TestShortVideoExtID(t *testing.T) {
 	id := shortVideoExtID(Hit{Platform: PlatformTikTok, Handle: "BoschPowerTools", HomepageURL: "https://www.tiktok.com/@boschpowertools"})
 	if id != "tiktok:boschpowertools" {
 		t.Fatalf("%s", id)
+	}
+}
+
+func TestUniqueShortVideoTermsSEA(t *testing.T) {
+	t.Parallel()
+	terms := uniqueShortVideoTerms([]string{"电动工具", "toko listrik"}, []string{"ID", "TH"})
+	if !containsString(terms, "panel listrik") && !containsString(terms, "perkakas listrik") && !containsString(terms, "toko listrik") {
+		t.Fatalf("missing SEA local terms: %v", terms)
+	}
+	if !containsString(terms, "เครื่องมือไฟฟ้า") {
+		t.Fatalf("missing Thai term: %v", terms)
+	}
+}
+
+func TestSidecarHarvestUsesTikTokAPIForIndonesia(t *testing.T) {
+	var sawQ []string
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/healthz") {
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			return
+		}
+		sawQ = append(sawQ, r.URL.Query().Get("q"))
+		_ = json.NewEncoder(w).Encode(sidecarResponse{Users: []sidecarUser{{
+			Platform:    PlatformTikTok,
+			UniqueID:    "tokolistrikjaya",
+			Nickname:    "Toko Listrik Jaya",
+			Signature:   "panel listrik wholesale shop",
+			HomepageURL: "https://www.tiktok.com/@tokolistrikjaya",
+			Verified:    true,
+		}}, Source: "tiktok-api"})
+	}))
+	defer sidecar.Close()
+
+	c := &Client{
+		HTTP:      sidecar.Client(),
+		TikTokURL: sidecar.URL,
+	}
+	db := filepath.Join(t.TempDir(), "m.db")
+	st, err := c.HarvestShortVideo(context.Background(), HarvestOptions{
+		DBPath:   db,
+		Keywords: []string{"toko listrik"},
+		Regions:  []string{"sea"},
+		Sidecar:  true,
+		Workers:  1,
+		Deadline: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Inserted < 1 || st.ByPlat[PlatformTikTok] < 1 {
+		t.Fatalf("stats=%+v saw=%v", st, sawQ)
+	}
+	if len(sawQ) == 0 {
+		t.Fatal("TikTok-Api was not called for SEA sidecar harvest")
 	}
 }
 

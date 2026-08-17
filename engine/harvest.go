@@ -35,6 +35,8 @@ type HarvestOptions struct {
 	Deadline time.Duration
 	// SeedOnly stops after the Wikidata TikTok/抖音 dump.
 	SeedOnly bool
+	// Sidecar uses TikTok-Api / f2 keyword search and skips public dorks.
+	Sidecar bool
 }
 
 // HarvestStats is one batch run's timing and unique social pages.

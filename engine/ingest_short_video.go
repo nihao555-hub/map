@@ -51,8 +51,13 @@ var FastShortVideoKeywords = []string{
 }
 
 var seaShortVideoKeywords = []string{
-	"panel listrik", "lemari listrik", "toko listrik", "perabot",
-	"suku cadang", "alat listrik", "เครื่องมือไฟฟ้า", "đồ điện",
+	"panel listrik", "lemari listrik", "toko listrik", "toko lampu",
+	"toko furniture", "pabrik", "grosir", "perabot",
+	"suku cadang", "alat listrik", "perkakas listrik",
+	"เครื่องมือไฟฟ้า", "ร้านไฟ", "โรงงาน",
+	"đồ điện", "cửa hàng đèn", "nhà máy",
+	"kedai lampu", "alatan kuasa",
+	"power tools shop", "LED lighting shop", "furniture store",
 }
 
 var meShortVideoKeywords = []string{
@@ -117,18 +122,30 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 	if opt.DBPath == "" {
 		opt.DBPath = ResolveMerchantDB("")
 	}
-	if opt.Fast {
+	if opt.Sidecar && len(opt.Regions) == 0 && !opt.Fast {
+		opt.Regions = []string{"sea"}
+	}
+	if opt.Fast || opt.Sidecar {
 		if len(opt.Keywords) == 0 {
 			opt.Keywords = append([]string{}, FastShortVideoKeywords...)
 		}
+		if opt.Deadline <= 0 {
+			opt.Deadline = 110 * time.Minute
+		}
+	}
+	if opt.Sidecar {
+		if opt.Workers <= 0 {
+			opt.Workers = 2
+		}
+		if opt.QueryLimit <= 0 {
+			opt.QueryLimit = 0
+		}
+	} else if opt.Fast {
 		if opt.Workers <= 0 {
 			opt.Workers = 8
 		}
 		if opt.QueryLimit <= 0 {
 			opt.QueryLimit = 2
-		}
-		if opt.Deadline <= 0 {
-			opt.Deadline = 110 * time.Minute
 		}
 	} else {
 		if len(opt.Keywords) == 0 {
@@ -229,6 +246,31 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 		}
 		return g.Wait()
 	}
+	runSidecarTerms := func(limit int, terms []string) error {
+		if limit <= 0 {
+			limit = 2
+		}
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(limit)
+		for _, term := range terms {
+			term := strings.TrimSpace(term)
+			if term == "" {
+				continue
+			}
+			g.Go(func() error {
+				if gctx.Err() != nil {
+					return nil
+				}
+				batch := c.collectSidecarHits(gctx, term)
+				mu.Lock()
+				defer mu.Unlock()
+				remember(term, "SEA", batch, 1)
+				logIngest("short-video sidecar %s +%d (unique=%d inserted=%d)", term, len(batch), len(seen), inserted)
+				return flush()
+			})
+		}
+		return g.Wait()
+	}
 	finish := func(err error) (HarvestStats, error) {
 		st := HarvestStats{
 			Keywords: len(opt.Keywords),
@@ -266,6 +308,29 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 	}
 
 	regions := resolveShortVideoRegions(opt)
+	sidecarUp := c != nil && (c.sidecarAlive(ctx, c.TikTokURL) || c.sidecarAlive(ctx, c.F2URL))
+	if sidecarUp && (opt.Sidecar || opt.Fast) {
+		kws := append([]string{}, opt.Keywords...)
+		ccs := append([]string{}, opt.Countries...)
+		if len(regions) > 0 {
+			kws = nil
+			ccs = nil
+			for _, reg := range regions {
+				kws = append(kws, opt.Keywords...)
+				kws = append(kws, reg.Extra...)
+				ccs = append(ccs, reg.Countries...)
+			}
+		}
+		terms := uniqueShortVideoTerms(kws, ccs)
+		logIngest("short-video sidecar terms=%d workers=%d", len(terms), opt.Workers)
+		if err := runSidecarTerms(opt.Workers, terms); err != nil {
+			return finish(err)
+		}
+		if opt.Sidecar {
+			return finish(nil)
+		}
+	}
+
 	if len(regions) > 0 {
 		for _, reg := range regions {
 			if ctx.Err() != nil {
@@ -315,31 +380,7 @@ func (c *Client) collectShortVideoHits(ctx context.Context, keyword, country str
 		}
 	}
 	if country == "" || strings.EqualFold(country, "CN") {
-		if c.sidecarAlive(ctx, c.TikTokURL) {
-			if items, _, err := c.searchTikTokAPI(ctx, keyword, 30); err == nil {
-				for _, h := range items {
-					if keepShortVideoBusiness(h, keyword) {
-						out = append(out, h)
-					}
-				}
-			}
-		}
-		if c.sidecarAlive(ctx, c.F2URL) {
-			if items, _, err := c.searchF2(ctx, keyword, PlatformTikTok, 30); err == nil {
-				for _, h := range items {
-					if keepShortVideoBusiness(h, keyword) {
-						out = append(out, h)
-					}
-				}
-			}
-			if items, _, err := c.searchF2(ctx, keyword, PlatformDouyin, 30); err == nil {
-				for _, h := range items {
-					if keepShortVideoBusiness(h, keyword) {
-						out = append(out, h)
-					}
-				}
-			}
-		}
+		out = append(out, c.collectSidecarHits(ctx, keyword)...)
 		if c.TikHubToken != "" {
 			if items, err := c.searchTikHubDouyin(ctx, keyword, 30); err == nil {
 				for _, h := range items {
@@ -351,6 +392,61 @@ func (c *Client) collectShortVideoHits(ctx context.Context, keyword, country str
 		}
 	}
 	return out, nq
+}
+
+func uniqueShortVideoTerms(keywords, countries []string) []string {
+	if len(countries) == 0 {
+		countries = []string{""}
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(term string) {
+		term = strings.TrimSpace(term)
+		key := strings.ToLower(term)
+		if term == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, term)
+	}
+	for _, kw := range keywords {
+		add(kw)
+		for _, cc := range countries {
+			for _, term := range harvestDorkTerms(kw, cc) {
+				add(term)
+			}
+		}
+	}
+	return out
+}
+
+func (c *Client) collectSidecarHits(ctx context.Context, keyword string) []Hit {
+	if c == nil {
+		return nil
+	}
+	var out []Hit
+	keep := func(items []Hit) {
+		for _, h := range items {
+			if keepShortVideoBusiness(h, keyword) {
+				out = append(out, h)
+			}
+		}
+	}
+	if c.sidecarAlive(ctx, c.TikTokURL) {
+		if items, _, err := c.searchTikTokAPI(ctx, keyword, 30); err == nil {
+			keep(items)
+		} else {
+			logIngest("short-video TikTok-Api %s: %v", keyword, err)
+		}
+	}
+	if c.sidecarAlive(ctx, c.F2URL) {
+		if items, _, err := c.searchF2(ctx, keyword, PlatformTikTok, 30); err == nil {
+			keep(items)
+		} else {
+			logIngest("short-video f2 %s: %v", keyword, err)
+		}
+	}
+	return out
 }
 
 func shortVideoQueries(terms []string, country string) []publicQuery {

@@ -19,14 +19,15 @@ from urllib.parse import parse_qs, urlparse
 try:
     from f2.apps.tiktok.crawler import TiktokCrawler
     from f2.apps.tiktok.model import PostSearch
-except ImportError:  # pragma: no cover
+except Exception:  # pragma: no cover
+    # f2 generates msToken at import time; missing/invalid cookie must not kill the process.
     TiktokCrawler = None
     PostSearch = None
 
 try:
     from f2.apps.douyin.handler import DouyinHandler
     from f2.apps.douyin.utils import SecUserIdFetcher
-except ImportError:  # pragma: no cover
+except Exception:  # pragma: no cover
     DouyinHandler = None
     SecUserIdFetcher = None
 
