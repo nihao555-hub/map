@@ -46,11 +46,16 @@ func NewWithOptions(opt Options) *Uploader {
 	cfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithCredentialsProvider(creds),
 		config.WithRegion(opt.Region),
+		// Aliyun OSS / MinIO reject AWS SDK v2 default trailing checksums.
+		config.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired),
+		config.WithResponseChecksumValidation(aws.ResponseChecksumValidationWhenRequired),
 	)
 	if err != nil {
 		return nil
 	}
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 		if opt.Endpoint == "" {
 			return
 		}
@@ -113,10 +118,18 @@ func firstNonEmpty(vals ...string) string {
 }
 
 func (u *Uploader) Upload(ctx context.Context, bucketName, key string, body io.Reader) error {
+	if u == nil || u.client == nil {
+		return io.ErrClosedPipe
+	}
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(key),
 		Body:   body,
+	}
+	if f, ok := body.(*os.File); ok {
+		if st, err := f.Stat(); err == nil {
+			input.ContentLength = aws.Int64(st.Size())
+		}
 	}
 
 	_, err := u.client.PutObject(ctx, input)
