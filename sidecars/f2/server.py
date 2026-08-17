@@ -216,6 +216,18 @@ class Handler(BaseHTTPRequestHandler):
                     {"users": users, "warnings": warnings, "source": "f2-douyin"},
                 )
                 return
+            if TiktokCrawler is None:
+                self._json(
+                    200,
+                    {
+                        "users": [],
+                        "source": "f2-tiktok",
+                        "warnings": [
+                            "f2 TikTok 模块未加载（通常是缺 F2_TIKTOK_COOKIE / msToken）"
+                        ],
+                    },
+                )
+                return
             users = asyncio.run(search_tiktok(keyword, count))
             self._json(200, {"users": users, "source": "f2-tiktok"})
         except Exception as exc:  # noqa: BLE001
