@@ -10,18 +10,37 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// DefaultShortVideoKeywords is a 外贸品类清单 used to harvest Douyin / TikTok
-// business homepages. There is no public dump of every shop account.
+// DefaultShortVideoKeywords is the full 外贸品类扫 used for Douyin / TikTok
+// business homepages. Public indexes have no dump of every shop account.
 var DefaultShortVideoKeywords = []string{
-	"LED灯", "电动工具", "配电柜", "家具", "服装", "鞋子", "化妆品",
-	"包装", "阀门", "太阳能", "汽车配件", "塑料制品", "食品",
-	"灯具", "照明", "五金", "机械", "轴承", "泵", "压缩机",
-	"电缆", "开关", "插座", "卫浴", "瓷砖", "建材", "铝型材",
-	"纺织", "面料", "箱包", "玩具", "宠物用品", "家电",
-	"厨房用品", "日用品", "清洁用品", "医疗器械", "劳保",
-	"农业机械", "化肥", "饲料", "海鲜", "茶叶", "咖啡",
-	"power tools", "LED lighting", "furniture", "auto parts",
-	"packaging", "solar panel", "kitchenware", "textiles",
+	"LED灯", "灯具", "照明", "灯带", "台灯", "户外灯",
+	"电动工具", "五金", "工具", "电钻", "角磨机", "扳手",
+	"配电柜", "开关柜", "电缆", "电线", "开关", "插座", "变压器", "逆变器",
+	"家具", "办公家具", "沙发", "床垫", "柜子",
+	"服装", "女装", "男装", "童装", "内衣", "运动鞋", "鞋子", "箱包",
+	"化妆品", "护肤品", "美妆", "洗护",
+	"包装", "纸箱", "塑料袋", "胶带",
+	"阀门", "泵", "压缩机", "轴承", "机械", "数控机床", "模具",
+	"太阳能", "光伏", "储能",
+	"汽车配件", "轮胎", "刹车片", "机油",
+	"塑料制品", "橡胶", "硅胶",
+	"食品", "零食", "海鲜", "茶叶", "咖啡", "白酒", "饮料",
+	"卫浴", "瓷砖", "建材", "铝型材", "钢材", "玻璃", "门窗",
+	"纺织", "面料", "家纺", "毛巾",
+	"玩具", "宠物用品", "母婴",
+	"家电", "小家电", "厨房用品", "日用品", "清洁用品",
+	"医疗器械", "劳保", "安防", "监控",
+	"农业机械", "化肥", "饲料", "农药",
+	"自行车", "摩托车配件", "滑板车",
+	"音响", "耳机", "手机配件", "充电器", "数据线",
+	"打印机", "办公用品", "文具",
+	"power tools", "LED lighting", "switchgear", "furniture",
+	"auto parts", "packaging", "solar panel", "kitchenware",
+	"textiles", "cosmetics", "valves", "pumps", "bearings",
+	"bathroom fittings", "ceramic tiles", "hardware tools",
+	"electric scooter", "phone accessories", "medical supplies",
+	"pet supplies", "baby products", "home appliances",
+	"panel listrik", "perabot", "suku cadang", "alat listrik",
 }
 
 // DefaultShortVideoCountries fans TikTok queries across export markets.
@@ -63,73 +82,115 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 
 	wanted := shortVideoWanted()
 	var (
-		mu      sync.Mutex
-		seen    = map[string]Hit{}
-		queries int
+		mu       sync.Mutex
+		seen     = map[string]Hit{}
+		flushed  = map[string]struct{}{}
+		queries  int
+		inserted int
+		byPlat   = map[string]int{}
 	)
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(opt.Workers)
-	for _, kw := range opt.Keywords {
-		kw := strings.TrimSpace(kw)
-		if kw == "" {
+	remember := func(kw, cc string, batch []Hit, nq int) {
+		queries += nq
+		for _, h := range batch {
+			id := shortVideoExtID(h)
+			if id == "" {
+				continue
+			}
+			if prev, ok := seen[id]; ok && !(h.Name != "" && (prev.Name == "" || prev.Name == prev.Handle)) {
+				continue
+			}
+			if h.Extra == nil {
+				h.Extra = map[string]string{}
+			}
+			h.Extra["ext_id"] = id
+			h.Extra["src"] = h.Platform
+			h.Extra["shop"] = harvestShop(kw)
+			if h.Country == "" {
+				h.Country = strings.ToUpper(cc)
+			}
+			seen[id] = h
+		}
+	}
+	flush := func() error {
+		var rows []Merchant
+		for id, h := range seen {
+			if _, ok := flushed[id]; ok {
+				continue
+			}
+			rows = append(rows, hitToMerchant(h, id))
+			flushed[id] = struct{}{}
+			byPlat[h.Platform]++
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		n, err := dir.InsertBatch(ctx, rows)
+		inserted += n
+		logIngest("short-video flush +%d inserted=%d unique=%d", n, inserted, len(seen))
+		return err
+	}
+	runBatch := func(limit int, countries []string) error {
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(limit)
+		for _, kw := range opt.Keywords {
+			kw := strings.TrimSpace(kw)
+			if kw == "" {
+				continue
+			}
+			for _, cc := range countries {
+				cc := cc
+				g.Go(func() error {
+					if gctx.Err() != nil {
+						return nil
+					}
+					batch, nq := c.collectShortVideoHits(gctx, kw, cc, wanted, opt.QueryLimit)
+					mu.Lock()
+					defer mu.Unlock()
+					remember(kw, cc, batch, nq)
+					logIngest("short-video %s %s +%d (unique=%d inserted=%d)", kw, firstNonEmpty(cc, "ALL"), len(batch), len(seen), inserted)
+					return flush()
+				})
+			}
+		}
+		return g.Wait()
+	}
+
+	// Home web first: Douyin only runs when country is empty. Do not race it
+	// against US/TH queries that trip the same public indexes.
+	home := []string{""}
+	var overseas []string
+	for _, cc := range opt.Countries {
+		if strings.TrimSpace(cc) == "" {
 			continue
 		}
-		for _, cc := range opt.Countries {
-			cc := cc
-			g.Go(func() error {
-				if gctx.Err() != nil {
-					return nil
-				}
-				batch, nq := c.collectShortVideoHits(gctx, kw, cc, wanted, opt.QueryLimit)
-				mu.Lock()
-				queries += nq
-				for _, h := range batch {
-					id := shortVideoExtID(h)
-					if id == "" {
-						continue
-					}
-					if prev, ok := seen[id]; !ok || (h.Name != "" && (prev.Name == "" || prev.Name == prev.Handle)) {
-						if h.Extra == nil {
-							h.Extra = map[string]string{}
-						}
-						h.Extra["ext_id"] = id
-						h.Extra["src"] = h.Platform
-						h.Extra["shop"] = harvestShop(kw)
-						if h.Country == "" {
-							h.Country = strings.ToUpper(cc)
-						}
-						seen[id] = h
-					}
-				}
-				mu.Unlock()
-				logIngest("short-video %s %s +%d (unique=%d)", kw, firstNonEmpty(cc, "ALL"), len(batch), len(seen))
-				return nil
-			})
-		}
+		overseas = append(overseas, cc)
 	}
-	_ = g.Wait()
+	homeWorkers := opt.Workers
+	if homeWorkers > 2 {
+		homeWorkers = 2
+	}
+	if err := runBatch(homeWorkers, home); err != nil {
+		st := HarvestStats{Keywords: len(opt.Keywords), Queries: queries, Hits: len(seen), Inserted: inserted, Profiles: len(seen), ByPlat: byPlat, Took: time.Since(started), Err: err.Error()}
+		_ = dir.RecordRun(ctx, "short-video", started, inserted, st.String())
+		return st, err
+	}
+	if err := runBatch(opt.Workers, overseas); err != nil {
+		st := HarvestStats{Keywords: len(opt.Keywords), Queries: queries, Hits: len(seen), Inserted: inserted, Profiles: len(seen), ByPlat: byPlat, Took: time.Since(started), Err: err.Error()}
+		_ = dir.RecordRun(ctx, "short-video", started, inserted, st.String())
+		return st, err
+	}
 
-	rows := make([]Merchant, 0, len(seen))
-	byPlat := map[string]int{}
-	for _, h := range seen {
-		rows = append(rows, hitToMerchant(h, shortVideoExtID(h)))
-		byPlat[h.Platform]++
-	}
-	inserted, err := dir.InsertBatch(ctx, rows)
 	st := HarvestStats{
 		Keywords: len(opt.Keywords),
 		Queries:  queries,
 		Hits:     len(seen),
 		Inserted: inserted,
-		Profiles: len(rows),
+		Profiles: len(seen),
 		ByPlat:   byPlat,
 		Took:     time.Since(started),
 	}
-	if err != nil {
-		st.Err = err.Error()
-	}
 	_ = dir.RecordRun(ctx, "short-video", started, inserted, st.String())
-	return st, err
+	return st, nil
 }
 
 func (c *Client) collectShortVideoHits(ctx context.Context, keyword, country string, wanted map[string]bool, queryLimit int) ([]Hit, int) {
