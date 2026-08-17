@@ -76,6 +76,8 @@ func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
 		{ExtID: "osm:id-electronics", Source: "osm", Name: "Toko Listrik Cihapit", Shop: "electronics", Country: "ID", City: "Bandung", Homepage: "https://www.openstreetmap.org/node/13795250644"},
 		{ExtID: "osm:id-sinar", Source: "osm", Name: "Toko Sinar Listrik", Shop: "yes", Country: "ID", City: "Makassar", Homepage: "https://www.openstreetmap.org/node/4175017663"},
 		{ExtID: "osm:id-market", Source: "osm", Name: "Toko Sumber Jaya Listrik", Shop: "supermarket", Country: "ID", City: "Makassar", Homepage: "https://www.openstreetmap.org/node/4172387604"},
+		{ExtID: "osm:id-board", Source: "osm", Name: "Luke Studer Surfboards", Shop: "sports", Country: "ID", City: "Canggu", Homepage: "https://surfboards.example"},
+		{ExtID: "osm:id-panel", Source: "osm", Name: "Gudang Wallpanel Makassar", Shop: "interior_decoration", Country: "ID", City: "Makassar", Homepage: "https://wallpanel.example"},
 		{ExtID: "gleif:id-brand", Source: "gleif", Name: "PT Schneider Electric Switchgear Indonesia", Shop: "GENERAL", Country: "ID", City: "Jakarta", Homepage: "https://www.se.com"},
 		{ExtID: "osm:de-light", Source: "osm", Name: "Licht Kraus", Shop: "lighting", Country: "DE", City: "Berlin", Homepage: "https://licht-kraus.example"},
 	}); err != nil {
@@ -98,6 +100,9 @@ func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
 	}
 	if got["Toko Sumber Jaya Listrik"] {
 		t.Fatalf("supermarket leaked into switchgear search: %+v", rows)
+	}
+	if got["Luke Studer Surfboards"] || got["Gudang Wallpanel Makassar"] {
+		t.Fatalf("generic board/panel shop leaked: %+v", rows)
 	}
 
 	hits := mergeHits(merchantsToHits(rows), "配电柜", 0, RoleBuyer, "ID")
@@ -140,6 +145,18 @@ func TestDirectorySearchSwitchgearDropsHardwareStore(t *testing.T) {
 	}
 	if !got["Midwest Switchgear Supply"] {
 		t.Fatalf("electrical switchgear shop missing: %+v", rows)
+	}
+}
+
+func TestLastNeedleTokensSkipsShortEnglish(t *testing.T) {
+	got := lastNeedleTokens([]string{"distribution board", "electrical panel", "panel listrik", "toko listrik", "switchgear"})
+	for _, tok := range got {
+		if tok == "board" || tok == "panel" {
+			t.Fatalf("short generic token leaked: %v", got)
+		}
+	}
+	if !containsString(got, "listrik") {
+		t.Fatalf("missing listrik: %v", got)
 	}
 }
 

@@ -853,7 +853,7 @@ func lastNeedleTokens(names []string) []string {
 			continue
 		}
 		last := parts[len(parts)-1]
-		if len(last) < 5 {
+		if len(last) < 7 {
 			continue
 		}
 		out = append(out, last)
