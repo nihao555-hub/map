@@ -20,13 +20,15 @@ make ingest-merchants           # 再灌 GLEIF 全量（数小时）
 make ingest-public-max          # 公开源社媒
 make ingest-attach-socials      # 缺社媒断点续跑
 make ingest-short-video         # 抖音/TikTok 企业号主页（只要链接）
+make ingest-short-video-fast    # 两小时：Wikidata 全量号 + 东南亚→中东→欧美
 ```
 
-抖音/TikTok **没有**公开的「全部企业号」数据包。`ingest-short-video` 按外贸品类走：
+抖音/TikTok **没有**公开的「全部企业号」数据包。两小时内最接近全量的办法：先灌 Wikidata 已标注的 TikTok（P7085）和抖音（P7120），再按 **东南亚 → 中东 → 欧美** 扫本地词。
 
-1. [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api) sidecar（关键词搜用户）
-2. [Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2) sidecar（TikTok 搜作品抽作者；抖音只解析已有主页 URL）
-3. 公开网页索引：`site:tiktok.com/@` / `site:douyin.com/user` + 工厂/旗舰店/wholesale
+1. Wikidata QLever：公开能拿到的最全一份公司账号标识
+2. [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api) sidecar（关键词搜用户）
+3. [Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2) sidecar（TikTok 搜作品抽作者；抖音只解析已有主页 URL）
+4. 公开网页索引：`site:tiktok.com/@` / `site:douyin.com/user` + 工厂/旗舰店/wholesale
 
 只写入主页链接（`source=tiktok|douyin`）。不代发、不登录、不用 MediaCrawler（非商业许可）。打开 `/directory` 可翻看法律名和已入库企业号。
 

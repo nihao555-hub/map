@@ -133,6 +133,9 @@ ingest-public-socials: ## ROR dump + Wikidata P856 + same-name copy onto GLEIF
 ingest-short-video: ## 抖音/TikTok 企业号主页（TikTok-Api / f2 sidecar + 公开索引）
 	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -workers 4
 
+ingest-short-video-fast: ## 两小时：Wikidata 全量号 + 东南亚→中东→欧美
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -fast -deadline 110m -workers 8
+
 ingest-world-companies: ## Wikidata 全球带官网的企业（QLever，不灌 Facebook 全库）
 	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -world-companies
 

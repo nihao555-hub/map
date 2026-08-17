@@ -144,3 +144,24 @@ func TestShortVideoExtID(t *testing.T) {
 		t.Fatalf("%s", id)
 	}
 }
+
+func TestShortVideoRegionOrder(t *testing.T) {
+	t.Parallel()
+	plan := resolveShortVideoRegions(HarvestOptions{Fast: true})
+	if len(plan) != 3 {
+		t.Fatalf("regions=%d", len(plan))
+	}
+	if plan[0].Name != "sea" || plan[1].Name != "me" || plan[2].Name != "west" {
+		t.Fatalf("order=%s %s %s", plan[0].Name, plan[1].Name, plan[2].Name)
+	}
+	if !containsString(plan[0].Extra, "panel listrik") {
+		t.Fatal("SEA should include Bahasa electrical keyword")
+	}
+	if !containsString(plan[1].Extra, "أدوات كهربائية") {
+		t.Fatal("ME should include Arabic electrical keyword")
+	}
+	subset := resolveShortVideoRegions(HarvestOptions{Regions: []string{"me", "sea"}})
+	if len(subset) != 2 || subset[0].Name != "sea" || subset[1].Name != "me" {
+		t.Fatalf("subset keeps default order, got %+v", subset)
+	}
+}

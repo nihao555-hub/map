@@ -18,6 +18,7 @@ var wikidataGlobalSocials = []struct {
 	{"P2003", "https://www.instagram.com/", PlatformInstagram},
 	{"P4264", "https://www.linkedin.com/company/", PlatformLinkedIn},
 	{"P7085", "https://www.tiktok.com/@", PlatformTikTok},
+	{"P7120", "https://www.douyin.com/user/", PlatformDouyin},
 	{"P2397", "https://www.youtube.com/channel/", PlatformYouTube},
 	{"P2002", "https://x.com/", PlatformX},
 	{"P3836", "https://www.pinterest.com/", PlatformPinterest},
@@ -30,19 +31,43 @@ const (
 	QleverWikidataSPARQL = "https://qlever.dev/api/wikidata"
 )
 
+var wikidataShortVideoSocials = []struct {
+	prop     string
+	prefix   string
+	platform string
+}{
+	{"P7085", "https://www.tiktok.com/@", PlatformTikTok},
+	{"P7120", "https://www.douyin.com/user/", PlatformDouyin},
+}
+
+func (c *Client) ingestWikidataShortVideo(ctx context.Context, dir *Directory) IngestStats {
+	return c.ingestWikidataSocialList(ctx, dir, "wikidata-short-video", wikidataShortVideoSocials)
+}
+
 func (c *Client) ingestWikidataGlobalSocials(ctx context.Context, dir *Directory) IngestStats {
+	return c.ingestWikidataSocialList(ctx, dir, "wikidata-socials", wikidataGlobalSocials)
+}
+
+func (c *Client) ingestWikidataSocialList(ctx context.Context, dir *Directory, source string, props []struct {
+	prop     string
+	prefix   string
+	platform string
+}) IngestStats {
 	started := time.Now()
+	if source == "" {
+		source = "wikidata-socials"
+	}
 	if c == nil || strings.TrimSpace(c.WikidataURL) == "" {
-		return IngestStats{Source: "wikidata-socials", Took: time.Since(started), Note: "skipped"}
+		return IngestStats{Source: source, Took: time.Since(started), Note: "skipped"}
 	}
 	byQID := map[string]*Merchant{}
 	leiByQID := map[string]string{}
 	failed := 0
 	added := 0
-	for _, q := range wikidataGlobalSocials {
+	for _, q := range props {
 		if err := ctx.Err(); err != nil {
-			st := IngestStats{Source: "wikidata-socials", Took: time.Since(started), Err: err.Error()}
-			_ = dir.RecordRun(ctx, "wikidata-socials", started, 0, st.Err)
+			st := IngestStats{Source: source, Took: time.Since(started), Err: err.Error()}
+			_ = dir.RecordRun(ctx, source, started, 0, st.Err)
 			return st
 		}
 		n, err := c.fetchWikidataSocialAll(ctx, byQID, leiByQID, q.prop, q.prefix, q.platform)
@@ -70,8 +95,8 @@ func (c *Client) ingestWikidataGlobalSocials(ctx context.Context, dir *Directory
 	}
 	inserted, err := dir.InsertBatch(ctx, rows)
 	if err != nil {
-		st := IngestStats{Source: "wikidata-socials", Took: time.Since(started), Err: err.Error()}
-		_ = dir.RecordRun(ctx, "wikidata-socials", started, 0, st.Err)
+		st := IngestStats{Source: source, Took: time.Since(started), Err: err.Error()}
+		_ = dir.RecordRun(ctx, source, started, 0, st.Err)
 		return st
 	}
 	matched, profiles, attachErr := dir.attachExisting(ctx, leiRows)
@@ -79,7 +104,7 @@ func (c *Client) ingestWikidataGlobalSocials(ctx context.Context, dir *Directory
 		err = attachErr
 	}
 	st := IngestStats{
-		Source: "wikidata-socials",
+		Source: source,
 		Rows:   inserted,
 		Took:   time.Since(started),
 		Note:   fmt.Sprintf("orgs=%d bindings=%d lei=%d leiProfiles=%d failed=%d", len(byQID), added, matched, profiles, failed),
@@ -87,8 +112,8 @@ func (c *Client) ingestWikidataGlobalSocials(ctx context.Context, dir *Directory
 	if err != nil {
 		st.Err = err.Error()
 	}
-	_ = dir.RecordRun(ctx, "wikidata-socials", started, inserted, st.Note)
-	logIngest("Wikidata socials inserted %d (orgs=%d lei=%d)", inserted, len(byQID), matched)
+	_ = dir.RecordRun(ctx, source, started, inserted, st.Note)
+	logIngest("Wikidata socials %s inserted %d (orgs=%d lei=%d)", source, inserted, len(byQID), matched)
 	return st
 }
 

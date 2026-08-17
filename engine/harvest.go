@@ -27,6 +27,12 @@ type HarvestOptions struct {
 	Role       string
 	Workers    int
 	QueryLimit int
+	// Fast seeds Wikidata TikTok/抖音全量标识，再按东南亚→中东→欧美扫。
+	Fast bool
+	// Regions is sea, me, west. Empty uses the default order when Fast.
+	Regions []string
+	// Deadline stops a fast harvest so a 2-hour window can finish.
+	Deadline time.Duration
 }
 
 // HarvestStats is one batch run's timing and unique social pages.

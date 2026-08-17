@@ -43,9 +43,64 @@ var DefaultShortVideoKeywords = []string{
 	"panel listrik", "perabot", "suku cadang", "alat listrik",
 }
 
-// DefaultShortVideoCountries fans TikTok queries across export markets.
-// Douyin stays on the open Chinese web (country empty).
-var DefaultShortVideoCountries = []string{"", "US", "TH", "MY", "ID", "VN"}
+// FastShortVideoKeywords is the compact 2-hour set. LocalSearchTerms
+// still expands each one into Thai / Malay / Vietnamese / Indonesian.
+var FastShortVideoKeywords = []string{
+	"LED灯", "电动工具", "配电柜", "家具", "服装", "鞋子", "化妆品",
+	"包装", "阀门", "太阳能", "汽车配件", "食品", "卫浴", "家电", "五金",
+}
+
+var seaShortVideoKeywords = []string{
+	"panel listrik", "lemari listrik", "toko listrik", "perabot",
+	"suku cadang", "alat listrik", "เครื่องมือไฟฟ้า", "đồ điện",
+}
+
+var meShortVideoKeywords = []string{
+	"lighting dubai", "furniture dubai", "auto parts dubai",
+	"أدوات كهربائية", "أثاث",
+}
+
+// DefaultShortVideoCountries is Southeast Asia first, then Middle East, then the West.
+var DefaultShortVideoCountries = []string{
+	"ID", "TH", "MY", "VN", "SG", "PH",
+	"AE", "SA", "TR",
+	"US", "DE", "GB",
+}
+
+type shortVideoRegion struct {
+	Name      string
+	Countries []string
+	Extra     []string
+}
+
+func defaultShortVideoRegions() []shortVideoRegion {
+	return []shortVideoRegion{
+		{Name: "sea", Countries: []string{"ID", "TH", "MY", "VN", "SG", "PH"}, Extra: seaShortVideoKeywords},
+		{Name: "me", Countries: []string{"AE", "SA", "TR", "EG", "QA"}, Extra: meShortVideoKeywords},
+		{Name: "west", Countries: []string{"US", "DE", "GB", "FR", "NL", "IT"}},
+	}
+}
+
+func resolveShortVideoRegions(opt HarvestOptions) []shortVideoRegion {
+	all := defaultShortVideoRegions()
+	if len(opt.Regions) == 0 {
+		if opt.Fast {
+			return all
+		}
+		return nil
+	}
+	want := map[string]bool{}
+	for _, r := range opt.Regions {
+		want[strings.ToLower(strings.TrimSpace(r))] = true
+	}
+	var out []shortVideoRegion
+	for _, r := range all {
+		if want[r.Name] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
 
 func shortVideoWanted() map[string]bool {
 	return map[string]bool{
@@ -62,17 +117,37 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 	if opt.DBPath == "" {
 		opt.DBPath = ResolveMerchantDB("")
 	}
-	if len(opt.Keywords) == 0 {
-		opt.Keywords = append([]string{}, DefaultShortVideoKeywords...)
+	if opt.Fast {
+		if len(opt.Keywords) == 0 {
+			opt.Keywords = append([]string{}, FastShortVideoKeywords...)
+		}
+		if opt.Workers <= 0 {
+			opt.Workers = 8
+		}
+		if opt.QueryLimit <= 0 {
+			opt.QueryLimit = 2
+		}
+		if opt.Deadline <= 0 {
+			opt.Deadline = 110 * time.Minute
+		}
+	} else {
+		if len(opt.Keywords) == 0 {
+			opt.Keywords = append([]string{}, DefaultShortVideoKeywords...)
+		}
+		if opt.Workers <= 0 {
+			opt.Workers = 4
+		}
+		if opt.QueryLimit <= 0 {
+			opt.QueryLimit = 6
+		}
 	}
 	if len(opt.Countries) == 0 {
 		opt.Countries = append([]string{}, DefaultShortVideoCountries...)
 	}
-	if opt.Workers <= 0 {
-		opt.Workers = 4
-	}
-	if opt.QueryLimit <= 0 {
-		opt.QueryLimit = 6
+	if opt.Deadline > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opt.Deadline)
+		defer cancel()
 	}
 	dir, err := OpenDirectory(opt.DBPath)
 	if err != nil {
@@ -129,10 +204,10 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 		logIngest("short-video flush +%d inserted=%d unique=%d", n, inserted, len(seen))
 		return err
 	}
-	runBatch := func(limit int, countries []string) error {
+	runBatch := func(limit int, keywords, countries []string) error {
 		g, gctx := errgroup.WithContext(ctx)
 		g.SetLimit(limit)
-		for _, kw := range opt.Keywords {
+		for _, kw := range keywords {
 			kw := strings.TrimSpace(kw)
 			if kw == "" {
 				continue
@@ -154,10 +229,62 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 		}
 		return g.Wait()
 	}
+	finish := func(err error) (HarvestStats, error) {
+		st := HarvestStats{
+			Keywords: len(opt.Keywords),
+			Queries:  queries,
+			Hits:     len(seen),
+			Inserted: inserted,
+			Profiles: len(seen),
+			ByPlat:   byPlat,
+			Took:     time.Since(started),
+		}
+		if err != nil && ctx.Err() == nil {
+			st.Err = err.Error()
+		}
+		_ = dir.RecordRun(ctx, "short-video", started, inserted, st.String())
+		if err != nil && ctx.Err() != nil {
+			return st, nil
+		}
+		return st, err
+	}
 
-	// Home web first: Douyin only runs when country is empty. Do not race it
-	// against US/TH queries that trip the same public indexes.
-	home := []string{""}
+	if opt.Fast {
+		orig := ""
+		if c != nil {
+			orig = c.WikidataURL
+			if orig == "" || strings.Contains(orig, "query.wikidata.org") {
+				c.WikidataURL = QleverWikidataSPARQL
+			}
+			wd := c.ingestWikidataShortVideo(ctx, dir)
+			logIngest("short-video wikidata seed %s", wd)
+			c.WikidataURL = orig
+		}
+	}
+
+	regions := resolveShortVideoRegions(opt)
+	if len(regions) > 0 {
+		for _, reg := range regions {
+			if ctx.Err() != nil {
+				return finish(ctx.Err())
+			}
+			kws := append(append([]string{}, opt.Keywords...), reg.Extra...)
+			logIngest("short-video region %s countries=%v keywords=%d", reg.Name, reg.Countries, len(kws))
+			if err := runBatch(opt.Workers, kws, reg.Countries); err != nil {
+				return finish(err)
+			}
+		}
+		return finish(nil)
+	}
+
+	// Non-fast: keep a short Douyin pass, then SEA→ME→West country order.
+	homeWorkers := opt.Workers
+	if homeWorkers > 2 {
+		homeWorkers = 2
+	}
+	if err := runBatch(homeWorkers, opt.Keywords, []string{""}); err != nil {
+		return finish(err)
+	}
 	var overseas []string
 	for _, cc := range opt.Countries {
 		if strings.TrimSpace(cc) == "" {
@@ -165,32 +292,10 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 		}
 		overseas = append(overseas, cc)
 	}
-	homeWorkers := opt.Workers
-	if homeWorkers > 2 {
-		homeWorkers = 2
+	if err := runBatch(opt.Workers, opt.Keywords, overseas); err != nil {
+		return finish(err)
 	}
-	if err := runBatch(homeWorkers, home); err != nil {
-		st := HarvestStats{Keywords: len(opt.Keywords), Queries: queries, Hits: len(seen), Inserted: inserted, Profiles: len(seen), ByPlat: byPlat, Took: time.Since(started), Err: err.Error()}
-		_ = dir.RecordRun(ctx, "short-video", started, inserted, st.String())
-		return st, err
-	}
-	if err := runBatch(opt.Workers, overseas); err != nil {
-		st := HarvestStats{Keywords: len(opt.Keywords), Queries: queries, Hits: len(seen), Inserted: inserted, Profiles: len(seen), ByPlat: byPlat, Took: time.Since(started), Err: err.Error()}
-		_ = dir.RecordRun(ctx, "short-video", started, inserted, st.String())
-		return st, err
-	}
-
-	st := HarvestStats{
-		Keywords: len(opt.Keywords),
-		Queries:  queries,
-		Hits:     len(seen),
-		Inserted: inserted,
-		Profiles: len(seen),
-		ByPlat:   byPlat,
-		Took:     time.Since(started),
-	}
-	_ = dir.RecordRun(ctx, "short-video", started, inserted, st.String())
-	return st, nil
+	return finish(nil)
 }
 
 func (c *Client) collectShortVideoHits(ctx context.Context, keyword, country string, wanted map[string]bool, queryLimit int) ([]Hit, int) {
