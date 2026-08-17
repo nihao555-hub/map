@@ -74,6 +74,8 @@ func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
 			{ExtID: "osm:id-shop", Platform: PlatformInstagram, URL: "https://www.instagram.com/tokolistrikjaya", Handle: "tokolistrikjaya", Source: "osm-tag"},
 		}},
 		{ExtID: "osm:id-electronics", Source: "osm", Name: "Toko Listrik Cihapit", Shop: "electronics", Country: "ID", City: "Bandung", Homepage: "https://www.openstreetmap.org/node/13795250644"},
+		{ExtID: "osm:id-sinar", Source: "osm", Name: "Toko Sinar Listrik", Shop: "yes", Country: "ID", City: "Makassar", Homepage: "https://www.openstreetmap.org/node/4175017663"},
+		{ExtID: "osm:id-market", Source: "osm", Name: "Toko Sumber Jaya Listrik", Shop: "supermarket", Country: "ID", City: "Makassar", Homepage: "https://www.openstreetmap.org/node/4172387604"},
 		{ExtID: "gleif:id-brand", Source: "gleif", Name: "PT Schneider Electric Switchgear Indonesia", Shop: "GENERAL", Country: "ID", City: "Jakarta", Homepage: "https://www.se.com"},
 		{ExtID: "osm:de-light", Source: "osm", Name: "Licht Kraus", Shop: "lighting", Country: "DE", City: "Berlin", Homepage: "https://licht-kraus.example"},
 	}); err != nil {
@@ -88,11 +90,14 @@ func TestDirectorySearchChineseSwitchgearInIndonesia(t *testing.T) {
 	for _, row := range rows {
 		got[row.Name] = true
 	}
-	if !got["PT Sumber Panel Listrik Trading"] || !got["Toko Listrik Jaya"] || !got["Toko Listrik Cihapit"] {
+	if !got["PT Sumber Panel Listrik Trading"] || !got["Toko Listrik Jaya"] || !got["Toko Listrik Cihapit"] || !got["Toko Sinar Listrik"] {
 		t.Fatalf("indonesian electrical buyers missing: %+v", rows)
 	}
 	if got["Licht Kraus"] {
 		t.Fatalf("german lighting shop leaked: %+v", rows)
+	}
+	if got["Toko Sumber Jaya Listrik"] {
+		t.Fatalf("supermarket leaked into switchgear search: %+v", rows)
 	}
 
 	hits := mergeHits(merchantsToHits(rows), "配电柜", 0, RoleBuyer, "ID")

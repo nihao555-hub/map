@@ -818,8 +818,8 @@ func (d *Directory) searchByNameNeedles(ctx context.Context, names []string, cou
 	if len(names) == 0 || limit <= 0 {
 		return nil, nil
 	}
-	conds := make([]string, 0, len(names))
-	args := make([]any, 0, len(names)+2)
+	conds := make([]string, 0, len(names)+2)
+	args := make([]any, 0, len(names)+8)
 	for _, name := range names {
 		name = strings.TrimSpace(name)
 		if name == "" || hasCJK(name) {
@@ -827,6 +827,10 @@ func (d *Directory) searchByNameNeedles(ctx context.Context, names []string, cou
 		}
 		conds = append(conds, "lower(name) LIKE ?")
 		args = append(args, "%"+strings.ToLower(name)+"%")
+	}
+	for _, tok := range lastNeedleTokens(names) {
+		conds = append(conds, `(source='osm' AND shop NOT IN ('supermarket','convenience','clothes','shoes') AND lower(name) LIKE ?)`)
+		args = append(args, "%"+tok+"%")
 	}
 	if len(conds) == 0 {
 		return nil, nil
@@ -839,6 +843,22 @@ func (d *Directory) searchByNameNeedles(ctx context.Context, names []string, cou
 	q += ` LIMIT ?`
 	args = append(args, limit)
 	return d.scanMerchants(ctx, q, args...)
+}
+
+func lastNeedleTokens(names []string) []string {
+	var out []string
+	for _, name := range names {
+		parts := strings.Fields(strings.ToLower(strings.TrimSpace(name)))
+		if len(parts) < 2 {
+			continue
+		}
+		last := parts[len(parts)-1]
+		if len(last) < 5 {
+			continue
+		}
+		out = append(out, last)
+	}
+	return uniqueFoldedStrings(out)
 }
 
 func (d *Directory) searchFTS(ctx context.Context, terms []string, country string, limit int) ([]Merchant, error) {
