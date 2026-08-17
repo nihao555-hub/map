@@ -85,6 +85,91 @@ func seaCitySidecarKeywords() []string {
 	return out
 }
 
+// socialSearchCities is the denser city list used when we actually
+// query TikTok search pages (one page of users per term).
+var socialSearchCities = []string{
+	"jakarta", "surabaya", "bandung", "medan", "semarang", "makassar",
+	"denpasar", "palembang", "yogyakarta", "tangerang", "bekasi", "malang", "batam",
+	"bangkok", "chiang mai", "phuket", "pattaya", "hat yai",
+	"kuala lumpur", "penang", "johor bahru", "ipoh", "kota kinabalu", "shah alam",
+	"ho chi minh", "hanoi", "da nang", "can tho", "hai phong",
+	"manila", "cebu", "davao", "quezon", "makati",
+	"singapore", "phnom penh", "vientiane", "yangon",
+}
+
+var socialSearchSeeds = []string{
+	"toko listrik", "toko lampu", "toko furniture", "toko sepatu", "grosir", "pabrik",
+	"furniture shop", "LED shop", "auto parts", "shoe shop", "clothing wholesale",
+	"hardware store", "factory", "supplier",
+}
+
+var socialSearchCategories = []string{
+	"toko listrik", "toko lampu", "toko furniture", "pabrik", "grosir",
+	"panel listrik", "suku cadang", "perkakas listrik",
+	"เครื่องมือไฟฟ้า", "ร้านไฟ", "โรงงาน",
+	"đồ điện", "cửa hàng đèn", "nhà máy",
+	"kedai lampu", "kedai perabot", "alatan kuasa",
+	"power tools shop", "LED lighting shop", "furniture store",
+	"auto parts shop", "wholesale clothing", "hardware store",
+	"solar panel shop", "packaging supplier", "kitchenware shop",
+}
+
+var meSocialSearchTerms = []string{
+	"furniture dubai", "lighting dubai", "auto parts dubai",
+	"furniture riyadh", "lighting istanbul", "auto parts cairo",
+	"furniture jeddah", "shop doha", "lighting abu dhabi",
+	"أدوات كهربائية", "أثاث",
+}
+
+func socialSearchTerms(opt HarvestOptions) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(term string) {
+		term = strings.TrimSpace(term)
+		key := strings.ToLower(term)
+		if term == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, term)
+	}
+	for _, kw := range opt.Keywords {
+		add(kw)
+	}
+	want := map[string]bool{}
+	for _, r := range opt.Regions {
+		want[strings.ToLower(strings.TrimSpace(r))] = true
+	}
+	if len(want) == 0 {
+		want["sea"] = true
+		want["me"] = true
+	}
+	if want["sea"] {
+		for _, cat := range socialSearchCategories {
+			add(cat)
+		}
+		for _, city := range socialSearchCities {
+			for _, seed := range socialSearchSeeds {
+				add(seed + " " + city)
+			}
+		}
+	}
+	if want["me"] {
+		for _, t := range meSocialSearchTerms {
+			add(t)
+		}
+	}
+	if want["west"] {
+		for _, t := range []string{
+			"furniture store", "LED lighting shop", "auto parts shop",
+			"hardware store", "wholesale clothing",
+		} {
+			add(t)
+		}
+	}
+	return out
+}
+
 var meShortVideoKeywords = []string{
 	"lighting dubai", "furniture dubai", "auto parts dubai",
 	"أدوات كهربائية", "أثاث",
@@ -146,6 +231,12 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 	started := time.Now()
 	if opt.DBPath == "" {
 		opt.DBPath = ResolveMerchantDB("")
+	}
+	if opt.SocialSearch {
+		opt.Sidecar = true
+		if len(opt.Regions) == 0 {
+			opt.Regions = []string{"sea", "me"}
+		}
 	}
 	if opt.Sidecar && len(opt.Regions) == 0 && !opt.Fast {
 		opt.Regions = []string{"sea"}
@@ -286,11 +377,46 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 				if gctx.Err() != nil {
 					return nil
 				}
-				batch := c.collectSidecarHits(gctx, term)
+				batch := c.collectSidecarHits(gctx, term, opt.SocialSearch)
 				mu.Lock()
 				defer mu.Unlock()
 				remember(term, "SEA", batch, 1)
 				logIngest("short-video sidecar %s +%d (unique=%d inserted=%d)", term, len(batch), len(seen), inserted)
+				return flush()
+			})
+		}
+		return g.Wait()
+	}
+	runRelatedFanout := func(limit int, handles []string) error {
+		if limit <= 0 {
+			limit = 2
+		}
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(limit)
+		for _, handle := range handles {
+			handle := strings.TrimSpace(handle)
+			if handle == "" {
+				continue
+			}
+			g.Go(func() error {
+				if gctx.Err() != nil {
+					return nil
+				}
+				items, _, err := c.searchTikTokRelated(gctx, handle, 40)
+				if err != nil {
+					logIngest("short-video related @%s: %v", handle, err)
+					return nil
+				}
+				var batch []Hit
+				for _, h := range items {
+					if keepShortVideoBusiness(h, handle) {
+						batch = append(batch, h)
+					}
+				}
+				mu.Lock()
+				defer mu.Unlock()
+				remember(handle, "REL", batch, 1)
+				logIngest("short-video related @%s +%d (unique=%d inserted=%d)", handle, len(batch), len(seen), inserted)
 				return flush()
 			})
 		}
@@ -362,10 +488,20 @@ func (c *Client) HarvestShortVideo(ctx context.Context, opt HarvestOptions) (Har
 				ccs = append(ccs, reg.Countries...)
 			}
 		}
-		terms := uniqueShortVideoTerms(kws, ccs)
-		logIngest("short-video sidecar terms=%d workers=%d", len(terms), opt.Workers)
+		var terms []string
+		if opt.SocialSearch {
+			terms = socialSearchTerms(opt)
+		} else {
+			terms = uniqueShortVideoTerms(kws, ccs)
+		}
+		logIngest("short-video sidecar terms=%d workers=%d social=%v", len(terms), opt.Workers, opt.SocialSearch)
 		if err := runSidecarTerms(opt.Workers, terms); err != nil {
 			return finish(err)
+		}
+		if opt.SocialSearch {
+			if err := runRelatedFanout(opt.Workers, relatedSeedHandles(seen, 80)); err != nil {
+				return finish(err)
+			}
 		}
 		if opt.Sidecar {
 			return finish(nil)
@@ -421,7 +557,7 @@ func (c *Client) collectShortVideoHits(ctx context.Context, keyword, country str
 		}
 	}
 	if country == "" || strings.EqualFold(country, "CN") {
-		out = append(out, c.collectSidecarHits(ctx, keyword)...)
+		out = append(out, c.collectSidecarHits(ctx, keyword, false)...)
 		if c.TikHubToken != "" {
 			if items, err := c.searchTikHubDouyin(ctx, keyword, 30); err == nil {
 				for _, h := range items {
@@ -461,7 +597,49 @@ func uniqueShortVideoTerms(keywords, countries []string) []string {
 	return out
 }
 
-func (c *Client) collectSidecarHits(ctx context.Context, keyword string) []Hit {
+func looksLikeCityTerm(term string) bool {
+	low := strings.ToLower(term)
+	for _, city := range socialSearchCities {
+		if city != "" && strings.Contains(low, city) {
+			return true
+		}
+	}
+	for _, city := range []string{"dubai", "riyadh", "jeddah", "istanbul", "cairo", "doha", "abu dhabi"} {
+		if strings.Contains(low, city) {
+			return true
+		}
+	}
+	return false
+}
+
+func relatedSeedHandles(seen map[string]Hit, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+	var out []string
+	used := map[string]bool{}
+	for _, h := range seen {
+		if h.Platform != PlatformTikTok {
+			continue
+		}
+		handle := strings.TrimSpace(h.Handle)
+		key := strings.ToLower(handle)
+		if handle == "" || used[key] {
+			continue
+		}
+		if !keepShortVideoBusiness(h, handle) && !looksLikeBrandHandle(handle) {
+			continue
+		}
+		used[key] = true
+		out = append(out, handle)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+func (c *Client) collectSidecarHits(ctx context.Context, keyword string, withTag bool) []Hit {
 	if c == nil {
 		return nil
 	}
@@ -474,10 +652,17 @@ func (c *Client) collectSidecarHits(ctx context.Context, keyword string) []Hit {
 		}
 	}
 	if c.sidecarAlive(ctx, c.TikTokURL) {
-		if items, _, err := c.searchTikTokAPI(ctx, keyword, 30); err == nil {
+		if items, _, err := c.searchTikTokAPI(ctx, keyword, 40); err == nil {
 			keep(items)
 		} else {
 			logIngest("short-video TikTok-Api %s: %v", keyword, err)
+		}
+		if withTag && !looksLikeCityTerm(keyword) {
+			if items, _, err := c.searchTikTokTag(ctx, keyword, 40); err == nil {
+				keep(items)
+			} else {
+				logIngest("short-video TikTok tag %s: %v", keyword, err)
+			}
 		}
 	}
 	if c.sidecarAlive(ctx, c.F2URL) {
@@ -575,6 +760,8 @@ func shortVideoBusinessSignal(blob string) bool {
 		"批发", "厂家", "厂商", "企业", "经销", "进口商", "出口", "商贸", "实业", "旗舰",
 		"wholesale", "importer", "exporter", "distributor", "supplier",
 		"manufacturer", "enterprise", "brand", "wholesaler",
+		"kedai", "cửa hàng", "ร้าน", "pabrik", "grosir", "kilang",
+		"โรงงาน", "nhà máy", "xưởng",
 	})
 }
 
@@ -609,6 +796,7 @@ func looksLikeBrandHandle(handle string) bool {
 	for _, tok := range []string{
 		"official", "shop", "store", "factory", "tools", "light", "led",
 		"brand", "mall", "trade", "supply", "wholesale", "import",
+		"toko", "kedai", "pabrik", "grosir", "supplier",
 	} {
 		if strings.Contains(h, tok) {
 			return true

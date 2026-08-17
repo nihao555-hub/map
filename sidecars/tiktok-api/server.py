@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """HTTP wrapper around davidteather/TikTok-Api (MIT, 6.5k+ stars, last push 2026-07).
 
-Public keyword → user search only. Does not log in or send DMs.
+Public keyword → user / tag / related-profile search only. Does not log in or send DMs.
+A persistent Chromium session is reused so harvest is not one-browser-per-query.
 Upstream: https://github.com/davidteather/TikTok-Api
 """
 
@@ -10,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -23,35 +25,9 @@ HOST = os.environ.get("SIDECAR_HOST", "0.0.0.0")
 PORT = int(os.environ.get("SIDECAR_PORT", "8091"))
 MS_TOKEN = os.environ.get("TIKTOK_MS_TOKEN", "").strip() or None
 BROWSER = os.environ.get("TIKTOK_BROWSER", "chromium")
-
-
-def _user_payload(user) -> dict:
-    data = {}
-    if hasattr(user, "as_dict"):
-        data = user.as_dict or {}
-    info = data.get("userInfo", {}).get("user") or data.get("user") or data
-    stats = data.get("userInfo", {}).get("stats") or data.get("stats") or {}
-    unique = (
-        info.get("uniqueId")
-        or info.get("unique_id")
-        or getattr(user, "username", "")
-        or ""
-    )
-    return {
-        "platform": "tiktok",
-        "username": unique,
-        "uniqueId": unique,
-        "nickname": info.get("nickname") or unique,
-        "signature": info.get("signature") or "",
-        "secUid": info.get("secUid") or info.get("sec_uid") or "",
-        "id": str(info.get("id") or ""),
-        "verified": bool(info.get("verified")),
-        "followerCount": int(stats.get("followerCount") or info.get("followerCount") or 0),
-        "avatar": info.get("avatarLarger") or info.get("avatarThumb") or "",
-        "homepageUrl": f"https://www.tiktok.com/@{unique}" if unique else "",
-        "source": "tiktok-api",
-    }
-
+# Signed search.users is empty on datacenter IPs; skip it unless a token is set.
+SKIP_SIGNED = os.environ.get("TIKTOK_SKIP_SIGNED", "1").strip() not in {"0", "false", "no"}
+SESSIONS = max(1, min(int(os.environ.get("TIKTOK_SESSIONS", "2") or 2), 4))
 
 _SKIP_HANDLES = {
     "",
@@ -68,7 +44,17 @@ _SKIP_HANDLES = {
     "discover",
     "music",
     "tag",
+    "video",
+    "photo",
+    "effect",
+    "place",
 }
+
+_loop: asyncio.AbstractEventLoop | None = None
+_api = None
+_rr = 0
+_rr_lock: asyncio.Lock | None = None
+_api_lock: asyncio.Lock | None = None
 
 
 def _headed() -> bool:
@@ -77,13 +63,50 @@ def _headed() -> bool:
     )
 
 
-async def _users_from_search_page(page, keyword: str, count: int) -> list[dict]:
-    url = "https://www.tiktok.com/search/user?q=" + quote(keyword)
-    await page.goto(url, wait_until="domcontentloaded", timeout=90000)
-    await asyncio.sleep(4)
-    for _ in range(5):
-        await page.mouse.wheel(0, 3200)
-        await asyncio.sleep(1.1)
+def _user_row(handle: str, nickname: str, signature: str, source: str) -> dict:
+    return {
+        "platform": "tiktok",
+        "username": handle,
+        "uniqueId": handle,
+        "nickname": nickname or handle,
+        "signature": signature or "",
+        "secUid": "",
+        "id": "",
+        "verified": False,
+        "followerCount": 0,
+        "avatar": "",
+        "homepageUrl": f"https://www.tiktok.com/@{handle}",
+        "source": source,
+    }
+
+
+def _user_payload(user) -> dict:
+    data = {}
+    if hasattr(user, "as_dict"):
+        data = user.as_dict or {}
+    info = data.get("userInfo", {}).get("user") or data.get("user") or data
+    stats = data.get("userInfo", {}).get("stats") or data.get("stats") or {}
+    unique = (
+        info.get("uniqueId")
+        or info.get("unique_id")
+        or getattr(user, "username", "")
+        or ""
+    )
+    row = _user_row(
+        unique,
+        info.get("nickname") or unique,
+        info.get("signature") or "",
+        "tiktok-api",
+    )
+    row["secUid"] = info.get("secUid") or info.get("sec_uid") or ""
+    row["id"] = str(info.get("id") or "")
+    row["verified"] = bool(info.get("verified"))
+    row["followerCount"] = int(stats.get("followerCount") or info.get("followerCount") or 0)
+    row["avatar"] = info.get("avatarLarger") or info.get("avatarThumb") or ""
+    return row
+
+
+async def _extract_handles(page, count: int, source: str, skip: set[str] | None = None) -> list[dict]:
     raw = await page.evaluate(
         """() => {
           const out = [];
@@ -107,53 +130,74 @@ async def _users_from_search_page(page, keyword: str, count: int) -> list[dict]:
           return out;
         }"""
     )
+    skip = {s.lower() for s in (skip or set())}
     users: list[dict] = []
     seen: set[str] = set()
     for row in raw or []:
         handle = str(row.get("uniqueId") or "").strip()
         key = handle.lower()
-        if key in seen or key in _SKIP_HANDLES:
+        if key in seen or key in _SKIP_HANDLES or key in skip:
             continue
         seen.add(key)
-        users.append(
-            {
-                "platform": "tiktok",
-                "username": handle,
-                "uniqueId": handle,
-                "nickname": row.get("nickname") or handle,
-                "signature": row.get("signature") or "",
-                "secUid": "",
-                "id": "",
-                "verified": False,
-                "followerCount": 0,
-                "avatar": "",
-                "homepageUrl": f"https://www.tiktok.com/@{handle}",
-                "source": "tiktok-api-page",
-            }
-        )
+        users.append(_user_row(handle, row.get("nickname") or handle, row.get("signature") or "", source))
         if len(users) >= count:
             break
     return users
 
 
-async def search_users(keyword: str, count: int) -> list[dict]:
+async def _open_and_scroll(page, url: str, scrolls: int) -> None:
+    await page.goto(url, wait_until="domcontentloaded", timeout=90000)
+    await asyncio.sleep(2.4)
+    for _ in range(scrolls):
+        await page.mouse.wheel(0, 3600)
+        await asyncio.sleep(0.85)
+
+
+async def _ensure_api():
+    global _api
     if TikTokApi is None:
         raise RuntimeError("TikTokApi is not installed; pip install TikTokApi")
-
-    users: list[dict] = []
-    seen: set[str] = set()
-    tokens = [MS_TOKEN] if MS_TOKEN else None
-    chrome = os.environ.get("TIKTOK_CHROME", "").strip() or None
-    async with TikTokApi() as api:
+    async with _api_lock:
+        if _api is not None and getattr(_api, "sessions", None):
+            return _api
+        if _api is not None:
+            try:
+                await _api.__aexit__(None, None, None)
+            except Exception:
+                pass
+            _api = None
+        api = TikTokApi()
+        await api.__aenter__()
+        tokens = [MS_TOKEN] if MS_TOKEN else None
+        chrome = os.environ.get("TIKTOK_CHROME", "").strip() or None
         await api.create_sessions(
             ms_tokens=tokens,
-            num_sessions=1,
-            sleep_after=3,
+            num_sessions=SESSIONS,
+            sleep_after=1,
             browser=BROWSER,
             headless=not _headed(),
             timeout=90000,
             executable_path=chrome,
         )
+        _api = api
+        print(f"tiktok session ready sessions={len(api.sessions)} headed={_headed()}")
+        return api
+
+
+async def _next_page():
+    global _rr
+    api = await _ensure_api()
+    async with _rr_lock:
+        i = _rr % max(1, len(api.sessions))
+        _rr += 1
+        return api.sessions[i].page
+
+
+async def search_users(keyword: str, count: int) -> list[dict]:
+    users: list[dict] = []
+    seen: set[str] = set()
+    if not SKIP_SIGNED or MS_TOKEN:
+        api = await _ensure_api()
         try:
             async for user in api.search.users(keyword, count=count):
                 payload = _user_payload(user)
@@ -163,20 +207,43 @@ async def search_users(keyword: str, count: int) -> list[dict]:
                 seen.add(handle)
                 users.append(payload)
                 if len(users) >= count:
-                    break
+                    return users
         except Exception as exc:  # noqa: BLE001
             print("tiktok api search fallback:", exc)
-        if len(users) < count and api.sessions:
-            page_users = await _users_from_search_page(api.sessions[0].page, keyword, count)
-            for payload in page_users:
-                handle = (payload.get("uniqueId") or "").lower()
-                if not handle or handle in seen:
-                    continue
-                seen.add(handle)
-                users.append(payload)
-                if len(users) >= count:
-                    break
+    page = await _next_page()
+    await _open_and_scroll(page, "https://www.tiktok.com/search/user?q=" + quote(keyword), 10)
+    for payload in await _extract_handles(page, count, "tiktok-api-page"):
+        handle = (payload.get("uniqueId") or "").lower()
+        if not handle or handle in seen:
+            continue
+        seen.add(handle)
+        users.append(payload)
+        if len(users) >= count:
+            break
     return users
+
+
+async def search_tag(keyword: str, count: int) -> list[dict]:
+    slug = "".join(ch for ch in keyword.lower() if ch.isalnum() or ch in "._")
+    if not slug:
+        return []
+    page = await _next_page()
+    await _open_and_scroll(page, "https://www.tiktok.com/tag/" + quote(slug), 8)
+    return await _extract_handles(page, count, "tiktok-api-tag")
+
+
+async def search_related(handle: str, count: int) -> list[dict]:
+    handle = handle.strip().lstrip("@")
+    if not handle:
+        return []
+    page = await _next_page()
+    await _open_and_scroll(page, "https://www.tiktok.com/@" + quote(handle), 6)
+    return await _extract_handles(page, count, "tiktok-api-related", skip={handle})
+
+
+def _run(coro, timeout: float = 120):
+    fut = asyncio.run_coroutine_threadsafe(coro, _loop)
+    return fut.result(timeout=timeout)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -200,23 +267,39 @@ class Handler(BaseHTTPRequestHandler):
                     "ok": True,
                     "project": "davidteather/TikTok-Api",
                     "tiktokapi": TikTokApi is not None,
+                    "sessions": SESSIONS,
+                    "skipSigned": SKIP_SIGNED,
                 },
             )
             return
 
-        if parsed.path != "/search/users":
-            self._json(404, {"error": "not found", "users": []})
-            return
-
         qs = parse_qs(parsed.query)
-        keyword = (qs.get("q") or [""])[0].strip()
-        count = max(1, min(int((qs.get("count") or ["10"])[0] or 10), 30))
-        if not keyword:
-            self._json(400, {"error": "q is required", "users": []})
-            return
-
+        count = max(1, min(int((qs.get("count") or ["20"])[0] or 20), 80))
         try:
-            users = asyncio.run(search_users(keyword, count))
+            if parsed.path == "/search/users":
+                keyword = (qs.get("q") or [""])[0].strip()
+                if not keyword:
+                    self._json(400, {"error": "q is required", "users": []})
+                    return
+                users = _run(search_users(keyword, count))
+                self._json(200, {"users": users, "source": "tiktok-api"})
+                return
+            if parsed.path == "/search/tag":
+                keyword = (qs.get("q") or [""])[0].strip()
+                if not keyword:
+                    self._json(400, {"error": "q is required", "users": []})
+                    return
+                users = _run(search_tag(keyword, count))
+                self._json(200, {"users": users, "source": "tiktok-api-tag"})
+                return
+            if parsed.path == "/related":
+                handle = (qs.get("handle") or qs.get("q") or [""])[0].strip()
+                if not handle:
+                    self._json(400, {"error": "handle is required", "users": []})
+                    return
+                users = _run(search_related(handle, count))
+                self._json(200, {"users": users, "source": "tiktok-api-related"})
+                return
         except Exception as exc:  # noqa: BLE001
             self._json(
                 502,
@@ -225,18 +308,32 @@ class Handler(BaseHTTPRequestHandler):
                     "users": [],
                     "source": "tiktok-api",
                     "warnings": [
-                        "TikTok-Api 需要可用的 Chromium + 可选 TIKTOK_MS_TOKEN（该 token 需在网页上先搜过一次）"
+                        "TikTok-Api 需要可用的 Chromium；机房 IP 上签名搜人常空，已改走公开搜索页/话题页"
                     ],
                 },
             )
             return
 
-        self._json(200, {"users": users, "source": "tiktok-api"})
+        self._json(404, {"error": "not found", "users": []})
+
+
+async def _setup() -> None:
+    global _rr_lock, _api_lock
+    _rr_lock = asyncio.Lock()
+    _api_lock = asyncio.Lock()
+    await _ensure_api()
 
 
 def main() -> None:
+    global _loop
+    _loop = asyncio.new_event_loop()
+    threading.Thread(target=_loop.run_forever, daemon=True).start()
+    try:
+        _run(_setup(), timeout=180)
+    except Exception as exc:  # noqa: BLE001
+        print("tiktok session warmup failed:", exc)
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"TikTok-Api sidecar listening on {HOST}:{PORT}")
+    print(f"TikTok-Api sidecar listening on {HOST}:{PORT} sessions={SESSIONS}")
     httpd.serve_forever()
 
 

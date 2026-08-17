@@ -215,6 +215,97 @@ func TestSidecarHarvestUsesTikTokAPIForIndonesia(t *testing.T) {
 	}
 }
 
+func TestSocialSearchTermsCoverCities(t *testing.T) {
+	t.Parallel()
+	got := socialSearchTerms(HarvestOptions{Regions: []string{"sea", "me"}})
+	if len(got) < 200 {
+		t.Fatalf("too few social terms: %d", len(got))
+	}
+	for _, want := range []string{"toko listrik jakarta", "furniture shop bangkok", "LED shop manila", "furniture dubai"} {
+		if !containsString(got, want) {
+			t.Fatalf("missing %q in %d terms", want, len(got))
+		}
+	}
+	if looksLikeCityTerm("toko listrik jakarta") == false || looksLikeCityTerm("grosir") {
+		t.Fatal("city term detect")
+	}
+}
+
+func TestRelatedSeedHandles(t *testing.T) {
+	t.Parallel()
+	seen := map[string]Hit{
+		"tiktok:tokolistrikjaya": {
+			Platform:    PlatformTikTok,
+			Name:        "Toko Listrik Jaya",
+			Handle:      "tokolistrikjaya",
+			HomepageURL: "https://www.tiktok.com/@tokolistrikjaya",
+			Snippet:     "panel listrik wholesale shop",
+			Verified:    true,
+		},
+		"tiktok:random": {
+			Platform:    PlatformTikTok,
+			Name:        "audiencebetween",
+			Handle:      "audiencebetween",
+			HomepageURL: "https://www.tiktok.com/@audiencebetween",
+		},
+	}
+	got := relatedSeedHandles(seen, 10)
+	if !containsString(got, "tokolistrikjaya") || containsString(got, "audiencebetween") {
+		t.Fatalf("%v", got)
+	}
+}
+
+func TestSocialSearchCallsTagAndRelated(t *testing.T) {
+	var paths []string
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/healthz") {
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			return
+		}
+		paths = append(paths, r.URL.Path)
+		_ = json.NewEncoder(w).Encode(sidecarResponse{Users: []sidecarUser{{
+			Platform:    PlatformTikTok,
+			UniqueID:    "tokolistrikjaya",
+			Nickname:    "Toko Listrik Jaya",
+			Signature:   "panel listrik wholesale shop",
+			HomepageURL: "https://www.tiktok.com/@tokolistrikjaya",
+			Verified:    true,
+		}}, Source: "tiktok-api"})
+	}))
+	defer sidecar.Close()
+
+	c := &Client{HTTP: sidecar.Client(), TikTokURL: sidecar.URL}
+	db := filepath.Join(t.TempDir(), "m.db")
+	st, err := c.HarvestShortVideo(context.Background(), HarvestOptions{
+		DBPath:       db,
+		Keywords:     []string{"grosir"},
+		Regions:      []string{"me"},
+		SocialSearch: true,
+		Workers:      1,
+		Deadline:     time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Inserted < 1 {
+		t.Fatalf("stats=%+v paths=%v", st, paths)
+	}
+	var sawUsers, sawTag, sawRelated bool
+	for _, p := range paths {
+		switch p {
+		case "/search/users":
+			sawUsers = true
+		case "/search/tag":
+			sawTag = true
+		case "/related":
+			sawRelated = true
+		}
+	}
+	if !sawUsers || !sawTag || !sawRelated {
+		t.Fatalf("paths=%v", paths)
+	}
+}
+
 func TestShortVideoRegionOrder(t *testing.T) {
 	t.Parallel()
 	plan := resolveShortVideoRegions(HarvestOptions{Fast: true})

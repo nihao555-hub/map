@@ -43,6 +43,9 @@ type HarvestOptions struct {
 	// official websites, Wayback TikTok/Douyin, OSM contact:tiktok).
 	// It is not TikTok/Douyin's account graph.
 	PublicAll bool
+	// SocialSearch uses the TikTok public search / tag / related pages
+	// (via the sidecar) instead of dumps or Google dorks.
+	SocialSearch bool
 }
 
 // HarvestStats is one batch run's timing and unique social pages.

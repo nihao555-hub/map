@@ -32,9 +32,9 @@ type sidecarResponse struct {
 }
 
 const (
-	sidecarDefaultCount = 30
+	sidecarDefaultCount = 40
 	sidecarMinCount     = 5
-	sidecarMaxCount     = 50
+	sidecarMaxCount     = 80
 )
 
 func sidecarCount(limit int) int {
@@ -62,6 +62,34 @@ func (c *Client) searchTikTokAPI(ctx context.Context, keyword string, limit int)
 	}
 
 	return parseSidecarUsers(raw, PlatformTikTok, "tiktok-api")
+}
+
+func (c *Client) searchTikTokTag(ctx context.Context, keyword string, limit int) ([]Hit, string, error) {
+	if c == nil || c.TikTokURL == "" {
+		return nil, "", fmt.Errorf("TikTok-Api sidecar URL is empty")
+	}
+	endpoint := c.TikTokURL + "/search/tag?q=" + url.QueryEscape(keyword) + "&count=" + strconv.Itoa(sidecarCount(limit))
+	raw, err := c.get(ctx, endpoint, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("davidteather/TikTok-Api tag: %w", err)
+	}
+	return parseSidecarUsers(raw, PlatformTikTok, "tiktok-api-tag")
+}
+
+func (c *Client) searchTikTokRelated(ctx context.Context, handle string, limit int) ([]Hit, string, error) {
+	if c == nil || c.TikTokURL == "" {
+		return nil, "", fmt.Errorf("TikTok-Api sidecar URL is empty")
+	}
+	handle = strings.TrimPrefix(strings.TrimSpace(handle), "@")
+	if handle == "" {
+		return nil, "", fmt.Errorf("handle is required")
+	}
+	endpoint := c.TikTokURL + "/related?handle=" + url.QueryEscape(handle) + "&count=" + strconv.Itoa(sidecarCount(limit))
+	raw, err := c.get(ctx, endpoint, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("davidteather/TikTok-Api related: %w", err)
+	}
+	return parseSidecarUsers(raw, PlatformTikTok, "tiktok-api-related")
 }
 
 func (c *Client) searchF2(ctx context.Context, keyword, platform string, limit int) ([]Hit, string, error) {

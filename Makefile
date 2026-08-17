@@ -142,6 +142,9 @@ ingest-short-video-seed: ## 只灌 Wikidata 已标注的 TikTok/抖音号
 ingest-sea-tiktok: ## 东南亚 TikTok 企业号：TikTok-Api / f2 sidecar 按词搜
 	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -sidecar -regions sea -deadline 90m
 
+ingest-social-search: ## 去 TikTok 搜索页/话题/相关账号扫企业号（常驻浏览器）
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -social-search -regions sea,me -deadline 90m -workers 2
+
 ingest-wayback-tiktok: ## Internet Archive CDX 里能枚举的 tiktok.com/@ 与抖音主页
 	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -wayback -deadline 90m
 

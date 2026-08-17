@@ -22,8 +22,8 @@ func TestSearchPeopleFromTikTokAPISidecar(t *testing.T) {
 			return
 		}
 
-		if r.URL.Query().Get("count") != "30" {
-			t.Errorf("sidecar count=%s want 30", r.URL.Query().Get("count"))
+		if r.URL.Query().Get("count") != "40" {
+			t.Errorf("sidecar count=%s want 40", r.URL.Query().Get("count"))
 		}
 
 		_ = json.NewEncoder(w).Encode(sidecarResponse{

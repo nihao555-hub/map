@@ -25,6 +25,7 @@ func main() {
 	sidecar := flag.Bool("sidecar", false, "用 TikTok-Api/f2 按词搜用户，默认东南亚，跳过公开检索")
 	wayback := flag.Bool("wayback", false, "从 Internet Archive CDX 灌 tiktok.com/@ 与 douyin.com/user/ 去重主页（公开索引，不是平台全库）")
 	publicAll := flag.Bool("public-all", false, "把公开源能枚举的 TikTok/抖音主页一次灌完（Wikidata 含名人 + 官网 + Wayback + OSM + Common Crawl）")
+	socialSearch := flag.Bool("social-search", false, "去 TikTok 公开搜索页/话题页/相关账号搜企业号（常驻浏览器，比每次新开快）")
 	regions := flag.String("regions", "", "sea,me,west；空则 sidecar 默认 sea，fast 默认 sea,me,west")
 	deadline := flag.Duration("deadline", 0, "最长跑多久，例如 110m")
 	flag.Parse()
@@ -33,16 +34,17 @@ func main() {
 	defer stop()
 
 	opt := engine.HarvestOptions{
-		DBPath:     *db,
-		Workers:    *workers,
-		QueryLimit: *queryLimit,
-		Role:       engine.RoleBuyer,
-		Fast:       *fast,
-		SeedOnly:   *seedOnly,
-		Sidecar:    *sidecar,
-		Wayback:    *wayback,
-		PublicAll:  *publicAll,
-		Deadline:   *deadline,
+		DBPath:       *db,
+		Workers:      *workers,
+		QueryLimit:   *queryLimit,
+		Role:         engine.RoleBuyer,
+		Fast:         *fast,
+		SeedOnly:     *seedOnly,
+		Sidecar:      *sidecar,
+		Wayback:      *wayback,
+		PublicAll:    *publicAll,
+		SocialSearch: *socialSearch,
+		Deadline:     *deadline,
 	}
 	if s := strings.TrimSpace(*regions); s != "" {
 		opt.Regions = splitCSV(s)
@@ -58,8 +60,8 @@ func main() {
 	if client.HTTP != nil {
 		if *publicAll {
 			client.HTTP.Timeout = 200 * time.Second
-		} else if *sidecar || *wayback {
-			client.HTTP.Timeout = 90 * time.Second
+		} else if *sidecar || *socialSearch || *wayback {
+			client.HTTP.Timeout = 120 * time.Second
 		} else {
 			client.HTTP.Timeout = 25 * time.Second
 		}
@@ -72,7 +74,7 @@ func main() {
 		if (*fast || *seedOnly || *publicAll) && (client.WikidataURL == "" || strings.Contains(client.WikidataURL, "query.wikidata.org")) {
 			client.WikidataURL = engine.QleverWikidataSPARQL
 		}
-		fmt.Printf("开始抖音/TikTok 企业号收割 fast=%v seed-only=%v sidecar=%v wayback=%v public-all=%v db=%s\n", *fast, *seedOnly, *sidecar, *wayback, *publicAll, *db)
+		fmt.Printf("开始抖音/TikTok 企业号收割 fast=%v seed-only=%v sidecar=%v social-search=%v wayback=%v public-all=%v db=%s\n", *fast, *seedOnly, *sidecar, *socialSearch, *wayback, *publicAll, *db)
 		st, err = client.HarvestShortVideo(ctx, opt)
 	} else if *names {
 		fmt.Printf("开始公司名公式收割 db=%s limit=%d\n", *db, *queryLimit)
