@@ -116,5 +116,41 @@ gen: saas-gen ## generate swagger docs
 saas-psql: ## connect to SaaS development database
 	PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres gmapssaas
 
+ingest-merchants: ## dump GLEIF + OSM all-shop cities into local SQLite
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -gleif-zip /tmp/merchant-ingest/gleif-lei2.csv.zip
+
+ingest-sea: ## dump extra Southeast Asia OSM cities + Wikidata companies
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -sea -osm-limit 2000
+
+ingest-lei-socials: ## attach Wikidata website/socials onto GLEIF rows by LEI
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -lei-socials
+
+ingest-public-socials: ## ROR dump + Wikidata P856 + same-name copy onto GLEIF
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -public-socials -attach-only
+
+ingest-public-max: ## Wikidata global socials, OSM contact:*, GLEIF parent inherit, ROR
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -public-max \
+		-rr-zip /tmp/merchant-ingest/gleif-rr.csv.zip \
+		-ror-zip /tmp/merchant-ingest/ror-data.zip
+
+ingest-rr-only: ## same-country copy + GLEIF Level 2 parent social inherit
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -rr-only
+
+ingest-more-socials: ## split OSM boxes, Wikidata parent, SEC websites, scrape official sites
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -more-socials \
+		-rr-zip /tmp/merchant-ingest/gleif-rr.csv.zip \
+		-website-workers 16
+
+ingest-sherlock: ## Sherlock site list on official handles + distinctive unique names
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -sherlock \
+		-sherlock-workers 12
+
+ingest-attach-socials: ## 全库缺社媒：官网刮取 + OSM contact + 店名检索 FB/IG/LI + Sherlock 姐妹页
+	go run ./cmd/ingest-merchants -db webdata/merchants.db -attach-socials \
+		-attach-workers 10
+
+enrich-merchants: ## fetch OSM official sites and probe missing social homepages
+	go run ./cmd/enrich-merchants -db webdata/merchants.db -workers 12
+
 clean: ## clean build artifacts
 	@rm -rf bin/ tmp/
