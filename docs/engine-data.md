@@ -23,14 +23,27 @@ make ingest-short-video         # 抖音/TikTok 企业号主页（只要链接�
 make ingest-short-video-fast    # 两小时：Wikidata 全量号 + 东南亚→中东→欧美
 ```
 
-抖音/TikTok **没有**公开的「全部企业号」数据包。Wikidata 能一次拉全的已标注号是：
+抖音/TikTok **没有**公开的「全部企业号」数据包。GitHub 高 star 项目也没有这份包——它们是「给一个词/一条链接，去平台搜或下载」，不是目录。
+
+**公开能一次拉全的，仍然是 Wikidata：**
 
 | 口径 | TikTok P7085 | 抖音 P7120 |
 |---|---|---|
 | 全部已标注（含名人） | 约 36,195 | 约 311 |
 | 非人名（公司/品牌/组织） | 约 14,410 | 约 182 |
 
-两小时内最接近全量的办法：先灌上面这份非人名清单，再按 **东南亚 → 中东 → 欧美** 扫本地词。
+| 项目 | star / 许可 | 能干什么 | 本仓库 |
+|---|---|---|---|
+| Wikidata P7085 / P7120 | 公开知识库 / CC0 | 已标注账号全量导出 | **主方案**，`make ingest-short-video-seed` |
+| [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api) | 6.5k MIT | 关键词搜 TikTok 用户 | 已接 sidecar `:8091`，要 Chromium / msToken |
+| [Johnserf-Seed/f2](https://github.com/Johnserf-Seed/f2) | 2.6k Apache-2.0 | TikTok 搜作品抽作者；抖音只解析已有主页 | 已接 sidecar `:8092`；搜用户仍 🔵 |
+| 公开网页索引 | — | `site:tiktok.com/@` / `site:douyin.com/user` | 已接，常被限流 |
+| [NanmiCoder/MediaCrawler](https://github.com/NanmiCoder/MediaCrawler) | 6万+ 非商业 | 多平台采集 | **不接** |
+| [Evil0ctal/Douyin_TikTok_Download_API](https://github.com/Evil0ctal/Douyin_TikTok_Download_API) | 1.9万 | 解析已有主页/作品 | 无搜人、无全库，不接 |
+| drawrowfly/tiktok-scraper | 5k | 旧爬虫 | 2023 停更 |
+| Common Crawl | 官方网页库 | 本可扫 `tiktok.com/@` | 最新库该前缀 0 页，平台拦爬虫 |
+
+两小时内最接近全量的办法：先灌 Wikidata 非人名清单，再按 **东南亚 → 中东 → 欧美** 扫本地词。要再往上堆，只能把已接的 TikTok-Api / f2 sidecar 跑起来（cookie），那是按品类抽样，不是第二份全库。
 
 1. Wikidata QLever：公开能拿到的最全一份公司账号标识
 2. [davidteather/TikTok-Api](https://github.com/davidteather/TikTok-Api) sidecar（关键词搜用户）

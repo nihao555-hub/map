@@ -292,8 +292,14 @@ func TestDiscoverSourcesListsOSS(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "davidteather/TikTok-Api") || !strings.Contains(body, "Johnserf-Seed/f2") || !strings.Contains(body, "public-websearch") || !strings.Contains(body, "s0md3v/Photon") || !strings.Contains(body, "sherlock-project/sherlock") || !strings.Contains(body, "laramies/theHarvester") {
-		t.Fatalf("body=%s", body)
+	for _, want := range []string{
+		"Wikidata / QLever", "davidteather/TikTok-Api", "Johnserf-Seed/f2",
+		"public-websearch", "s0md3v/Photon", "sherlock-project/sherlock",
+		"laramies/theHarvester", "Common Crawl", "drawrowfly/tiktok-scraper",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
 	}
 }
 

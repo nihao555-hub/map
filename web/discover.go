@@ -307,6 +307,13 @@ func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, http.StatusOK, map[string]any{
 		"people": []map[string]string{
 			{
+				"name":    "Wikidata / QLever (P7085 / P7120)",
+				"stars":   "公开知识库",
+				"license": "CC0",
+				"pushed":  "持续",
+				"use":     "抖音/TikTok 唯一能一次拉全的已标注号：TikTok 非人名约 14410，抖音约 182。高 star 爬虫都没有全库数据包",
+			},
+			{
 				"name":    "public-websearch",
 				"stars":   "",
 				"license": "",
@@ -318,14 +325,14 @@ func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 				"stars":   "6563",
 				"license": "MIT",
 				"pushed":  "2026-07",
-				"use":     "TikTok 关键词搜人 / 主页（sidecar 增强）",
+				"use":     "TikTok 关键词搜人 / 主页（sidecar 增强，要 Chromium + 可选 msToken；是抽样不是全库）",
 			},
 			{
 				"name":    "Johnserf-Seed/f2",
 				"stars":   "2603",
 				"license": "Apache-2.0",
 				"pushed":  "2026-04",
-				"use":     "TikTok 关键词搜作品抽作者；抖音主页 URL→资料",
+				"use":     "TikTok 关键词搜作品抽作者；抖音主页 URL→资料。搜用户仍为上游 🔵",
 			},
 			{
 				"name":    "s0md3v/Photon",
@@ -358,7 +365,17 @@ func (s *Server) apiDiscoverSources(w http.ResponseWriter, r *http.Request) {
 			{
 				"name":   "Evil0ctal/Douyin_TikTok_Download_API",
 				"stars":  "19352",
-				"reason": "2025-10 后无主分支推送，且无关键词搜人接口",
+				"reason": "只解析已有主页/作品，没有关键词搜人，也没有全量企业号包",
+			},
+			{
+				"name":   "drawrowfly/tiktok-scraper",
+				"stars":  "5052",
+				"reason": "2023 停更，2026 已基本不可用",
+			},
+			{
+				"name":   "Common Crawl CDX",
+				"stars":  "官方索引",
+				"reason": "最新库 CC-MAIN-2026-30 里 tiktok.com/@ 为 0 页，抖音 user 也几乎没有；平台拦了爬虫",
 			},
 		},
 	})
