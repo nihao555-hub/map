@@ -154,5 +154,11 @@ ingest-attach-socials: ## 全库缺社媒：官网刮取 + OSM contact + 店名�
 enrich-merchants: ## fetch OSM official sites and probe missing social homepages
 	go run ./cmd/enrich-merchants -db $(MERCHANT_DB) -workers 12
 
+upload-merchants: ## 把 store/merchants.db 快照上传到阿里云 OSS / S3
+	go run ./cmd/sync-merchant-db -db $(MERCHANT_DB) -upload
+
+restore-merchants: ## 从 OSS / S3 拉回商户库
+	go run ./cmd/sync-merchant-db -db $(MERCHANT_DB) -download
+
 clean: ## clean build artifacts
 	@rm -rf bin/ tmp/
