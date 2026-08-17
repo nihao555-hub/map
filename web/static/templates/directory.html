@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>本地企业库 · 地图获客</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/css/shell.css">
+  <link rel="stylesheet" href="/static/css/discover.css">
+  <link rel="stylesheet" href="/static/css/directory.css">
+</head>
+<body class="wmt is-landing">
+  {{template "app-rail" "directory"}}
+  <div id="app-body">
+    <header id="topbar">
+      <div class="page-heading">本地企业库</div>
+      <div class="topbar-right">
+        <a class="help-btn" href="/discover">回智能引擎</a>
+      </div>
+    </header>
+    <div class="wmt-shell">
+    {{template "data-nav" "directory"}}
+    <main class="wmt-main">
+      <section class="dir-landing">
+        <h1>本地企业库</h1>
+        <p class="dir-note" id="dir-note">公开源目录。GLEIF 法律名没有官网和社媒；抖音/TikTok 只收企业号主页链接，不是平台全库。</p>
+        <div class="dir-cards" id="dir-cards"></div>
+        <form id="dir-form" class="dir-filters">
+          <select id="dir-filter" aria-label="类型">
+            <option value="legal_name">GLEIF 法律名</option>
+            <option value="operating">经营主体</option>
+            <option value="homepage">有官网无社媒</option>
+            <option value="with_social">有社媒</option>
+            <option value="tiktok">TikTok 主页</option>
+            <option value="douyin">抖音主页</option>
+            <option value="no_social">无社媒</option>
+          </select>
+          <select id="dir-source" aria-label="来源">
+            <option value="">全部来源</option>
+            <option value="gleif">GLEIF</option>
+            <option value="osm">OSM 店铺</option>
+            <option value="wikidata">Wikidata</option>
+            <option value="tiktok">TikTok</option>
+            <option value="douyin">抖音</option>
+            <option value="dork">公开检索</option>
+          </select>
+          <input id="dir-q" type="search" placeholder="公司名，例如 Oakmark" maxlength="64" />
+          <button type="submit" class="wmt-search-btn">查看</button>
+        </form>
+        <div class="wmt-meta">
+          <div id="dir-status" class="wmt-status">正在读取本地库…</div>
+          <div class="wmt-pager" id="dir-pager" hidden>
+            <span id="dir-hit-count">共 0 条</span>
+            <button type="button" id="dir-prev">&lt;</button>
+            <span id="dir-page-cur">1</span>
+            <span class="wmt-pager-sep">/</span>
+            <span id="dir-page-total">1</span>
+            <button type="button" id="dir-next">&gt;</button>
+          </div>
+        </div>
+        <div class="wmt-table-wrap">
+          <table class="wmt-table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th style="width:88px">来源</th>
+                <th style="width:72px">类型</th>
+                <th style="width:72px">国家</th>
+                <th>主页</th>
+                <th style="width:160px">社媒</th>
+              </tr>
+            </thead>
+            <tbody id="dir-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    </div>
+  </div>
+  <script src="/static/js/directory.js"></script>
+</body>
+</html>

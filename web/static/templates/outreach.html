@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>发开发信 · 地图获客</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/css/shell.css">
+  <link rel="stylesheet" href="/static/css/discover.css">
+</head>
+<body class="wmt">
+  {{template "app-rail" "outreach"}}
+  <div id="app-body">
+    <header id="topbar">
+      <div class="page-heading">发开发信</div>
+      <div class="topbar-right">
+        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
+        <a class="help-btn" href="/api/docs"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</a>
+        <div class="user-box">
+          <span class="avatar"><i data-lucide="user" class="w-4 h-4"></i></span>
+          <span class="user-name">张三</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 chevron"></i>
+        </div>
+      </div>
+    </header>
+    <div class="wmt-shell">
+    <main class="wmt-main">
+      <section class="wmt-results">
+        <h1 class="wmt-hero-title" style="color:#1f2329;font-size:22px;margin:8px 0 12px">发开发信</h1>
+        <p class="wmt-status" style="max-width:640px;line-height:1.7">
+          这里用来给<strong>已经有邮箱的线索</strong>写开发信。邮箱可以来自「地图获客」抓到的商家资料，或智能引擎「营销模式」抽到的公开邮箱。
+          系统只打开写信窗口，不会代发。私信模式找的是社媒主页，请回智能引擎打开官方页手动发。
+        </p>
+        <label for="outreach-emails" style="display:block;margin:16px 0 8px;color:#646a73">收件人邮箱</label>
+        <textarea id="outreach-emails" rows="6" placeholder="多个邮箱用逗号或换行分隔" style="width:100%;max-width:640px;padding:10px 12px;border:1px solid #e6eaf0;border-radius:4px;font:inherit"></textarea>
+        <div class="wmt-actions" style="margin-top:12px">
+          <a id="outreach-mailto" class="btn-ghost" href="mailto:">打开系统邮箱</a>
+        </div>
+        <p class="wmt-empty" id="outreach-empty">可从智能引擎营销模式勾选后点「一键营销」带入邮箱，或手动粘贴。写信模块尚未群发。</p>
+      </section>
+    </main>
+    </div>
+  </div>
+  <script>
+    lucide.createIcons();
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const emails = (params.get("emails") || "").split(/[,;\s]+/).filter(Boolean);
+      const box = document.getElementById("outreach-emails");
+      const link = document.getElementById("outreach-mailto");
+      const empty = document.getElementById("outreach-empty");
+      if (emails.length) {
+        box.value = emails.join("\n");
+        empty.textContent = "已带入 " + emails.length + " 个公开邮箱。打开系统邮箱后由你手动发送，系统不会代发。";
+      }
+      function syncMailto() {
+        const list = box.value.split(/[,;\s]+/).filter(Boolean);
+        link.href = "mailto:" + list.join(",");
+      }
+      box.addEventListener("input", syncMailto);
+      syncMailto();
+    })();
+  </script>
+</body>
+</html>

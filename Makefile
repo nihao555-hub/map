@@ -116,5 +116,76 @@ gen: saas-gen ## generate swagger docs
 saas-psql: ## connect to SaaS development database
 	PGPASSWORD=postgres psql -h localhost -p 5432 -U postgres gmapssaas
 
+MERCHANT_DB ?= store/merchants.db
+
+ingest-merchants: ## dump GLEIF + OSM all-shop cities into local SQLite
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -gleif-zip /tmp/merchant-ingest/gleif-lei2.csv.zip
+
+ingest-sea: ## dump extra Southeast Asia OSM cities + Wikidata companies
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -sea -osm-limit 2000
+
+ingest-lei-socials: ## attach Wikidata website/socials onto GLEIF rows by LEI
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -lei-socials
+
+ingest-public-socials: ## ROR dump + Wikidata P856 + same-name copy onto GLEIF
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -public-socials -attach-only
+
+ingest-short-video: ## 抖音/TikTok 企业号主页（TikTok-Api / f2 sidecar + 公开索引）
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -workers 4
+
+ingest-short-video-fast: ## 两小时：Wikidata 全量号 + 东南亚→中东→欧美
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -fast -deadline 110m -workers 8
+
+ingest-short-video-seed: ## 只灌 Wikidata 已标注的 TikTok/抖音号
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -seed-only
+
+ingest-sea-tiktok: ## 东南亚 TikTok 企业号：TikTok-Api / f2 sidecar 按词搜
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -sidecar -regions sea -deadline 90m
+
+ingest-social-search: ## 去 TikTok 搜索页/话题/相关账号扫企业号（常驻浏览器）
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -social-search -regions sea,me -deadline 90m -workers 2
+
+ingest-yellow-pages: ## 黄页找官网和电话，再高并发去官网抽社媒
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -yellow-pages -workers 48 -deadline 90m
+
+ingest-wayback-tiktok: ## Internet Archive CDX 里能枚举的 tiktok.com/@ 与抖音主页
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -wayback -deadline 90m
+
+ingest-short-video-public: ## 公开源能枚举的 TikTok/抖音主页（不是平台全库）
+	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -public-all -deadline 180m
+
+ingest-world-companies: ## Wikidata 全球带官网的企业（QLever，不灌 Facebook 全库）
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -world-companies
+
+ingest-public-max: ## Wikidata global socials, OSM contact:*, GLEIF parent inherit, ROR
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -public-max \
+		-rr-zip /tmp/merchant-ingest/gleif-rr.csv.zip \
+		-ror-zip /tmp/merchant-ingest/ror-data.zip
+
+ingest-rr-only: ## same-country copy + GLEIF Level 2 parent social inherit
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -rr-only
+
+ingest-more-socials: ## split OSM boxes, Wikidata parent, SEC websites, scrape official sites
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -more-socials \
+		-rr-zip /tmp/merchant-ingest/gleif-rr.csv.zip \
+		-website-workers 16
+
+ingest-sherlock: ## Sherlock site list on official handles + distinctive unique names
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -sherlock \
+		-sherlock-workers 12
+
+ingest-attach-socials: ## 全库缺社媒：官网刮取 + OSM contact + 店名检索 FB/IG/LI + Sherlock 姐妹页
+	go run ./cmd/ingest-merchants -db $(MERCHANT_DB) -attach-socials \
+		-attach-workers 10
+
+enrich-merchants: ## fetch OSM official sites and probe missing social homepages
+	go run ./cmd/enrich-merchants -db $(MERCHANT_DB) -workers 12
+
+upload-merchants: ## 把 store/merchants.db 快照上传到阿里云 OSS / S3
+	go run ./cmd/sync-merchant-db -db $(MERCHANT_DB) -upload
+
+restore-merchants: ## 从 OSS / S3 拉回商户库
+	go run ./cmd/sync-merchant-db -db $(MERCHANT_DB) -download
+
 clean: ## clean build artifacts
 	@rm -rf bin/ tmp/
