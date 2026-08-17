@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -132,12 +133,13 @@ func (u *Uploader) Upload(ctx context.Context, bucketName, key string, body io.R
 		}
 	}
 
-	_, err := u.client.PutObject(ctx, input)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	// Multipart avoids AWS trailing-checksum chunked encoding that Aliyun OSS rejects.
+	up := manager.NewUploader(u.client, func(m *manager.Uploader) {
+		m.PartSize = 16 << 20
+		m.Concurrency = 3
+	})
+	_, err := up.Upload(ctx, input)
+	return err
 }
 
 func (u *Uploader) Download(ctx context.Context, bucketName, key string, dest io.Writer) (int64, error) {
