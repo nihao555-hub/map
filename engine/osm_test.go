@@ -89,6 +89,25 @@ func TestOverpassShopQueryUsesCityBox(t *testing.T) {
 	}
 }
 
+func TestOverpassShopOrNameQueryFindsTokoListrik(t *testing.T) {
+	needles := osmNameNeedles("配电柜")
+	if !containsString(needles, "panel listrik") || !containsString(needles, "toko listrik") {
+		t.Fatalf("needles=%v", needles)
+	}
+	for _, n := range needles {
+		if foldSearchText(n) == "listrik" {
+			t.Fatalf("bare listrik leaked: %v", needles)
+		}
+	}
+	q := overpassShopOrNameQuery([]string{"electrical"}, needles, osmBox{country: "ID", south: -6.35, west: 106.70, north: -6.10, east: 106.98})
+	if !strings.Contains(q, `["shop"="electrical"]`) || !strings.Contains(q, "panel listrik") || !strings.Contains(q, "toko listrik") {
+		t.Fatalf("query=%s", q)
+	}
+	if strings.Contains(q, `["shop"="hardware"]`) {
+		t.Fatalf("hardware leaked: %s", q)
+	}
+}
+
 func TestSearchOSMShopsFromOverpass(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

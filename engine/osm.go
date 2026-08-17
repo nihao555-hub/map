@@ -118,7 +118,8 @@ func (c *Client) searchOSMShops(ctx context.Context, keyword, country string, wa
 		return nil, nil
 	}
 	tags := shopTagsForKeyword(keyword)
-	if len(tags) == 0 {
+	names := osmNameNeedles(keyword)
+	if len(tags) == 0 && len(names) == 0 {
 		return nil, nil
 	}
 	var (
@@ -129,7 +130,7 @@ func (c *Client) searchOSMShops(ctx context.Context, keyword, country string, wa
 		if ctx.Err() != nil {
 			break
 		}
-		raw, err := c.fetchOverpass(ctx, overpassShopQuery(tags, box))
+		raw, err := c.fetchOverpass(ctx, overpassShopOrNameQuery(tags, names, box))
 		if err != nil {
 			last = err
 			continue
@@ -140,6 +141,25 @@ func (c *Client) searchOSMShops(ctx context.Context, keyword, country string, wa
 		return nil, last
 	}
 	return out, nil
+}
+
+// osmNameNeedles are Latin product phrases used when shop=* is missing or
+// too narrow (Indonesian electrical shops are often shop=electronics named
+// "toko listrik", not shop=electrical).
+func osmNameNeedles(keyword string) []string {
+	var out []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" || hasCJK(s) || len(s) < 4 {
+			return
+		}
+		out = append(out, s)
+	}
+	add(keyword)
+	for _, alias := range productSearchAliases(keyword) {
+		add(alias)
+	}
+	return uniqueFoldedStrings(out)
 }
 
 func osmQueryBoxes(country string) []osmBox {
@@ -158,14 +178,48 @@ func osmQueryBoxes(country string) []osmBox {
 }
 
 func overpassShopQuery(tags []string, box osmBox) string {
+	return overpassShopOrNameQuery(tags, nil, box)
+}
+
+func overpassShopOrNameQuery(tags, names []string, box osmBox) string {
 	var b strings.Builder
-	b.WriteString("[out:json][timeout:10];\n(\n")
+	b.WriteString("[out:json][timeout:20];\n(\n")
 	for _, tag := range tags {
 		fmt.Fprintf(&b, `  node["shop"=%q]["name"](%0.2f,%0.2f,%0.2f,%0.2f);`+"\n",
 			tag, box.south, box.west, box.north, box.east)
 	}
+	if re := overpassNameRegex(names); re != "" {
+		fmt.Fprintf(&b, `  node["shop"]["name"~%q,i](%0.2f,%0.2f,%0.2f,%0.2f);`+"\n",
+			re, box.south, box.west, box.north, box.east)
+		fmt.Fprintf(&b, `  way["shop"]["name"~%q,i](%0.2f,%0.2f,%0.2f,%0.2f);`+"\n",
+			re, box.south, box.west, box.north, box.east)
+	}
 	b.WriteString(");\n")
 	fmt.Fprintf(&b, "out tags %d;\n", osmHitCap)
+	return b.String()
+}
+
+func overpassNameRegex(names []string) string {
+	parts := make([]string, 0, len(names))
+	for _, name := range uniqueFoldedStrings(names) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		parts = append(parts, overpassRegexEscape(name))
+	}
+	return strings.Join(parts, "|")
+}
+
+func overpassRegexEscape(s string) string {
+	const special = `\^$.|?*+()[]{}`
+	var b strings.Builder
+	for _, r := range s {
+		if strings.ContainsRune(special, r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
 	return b.String()
 }
 

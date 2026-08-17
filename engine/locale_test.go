@@ -24,7 +24,7 @@ func TestLocalSearchTermsThailandPowerTools(t *testing.T) {
 func TestLocalSearchTermsIndonesiaSwitchgear(t *testing.T) {
 	got := LocalSearchTerms("配电柜", "ID")
 	joined := strings.Join(got, " | ")
-	for _, want := range []string{"switchgear", "panel listrik", "配电柜"} {
+	for _, want := range []string{"switchgear", "panel listrik", "toko listrik", "配电柜"} {
 		if !containsString(got, want) {
 			t.Fatalf("missing %q in %s", want, joined)
 		}
