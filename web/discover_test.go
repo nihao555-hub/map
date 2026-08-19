@@ -1,0 +1,405 @@
+package web
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/gosom/google-maps-scraper/engine"
+)
+
+func TestDirectoryPageRenders(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/directory", nil)
+	rec := httptest.NewRecorder()
+	srv.directoryPage(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"本地企业库", "dir-form", "/static/js/directory.js", "GLEIF 法律名", "TikTok 主页", "抖音主页"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
+func TestDirectoryAPIUsesLocalDump(t *testing.T) {
+	dir, err := engine.OpenDirectory(t.TempDir() + "/m.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if _, err := dir.InsertBatch(context.Background(), []engine.Merchant{
+		{ExtID: "tiktok:boschpowertools", Source: "tiktok", Name: "Bosch Power Tools", Shop: "tools", Country: "US", Homepage: "https://www.tiktok.com/@boschpowertools", Profiles: []engine.Profile{
+			{ExtID: "tiktok:boschpowertools", Platform: engine.PlatformTikTok, URL: "https://www.tiktok.com/@boschpowertools", Handle: "boschpowertools"},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv := newTestServer(t, t.TempDir())
+	srv.engine.UseDirectory(dir)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/directory?filter=with_social&source=tiktok", nil)
+	rec := httptest.NewRecorder()
+	srv.apiDiscoverDirectory(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "boschpowertools") || !strings.Contains(rec.Body.String(), "legal_name_only") {
+		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestDiscoverPageRenders(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/discover", nil)
+	rec := httptest.NewRecorder()
+	srv.discoverPage(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		"智能引擎搜索", "discover-form", "发开发信", "地图获客",
+		"私信模式", "营销模式", "找买家", "找卖家", "一键营销",
+		"preview-pane", "共 0 条", "/static/js/discover.js",
+		`id="app-rail"`, `id="data-nav"`, "/static/css/shell.css", "rail-item is-active",
+		"产品特性", "海关数据", "展会获客", "精确",
+		`id="platform-group"`, `id="plat-toggle"`, "wmt-query",
+		"国家/地区", `id="country"`, "公开社媒主页",
+		"WhatsApp", "邮箱",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+
+	if !strings.Contains(body, "eng-hero") || !strings.Contains(body, "landing-form") {
+		t.Fatal("discover should show the Waimao-style landing")
+	}
+
+	if strings.Contains(body, "全球搜索") || strings.Contains(body, "智能推荐") || strings.Contains(body, "市场洞察") {
+		t.Fatal("unshipped Waimao Tong modules should not appear")
+	}
+}
+
+func TestDiscoverCSSHidesHiddenViews(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/static/css/discover.css", nil)
+	rec := httptest.NewRecorder()
+	srv.srv.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"#landing-view[hidden]", "#results-view[hidden]", "body.is-landing #results-view"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
+func TestDiscoverJSLoadsPlatformsFromAPI(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/static/js/discover.js", nil)
+	rec := httptest.NewRecorder()
+	srv.srv.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	for _, want := range []string{"/api/v1/discover/platforms", "/api/v1/discover/search", "/api/v1/discover/preview", "/api/v1/discover/preview/frame", "/api/v1/discover/countries", "plat-logo", "showPreview", "已找到", "PAGE_SIZE", "limit: 0", "搜索繁忙，请稍后再试。", "cell-clip", "shortHandle", "validateKeyword", "precise: isPrecise", "isHomepageHit", "hit-via", "selectedRole", "roleLabel", "countryLabel", "expanded", "data.cached", "data.refreshing", "geo-chip", "country-facets", "hit-soc", "collectSocials"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+	for _, forbid := range []string{"data.sources", "data.warnings", "took_ms", "duckduckgo"} {
+		if strings.Contains(body, forbid) {
+			t.Fatalf("technical field %q leaked in JS", forbid)
+		}
+	}
+}
+
+func TestDiscoverPlatformsListsSupportedOnly(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/platforms", nil)
+	rec := httptest.NewRecorder()
+	srv.apiDiscoverPlatforms(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Platforms []struct {
+			ID      string `json:"id"`
+			Label   string `json:"label"`
+			Default bool   `json:"default"`
+		} `json:"platforms"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+
+	ids := map[string]bool{}
+	for _, p := range payload.Platforms {
+		ids[p.ID] = true
+	}
+
+	for _, want := range []string{
+		"facebook", "linkedin", "instagram", "youtube", "tiktok", "douyin",
+		"x", "pinterest", "threads", "xiaohongshu", "kuaishou", "weibo",
+		"bilibili", "telegram", "reddit", "twitch",
+	} {
+		if !ids[want] {
+			t.Fatalf("missing supported platform %s in %+v", want, payload.Platforms)
+		}
+	}
+
+	if ids["exhibition"] || ids["customs"] {
+		t.Fatalf("unsupported modules leaked into people platforms: %+v", payload.Platforms)
+	}
+}
+
+func TestDiscoverCountriesListsMarkets(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/countries", nil)
+	rec := httptest.NewRecorder()
+	srv.apiDiscoverCountries(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"不限", "泰国", "马来西亚", "美国", `"code":"TH"`, `"code":"MY"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+}
+
+func TestScrubDiscoverResultStripsEngineNames(t *testing.T) {
+	res := engine.Result{
+		Hits: []engine.Hit{{
+			Name:        "厂",
+			HomepageURL: "https://www.facebook.com/factory",
+			Source:      "bing",
+			Extra:       map[string]string{"q": "site:facebook.com LED灯 采购", "shipments": "48"},
+		}},
+		Cached:     true,
+		Refreshing: true,
+		Sources:    []string{"bing", "duckduckgo"},
+		Warnings:   []string{"duckduckgo: status 429 rate limited"},
+		TookMS:     12,
+		Note:       "内部诊断",
+	}
+	scrubDiscoverResult(&res)
+	if res.Hits[0].Source != "" || len(res.Sources) != 0 || res.Warnings != nil || res.TookMS != 0 {
+		t.Fatalf("not scrubbed %+v", res)
+	}
+	if res.Hits[0].Extra["q"] != "" || res.Hits[0].Extra["shipments"] != "48" {
+		t.Fatalf("extra not scrubbed %+v", res.Hits[0].Extra)
+	}
+	if !res.Cached || !res.Refreshing {
+		t.Fatal("cached/refreshing flag stripped")
+	}
+	if res.Note != "系统不会代发。中文品类会译成当地采购词，按所选国家找进口商、经销商和工程商公开主页。不是外贸通那种一次几万条的企业库。" {
+		t.Fatalf("note=%s", res.Note)
+	}
+	raw, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+	for _, forbid := range []string{"bing", "duckduckgo", "429"} {
+		if strings.Contains(body, forbid) {
+			t.Fatalf("leaked %q in %s", forbid, body)
+		}
+	}
+}
+
+func TestDiscoverSearchRequiresKeyword(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/discover/search", bytes.NewBufferString(`{"kind":"people"}`))
+	rec := httptest.NewRecorder()
+	srv.apiDiscoverSearch(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDiscoverSearchRejectsWeakKeyword(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	for _, body := range []string{
+		`{"keyword":"的","kind":"people"}`,
+		`{"keyword":"搜索","kind":"people"}`,
+		`{"keyword":"啊","kind":"people"}`,
+		`{"keyword":"配电","kind":"people","precise":true}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/discover/search", bytes.NewBufferString(body))
+		rec := httptest.NewRecorder()
+		srv.apiDiscoverSearch(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("code=%d body=%s for %s", rec.Code, rec.Body.String(), body)
+		}
+	}
+}
+
+func TestDiscoverExhibitionDoesNotCrawl(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/discover/search", bytes.NewBufferString(`{"keyword":"CES","kind":"exhibition"}`))
+	rec := httptest.NewRecorder()
+	srv.apiDiscoverSearch(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+
+	hits, _ := payload["hits"].([]any)
+	if len(hits) != 0 {
+		t.Fatalf("hits=%v", hits)
+	}
+	note, _ := payload["note"].(string)
+	if !strings.Contains(note, "公开") {
+		t.Fatalf("note=%v", payload["note"])
+	}
+	if warns, ok := payload["warnings"].([]any); ok && len(warns) > 0 {
+		t.Fatalf("warnings leaked to UI: %v", warns)
+	}
+}
+
+func TestDiscoverSourcesListsOSS(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/sources", nil)
+	rec := httptest.NewRecorder()
+	srv.apiDiscoverSources(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Wikidata / QLever", "davidteather/TikTok-Api", "Johnserf-Seed/f2",
+		"public-websearch", "s0md3v/Photon", "sherlock-project/sherlock",
+		"laramies/theHarvester", "Common Crawl", "drawrowfly/tiktok-scraper",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in %s", want, body)
+		}
+	}
+}
+
+func TestDiscoverPreviewRejectsLocalhost(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/preview?url=http://127.0.0.1/", nil)
+	rec := httptest.NewRecorder()
+	srv.apiDiscoverPreview(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/discover/preview/frame?url=http://127.0.0.1/", nil)
+	rec = httptest.NewRecorder()
+	srv.apiDiscoverPreviewFrame(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("frame code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestOutreachPageRenders(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/outreach", nil)
+	rec := httptest.NewRecorder()
+	srv.outreachPage(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "发开发信") || !strings.Contains(body, "已经有邮箱") {
+		t.Fatalf("body=%s", body)
+	}
+	if !strings.Contains(body, "outreach-emails") || !strings.Contains(body, "不会代发") {
+		t.Fatalf("outreach should accept emails query: %s", body)
+	}
+	if !strings.Contains(body, `id="app-rail"`) || !strings.Contains(body, "/static/css/shell.css") {
+		t.Fatal("outreach should share the map app-rail")
+	}
+	if strings.Contains(body, `id="data-nav"`) || strings.Contains(body, "海关数据") || strings.Contains(body, "展会获客") {
+		t.Fatal("outreach should not include data-acquisition submenu")
+	}
+}
+
+func TestCustomsPageRenders(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/customs", nil)
+	rec := httptest.NewRecorder()
+	srv.customsPage(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"海关数据", "搜采购商", "搜供应商", "匹配金额 USD", "Top HSCode", "cus-modal",
+		`id="data-nav"`, "/static/js/customs.js", "排除物流公司", "公司名",
+		"多家公开海关源",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
+func TestExhibitionPageRenders(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/exhibition", nil)
+	rec := httptest.NewRecorder()
+	srv.exhibitionPage(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"展会获客", "搜客户", "搜展会", "参展商名单", "EventsEye", "展位号", "一键营销",
+		`id="data-nav"`, "/static/js/exhibition.js", "landing-view", "exh-table", "exh-modal",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
+func TestCustomsProfileRequiresName(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/customs/profile", nil)
+	rec := httptest.NewRecorder()
+	srv.apiCustomsProfile(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestExhibitionExhibitorsRequiresName(t *testing.T) {
+	srv := newTestServer(t, t.TempDir())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discover/exhibition/exhibitors", nil)
+	rec := httptest.NewRecorder()
+	srv.apiExhibitionExhibitors(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", rec.Code, rec.Body.String())
+	}
+}

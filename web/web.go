@@ -19,26 +19,30 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/gosom/google-maps-scraper/engine"
 )
 
 //go:embed static
 var static embed.FS
 
 type Server struct {
-	tmpl map[string]*template.Template
-	srv  *http.Server
-	svc  *Service
+	tmpl   map[string]*template.Template
+	srv    *http.Server
+	svc    *Service
+	engine *engine.Client
 }
 
 func New(svc *Service, addr string) (*Server, error) {
 	ans := Server{
-		svc:  svc,
-		tmpl: make(map[string]*template.Template),
+		svc:    svc,
+		engine: engine.OptionsFromEnv(),
+		tmpl:   make(map[string]*template.Template),
 		srv: &http.Server{
 			Addr:              addr,
 			ReadHeaderTimeout: 10 * time.Second,
 			ReadTimeout:       60 * time.Second,
-			WriteTimeout:      60 * time.Second,
+			WriteTimeout:      5 * time.Minute,
 			IdleTimeout:       120 * time.Second,
 			MaxHeaderBytes:    1 << 20,
 		},
@@ -70,6 +74,11 @@ func New(svc *Service, addr string) (*Server, error) {
 
 		ans.viewJob(w, r)
 	})
+	mux.HandleFunc("/discover", ans.discoverPage)
+	mux.HandleFunc("/directory", ans.directoryPage)
+	mux.HandleFunc("/customs", ans.customsPage)
+	mux.HandleFunc("/exhibition", ans.exhibitionPage)
+	mux.HandleFunc("/outreach", ans.outreachPage)
 	mux.HandleFunc("/", ans.index)
 
 	// api routes
@@ -125,6 +134,15 @@ func New(svc *Service, addr string) (*Server, error) {
 		ans.apiGetPlaces(w, r)
 	})
 
+	mux.HandleFunc("/api/v1/discover/search", ans.apiDiscoverSearch)
+	mux.HandleFunc("/api/v1/discover/preview/frame", ans.apiDiscoverPreviewFrame)
+	mux.HandleFunc("/api/v1/discover/preview", ans.apiDiscoverPreview)
+	mux.HandleFunc("/api/v1/discover/platforms", ans.apiDiscoverPlatforms)
+	mux.HandleFunc("/api/v1/discover/countries", ans.apiDiscoverCountries)
+	mux.HandleFunc("/api/v1/discover/sources", ans.apiDiscoverSources)
+	mux.HandleFunc("/api/v1/discover/directory", ans.apiDiscoverDirectory)
+	mux.HandleFunc("/api/v1/discover/customs/profile", ans.apiCustomsProfile)
+	mux.HandleFunc("/api/v1/discover/exhibition/exhibitors", ans.apiExhibitionExhibitors)
 	mux.HandleFunc("/api/v1/jobs/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		r = requestWithID(r)
 
@@ -147,14 +165,42 @@ func New(svc *Service, addr string) (*Server, error) {
 
 	tmplsKeys := []string{
 		"static/templates/index.html",
+		"static/templates/discover.html",
+		"static/templates/directory.html",
+		"static/templates/customs.html",
+		"static/templates/exhibition.html",
+		"static/templates/outreach.html",
 		"static/templates/job_rows.html",
 		"static/templates/job_row.html",
 		"static/templates/job_view.html",
 		"static/templates/redoc.html",
 	}
 
+	pagesWithRail := map[string]struct{}{
+		"static/templates/index.html":      {},
+		"static/templates/discover.html":   {},
+		"static/templates/directory.html":  {},
+		"static/templates/customs.html":    {},
+		"static/templates/exhibition.html": {},
+		"static/templates/outreach.html":   {},
+	}
+	pagesWithDataNav := map[string]struct{}{
+		"static/templates/discover.html":   {},
+		"static/templates/directory.html":  {},
+		"static/templates/customs.html":    {},
+		"static/templates/exhibition.html": {},
+	}
+
 	for _, key := range tmplsKeys {
-		tmp, err := template.ParseFS(static, key)
+		files := []string{key}
+		if _, ok := pagesWithRail[key]; ok {
+			files = append(files, "static/templates/app_rail.html")
+		}
+		if _, ok := pagesWithDataNav[key]; ok {
+			files = append(files, "static/templates/data_nav.html")
+		}
+
+		tmp, err := template.ParseFS(static, files...)
 		if err != nil {
 			return nil, err
 		}
@@ -814,13 +860,14 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; "+
-			"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
-			"worker-src 'self' blob:; "+
-			"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
-			"img-src 'self' data: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org *.is.autonavi.com; "+
-			"font-src 'self' fonts.gstatic.com; "+
-			"connect-src 'self'")
+			"default-src 'self'; "+
+				"script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com cdnjs.cloudflare.com unpkg.com cdn.redoc.ly; "+
+				"worker-src 'self' blob:; "+
+				"style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com unpkg.com; "+
+				"img-src 'self' data: https: blob: cdn.redoc.ly cdnjs.cloudflare.com *.tile.openstreetmap.org *.is.autonavi.com; "+
+				"font-src 'self' fonts.gstatic.com; "+
+				"frame-src 'self'; "+
+				"connect-src 'self'")
 
 		next.ServeHTTP(w, r)
 	})

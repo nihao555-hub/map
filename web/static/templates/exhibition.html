@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>展会获客 · 地图获客</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/css/shell.css">
+  <link rel="stylesheet" href="/static/css/discover.css">
+  <link rel="stylesheet" href="/static/css/customs.css">
+  <link rel="stylesheet" href="/static/css/exhibition.css">
+</head>
+<body class="wmt is-landing">
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  </svg>
+  {{template "app-rail" "exhibition"}}
+  <div id="app-body">
+    <header id="topbar">
+      <div class="page-heading">展会获客</div>
+      <div class="topbar-right">
+        <button type="button" class="vip-btn"><i data-lucide="crown" class="w-4 h-4"></i>升级会员</button>
+        <a class="help-btn" href="/api/docs"><i data-lucide="help-circle" class="w-4 h-4"></i>使用帮助</a>
+        <div class="user-box">
+          <span class="avatar"><i data-lucide="user" class="w-4 h-4"></i></span>
+          <span class="user-name">张三</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 chevron"></i>
+        </div>
+      </div>
+    </header>
+    <div class="wmt-shell">
+    {{template "data-nav" "exhibition"}}
+    <main class="wmt-main">
+      <section id="landing-view" class="cus-landing">
+        <h1>展会获客</h1>
+        <p class="cus-fresh">复刻外贸通的关键词找参展商。输入产品、展会名或公司名，选国家后直接出客户表。</p>
+        <div class="cus-tabs" id="landing-tabs">
+          <button type="button" class="is-on" data-role="seller">搜客户</button>
+          <button type="button" data-role="buyer">搜展会</button>
+        </div>
+        <form id="landing-form" class="cus-search">
+          <select id="landing-field" aria-label="搜索类型">
+            <option value="product">产品</option>
+            <option value="fair">展会名</option>
+            <option value="company">公司名</option>
+          </select>
+          <input type="text" id="landing-keyword" placeholder="产品、展会或公司名，例如 furniture / 广交会" maxlength="64" autocomplete="off" />
+          <label class="wmt-precise"><input type="checkbox" id="landing-precise"> 精确</label>
+          <button type="submit" class="wmt-search-btn">搜索</button>
+        </form>
+        <div class="cus-proof">
+          <article>搜客户：按产品或公司名拉公开参展商（公司、展会、展位、国家），对齐海关页的「关键词找客户」。</article>
+          <article>搜展会：EventsEye（约 1.2 万场）、AUMA、Wikidata 和开源主流展日历一起查，点进去再拉该场名单。</article>
+          <article>参展商名录主要来自伊梅 emage 和展会官网 JSON（Brix 一类）。点公司名打开弹层看展位和公开主页。</article>
+          <article>不是 50 万采购商库，也不做名片 OCR、不代发。没有公开名单的展会会留空。</article>
+        </div>
+      </section>
+
+      <section id="results-view" class="wmt-results" hidden>
+        <div class="wmt-crumb">数据获客 &gt; 展会获客</div>
+        <div class="cus-tabs" id="role-tabs">
+          <button type="button" class="is-on" data-role="seller">搜客户</button>
+          <button type="button" data-role="buyer">搜展会</button>
+        </div>
+        <form id="exh-form" class="wmt-query">
+          <div class="wmt-query-row">
+            <div class="wmt-searchbox">
+              <select id="search-field" class="cus-field" aria-label="搜索类型">
+                <option value="product">产品</option>
+                <option value="fair">展会名</option>
+                <option value="company">公司名</option>
+              </select>
+              <input type="text" id="keyword" placeholder="产品、展会或公司名，例如 furniture / 广交会" maxlength="64" autocomplete="off" />
+              <label class="wmt-precise"><input type="checkbox" id="precise"> 精确</label>
+              <button type="submit" class="wmt-search-btn" id="search-btn">搜索</button>
+            </div>
+          </div>
+          <div class="cus-filters" id="filter-box">
+            <label class="wmt-field">国家/地区
+              <select id="country" class="wmt-country" aria-label="国家/地区"></select>
+            </label>
+            <label class="wmt-field">时间范围
+              <select id="year" class="wmt-country" aria-label="时间范围"></select>
+            </label>
+            <button type="button" class="btn-ghost" id="reset-btn">重置</button>
+            <button type="submit" class="wmt-search-btn">查询</button>
+          </div>
+        </form>
+        <p class="wmt-kw-err" id="keyword-error" hidden></p>
+        <div class="wmt-meta">
+          <div class="wmt-actions">
+            <button type="button" class="btn-ghost" id="select-all">全选</button>
+            <button type="button" class="btn-ghost" id="market-btn">一键营销</button>
+            <button type="button" class="btn-ghost" id="book-btn">加入营销地址簿</button>
+          </div>
+          <div id="status" class="wmt-status">输入行业后搜索</div>
+          <div class="wmt-pager" id="pager" hidden>
+            <span id="hit-count">共 0 条</span>
+            <button type="button" id="page-prev">&lt;</button>
+            <span id="page-cur">1</span>
+            <span class="wmt-pager-sep">/</span>
+            <span id="page-total">1</span>
+            <button type="button" id="page-next">&gt;</button>
+          </div>
+        </div>
+        <div class="wmt-table-wrap" id="table-wrap">
+          <table class="wmt-table" id="exh-table">
+            <thead id="exh-thead">
+              <tr>
+                <th style="width:36px"></th>
+                <th>公司名称</th>
+                <th>展会名称</th>
+                <th style="width:120px">展位号</th>
+                <th style="width:140px">国家/地区</th>
+              </tr>
+            </thead>
+            <tbody id="results"></tbody>
+          </table>
+          <div id="empty" class="wmt-empty">输入产品、展会或公司名后搜索客户。参展商来自公开名录，不是官方全量库。</div>
+        </div>
+      </section>
+    </main>
+    </div>
+  </div>
+
+  <div id="exh-modal" class="cus-modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-name">
+    <div class="cus-modal-card">
+      <header class="cus-modal-head">
+        <div>
+          <h2 id="modal-name">—</h2>
+          <span class="cus-tag" id="modal-role">参展商</span>
+        </div>
+        <div class="cus-modal-actions">
+          <button type="button" class="btn-ghost" id="modal-open">查看详情</button>
+          <button type="button" class="wmt-search-btn" id="modal-save">录入客户</button>
+          <button type="button" class="btn-ghost" id="modal-close">关闭</button>
+        </div>
+      </header>
+      <nav class="cus-modal-tabs" id="modal-tabs">
+        <button type="button" class="is-on" data-tab="basic">基本信息</button>
+        <button type="button" data-tab="contacts">联系人</button>
+        <button type="button" data-tab="fair">参展记录</button>
+        <button type="button" data-tab="list">参展商名单</button>
+      </nav>
+      <div class="cus-stat-row">
+        <article><span>展会</span><b id="stat-fair">—</b></article>
+        <article><span>展位</span><b id="stat-booth">—</b></article>
+        <article><span>国家/地区</span><b id="stat-country">—</b></article>
+        <article><span>时间</span><b id="stat-when">—</b></article>
+      </div>
+      <div id="tab-basic" class="cus-tab-body">
+        <dl class="cus-dl">
+          <div><dt>名称</dt><dd id="info-name">—</dd></div>
+          <div><dt>城市</dt><dd id="info-city">—</dd></div>
+          <div><dt>国家/地区</dt><dd id="info-country">—</dd></div>
+          <div><dt>展位号</dt><dd id="info-booth">—</dd></div>
+          <div><dt>来源</dt><dd id="info-via">—</dd></div>
+          <div><dt>简介</dt><dd id="info-snip">—</dd></div>
+        </dl>
+      </div>
+      <div id="tab-contacts" class="cus-tab-body hidden">公开名录没有联系人库。可用智能引擎按公司名抽公开邮箱。系统不代发。</div>
+      <div id="tab-fair" class="cus-tab-body hidden"></div>
+      <div id="tab-list" class="cus-tab-body hidden">
+        <p id="list-status" class="exh-note">点展会后加载公开名单。</p>
+        <div id="list-body"></div>
+      </div>
+      <div class="cus-modal-foot">名单来自公开名录，不是官方全量库。系统不代发，也不从展会网页批量抽邮箱。</div>
+    </div>
+  </div>
+  <div id="toast" class="wmt-toast hidden"></div>
+  <script src="/static/js/exhibition.js"></script>
+  <script>lucide.createIcons();</script>
+</body>
+</html>

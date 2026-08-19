@@ -1,0 +1,60 @@
+.dir-landing {
+  padding: 28px 28px 24px;
+  overflow: auto;
+  min-height: 100%;
+}
+.dir-landing h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 650;
+}
+.dir-note {
+  color: var(--wmt-sub);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+  max-width: 860px;
+}
+.dir-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) {
+  .dir-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.dir-card {
+  border: 1px solid var(--wmt-line);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.dir-card b {
+  display: block;
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+.dir-card span {
+  color: var(--wmt-aux);
+  font-size: 12px;
+}
+.dir-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.dir-filters select,
+.dir-filters input {
+  height: 36px;
+  border: 1px solid var(--wmt-line);
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.dir-filters input { flex: 1; min-width: 160px; }
+.dir-home { color: var(--wmt-blue); text-decoration: none; word-break: break-all; }
+.dir-plats { color: var(--wmt-sub); font-size: 12px; }
+@media (max-width: 960px) {
+  .dir-cards { grid-template-columns: 1fr 1fr; }
+}
