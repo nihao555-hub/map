@@ -148,6 +148,14 @@ ingest-social-search: ## 去 TikTok 搜索页/话题/相关账号扫企业号（
 ingest-yellow-pages: ## 黄页找官网和电话，再高并发去官网抽社媒
 	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -yellow-pages -workers 48 -deadline 90m
 
+CUSTOMS_DB ?= store/customs.db
+
+ingest-customs: ## 公开海关入库：英国 HMRC bulk + 美国 Kirchner 提单 + Comtrade 国家口径
+	go run ./cmd/ingest-customs -db $(CUSTOMS_DB)
+
+ingest-customs-uk: ## 只灌英国 uktradeinfo 最新月包（公司名+HS+BDS 行）
+	go run ./cmd/ingest-customs -db $(CUSTOMS_DB) -skip-us -skip-comtrade
+
 ingest-wayback-tiktok: ## Internet Archive CDX 里能枚举的 tiktok.com/@ 与抖音主页
 	go run ./cmd/harvest-dorks -db $(MERCHANT_DB) -short-video -wayback -deadline 90m
 
